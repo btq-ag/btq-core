@@ -416,14 +416,14 @@ void SetupServerArgs(ArgsManager& argsman)
 
     init::AddLoggingArgs(argsman);
 
-    const auto defaultBaseParams = CreateBaseChainParams(ChainType::MAIN);
-    const auto testnetBaseParams = CreateBaseChainParams(ChainType::TESTNET);
-    const auto signetBaseParams = CreateBaseChainParams(ChainType::SIGNET);
-    const auto regtestBaseParams = CreateBaseChainParams(ChainType::REGTEST);
-    const auto defaultChainParams = CreateChainParams(argsman, ChainType::MAIN);
-    const auto testnetChainParams = CreateChainParams(argsman, ChainType::TESTNET);
-    const auto signetChainParams = CreateChainParams(argsman, ChainType::SIGNET);
-    const auto regtestChainParams = CreateChainParams(argsman, ChainType::REGTEST);
+    const auto defaultBaseParams = CreateBaseChainParams(ChainType::BTQMAIN);
+    const auto testnetBaseParams = CreateBaseChainParams(ChainType::BTQTEST);
+    const auto signetBaseParams = CreateBaseChainParams(ChainType::BTQSIGNET);
+    const auto regtestBaseParams = CreateBaseChainParams(ChainType::BTQREGTEST);
+    const auto defaultChainParams = CreateChainParams(argsman, ChainType::BTQMAIN);
+    const auto testnetChainParams = CreateChainParams(argsman, ChainType::BTQTEST);
+    const auto signetChainParams = CreateChainParams(argsman, ChainType::BTQSIGNET);
+    const auto regtestChainParams = CreateChainParams(argsman, ChainType::BTQREGTEST);
 
     // Hidden Options
     std::vector<std::string> hidden_args = {
@@ -853,7 +853,7 @@ bool AppInitParameterInteraction(const ArgsManager& args)
     // specified in default section of config file, but not overridden
     // on the command line or in this chain's section of the config file.
     ChainType chain = args.GetChainType();
-    if (chain == ChainType::SIGNET) {
+    if (chain == ChainType::BTQSIGNET) {
         LogPrintf("Signet derived magic (message start): %s\n", HexStr(chainparams.MessageStart()));
     }
     bilingual_str errors;
@@ -1245,7 +1245,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     // as they would never get updated.
     if (!peerman_opts.ignore_incoming_txs) {
         bool read_stale_estimates = args.GetBoolArg("-acceptstalefeeestimates", DEFAULT_ACCEPT_STALE_FEE_ESTIMATES);
-        if (read_stale_estimates && (chainparams.GetChainType() != ChainType::REGTEST)) {
+        if (read_stale_estimates && (chainparams.GetChainType() != ChainType::BTQREGTEST)) {
             return InitError(strprintf(_("acceptstalefeeestimates is not supported on %s chain."), chainparams.GetChainTypeString()));
         }
         node.fee_estimator = std::make_unique<CBlockPolicyEstimator>(FeeestPath(args), read_stale_estimates);

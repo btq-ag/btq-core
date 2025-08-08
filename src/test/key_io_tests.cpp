@@ -25,7 +25,7 @@ BOOST_AUTO_TEST_CASE(key_io_valid_parse)
     UniValue tests = read_json(json_tests::key_io_valid);
     CKey privkey;
     CTxDestination destination;
-    SelectParams(ChainType::MAIN);
+    SelectParams(ChainType::BTQMAIN);
 
     for (unsigned int idx = 0; idx < tests.size(); idx++) {
         const UniValue& test = tests[idx];
@@ -114,7 +114,7 @@ BOOST_AUTO_TEST_CASE(key_io_valid_gen)
         }
     }
 
-    SelectParams(ChainType::MAIN);
+    SelectParams(ChainType::BTQMAIN);
 }
 
 
@@ -136,7 +136,7 @@ BOOST_AUTO_TEST_CASE(key_io_invalid)
         std::string exp_base58string = test[0].get_str();
 
         // must be invalid as public and as private key
-        for (const auto& chain : {ChainType::MAIN, ChainType::TESTNET, ChainType::SIGNET, ChainType::REGTEST}) {
+        for (const auto& chain : {ChainType::BTQMAIN, ChainType::BTQTEST, ChainType::BTQSIGNET, ChainType::BTQREGTEST}) {
             SelectParams(chain);
             destination = DecodeDestination(exp_base58string);
             BOOST_CHECK_MESSAGE(!IsValidDestination(destination), "IsValid pubkey in mainnet:" + strTest);

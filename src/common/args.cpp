@@ -143,7 +143,7 @@ std::set<std::string> ArgsManager::GetUnsuitableSectionOnlyArgs() const
     if (m_network.empty()) return std::set<std::string> {};
 
     // if it's okay to use the default section for this network, don't worry
-    if (m_network == ChainTypeToString(ChainType::MAIN)) return std::set<std::string> {};
+    if (m_network == ChainTypeToString(ChainType::BTQMAIN)) return std::set<std::string> {};
 
     for (const auto& arg : m_network_only_args) {
         if (OnlyHasDefaultSectionSetting(m_settings, m_network, SettingName(arg))) {
@@ -157,10 +157,10 @@ std::list<SectionInfo> ArgsManager::GetUnrecognizedSections() const
 {
     // Section names to be recognized in the config file.
     static const std::set<std::string> available_sections{
-        ChainTypeToString(ChainType::REGTEST),
-        ChainTypeToString(ChainType::SIGNET),
-        ChainTypeToString(ChainType::TESTNET),
-        ChainTypeToString(ChainType::MAIN),
+        ChainTypeToString(ChainType::BTQREGTEST),
+        ChainTypeToString(ChainType::BTQSIGNET),
+        ChainTypeToString(ChainType::BTQTEST),
+        ChainTypeToString(ChainType::BTQMAIN),
     };
 
     LOCK(cs_args);
@@ -745,28 +745,28 @@ std::variant<ChainType, std::string> ArgsManager::GetChainArg() const
         return value.isNull() ? false : value.isBool() ? value.get_bool() : InterpretBool(value.get_str());
     };
 
-    const bool fRegTest = get_net("-regtest");
-    const bool fSigNet  = get_net("-signet");
-    const bool fTestNet = get_net("-testnet");
+    const bool fBtqRegTest = get_net("-btqregtest");
+    const bool fBtqSigNet = get_net("-btqsignet");
+    const bool fBtqTest = get_net("-btqtest");
     const auto chain_arg = GetArg("-chain");
 
-    if ((int)chain_arg.has_value() + (int)fRegTest + (int)fSigNet + (int)fTestNet > 1) {
-        throw std::runtime_error("Invalid combination of -regtest, -signet, -testnet and -chain. Can use at most one.");
+    if ((int)chain_arg.has_value() + (int)fBtqRegTest + (int)fBtqSigNet + (int)fBtqTest > 1) {
+        throw std::runtime_error("Invalid combination of -btqregtest, -btqsignet, -btqtest and -chain. Can use at most one.");
     }
     if (chain_arg) {
         if (auto parsed = ChainTypeFromString(*chain_arg)) return *parsed;
         // Not a known string, so return original string
         return *chain_arg;
     }
-    if (fRegTest) return ChainType::REGTEST;
-    if (fSigNet) return ChainType::SIGNET;
-    if (fTestNet) return ChainType::TESTNET;
-    return ChainType::MAIN;
+    if (fBtqRegTest) return ChainType::BTQREGTEST;
+    if (fBtqSigNet) return ChainType::BTQSIGNET;
+    if (fBtqTest) return ChainType::BTQTEST;
+    return ChainType::BTQMAIN;
 }
 
 bool ArgsManager::UseDefaultSection(const std::string& arg) const
 {
-    return m_network == ChainTypeToString(ChainType::MAIN) || m_network_only_args.count(arg) == 0;
+    return m_network == ChainTypeToString(ChainType::BTQMAIN) || m_network_only_args.count(arg) == 0;
 }
 
 common::SettingsValue ArgsManager::GetSetting(const std::string& arg) const

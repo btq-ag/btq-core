@@ -2101,9 +2101,20 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     // mainnet and testnet).
     // Similarly, only one historical block violated the TAPROOT rules on
     // mainnet.
-    // For simplicity, always leave P2SH+WITNESS+TAPROOT on except for the two
-    // violating blocks.
-    uint32_t flags{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT};
+    // For simplicity, always leave P2SH on, but conditionally enable WITNESS and TAPROOT
+    // BTQ: Modified to conditionally include WITNESS and TAPROOT based on deployment status
+    uint32_t flags{SCRIPT_VERIFY_P2SH};
+    
+    // BTQ: Only enable Witness (SegWit) if the deployment is active
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_SEGWIT)) {
+        flags |= SCRIPT_VERIFY_WITNESS;
+    }
+    
+    // BTQ: Only enable Taproot if the deployment is active
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_TAPROOT)) {
+        flags |= SCRIPT_VERIFY_TAPROOT;
+    }
+    
     const auto it{consensusparams.script_flag_exceptions.find(*Assert(block_index.phashBlock))};
     if (it != consensusparams.script_flag_exceptions.end()) {
         flags = it->second;
@@ -2163,7 +2174,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // ContextualCheckBlockHeader() here. This means that if we add a new
     // consensus rule that is enforced in one of those two functions, then we
     // may have let in a block that violates the rule prior to updating the
-    // software, and we would NOT be enforcing the rule here. Fully solving
+    // software, and we wouldn't be enforcing the rule here. Fully solving
     // upgrade from one software version to the next after a consensus rule
     // change is potentially tricky and issue-specific (see NeedsRedownload()
     // for one approach that was used for BIP 141 deployment).

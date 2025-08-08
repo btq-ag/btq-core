@@ -16,7 +16,7 @@
 
 struct Dersig100Setup : public TestChain100Setup {
     Dersig100Setup()
-        : TestChain100Setup{ChainType::REGTEST, {"-testactivationheight=dersig@102"}} {}
+        : TestChain100Setup{ChainType::BTQREGTEST, {"-testactivationheight=dersig@102"}} {}
 };
 
 bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,

@@ -109,16 +109,16 @@ const CChainParams &Params() {
 std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, const ChainType chain)
 {
     switch (chain) {
-    case ChainType::MAIN:
+    case ChainType::BTQMAIN:
         return CChainParams::Main();
-    case ChainType::TESTNET:
+    case ChainType::BTQTEST:
         return CChainParams::TestNet();
-    case ChainType::SIGNET: {
+    case ChainType::BTQSIGNET: {
         auto opts = CChainParams::SigNetOptions{};
         ReadSigNetArgs(args, opts);
         return CChainParams::SigNet(opts);
     }
-    case ChainType::REGTEST: {
+    case ChainType::BTQREGTEST: {
         auto opts = CChainParams::RegTestOptions{};
         ReadRegTestArgs(args, opts);
         return CChainParams::RegTest(opts);

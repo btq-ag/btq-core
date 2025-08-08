@@ -98,7 +98,7 @@ public:
     /** Default value for -checkmempool and -checkblockindex argument */
     bool DefaultConsistencyChecks() const { return fDefaultConsistencyChecks; }
     /** If this chain is exclusively used for testing */
-    bool IsTestChain() const { return m_chain_type != ChainType::MAIN; }
+    bool IsTestChain() const { return m_chain_type != ChainType::BTQMAIN; }
     /** If this chain allows time to be mocked */
     bool IsMockableChain() const { return m_is_mockable_chain; }
     uint64_t PruneAfterHeight() const { return nPruneAfterHeight; }

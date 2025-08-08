@@ -74,10 +74,10 @@ static void SetupCliArgs(ArgsManager& argsman)
 {
     SetupHelpOptions(argsman);
 
-    const auto defaultBaseParams = CreateBaseChainParams(ChainType::MAIN);
-    const auto testnetBaseParams = CreateBaseChainParams(ChainType::TESTNET);
-    const auto signetBaseParams = CreateBaseChainParams(ChainType::SIGNET);
-    const auto regtestBaseParams = CreateBaseChainParams(ChainType::REGTEST);
+    const auto defaultBaseParams = CreateBaseChainParams(ChainType::BTQMAIN);
+    const auto testnetBaseParams = CreateBaseChainParams(ChainType::BTQTEST);
+    const auto signetBaseParams = CreateBaseChainParams(ChainType::BTQSIGNET);
+    const auto regtestBaseParams = CreateBaseChainParams(ChainType::BTQREGTEST);
 
     argsman.AddArg("-version", "Print version and exit", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-conf=<file>", strprintf("Specify configuration file. Relative paths will be prefixed by datadir location. (default: %s)", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -428,13 +428,13 @@ private:
     std::string ChainToString() const
     {
         switch (gArgs.GetChainType()) {
-        case ChainType::TESTNET:
+        case ChainType::BTQTEST:
             return " testnet";
-        case ChainType::SIGNET:
+        case ChainType::BTQSIGNET:
             return " signet";
-        case ChainType::REGTEST:
+        case ChainType::BTQREGTEST:
             return " regtest";
-        case ChainType::MAIN:
+        case ChainType::BTQMAIN:
             return "";
         }
         assert(false);

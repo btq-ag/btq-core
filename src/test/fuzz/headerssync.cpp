@@ -16,7 +16,7 @@
 static void initialize_headers_sync_state_fuzz()
 {
     static const auto testing_setup = MakeNoLogFileContext<>(
-        /*chain_type=*/ChainType::MAIN);
+        /*chain_type=*/ChainType::BTQMAIN);
 }
 
 void MakeHeadersContinuous(

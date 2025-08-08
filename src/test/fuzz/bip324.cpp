@@ -18,7 +18,7 @@ namespace {
 void Initialize()
 {
     ECC_Start();
-    SelectParams(ChainType::MAIN);
+    SelectParams(ChainType::BTQMAIN);
 }
 
 }  // namespace

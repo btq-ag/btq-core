@@ -20,7 +20,7 @@
 
 void initialize_pow()
 {
-    SelectParams(ChainType::MAIN);
+    SelectParams(ChainType::BTQMAIN);
 }
 
 FUZZ_TARGET(pow, .init = initialize_pow)

@@ -20,7 +20,7 @@
 void initialize_message()
 {
     ECC_Start();
-    SelectParams(ChainType::REGTEST);
+    SelectParams(ChainType::BTQREGTEST);
 }
 
 FUZZ_TARGET(message, .init = initialize_message)

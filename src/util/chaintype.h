@@ -9,10 +9,10 @@
 #include <string>
 
 enum class ChainType {
-    MAIN,
-    TESTNET,
-    SIGNET,
-    REGTEST,
+    BTQMAIN,
+    BTQTEST,
+    BTQSIGNET,
+    BTQREGTEST,
 };
 
 std::string ChainTypeToString(ChainType chain);

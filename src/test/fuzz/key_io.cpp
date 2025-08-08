@@ -15,7 +15,7 @@
 void initialize_key_io()
 {
     ECC_Start();
-    SelectParams(ChainType::MAIN);
+    SelectParams(ChainType::BTQMAIN);
 }
 
 FUZZ_TARGET(key_io, .init = initialize_key_io)
