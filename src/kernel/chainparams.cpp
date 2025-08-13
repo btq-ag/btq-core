@@ -71,6 +71,9 @@ public:
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 210000;
         
+        // BTQ: Set signature algorithm to NONE initially (stub implementation)
+        consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
+        
         // BTQ: No script flag exceptions for clean start
         
         // BTQ: Enable all features from height 1 for clean activation
@@ -174,6 +177,9 @@ public:
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 210000;
+        
+        // BTQ: Set signature algorithm to NONE initially (stub implementation)
+        consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
         
         // BTQ: No script flag exceptions for clean start
         
@@ -322,6 +328,9 @@ public:
         consensus.signet_challenge.assign(bin.begin(), bin.end());
         consensus.nSubsidyHalvingInterval = 210000;
         
+        // BTQ: Set signature algorithm to NONE initially (stub implementation)
+        consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
+        
         // BTQ: Keep BIP34/66/CSV at height 1 (already optimal)
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256{};
@@ -407,6 +416,9 @@ public:
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 150;
+        
+        // BTQ: Set signature algorithm to NONE initially (stub implementation)
+        consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
         
         // BTQ: Keep BIP34/66/CSV at height 1 (already optimal)
         consensus.BIP34Height = 1; // Always active unless overridden
