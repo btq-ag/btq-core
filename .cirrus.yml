@@ -18,7 +18,7 @@ env:  # Global defaults
 # - apt-get is required due to PACKAGE_MANAGER_INSTALL
 # - podman-docker-4.1+ is required due to the use of `podman` when
 #   RESTART_CI_DOCKER_BEFORE_RUN is set and 4.1+ due to the bugfix in 4.1
-#   (https://github.com/bitcoin/bitcoin/pull/21652#issuecomment-1657098200)
+#   (https://github.com/btq/btq/pull/21652#issuecomment-1657098200)
 # - The ./ci/ depedencies (with cirrus-cli) should be installed:
 #
 #   ```
@@ -48,7 +48,7 @@ env:  # Global defaults
 
 # https://cirrus-ci.org/guide/tips-and-tricks/#sharing-configuration-between-tasks
 filter_template: &FILTER_TEMPLATE
-  skip: $CIRRUS_REPO_FULL_NAME == "bitcoin-core/gui" && $CIRRUS_PR == ""  # No need to run on the read-only mirror, unless it is a PR. https://cirrus-ci.org/guide/writing-tasks/#conditional-task-execution
+  skip: $CIRRUS_REPO_FULL_NAME == "btq-core/gui" && $CIRRUS_PR == ""  # No need to run on the read-only mirror, unless it is a PR. https://cirrus-ci.org/guide/writing-tasks/#conditional-task-execution
   stateful: false  # https://cirrus-ci.org/guide/writing-tasks/#stateful-tasks
 
 base_template: &BASE_TEMPLATE
@@ -73,7 +73,7 @@ global_task_template: &GLOBAL_TASK_TEMPLATE
 compute_credits_template: &CREDITS_TEMPLATE
   # https://cirrus-ci.org/pricing/#compute-credits
   # Only use credits for pull requests to the main repo
-  use_compute_credits: $CIRRUS_REPO_FULL_NAME == 'bitcoin/bitcoin' && $CIRRUS_PR != ""
+  use_compute_credits: $CIRRUS_REPO_FULL_NAME == 'btq/btq' && $CIRRUS_PR != ""
 
 task:
   name: 'lint'
@@ -106,7 +106,7 @@ task:
   << : *GLOBAL_TASK_TEMPLATE
   persistent_worker:
     labels:
-      type: arm64  # Use arm64 worker to sidestep qemu and avoid a slow CI: https://github.com/bitcoin/bitcoin/pull/28087#issuecomment-1649399453
+      type: arm64  # Use arm64 worker to sidestep qemu and avoid a slow CI: https://github.com/btq/btq/pull/28087#issuecomment-1649399453
   env:
     FILE_ENV: "./ci/test/00_setup_env_arm.sh"
 
@@ -188,13 +188,13 @@ task:
     FILE_ENV: "./ci/test/00_setup_env_i686_multiprocess.sh"
 
 task:
-  name: 'no wallet, libbitcoinkernel'
+  name: 'no wallet, libbtqkernel'
   << : *GLOBAL_TASK_TEMPLATE
   persistent_worker:
     labels:
       type: small
   env:
-    FILE_ENV: "./ci/test/00_setup_env_native_nowallet_libbitcoinkernel.sh"
+    FILE_ENV: "./ci/test/00_setup_env_native_nowallet_libbtqkernel.sh"
 
 task:
   name: 'macOS-cross 11.0, gui, no tests'
