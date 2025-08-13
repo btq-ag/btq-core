@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# Copyright (c) 2020-2022 The Bitcoin Core developers
+# Copyright (c) 2020-2022 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test error messages for 'getaddressinfo' and 'validateaddress' RPC commands."""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 
 from test_framework.util import (
     assert_equal,
@@ -38,7 +38,7 @@ BASE58_INVALID_LENGTH = '2VKf7XKMrp4bVNVmuRbyCewkP8FhGLP2E54LHDPakr9Sq5mtU2'
 INVALID_ADDRESS = 'asfah14i8fajz0123f'
 INVALID_ADDRESS_2 = '1q049ldschfnwystcqnsvyfpj23mpsg3jcedq9xv'
 
-class InvalidAddressErrorMessageTest(BitcoinTestFramework):
+class InvalidAddressErrorMessageTest(BTQTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -98,7 +98,7 @@ class InvalidAddressErrorMessageTest(BitcoinTestFramework):
         node = self.nodes[0]
 
         # Missing arg returns the help text
-        assert_raises_rpc_error(-1, "Return information about the given bitcoin address.", node.validateaddress)
+        assert_raises_rpc_error(-1, "Return information about the given btq address.", node.validateaddress)
         # Explicit None is not allowed for required parameters
         assert_raises_rpc_error(-3, "JSON value of type null is not of expected type string", node.validateaddress, None)
 

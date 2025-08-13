@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Copyright (c) 2019-present The Bitcoin Core developers
+# Copyright (c) 2019-present The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,4 +11,4 @@ export CI_IMAGE_NAME_TAG="docker.io/ubuntu:23.10"  # This version will reach EOL
 export PACKAGES="clang-17 llvm-17 libclang-rt-17-dev libc++abi-17-dev libc++-17-dev python3-zmq"
 export DEP_OPTS="CC=clang-17 CXX='clang++-17 -stdlib=libc++'"
 export GOAL="install"
-export BITCOIN_CONFIG="--enable-zmq CPPFLAGS='-DARENA_DEBUG -DDEBUG_LOCKORDER -DDEBUG_LOCKCONTENTION' CXXFLAGS='-g' --with-sanitizers=thread"
+export BTQ_CONFIG="--enable-zmq CPPFLAGS='-DARENA_DEBUG -DDEBUG_LOCKORDER -DDEBUG_LOCKCONTENTION' CXXFLAGS='-g' --with-sanitizers=thread"

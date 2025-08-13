@@ -1,9 +1,9 @@
-// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2018-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_INTERFACES_CHAIN_H
-#define BITCOIN_INTERFACES_CHAIN_H
+#ifndef BTQ_INTERFACES_CHAIN_H
+#define BTQ_INTERFACES_CHAIN_H
 
 #include <blockfilter.h>
 #include <common/settings.h>
@@ -100,13 +100,13 @@ struct BlockInfo {
 //! estimate fees, and submit transactions.
 //!
 //! TODO: Current chain methods are too low level, exposing too much of the
-//! internal workings of the bitcoin node, and not being very convenient to use.
+//! internal workings of the btq node, and not being very convenient to use.
 //! Chain methods should be cleaned up and simplified over time. Examples:
 //!
 //! * The initMessages() and showProgress() methods which the wallet uses to send
 //!   notifications to the GUI should go away when GUI and wallet can directly
 //!   communicate with each other without going through the node
-//!   (https://github.com/bitcoin/bitcoin/pull/15288#discussion_r253321096).
+//!   (https://github.com/btq/btq/pull/15288#discussion_r253321096).
 //!
 //! * The handleRpc, registerRpcs, rpcEnableDeprecated methods and other RPC
 //!   methods can go away if wallets listen for HTTP requests on their own
@@ -118,7 +118,7 @@ struct BlockInfo {
 //!
 //! * `guessVerificationProgress` and similar methods can go away if rescan
 //!   logic moves out of the wallet, and the wallet just requests scans from the
-//!   node (https://github.com/bitcoin/bitcoin/issues/11756)
+//!   node (https://github.com/btq/btq/issues/11756)
 class Chain
 {
 public:
@@ -402,4 +402,4 @@ std::unique_ptr<Chain> MakeChain(node::NodeContext& node);
 
 } // namespace interfaces
 
-#endif // BITCOIN_INTERFACES_CHAIN_H
+#endif // BTQ_INTERFACES_CHAIN_H

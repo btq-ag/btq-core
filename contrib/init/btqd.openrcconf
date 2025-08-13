@@ -1,0 +1,33 @@
+# /etc/conf.d/btqd: config file for /etc/init.d/btqd
+
+# Config file location
+#BTQD_CONFIGFILE="/etc/btq/btq.conf"
+
+# What directory to write pidfile to?  (created and owned by $BTQD_USER)
+#BTQD_PIDDIR="/var/run/btqd"
+
+# What filename to give the pidfile
+#BTQD_PIDFILE="${BTQD_PIDDIR}/btqd.pid"
+
+# Where to write btqd data (be mindful that the blockchain is large)
+#BTQD_DATADIR="/var/lib/btqd"
+
+# User and group to own btqd process
+#BTQD_USER="btq"
+#BTQD_GROUP="btq"
+
+# Path to btqd executable
+#BTQD_BIN="/usr/bin/btqd"
+
+# Nice value to run btqd under
+#BTQD_NICE=0
+
+# Additional options (avoid -conf and -datadir, use flags above)
+#BTQD_OPTS=""
+
+# The timeout in seconds OpenRC will wait for btqd to terminate
+# after a SIGTERM has been raised.
+# Note that this will be mapped as argument to start-stop-daemon's
+# '--retry' option, which means you can specify a retry schedule
+# here. For more information see man 8 start-stop-daemon.
+BTQD_SIGTERM_TIMEOUT=600

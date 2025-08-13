@@ -1,9 +1,9 @@
-// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2018-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_UTIL_BYTEVECTORHASH_H
-#define BITCOIN_UTIL_BYTEVECTORHASH_H
+#ifndef BTQ_UTIL_BYTEVECTORHASH_H
+#define BTQ_UTIL_BYTEVECTORHASH_H
 
 #include <cstdint>
 #include <cstddef>
@@ -24,4 +24,4 @@ public:
     size_t operator()(const std::vector<unsigned char>& input) const;
 };
 
-#endif // BITCOIN_UTIL_BYTEVECTORHASH_H
+#endif // BTQ_UTIL_BYTEVECTORHASH_H

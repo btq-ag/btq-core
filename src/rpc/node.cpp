@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2009-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -268,7 +268,7 @@ static RPCHelpMan echo(const std::string& name)
                 "\nSimply echo back the input arguments. This command is for testing.\n"
                 "\nIt will return an internal bug report when arg9='trigger_internal_bug' is passed.\n"
                 "\nThe difference between echo and echojson is that echojson has argument conversion enabled in the client-side table in "
-                "bitcoin-cli and the GUI. There is no server-side difference.",
+                "btq-cli and the GUI. There is no server-side difference.",
         {
             {"arg0", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "", RPCArgOptions{.skip_type_check = true}},
             {"arg1", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "", RPCArgOptions{.skip_type_check = true}},
@@ -311,20 +311,20 @@ static RPCHelpMan echoipc()
             interfaces::Init& local_init = *EnsureAnyNodeContext(request.context).init;
             std::unique_ptr<interfaces::Echo> echo;
             if (interfaces::Ipc* ipc = local_init.ipc()) {
-                // Spawn a new bitcoin-node process and call makeEcho to get a
+                // Spawn a new btq-node process and call makeEcho to get a
                 // client pointer to a interfaces::Echo instance running in
                 // that process. This is just for testing. A slightly more
                 // realistic test spawning a different executable instead of
-                // the same executable would add a new bitcoin-echo executable,
-                // and spawn bitcoin-echo below instead of bitcoin-node. But
-                // using bitcoin-node avoids the need to build and install a
+                // the same executable would add a new btq-echo executable,
+                // and spawn btq-echo below instead of btq-node. But
+                // using btq-node avoids the need to build and install a
                 // new executable just for this one test.
-                auto init = ipc->spawnProcess("bitcoin-node");
+                auto init = ipc->spawnProcess("btq-node");
                 echo = init->makeEcho();
                 ipc->addCleanup(*echo, [init = init.release()] { delete init; });
             } else {
-                // IPC support is not available because this is a bitcoind
-                // process not a bitcoind-node process, so just create a local
+                // IPC support is not available because this is a btqd
+                // process not a btqd-node process, so just create a local
                 // interfaces::Echo object and return it so the `echoipc` RPC
                 // method will work, and the python test calling `echoipc`
                 // can expect the same result.

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# Copyright (c) 2023 The Bitcoin Core developers
+# Copyright (c) 2023 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test validateaddress for main chain"""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 
 from test_framework.util import assert_equal
 
@@ -169,7 +169,7 @@ VALID_DATA = [
 ]
 
 
-class ValidateAddressMainTest(BitcoinTestFramework):
+class ValidateAddressMainTest(BTQTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.chain = ""  # main

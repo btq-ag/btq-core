@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2009-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -210,7 +210,7 @@ util::Result<std::unique_ptr<AddrMan>> LoadAddrman(const NetGroupManager& netgro
                                      e.what(), PACKAGE_BUGREPORT, fs::quoted(fs::PathToString(path_addr)))};
     }
     return {std::move(addrman)}; // std::move should be unnecessary but is temporarily needed to work around clang bug
-                                 // (https://github.com/bitcoin/bitcoin/pull/25977#issuecomment-1561270092)
+                                 // (https://github.com/btq/btq/pull/25977#issuecomment-1561270092)
 }
 
 void DumpAnchors(const fs::path& anchors_db_path, const std::vector<CAddress>& anchors)

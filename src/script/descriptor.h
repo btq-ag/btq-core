@@ -1,9 +1,9 @@
-// Copyright (c) 2018-2021 The Bitcoin Core developers
+// Copyright (c) 2018-2021 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_SCRIPT_DESCRIPTOR_H
-#define BITCOIN_SCRIPT_DESCRIPTOR_H
+#ifndef BTQ_SCRIPT_DESCRIPTOR_H
+#define BTQ_SCRIPT_DESCRIPTOR_H
 
 #include <outputtype.h>
 #include <script/script.h>
@@ -199,4 +199,4 @@ std::unique_ptr<Descriptor> InferDescriptor(const CScript& script, const Signing
 */
 uint256 DescriptorID(const Descriptor& desc);
 
-#endif // BITCOIN_SCRIPT_DESCRIPTOR_H
+#endif // BTQ_SCRIPT_DESCRIPTOR_H

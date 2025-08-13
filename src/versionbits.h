@@ -1,9 +1,9 @@
-// Copyright (c) 2016-2022 The Bitcoin Core developers
+// Copyright (c) 2016-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_VERSIONBITS_H
-#define BITCOIN_VERSIONBITS_H
+#ifndef BTQ_VERSIONBITS_H
+#define BTQ_VERSIONBITS_H
 
 #include <chain.h>
 #include <sync.h>
@@ -104,4 +104,4 @@ public:
     void Clear() EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
 };
 
-#endif // BITCOIN_VERSIONBITS_H
+#endif // BTQ_VERSIONBITS_H

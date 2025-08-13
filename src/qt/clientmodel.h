@@ -1,9 +1,9 @@
-// Copyright (c) 2011-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_CLIENTMODEL_H
-#define BITCOIN_QT_CLIENTMODEL_H
+#ifndef BTQ_QT_CLIENTMODEL_H
+#define BTQ_QT_CLIENTMODEL_H
 
 #include <QObject>
 #include <QDateTime>
@@ -49,7 +49,7 @@ enum NumConnections {
     CONNECTIONS_ALL  = (CONNECTIONS_IN | CONNECTIONS_OUT),
 };
 
-/** Model for Bitcoin network client. */
+/** Model for BTQ network client. */
 class ClientModel : public QObject
 {
     Q_OBJECT
@@ -129,4 +129,4 @@ Q_SIGNALS:
     void showProgress(const QString &title, int nProgress);
 };
 
-#endif // BITCOIN_QT_CLIENTMODEL_H
+#endif // BTQ_QT_CLIENTMODEL_H

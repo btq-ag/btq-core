@@ -1,9 +1,9 @@
-// Copyright (c) 2023 The Bitcoin Core developers
+// Copyright (c) 2023 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or https://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_ADDRESSTYPE_H
-#define BITCOIN_ADDRESSTYPE_H
+#ifndef BTQ_ADDRESSTYPE_H
+#define BTQ_ADDRESSTYPE_H
 
 #include <pubkey.h>
 #include <script/script.h>
@@ -124,7 +124,7 @@ public:
  *  * WitnessV0KeyHash: TxoutType::WITNESS_V0_KEYHASH destination (P2WPKH address)
  *  * WitnessV1Taproot: TxoutType::WITNESS_V1_TAPROOT destination (P2TR address)
  *  * WitnessUnknown: TxoutType::WITNESS_UNKNOWN destination (P2W??? address)
- *  A CTxDestination is the internal data type encoded in a bitcoin address
+ *  A CTxDestination is the internal data type encoded in a btq address
  */
 using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessV1Taproot, WitnessUnknown>;
 
@@ -144,10 +144,10 @@ bool IsValidDestination(const CTxDestination& dest);
 bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet);
 
 /**
- * Generate a Bitcoin scriptPubKey for the given CTxDestination. Returns a P2PKH
+ * Generate a BTQ scriptPubKey for the given CTxDestination. Returns a P2PKH
  * script for a CKeyID destination, a P2SH script for a CScriptID, and an empty
  * script for CNoDestination.
  */
 CScript GetScriptForDestination(const CTxDestination& dest);
 
-#endif // BITCOIN_ADDRESSTYPE_H
+#endif // BTQ_ADDRESSTYPE_H

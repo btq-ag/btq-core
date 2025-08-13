@@ -1,9 +1,9 @@
-// Copyright (c) 2014-2019 The Bitcoin Core developers
+// Copyright (c) 2014-2019 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_NETWORKSTYLE_H
-#define BITCOIN_QT_NETWORKSTYLE_H
+#ifndef BTQ_QT_NETWORKSTYLE_H
+#define BTQ_QT_NETWORKSTYLE_H
 
 #include <util/chaintype.h>
 
@@ -32,4 +32,4 @@ private:
     QString titleAddText;
 };
 
-#endif // BITCOIN_QT_NETWORKSTYLE_H
+#endif // BTQ_QT_NETWORKSTYLE_H

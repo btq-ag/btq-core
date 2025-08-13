@@ -1,5 +1,5 @@
 Could be dropped after a migration to C++20.
-See: https://github.com/bitcoin/bitcoin/issues/26916.
+See: https://github.com/btq/btq/issues/26916.
 
 diff --git a/includes/sys/sdt.h b/includes/sys/sdt.h
 index 4075a5f..7c6138c 100644

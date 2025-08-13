@@ -1,13 +1,13 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2009-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_COMMON_SYSTEM_H
-#define BITCOIN_COMMON_SYSTEM_H
+#ifndef BTQ_COMMON_SYSTEM_H
+#define BTQ_COMMON_SYSTEM_H
 
 #if defined(HAVE_CONFIG_H)
-#include <config/bitcoin-config.h>
+#include <config/btq-config.h>
 #endif
 
 #include <compat/assumptions.h>
@@ -35,4 +35,4 @@ void runCommand(const std::string& strCommand);
  */
 int GetNumCores();
 
-#endif // BITCOIN_COMMON_SYSTEM_H
+#endif // BTQ_COMMON_SYSTEM_H

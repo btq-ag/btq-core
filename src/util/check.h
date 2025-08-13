@@ -1,9 +1,9 @@
-// Copyright (c) 2019-2022 The Bitcoin Core developers
+// Copyright (c) 2019-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_UTIL_CHECK_H
-#define BITCOIN_UTIL_CHECK_H
+#ifndef BTQ_UTIL_CHECK_H
+#define BTQ_UTIL_CHECK_H
 
 #include <attributes.h>
 
@@ -91,4 +91,4 @@ T&& inline_assertion_check(LIFETIMEBOUND T&& val, [[maybe_unused]] const char* f
     throw NonFatalCheckError(                                         \
         "Unreachable code reached (non-fatal)", __FILE__, __LINE__, __func__)
 
-#endif // BITCOIN_UTIL_CHECK_H
+#endif // BTQ_UTIL_CHECK_H

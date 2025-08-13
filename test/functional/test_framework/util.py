@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2014-2022 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Helpful routines for regression testing."""
@@ -45,11 +45,11 @@ def assert_fee_amount(fee, tx_size, feerate_BTC_kvB):
     assert isinstance(tx_size, int)
     target_fee = get_fee(tx_size, feerate_BTC_kvB)
     if fee < target_fee:
-        raise AssertionError("Fee of %s BTC too low! (Should be %s BTC)" % (str(fee), str(target_fee)))
+        raise AssertionError("Fee of %s BTQ too low! (Should be %s BTQ)" % (str(fee), str(target_fee)))
     # allow the wallet's estimation to be at most 2 bytes off
     high_fee = get_fee(tx_size + 2, feerate_BTC_kvB)
     if fee > high_fee:
-        raise AssertionError("Fee of %s BTC too high! (Should be %s BTC)" % (str(fee), str(target_fee)))
+        raise AssertionError("Fee of %s BTQ too high! (Should be %s BTQ)" % (str(fee), str(target_fee)))
 
 
 def assert_equal(thing1, thing2, *args):
@@ -204,7 +204,7 @@ def assert_array_result(object_array, to_match, expected, should_not_find=False)
 
 
 def check_json_precision():
-    """Make sure json library being used does not lose precision converting BTC values"""
+    """Make sure json library being used does not lose precision converting BTQ values"""
     n = Decimal("20000000.00000003")
     satoshis = int(json.loads(json.dumps(float(n))) * 1.0e8)
     if satoshis != 2000000000000003:
@@ -231,10 +231,10 @@ def ceildiv(a, b):
 
 
 def get_fee(tx_size, feerate_btc_kvb):
-    """Calculate the fee in BTC given a feerate is BTC/kvB. Reflects CFeeRate::GetFee"""
+    """Calculate the fee in BTQ given a feerate is BTQ/kvB. Reflects CFeeRate::GetFee"""
     feerate_sat_kvb = int(feerate_btc_kvb * Decimal(1e8)) # Fee in sat/kvb as an int to avoid float precision errors
     target_fee_sat = ceildiv(feerate_sat_kvb * tx_size, 1000) # Round calculated fee up to nearest sat
-    return target_fee_sat / Decimal(1e8) # Return result in  BTC
+    return target_fee_sat / Decimal(1e8) # Return result in  BTQ
 
 
 def satoshi_round(amount):
@@ -246,7 +246,7 @@ def wait_until_helper_internal(predicate, *, attempts=float('inf'), timeout=floa
 
     Warning: Note that this method is not recommended to be used in tests as it is
     not aware of the context of the test framework. Using the `wait_until()` members
-    from `BitcoinTestFramework` or `P2PInterface` class ensures the timeout is
+    from `BTQTestFramework` or `P2PInterface` class ensures the timeout is
     properly scaled. Furthermore, `wait_until()` from `P2PInterface` class in
     `p2p.py` has a preset lock.
     """
@@ -364,7 +364,7 @@ def initialize_datadir(dirname, n, chain, disable_autoconnect=True):
     datadir = get_datadir_path(dirname, n)
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
-    write_config(os.path.join(datadir, "bitcoin.conf"), n=n, chain=chain, disable_autoconnect=disable_autoconnect)
+    write_config(os.path.join(datadir, "btq.conf"), n=n, chain=chain, disable_autoconnect=disable_autoconnect)
     os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)
     os.makedirs(os.path.join(datadir, 'stdout'), exist_ok=True)
     return datadir
@@ -422,18 +422,18 @@ def get_temp_default_datadir(temp_dir: pathlib.Path) -> Tuple[dict, pathlib.Path
     temp_dir, as well as the complete path it would return."""
     if sys.platform == "win32":
         env = dict(APPDATA=str(temp_dir))
-        datadir = temp_dir / "Bitcoin"
+        datadir = temp_dir / "BTQ"
     else:
         env = dict(HOME=str(temp_dir))
         if sys.platform == "darwin":
-            datadir = temp_dir / "Library/Application Support/Bitcoin"
+            datadir = temp_dir / "Library/Application Support/BTQ"
         else:
-            datadir = temp_dir / ".bitcoin"
+            datadir = temp_dir / ".btq"
     return env, datadir
 
 
 def append_config(datadir, options):
-    with open(os.path.join(datadir, "bitcoin.conf"), 'a', encoding='utf8') as f:
+    with open(os.path.join(datadir, "btq.conf"), 'a', encoding='utf8') as f:
         for option in options:
             f.write(option + "\n")
 
@@ -441,8 +441,8 @@ def append_config(datadir, options):
 def get_auth_cookie(datadir, chain):
     user = None
     password = None
-    if os.path.isfile(os.path.join(datadir, "bitcoin.conf")):
-        with open(os.path.join(datadir, "bitcoin.conf"), 'r', encoding='utf8') as f:
+    if os.path.isfile(os.path.join(datadir, "btq.conf")):
+        with open(os.path.join(datadir, "btq.conf"), 'r', encoding='utf8') as f:
             for line in f:
                 if line.startswith("rpcuser="):
                     assert user is None  # Ensure that there is only one rpcuser line

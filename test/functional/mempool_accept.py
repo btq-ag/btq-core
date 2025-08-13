@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2017-2022 The Bitcoin Core developers
+# Copyright (c) 2017-2022 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test mempool acceptance of raw transactions."""
@@ -8,7 +8,7 @@ from copy import deepcopy
 from decimal import Decimal
 import math
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 from test_framework.messages import (
     MAX_BIP125_RBF_SEQUENCE,
     COIN,
@@ -46,7 +46,7 @@ from test_framework.wallet import MiniWallet
 from test_framework.wallet_util import generate_keypair
 
 
-class MempoolAcceptanceTest(BitcoinTestFramework):
+class MempoolAcceptanceTest(BTQTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[
@@ -97,7 +97,7 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
 
         self.log.info('A transaction not in the mempool')
         fee = Decimal('0.000007')
-        utxo_to_spend = self.wallet.get_utxo(txid=txid_in_block)  # use 0.3 BTC UTXO
+        utxo_to_spend = self.wallet.get_utxo(txid=txid_in_block)  # use 0.3 BTQ UTXO
         tx = self.wallet.create_self_transfer(utxo_to_spend=utxo_to_spend, sequence=MAX_BIP125_RBF_SEQUENCE)['tx']
         tx.vout[0].nValue = int((Decimal('0.3') - fee) * COIN)
         raw_tx_0 = tx.serialize().hex()

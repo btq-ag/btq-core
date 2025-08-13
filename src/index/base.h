@@ -1,9 +1,9 @@
-// Copyright (c) 2017-2022 The Bitcoin Core developers
+// Copyright (c) 2017-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_INDEX_BASE_H
-#define BITCOIN_INDEX_BASE_H
+#ifndef BTQ_INDEX_BASE_H
+#define BTQ_INDEX_BASE_H
 
 #include <dbwrapper.h>
 #include <interfaces/chain.h>
@@ -162,4 +162,4 @@ public:
     IndexSummary GetSummary() const;
 };
 
-#endif // BITCOIN_INDEX_BASE_H
+#endif // BTQ_INDEX_BASE_H

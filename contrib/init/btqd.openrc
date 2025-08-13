@@ -1,0 +1,93 @@
+#!/sbin/openrc-run
+
+# backward compatibility for existing gentoo layout 
+#
+if [ -d "/var/lib/btq/.btq" ]; then
+	BTQD_DEFAULT_DATADIR="/var/lib/btq/.btq"
+else
+	BTQD_DEFAULT_DATADIR="/var/lib/btqd"
+fi
+
+BTQD_CONFIGFILE=${BTQD_CONFIGFILE:-/etc/btq/btq.conf}
+BTQD_PIDDIR=${BTQD_PIDDIR:-/var/run/btqd}
+BTQD_PIDFILE=${BTQD_PIDFILE:-${BTQD_PIDDIR}/btqd.pid}
+BTQD_DATADIR=${BTQD_DATADIR:-${BTQD_DEFAULT_DATADIR}}
+BTQD_USER=${BTQD_USER:-${BTQ_USER:-btq}}
+BTQD_GROUP=${BTQD_GROUP:-btq}
+BTQD_BIN=${BTQD_BIN:-/usr/bin/btqd}
+BTQD_NICE=${BTQD_NICE:-${NICELEVEL:-0}}
+BTQD_OPTS="${BTQD_OPTS:-${BTQ_OPTS}}"
+
+name="BTQ Core Daemon"
+description="BTQ cryptocurrency P2P network daemon"
+
+command="/usr/bin/btqd"
+command_args="-pid=\"${BTQD_PIDFILE}\" \
+		-conf=\"${BTQD_CONFIGFILE}\" \
+		-datadir=\"${BTQD_DATADIR}\" \
+		-daemon \
+		${BTQD_OPTS}"
+
+required_files="${BTQD_CONFIGFILE}"
+start_stop_daemon_args="-u ${BTQD_USER} \
+			-N ${BTQD_NICE} -w 2000"
+pidfile="${BTQD_PIDFILE}"
+
+# The retry schedule to use when stopping the daemon. Could be either
+# a timeout in seconds or multiple signal/timeout pairs (like
+# "SIGKILL/180 SIGTERM/300")
+retry="${BTQD_SIGTERM_TIMEOUT}"
+
+depend() {
+	need localmount net
+}
+
+# verify
+# 1) that the datadir exists and is writable (or create it)
+# 2) that a directory for the pid exists and is writable
+# 3) ownership and permissions on the config file
+start_pre() {
+	checkpath \
+	-d \
+	--mode 0750 \
+	--owner "${BTQD_USER}:${BTQD_GROUP}" \
+	"${BTQD_DATADIR}"
+
+	checkpath \
+	-d \
+	--mode 0755 \
+	--owner "${BTQD_USER}:${BTQD_GROUP}" \
+	"${BTQD_PIDDIR}"
+
+	checkpath -f \
+	-o "${BTQD_USER}:${BTQD_GROUP}" \
+	-m 0660 \
+	"${BTQD_CONFIGFILE}"
+
+	checkconfig || return 1
+}
+
+checkconfig()
+{
+	if grep -qs '^rpcuser=' "${BTQD_CONFIGFILE}" && \
+		! grep -qs '^rpcpassword=' "${BTQD_CONFIGFILE}" ; then
+		eerror ""
+		eerror "ERROR: You must set a secure rpcpassword to run btqd."
+		eerror "The setting must appear in ${BTQD_CONFIGFILE}"
+		eerror ""
+		eerror "This password is security critical to securing wallets "
+		eerror "and must not be the same as the rpcuser setting."
+		eerror "You can generate a suitable random password using the following "
+		eerror "command from the shell:"
+		eerror ""
+		eerror "bash -c 'tr -dc a-zA-Z0-9 < /dev/urandom | head -c32 && echo'"
+		eerror ""
+		eerror "It is recommended that you also set alertnotify so you are "
+		eerror "notified of problems:"
+		eerror ""
+		eerror "ie: alertnotify=echo %%s | mail -s \"BTQ Alert\"" \
+			"admin@foo.com"
+		eerror ""
+		return 1
+	fi
+}

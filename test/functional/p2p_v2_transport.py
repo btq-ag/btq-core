@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2021-present The Bitcoin Core developers
+# Copyright (c) 2021-present The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """
@@ -9,14 +9,14 @@ import socket
 
 from test_framework.messages import NODE_P2P_V2
 from test_framework.p2p import MAGIC_BYTES
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
     p2p_port,
 )
 
 
-class V2TransportTest(BitcoinTestFramework):
+class V2TransportTest(BTQTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 5

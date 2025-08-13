@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2022 The Bitcoin Core developers
+# Copyright (c) 2022 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test that fast rescan using block filters for descriptor wallets detects
@@ -8,7 +8,7 @@ from typing import List
 
 from test_framework.address import address_to_scriptpubkey
 from test_framework.descriptors import descsum_create
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 from test_framework.test_node import TestNode
 from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
@@ -20,7 +20,7 @@ NUM_DESCRIPTORS = 9  # number of descriptors (8 default ranged ones + 1 fixed no
 NUM_BLOCKS = 6       # number of blocks to mine
 
 
-class WalletFastRescanTest(BitcoinTestFramework):
+class WalletFastRescanTest(BTQTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, legacy=False)
 

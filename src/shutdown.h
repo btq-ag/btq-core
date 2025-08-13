@@ -1,10 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The Bitcoin Core developers
+// Copyright (c) 2009-2021 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_SHUTDOWN_H
-#define BITCOIN_SHUTDOWN_H
+#ifndef BTQ_SHUTDOWN_H
+#define BTQ_SHUTDOWN_H
 
 /** Request shutdown of the application. */
 void StartShutdown();
@@ -22,4 +22,4 @@ bool ShutdownRequested();
  */
 void WaitForShutdown();
 
-#endif // BITCOIN_SHUTDOWN_H
+#endif // BTQ_SHUTDOWN_H

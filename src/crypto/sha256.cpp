@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2022 The Bitcoin Core developers
+// Copyright (c) 2014-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,12 +10,12 @@
 
 #include <compat/cpuid.h>
 
-#if defined(__linux__) && defined(ENABLE_ARM_SHANI) && !defined(BUILD_BITCOIN_INTERNAL)
+#if defined(__linux__) && defined(ENABLE_ARM_SHANI) && !defined(BUILD_BTQ_INTERNAL)
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 #endif
 
-#if defined(MAC_OSX) && defined(ENABLE_ARM_SHANI) && !defined(BUILD_BITCOIN_INTERNAL)
+#if defined(MAC_OSX) && defined(ENABLE_ARM_SHANI) && !defined(BUILD_BTQ_INTERNAL)
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #endif
@@ -616,7 +616,7 @@ std::string SHA256AutoDetect(sha256_implementation::UseImplementation use_implem
         }
     }
 
-#if defined(ENABLE_X86_SHANI) && !defined(BUILD_BITCOIN_INTERNAL)
+#if defined(ENABLE_X86_SHANI) && !defined(BUILD_BTQ_INTERNAL)
     if (have_x86_shani) {
         Transform = sha256_x86_shani::Transform;
         TransformD64 = TransformD64Wrapper<sha256_x86_shani::Transform>;
@@ -633,13 +633,13 @@ std::string SHA256AutoDetect(sha256_implementation::UseImplementation use_implem
         TransformD64 = TransformD64Wrapper<sha256_sse4::Transform>;
         ret = "sse4(1way)";
 #endif
-#if defined(ENABLE_SSE41) && !defined(BUILD_BITCOIN_INTERNAL)
+#if defined(ENABLE_SSE41) && !defined(BUILD_BTQ_INTERNAL)
         TransformD64_4way = sha256d64_sse41::Transform_4way;
         ret += ",sse41(4way)";
 #endif
     }
 
-#if defined(ENABLE_AVX2) && !defined(BUILD_BITCOIN_INTERNAL)
+#if defined(ENABLE_AVX2) && !defined(BUILD_BTQ_INTERNAL)
     if (have_avx2 && have_avx && enabled_avx) {
         TransformD64_8way = sha256d64_avx2::Transform_8way;
         ret += ",avx2(8way)";
@@ -647,7 +647,7 @@ std::string SHA256AutoDetect(sha256_implementation::UseImplementation use_implem
 #endif
 #endif // defined(USE_ASM) && defined(HAVE_GETCPUID)
 
-#if defined(ENABLE_ARM_SHANI) && !defined(BUILD_BITCOIN_INTERNAL)
+#if defined(ENABLE_ARM_SHANI) && !defined(BUILD_BTQ_INTERNAL)
     bool have_arm_shani = false;
     if (use_implementation & sha256_implementation::USE_SHANI) {
 #if defined(__linux__)

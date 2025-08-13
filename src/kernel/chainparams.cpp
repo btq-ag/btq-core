@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The Bitcoin Core developers
+// Copyright (c) 2009-2021 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -55,13 +55,13 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    const char* pszTimestamp = "BTQ Genesis Block - Quantum Resistant Bitcoin Fork 2024"; //TODO think of a better timestamp
+    const char* pszTimestamp = "BTQ Genesis Block - Quantum Resistant BTQ Fork 2024"; //TODO think of a better timestamp
     const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
 
 /**
- * BTQ Quantum Main network - replaces Bitcoin mainnet
+ * BTQ Quantum Main network - replaces BTQ mainnet
  */
 class CMainParams : public CChainParams {
 public:
@@ -165,7 +165,7 @@ public:
 };
 
 /**
- * BTQ Quantum Test network - replaces Bitcoin testnet
+ * BTQ Quantum Test network - replaces BTQ testnet
  */
 class CTestNetParams : public CChainParams {
 public:
@@ -223,7 +223,7 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ testnet genesis block
-        const char* pszTimestamp = "BTQ Testnet Genesis Block - Quantum Resistant Bitcoin Fork 2024";
+        const char* pszTimestamp = "BTQ Testnet Genesis Block - Quantum Resistant BTQ Fork 2024";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
         //TODO, create genesis block again later when we go to mainnet
         genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 0, 0x1d00ffff, 1, 50 * COIN);
@@ -282,7 +282,7 @@ public:
         vSeeds.clear();
 
         if (!options.challenge) {
-            // BTQ: Use BTQ-specific SigNet challenge instead of Bitcoin's
+            // BTQ: Use BTQ-specific SigNet challenge instead of BTQ's
             bin = ParseHex("512103[YOUR_BTQ_SIGNET_PUBKEY]210359[YOUR_BTQ_SIGNET_PUBKEY2]52ae"); //TODO: We need to set up a admin key for Signet at some point, this is invalid
             
             // BTQ: Use BTQ SigNet seeds
@@ -362,7 +362,7 @@ public:
         nPruneAfterHeight = 1000;
 
         // BTQ: Create BTQ SigNet genesis block (around line 364)
-        const char* pszTimestamp = "BTQ SigNet Genesis Block - Quantum Resistant Bitcoin Fork 2024";
+        const char* pszTimestamp = "BTQ SigNet Genesis Block - Quantum Resistant BTQ Fork 2024";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
         genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 0, 0x1e0377ae, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
@@ -480,7 +480,7 @@ public:
         }
 
         // BTQ: Create BTQ regtest genesis block
-        const char* pszTimestamp = "BTQ Regtest Genesis Block - Quantum Resistant Bitcoin Fork 2024";
+        const char* pszTimestamp = "BTQ Regtest Genesis Block - Quantum Resistant BTQ Fork 2024";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
         genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 2, 0x207fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();

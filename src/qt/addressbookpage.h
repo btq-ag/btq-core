@@ -1,9 +1,9 @@
-// Copyright (c) 2011-2021 The Bitcoin Core developers
+// Copyright (c) 2011-2021 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_ADDRESSBOOKPAGE_H
-#define BITCOIN_QT_ADDRESSBOOKPAGE_H
+#ifndef BTQ_QT_ADDRESSBOOKPAGE_H
+#define BTQ_QT_ADDRESSBOOKPAGE_H
 
 #include <QDialog>
 
@@ -83,4 +83,4 @@ Q_SIGNALS:
     void sendCoins(QString addr);
 };
 
-#endif // BITCOIN_QT_ADDRESSBOOKPAGE_H
+#endif // BTQ_QT_ADDRESSBOOKPAGE_H

@@ -1,9 +1,9 @@
-// Copyright (c) 2023 The Bitcoin Core developers
+// Copyright (c) 2023 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_KERNEL_DISCONNECTED_TRANSACTIONS_H
-#define BITCOIN_KERNEL_DISCONNECTED_TRANSACTIONS_H
+#ifndef BTQ_KERNEL_DISCONNECTED_TRANSACTIONS_H
+#define BTQ_KERNEL_DISCONNECTED_TRANSACTIONS_H
 
 #include <core_memusage.h>
 #include <memusage.h>
@@ -134,4 +134,4 @@ public:
         return ret;
     }
 };
-#endif // BITCOIN_KERNEL_DISCONNECTED_TRANSACTIONS_H
+#endif // BTQ_KERNEL_DISCONNECTED_TRANSACTIONS_H

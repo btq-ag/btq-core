@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright (c) 2018-2022 The Bitcoin Core developers
+# Copyright (c) 2018-2022 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #
@@ -15,7 +15,7 @@ import sys
 from subprocess import check_output, CalledProcessError
 
 
-EXCLUDED_DIRS = ["contrib/devtools/bitcoin-tidy/",
+EXCLUDED_DIRS = ["contrib/devtools/btq-tidy/",
                  "src/leveldb/",
                  "src/crc32c/",
                  "src/secp256k1/",

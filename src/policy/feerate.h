@@ -1,10 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2009-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_POLICY_FEERATE_H
-#define BITCOIN_POLICY_FEERATE_H
+#ifndef BTQ_POLICY_FEERATE_H
+#define BTQ_POLICY_FEERATE_H
 
 #include <consensus/amount.h>
 #include <serialize.h>
@@ -14,7 +14,7 @@
 #include <string>
 #include <type_traits>
 
-const std::string CURRENCY_UNIT = "BTC"; // One formatted unit
+const std::string CURRENCY_UNIT = "BTQ"; // One formatted unit
 const std::string CURRENCY_ATOM = "sat"; // One indivisible minimum value unit
 
 /* Used to determine type of fee estimation requested */
@@ -22,7 +22,7 @@ enum class FeeEstimateMode {
     UNSET,        //!< Use default settings based on other criteria
     ECONOMICAL,   //!< Force estimateSmartFee to use non-conservative estimates
     CONSERVATIVE, //!< Force estimateSmartFee to use conservative estimates
-    BTC_KVB,      //!< Use BTC/kvB fee rate unit
+    BTC_KVB,      //!< Use BTQ/kvB fee rate unit
     SAT_VB,       //!< Use sat/vB fee rate unit
 };
 
@@ -75,4 +75,4 @@ public:
     SERIALIZE_METHODS(CFeeRate, obj) { READWRITE(obj.nSatoshisPerK); }
 };
 
-#endif // BITCOIN_POLICY_FEERATE_H
+#endif // BTQ_POLICY_FEERATE_H

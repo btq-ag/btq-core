@@ -1,9 +1,9 @@
-// Copyright (c) 2011-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #if defined(HAVE_CONFIG_H)
-#include <config/bitcoin-config.h>
+#include <config/btq-config.h>
 #endif
 
 #include <qt/sendcoinsentry.h>
@@ -36,7 +36,7 @@ SendCoinsEntry::SendCoinsEntry(const PlatformStyle *_platformStyle, QWidget *par
     GUIUtil::setupAddressWidget(ui->payTo, this);
 
     // Connect signals
-    connect(ui->payAmount, &BitcoinAmountField::valueChanged, this, &SendCoinsEntry::payAmountChanged);
+    connect(ui->payAmount, &BTQAmountField::valueChanged, this, &SendCoinsEntry::payAmountChanged);
     connect(ui->checkboxSubtractFeeFromAmount, &QCheckBox::toggled, this, &SendCoinsEntry::subtractFeeFromAmountChanged);
     connect(ui->deleteButton, &QPushButton::clicked, this, &SendCoinsEntry::deleteClicked);
     connect(ui->useAvailableBalanceButton, &QPushButton::clicked, this, &SendCoinsEntry::useAvailableBalanceClicked);
@@ -94,7 +94,7 @@ void SendCoinsEntry::clear()
     ui->messageTextLabel->hide();
     ui->messageLabel->hide();
 
-    // update the display unit, to not use the default ("BTC")
+    // update the display unit, to not use the default ("BTQ")
     updateDisplayUnit();
 }
 

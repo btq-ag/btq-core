@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-2022 The Bitcoin Core developers
+# Copyright (c) 2015-2022 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the ZMQ notification interface."""
@@ -15,7 +15,7 @@ from test_framework.blocktools import (
     create_block,
     create_coinbase,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 from test_framework.messages import (
     hash256,
     tx_from_hex,
@@ -101,7 +101,7 @@ class ZMQTestSetupBlock:
         )
 
 
-class ZMQTest (BitcoinTestFramework):
+class ZMQTest (BTQTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         # This test isn't testing txn relay/timing, so set whitelist on the
@@ -111,7 +111,7 @@ class ZMQTest (BitcoinTestFramework):
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_py3_zmq()
-        self.skip_if_no_bitcoind_zmq()
+        self.skip_if_no_btqd_zmq()
 
     def run_test(self):
         self.wallet = MiniWallet(self.nodes[0])

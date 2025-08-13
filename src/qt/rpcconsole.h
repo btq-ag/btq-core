@@ -1,12 +1,12 @@
-// Copyright (c) 2011-2022 The Bitcoin Core developers
+// Copyright (c) 2011-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_RPCCONSOLE_H
-#define BITCOIN_QT_RPCCONSOLE_H
+#ifndef BTQ_QT_RPCCONSOLE_H
+#define BTQ_QT_RPCCONSOLE_H
 
 #if defined(HAVE_CONFIG_H)
-#include <config/bitcoin-config.h>
+#include <config/btq-config.h>
 #endif
 
 #include <qt/clientmodel.h>
@@ -39,7 +39,7 @@ class QMenu;
 class QItemSelection;
 QT_END_NAMESPACE
 
-/** Local Bitcoin RPC console. */
+/** Local BTQ RPC console. */
 class RPCConsole: public QWidget
 {
     Q_OBJECT
@@ -193,4 +193,4 @@ private Q_SLOTS:
     void updateAlerts(const QString& warnings);
 };
 
-#endif // BITCOIN_QT_RPCCONSOLE_H
+#endif // BTQ_QT_RPCCONSOLE_H

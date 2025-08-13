@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-# Copyright (c) 2023-present The Bitcoin Core developers
+# Copyright (c) 2023-present The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test running bitcoind with -reindex from a read-only blockstore
+"""Test running btqd with -reindex from a read-only blockstore
 - Start a node, generate blocks, then restart with -reindex after setting blk files to read-only
 """
 
 import os
 import stat
 import subprocess
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 
 
-class BlockstoreReindexTest(BitcoinTestFramework):
+class BlockstoreReindexTest(BTQTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1

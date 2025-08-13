@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2022 The Bitcoin Core developers
+// Copyright (c) 2012-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -554,7 +554,7 @@ BOOST_AUTO_TEST_CASE(streams_hashed)
 {
     DataStream stream{};
     HashedSourceWriter hash_writer{stream};
-    const std::string data{"bitcoin"};
+    const std::string data{"btq"};
     hash_writer << data;
 
     HashVerifier hash_verifier{stream};

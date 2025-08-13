@@ -1,9 +1,9 @@
-// Copyright (c) 2017-2022 The Bitcoin Core developers
+// Copyright (c) 2017-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_NODE_TRANSACTION_H
-#define BITCOIN_NODE_TRANSACTION_H
+#ifndef BTQ_NODE_TRANSACTION_H
+#define BTQ_NODE_TRANSACTION_H
 
 #include <policy/feerate.h>
 #include <primitives/transaction.h>
@@ -60,4 +60,4 @@ static const CFeeRate DEFAULT_MAX_RAW_TX_FEE_RATE{COIN / 10};
 CTransactionRef GetTransaction(const CBlockIndex* const block_index, const CTxMemPool* const mempool, const uint256& hash, uint256& hashBlock, const BlockManager& blockman);
 } // namespace node
 
-#endif // BITCOIN_NODE_TRANSACTION_H
+#endif // BTQ_NODE_TRANSACTION_H

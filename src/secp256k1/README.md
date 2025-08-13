@@ -1,13 +1,13 @@
 libsecp256k1
 ============
 
-[![Build Status](https://api.cirrus-ci.com/github/bitcoin-core/secp256k1.svg?branch=master)](https://cirrus-ci.com/github/bitcoin-core/secp256k1)
+[![Build Status](https://api.cirrus-ci.com/github/btq-core/secp256k1.svg?branch=master)](https://cirrus-ci.com/github/btq-core/secp256k1)
 ![Dependencies: None](https://img.shields.io/badge/dependencies-none-success)
 [![irc.libera.chat #secp256k1](https://img.shields.io/badge/irc.libera.chat-%23secp256k1-success)](https://web.libera.chat/#secp256k1)
 
 Optimized C library for ECDSA signatures and secret/public key operations on curve secp256k1.
 
-This library is intended to be the highest quality publicly available library for cryptography on the secp256k1 curve. However, the primary focus of its development has been for usage in the Bitcoin system and usage unlike Bitcoin's may be less well tested, verified, or suffer from a less well thought out interface. Correct usage requires some care and consideration that the library is fit for your application's purpose.
+This library is intended to be the highest quality publicly available library for cryptography on the secp256k1 curve. However, the primary focus of its development has been for usage in the BTQ system and usage unlike BTQ's may be less well tested, verified, or suffer from a less well thought out interface. Correct usage requires some care and consideration that the library is fit for your application's purpose.
 
 Features:
 * secp256k1 ECDSA signing/verification and key generation.
@@ -20,7 +20,7 @@ Features:
 * No runtime dependencies.
 * Optional module for public key recovery.
 * Optional module for ECDH key exchange.
-* Optional module for Schnorr signatures according to [BIP-340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki).
+* Optional module for Schnorr signatures according to [BIP-340](https://github.com/btq/bips/blob/master/bip-0340.mediawiki).
 
 Implementation details
 ----------------------

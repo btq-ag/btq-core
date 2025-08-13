@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Copyright (c) 2019-present The Bitcoin Core developers
+# Copyright (c) 2019-present The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -16,5 +16,5 @@ export RUN_FUZZ_TESTS=true
 export FUZZ_TESTS_CONFIG="--valgrind"
 export GOAL="install"
 # Temporarily pin dwarf 4, until using Valgrind 3.20 or later
-export BITCOIN_CONFIG="--enable-fuzz --with-sanitizers=fuzzer CC='clang -gdwarf-4' CXX='clang++ -gdwarf-4'"
+export BTQ_CONFIG="--enable-fuzz --with-sanitizers=fuzzer CC='clang -gdwarf-4' CXX='clang++ -gdwarf-4'"
 export CCACHE_MAXSIZE=200M

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# Copyright (c) 2020-2021 The Bitcoin Core developers
+# Copyright (c) 2020-2021 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Script for verifying Bitcoin Core release binaries.
+"""Script for verifying BTQ Core release binaries.
 
 This script attempts to download the sum file SHA256SUMS and corresponding
-signature file SHA256SUMS.asc from bitcoincore.org and bitcoin.org and
+signature file SHA256SUMS.asc from btqcore.org and btq.org and
 compares them.
 
 The sum-signature file is signed by a number of builder keys. This script
@@ -15,7 +15,7 @@ here, but by default is based upon local GPG trust settings.
 
 The builder keys are available in the guix.sigs repo:
 
-    https://github.com/bitcoin-core/guix.sigs/tree/main/builder-keys
+    https://github.com/btq-core/guix.sigs/tree/main/builder-keys
 
 If a minimum good, trusted signature threshold is met on the sum file, we then
 download the files specified in SHA256SUMS, and check if the hashes of these
@@ -46,9 +46,9 @@ from hashlib import sha256
 from pathlib import PurePath, Path
 
 # The primary host; this will fail if we can't retrieve files from here.
-HOST1 = "https://bitcoincore.org"
-HOST2 = "https://bitcoin.org"
-VERSIONPREFIX = "bitcoin-core-"
+HOST1 = "https://btqcore.org"
+HOST2 = "https://btq.org"
+VERSIONPREFIX = "btq-core-"
 SUMS_FILENAME = 'SHA256SUMS'
 SIGNATUREFILENAME = f"{SUMS_FILENAME}.asc"
 
@@ -384,7 +384,7 @@ def verify_shasums_signature(
 
     # Decide which keys we trust, though not "trust" in the GPG sense, but rather
     # which pubkeys convince us that this sums file is legitimate. In other words,
-    # which pubkeys within the Bitcoin community do we trust for the purposes of
+    # which pubkeys within the BTQ community do we trust for the purposes of
     # binary verification?
     trusted_keys = set()
     if args.trusted_keys:
@@ -459,7 +459,7 @@ def verify_binary_hashes(hashes_to_verify: t.List[t.List[str]]) -> t.Tuple[Retur
 
 
 def verify_published_handler(args: argparse.Namespace) -> ReturnCode:
-    WORKINGDIR = Path(tempfile.gettempdir()) / f"bitcoin_verify_binaries.{args.version}"
+    WORKINGDIR = Path(tempfile.gettempdir()) / f"btq_verify_binaries.{args.version}"
 
     def cleanup():
         log.info("cleaning up files")
@@ -517,7 +517,7 @@ def verify_published_handler(args: argparse.Namespace) -> ReturnCode:
         log.error("no files matched the platform specified")
         return ReturnCode.NO_BINARIES_MATCH
 
-    # remove binaries that are known not to be hosted by bitcoincore.org
+    # remove binaries that are known not to be hosted by btqcore.org
     fragments_to_remove = ['-unsigned', '-debug', '-codesignatures']
     for fragment in fragments_to_remove:
         nobinaries = [i for i in hashes_to_verify if fragment in i[1]]
@@ -677,7 +677,7 @@ def main():
     pub_parser.set_defaults(func=verify_published_handler)
     pub_parser.add_argument(
         'version', type=str, help=(
-            f'version of the bitcoin release to download; of the format '
+            f'version of the btq release to download; of the format '
             f'{VERSION_FORMAT}. Example: {VERSION_EXAMPLE}')
     )
     pub_parser.add_argument(
@@ -690,7 +690,7 @@ def main():
         default=bool_from_env('BINVERIFY_REQUIRE_ALL_HOSTS'),
         help=(
             f'If set, require all hosts ({HOST1}, {HOST2}) to provide signatures. '
-            '(Sometimes bitcoin.org lags behind bitcoincore.org.)')
+            '(Sometimes btq.org lags behind btqcore.org.)')
     )
 
     bin_parser = subparsers.add_parser("bin", help="Verify local binaries.")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2014-2022 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the abandontransaction RPC.
@@ -13,14 +13,14 @@
 from decimal import Decimal
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
 )
 
 
-class AbandonConflictTest(BitcoinTestFramework):
+class AbandonConflictTest(BTQTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -225,13 +225,13 @@ class AbandonConflictTest(BitcoinTestFramework):
         assert_equal(double_spend_txid, double_spend['txid'])
         assert_equal(double_spend["walletconflicts"], [txAB1])
 
-        # Verify that B and C's 10 BTC outputs are available for spending again because AB1 is now conflicted
+        # Verify that B and C's 10 BTQ outputs are available for spending again because AB1 is now conflicted
         assert_equal(alice.gettransaction(txAB1)["confirmations"], -1)
         newbalance = alice.getbalance()
         assert_equal(newbalance, balance + Decimal("20"))
         balance = newbalance
 
-        # Invalidate the block with the double spend. B & C's 10 BTC outputs should no longer be available
+        # Invalidate the block with the double spend. B & C's 10 BTQ outputs should no longer be available
         self.nodes[0].invalidateblock(self.nodes[0].getbestblockhash())
         assert_equal(alice.gettransaction(txAB1)["confirmations"], 0)
         newbalance = alice.getbalance()

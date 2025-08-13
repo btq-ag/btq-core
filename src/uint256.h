@@ -1,10 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2009-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_UINT256_H
-#define BITCOIN_UINT256_H
+#ifndef BTQ_UINT256_H
+#define BTQ_UINT256_H
 
 #include <crypto/common.h>
 #include <span.h>
@@ -133,4 +133,4 @@ inline uint256 uint256S(const std::string& str)
     return rv;
 }
 
-#endif // BITCOIN_UINT256_H
+#endif // BTQ_UINT256_H

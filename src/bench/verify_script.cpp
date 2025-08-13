@@ -1,11 +1,11 @@
-// Copyright (c) 2016-2022 The Bitcoin Core developers
+// Copyright (c) 2016-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <bench/bench.h>
 #include <key.h>
 #if defined(HAVE_CONSENSUS_LIB)
-#include <script/bitcoinconsensus.h>
+#include <script/btqconsensus.h>
 #endif
 #include <script/script.h>
 #include <script/interpreter.h>
@@ -63,7 +63,7 @@ static void VerifyScriptBench(benchmark::Bench& bench)
 #if defined(HAVE_CONSENSUS_LIB)
         CDataStream stream(SER_NETWORK, PROTOCOL_VERSION);
         stream << txSpend;
-        int csuccess = bitcoinconsensus_verify_script_with_amount(
+        int csuccess = btqconsensus_verify_script_with_amount(
             txCredit.vout[0].scriptPubKey.data(),
             txCredit.vout[0].scriptPubKey.size(),
             txCredit.vout[0].nValue,

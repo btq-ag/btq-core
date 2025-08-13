@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2009-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -3045,11 +3045,11 @@ bool PeerManagerImpl::ProcessOrphanTx(Peer& peer)
                 // adding such txids to the reject filter would potentially
                 // interfere with relay of valid transactions from peers that
                 // do not support wtxid-based relay. See
-                // https://github.com/bitcoin/bitcoin/issues/8279 for details.
+                // https://github.com/btq/btq/issues/8279 for details.
                 // We can remove this restriction (and always add wtxids to
                 // the filter even for witness stripped transactions) once
                 // wtxid-based relay is broadly deployed.
-                // See also comments in https://github.com/bitcoin/bitcoin/pull/18044#discussion_r443419034
+                // See also comments in https://github.com/btq/btq/pull/18044#discussion_r443419034
                 // for concerns around weakening security of unupgraded nodes
                 // if we start doing this too early.
                 m_recent_rejects.insert(porphanTx->GetWitnessHash());
@@ -4332,11 +4332,11 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 // adding such txids to the reject filter would potentially
                 // interfere with relay of valid transactions from peers that
                 // do not support wtxid-based relay. See
-                // https://github.com/bitcoin/bitcoin/issues/8279 for details.
+                // https://github.com/btq/btq/issues/8279 for details.
                 // We can remove this restriction (and always add wtxids to
                 // the filter even for witness stripped transactions) once
                 // wtxid-based relay is broadly deployed.
-                // See also comments in https://github.com/bitcoin/bitcoin/pull/18044#discussion_r443419034
+                // See also comments in https://github.com/btq/btq/pull/18044#discussion_r443419034
                 // for concerns around weakening security of unupgraded nodes
                 // if we start doing this too early.
                 m_recent_rejects.insert(tx.GetWitnessHash());

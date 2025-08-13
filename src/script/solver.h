@@ -1,12 +1,12 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2009-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 // The Solver functions are used by policy and the wallet, but not consensus.
 
-#ifndef BITCOIN_SCRIPT_SOLVER_H
-#define BITCOIN_SCRIPT_SOLVER_H
+#ifndef BTQ_SCRIPT_SOLVER_H
+#define BTQ_SCRIPT_SOLVER_H
 
 #include <attributes.h>
 #include <script/script.h>
@@ -63,4 +63,4 @@ std::optional<std::pair<int, std::vector<Span<const unsigned char>>>> MatchMulti
 /** Generate a multisig script. */
 CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys);
 
-#endif // BITCOIN_SCRIPT_SOLVER_H
+#endif // BTQ_SCRIPT_SOLVER_H

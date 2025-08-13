@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#
+#  btqd The btq core server.
+#
+#
+# chkconfig: 345 80 20
+# description: btqd
+# processname: btqd
+#
+
+# Source function library.
+. /etc/init.d/functions
+
+# you can override defaults in /etc/sysconfig/btqd, see below
+if [ -f /etc/sysconfig/btqd ]; then
+        . /etc/sysconfig/btqd
+fi
+
+RETVAL=0
+
+prog=btqd
+# you can override the lockfile via BTQD_LOCKFILE in /etc/sysconfig/btqd
+lockfile=${BTQD_LOCKFILE-/var/lock/subsys/btqd}
+
+# btqd defaults to /usr/bin/btqd, override with BTQD_BIN
+btqd=${BTQD_BIN-/usr/bin/btqd}
+
+# btqd opts default to -disablewallet, override with BTQD_OPTS
+btqd_opts=${BTQD_OPTS--disablewallet}
+
+start() {
+    echo -n $"Starting $prog: "
+    daemon $DAEMONOPTS $btqd $btqd_opts
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && touch $lockfile
+    return $RETVAL
+}
+
+stop() {
+    echo -n $"Stopping $prog: "
+    killproc $prog -t600
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && rm -f $lockfile
+    return $RETVAL
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        status $prog
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    *)
+        echo "Usage: service $prog {start|stop|status|restart}"
+        exit 1
+        ;;
+esac

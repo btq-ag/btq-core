@@ -1,9 +1,9 @@
-// Copyright (c) 2023 The Bitcoin Core developers
+// Copyright (c) 2023 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_UTIL_CHAINTYPE_H
-#define BITCOIN_UTIL_CHAINTYPE_H
+#ifndef BTQ_UTIL_CHAINTYPE_H
+#define BTQ_UTIL_CHAINTYPE_H
 
 #include <optional>
 #include <string>
@@ -19,4 +19,4 @@ std::string ChainTypeToString(ChainType chain);
 
 std::optional<ChainType> ChainTypeFromString(std::string_view chain);
 
-#endif // BITCOIN_UTIL_CHAINTYPE_H
+#endif // BTQ_UTIL_CHAINTYPE_H

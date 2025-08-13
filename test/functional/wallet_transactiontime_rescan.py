@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2018-2022 The Bitcoin Core developers
+# Copyright (c) 2018-2022 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test transaction time during old block rescanning
@@ -10,7 +10,7 @@ import time
 
 from test_framework.authproxy import JSONRPCException
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -21,7 +21,7 @@ from test_framework.wallet_util import (
 )
 
 
-class TransactionTimeRescanTest(BitcoinTestFramework):
+class TransactionTimeRescanTest(BTQTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -39,7 +39,7 @@ class TransactionTimeRescanTest(BitcoinTestFramework):
     def run_test(self):
         self.log.info('Prepare nodes and wallet')
 
-        minernode = self.nodes[0]  # node used to mine BTC and create transactions
+        minernode = self.nodes[0]  # node used to mine BTQ and create transactions
         usernode = self.nodes[1]  # user node with correct time
         restorenode = self.nodes[2]  # node used to restore user wallet and check time determination in ComputeSmartTime (wallet.cpp)
 

@@ -1,10 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2009-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #if defined(HAVE_CONFIG_H)
-#include <config/bitcoin-config.h>
+#include <config/btq-config.h>
 #endif
 
 #include <randomenv.h>
@@ -324,7 +324,7 @@ void RandAddStaticEnv(CSHA512& hasher)
     hasher.Write((const unsigned char*)COMPILER_VERSION, strlen(COMPILER_VERSION) + 1);
 #endif
 
-    // Bitcoin client version
+    // BTQ client version
     hasher << CLIENT_VERSION;
 
 #if defined(HAVE_STRONG_GETAUXVAL)

@@ -1,9 +1,9 @@
-// Copyright (c) 2009-2021 The Bitcoin Core developers
+// Copyright (c) 2009-2021 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_TEST_FUZZ_FUZZ_H
-#define BITCOIN_TEST_FUZZ_FUZZ_H
+#ifndef BTQ_TEST_FUZZ_FUZZ_H
+#define BTQ_TEST_FUZZ_FUZZ_H
 
 #include <span.h>
 
@@ -44,4 +44,4 @@ void FuzzFrameworkRegisterTarget(std::string_view name, TypeTestOneInput target,
     } const static g_##name##_before_main;                                            \
     void name##_fuzz_target(FuzzBufferType buffer)
 
-#endif // BITCOIN_TEST_FUZZ_FUZZ_H
+#endif // BTQ_TEST_FUZZ_FUZZ_H

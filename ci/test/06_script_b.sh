@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Copyright (c) 2018-present The Bitcoin Core developers
+# Copyright (c) 2018-present The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -35,7 +35,7 @@ export HOST=${HOST:-$("$BASE_ROOT_DIR/depends/config.guess")}
   # The statistic bytes_written is only used for logging, which is disabled in
   # CI, so as a temporary minimal fix to work around UB and CI failures, leave
   # bytes_written unmodified.
-  # See https://github.com/bitcoin/bitcoin/pull/28359#issuecomment-1698694748
+  # See https://github.com/btq/btq/pull/28359#issuecomment-1698694748
   echo 'diff --git a/src/leveldb/db/db_impl.cc b/src/leveldb/db/db_impl.cc
 index 65e31724bc..f61b471953 100644
 --- a/src/leveldb/db/db_impl.cc
@@ -56,7 +56,7 @@ index 65e31724bc..f61b471953 100644
 if [ "$RUN_FUZZ_TESTS" = "true" ]; then
   export DIR_FUZZ_IN=${DIR_QA_ASSETS}/fuzz_seed_corpus/
   if [ ! -d "$DIR_FUZZ_IN" ]; then
-    ${CI_RETRY_EXE} git clone --depth=1 https://github.com/bitcoin-core/qa-assets "${DIR_QA_ASSETS}"
+    ${CI_RETRY_EXE} git clone --depth=1 https://github.com/btq-core/qa-assets "${DIR_QA_ASSETS}"
   fi
   (
     cd "${DIR_QA_ASSETS}"
@@ -67,7 +67,7 @@ elif [ "$RUN_UNIT_TESTS" = "true" ] || [ "$RUN_UNIT_TESTS_SEQUENTIAL" = "true" ]
   export DIR_UNIT_TEST_DATA=${DIR_QA_ASSETS}/unit_test_data/
   if [ ! -d "$DIR_UNIT_TEST_DATA" ]; then
     mkdir -p "$DIR_UNIT_TEST_DATA"
-    ${CI_RETRY_EXE} curl --location --fail https://github.com/bitcoin-core/qa-assets/raw/main/unit_test_data/script_assets_test.json -o "${DIR_UNIT_TEST_DATA}/script_assets_test.json"
+    ${CI_RETRY_EXE} curl --location --fail https://github.com/btq-core/qa-assets/raw/main/unit_test_data/script_assets_test.json -o "${DIR_UNIT_TEST_DATA}/script_assets_test.json"
   fi
 fi
 
@@ -84,9 +84,9 @@ fi
 
 # Make sure default datadir does not exist and is never read by creating a dummy file
 if [ "$CI_OS_NAME" == "macos" ]; then
-  echo > "${HOME}/Library/Application Support/Bitcoin"
+  echo > "${HOME}/Library/Application Support/BTQ"
 else
-  echo > "${HOME}/.bitcoin"
+  echo > "${HOME}/.btq"
 fi
 
 if [ -z "$NO_DEPENDS" ]; then
@@ -101,12 +101,12 @@ if [ "$DOWNLOAD_PREVIOUS_RELEASES" = "true" ]; then
   test/get_previous_releases.py -b -t "$PREVIOUS_RELEASES_DIR"
 fi
 
-BITCOIN_CONFIG_ALL="--disable-dependency-tracking"
+BTQ_CONFIG_ALL="--disable-dependency-tracking"
 if [ -z "$NO_DEPENDS" ]; then
-  BITCOIN_CONFIG_ALL="${BITCOIN_CONFIG_ALL} CONFIG_SITE=$DEPENDS_DIR/$HOST/share/config.site"
+  BTQ_CONFIG_ALL="${BTQ_CONFIG_ALL} CONFIG_SITE=$DEPENDS_DIR/$HOST/share/config.site"
 fi
 if [ -z "$NO_WERROR" ]; then
-  BITCOIN_CONFIG_ALL="${BITCOIN_CONFIG_ALL} --enable-werror"
+  BTQ_CONFIG_ALL="${BTQ_CONFIG_ALL} --enable-werror"
 fi
 
 ccache --zero-stats
@@ -115,13 +115,13 @@ PRINT_CCACHE_STATISTICS="ccache --version | head -n 1 && ccache --show-stats"
 if [ -n "$ANDROID_TOOLS_URL" ]; then
   make distclean || true
   ./autogen.sh
-  bash -c "./configure $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG" || ( (cat config.log) && false)
+  bash -c "./configure $BTQ_CONFIG_ALL $BTQ_CONFIG" || ( (cat config.log) && false)
   make "${MAKEJOBS}" && cd src/qt && ANDROID_HOME=${ANDROID_HOME} ANDROID_NDK_HOME=${ANDROID_NDK_HOME} make apk
   bash -c "${PRINT_CCACHE_STATISTICS}"
   exit 0
 fi
 
-BITCOIN_CONFIG_ALL="${BITCOIN_CONFIG_ALL} --enable-external-signer --prefix=$BASE_OUTDIR"
+BTQ_CONFIG_ALL="${BTQ_CONFIG_ALL} --enable-external-signer --prefix=$BASE_OUTDIR"
 
 if [ -n "$CONFIG_SHELL" ]; then
   "$CONFIG_SHELL" -c "./autogen.sh"
@@ -132,13 +132,13 @@ fi
 mkdir -p "${BASE_BUILD_DIR}"
 cd "${BASE_BUILD_DIR}"
 
-bash -c "${BASE_ROOT_DIR}/configure --cache-file=config.cache $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG" || ( (cat config.log) && false)
+bash -c "${BASE_ROOT_DIR}/configure --cache-file=config.cache $BTQ_CONFIG_ALL $BTQ_CONFIG" || ( (cat config.log) && false)
 
 make distdir VERSION="$HOST"
 
-cd "${BASE_BUILD_DIR}/bitcoin-$HOST"
+cd "${BASE_BUILD_DIR}/btq-$HOST"
 
-bash -c "./configure --cache-file=../config.cache $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG" || ( (cat config.log) && false)
+bash -c "./configure --cache-file=../config.cache $BTQ_CONFIG_ALL $BTQ_CONFIG" || ( (cat config.log) && false)
 
 if [[ "${RUN_TIDY}" == "true" ]]; then
   MAYBE_BEAR="bear --config src/.bear-tidy-config"
@@ -167,7 +167,7 @@ if [ "$RUN_UNIT_TESTS" = "true" ]; then
 fi
 
 if [ "$RUN_UNIT_TESTS_SEQUENTIAL" = "true" ]; then
-  bash -c "${TEST_RUNNER_ENV} DIR_UNIT_TEST_DATA=${DIR_UNIT_TEST_DATA} LD_LIBRARY_PATH=${DEPENDS_DIR}/${HOST}/lib ${BASE_OUTDIR}/bin/test_bitcoin --catch_system_errors=no -l test_suite"
+  bash -c "${TEST_RUNNER_ENV} DIR_UNIT_TEST_DATA=${DIR_UNIT_TEST_DATA} LD_LIBRARY_PATH=${DEPENDS_DIR}/${HOST}/lib ${BASE_OUTDIR}/bin/test_btq --catch_system_errors=no -l test_suite"
 fi
 
 if [ "$RUN_FUNCTIONAL_TESTS" = "true" ]; then
@@ -175,23 +175,23 @@ if [ "$RUN_FUNCTIONAL_TESTS" = "true" ]; then
 fi
 
 if [ "${RUN_TIDY}" = "true" ]; then
-  cmake -B /tidy-build -DLLVM_DIR=/usr/lib/llvm-"${TIDY_LLVM_V}"/cmake -DCMAKE_BUILD_TYPE=Release -S "${BASE_ROOT_DIR}"/contrib/devtools/bitcoin-tidy
+  cmake -B /tidy-build -DLLVM_DIR=/usr/lib/llvm-"${TIDY_LLVM_V}"/cmake -DCMAKE_BUILD_TYPE=Release -S "${BASE_ROOT_DIR}"/contrib/devtools/btq-tidy
   cmake --build /tidy-build "$MAKEJOBS"
-  cmake --build /tidy-build --target bitcoin-tidy-tests "$MAKEJOBS"
+  cmake --build /tidy-build --target btq-tidy-tests "$MAKEJOBS"
 
   set -eo pipefail
-  cd "${BASE_BUILD_DIR}/bitcoin-$HOST/src/"
-  ( run-clang-tidy-"${TIDY_LLVM_V}" -quiet -load="/tidy-build/libbitcoin-tidy.so" "${MAKEJOBS}" ) | grep -C5 "error"
+  cd "${BASE_BUILD_DIR}/btq-$HOST/src/"
+  ( run-clang-tidy-"${TIDY_LLVM_V}" -quiet -load="/tidy-build/libbtq-tidy.so" "${MAKEJOBS}" ) | grep -C5 "error"
   # Filter out files by regex here, because regex may not be
   # accepted in src/.bear-tidy-config
   # Filter out:
   # * qt qrc and moc generated files
   jq 'map(select(.file | test("src/qt/qrc_.*\\.cpp$|/moc_.*\\.cpp$") | not))' ../compile_commands.json > tmp.json
   mv tmp.json ../compile_commands.json
-  cd "${BASE_BUILD_DIR}/bitcoin-$HOST/"
+  cd "${BASE_BUILD_DIR}/btq-$HOST/"
   python3 "/include-what-you-use/iwyu_tool.py" \
            -p . "${MAKEJOBS}" \
-           -- -Xiwyu --cxx17ns -Xiwyu --mapping_file="${BASE_BUILD_DIR}/bitcoin-$HOST/contrib/devtools/iwyu/bitcoin.core.imp" \
+           -- -Xiwyu --cxx17ns -Xiwyu --mapping_file="${BASE_BUILD_DIR}/btq-$HOST/contrib/devtools/iwyu/btq.core.imp" \
            -Xiwyu --max_line_length=160 \
            2>&1 | tee /tmp/iwyu_ci.out
   cd "${BASE_ROOT_DIR}/src"

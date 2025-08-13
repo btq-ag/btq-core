@@ -1,9 +1,9 @@
-// Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2018-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_INDEX_BLOCKFILTERINDEX_H
-#define BITCOIN_INDEX_BLOCKFILTERINDEX_H
+#ifndef BTQ_INDEX_BLOCKFILTERINDEX_H
+#define BTQ_INDEX_BLOCKFILTERINDEX_H
 
 #include <attributes.h>
 #include <blockfilter.h>
@@ -103,4 +103,4 @@ bool DestroyBlockFilterIndex(BlockFilterType filter_type);
 /** Destroy all open block filter indexes. */
 void DestroyAllBlockFilterIndexes();
 
-#endif // BITCOIN_INDEX_BLOCKFILTERINDEX_H
+#endif // BTQ_INDEX_BLOCKFILTERINDEX_H

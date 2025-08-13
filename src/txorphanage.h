@@ -1,9 +1,9 @@
-// Copyright (c) 2021-2022 The Bitcoin Core developers
+// Copyright (c) 2021-2022 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_TXORPHANAGE_H
-#define BITCOIN_TXORPHANAGE_H
+#ifndef BTQ_TXORPHANAGE_H
+#define BTQ_TXORPHANAGE_H
 
 #include <net.h>
 #include <primitives/block.h>
@@ -102,4 +102,4 @@ protected:
     int EraseTxNoLock(const uint256& txid) EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
 };
 
-#endif // BITCOIN_TXORPHANAGE_H
+#endif // BTQ_TXORPHANAGE_H

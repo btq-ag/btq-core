@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Copyright (c) 2020-present The Bitcoin Core developers
+# Copyright (c) 2020-present The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -17,7 +17,7 @@ export PACKAGES="cmake ninja-build"
 # BDB generates false-positives and will be removed in future
 export DEP_OPTS="NO_BDB=1 NO_QT=1 CC=clang CXX=clang++ CFLAGS='${MSAN_FLAGS}' CXXFLAGS='${MSAN_AND_LIBCXX_FLAGS}'"
 export GOAL="install"
-export BITCOIN_CONFIG="--with-sanitizers=memory --disable-hardening --with-asm=no CFLAGS='${MSAN_FLAGS}' CXXFLAGS='${MSAN_AND_LIBCXX_FLAGS}'"
+export BTQ_CONFIG="--with-sanitizers=memory --disable-hardening --with-asm=no CFLAGS='${MSAN_FLAGS}' CXXFLAGS='${MSAN_AND_LIBCXX_FLAGS}'"
 export USE_MEMORY_SANITIZER="true"
 export RUN_FUNCTIONAL_TESTS="false"
 export CCACHE_MAXSIZE=250M

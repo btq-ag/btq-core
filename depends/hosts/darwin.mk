@@ -54,7 +54,7 @@ $(foreach TOOL,$(cctools_TOOLS),$(eval darwin_$(TOOL) = $$(build_prefix)/bin/$$(
 #     -mlinker-version
 #
 #         Ensures that modern linker features are enabled. See here for more
-#         details: https://github.com/bitcoin/bitcoin/pull/19407.
+#         details: https://github.com/btq/btq/pull/19407.
 #
 #     -B$(build_prefix)/bin
 #

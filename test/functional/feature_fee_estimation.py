@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2014-2022 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test fee estimation code."""
@@ -12,7 +12,7 @@ import time
 from test_framework.messages import (
     COIN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -129,7 +129,7 @@ def make_tx(wallet, utxo, feerate):
     )
 
 
-class EstimateFeeTest(BitcoinTestFramework):
+class EstimateFeeTest(BTQTestFramework):
     def set_test_params(self):
         self.num_nodes = 3
         # Force fSendTrickle to true (via whitelist.noban)
