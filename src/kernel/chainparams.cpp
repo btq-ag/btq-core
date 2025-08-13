@@ -148,12 +148,10 @@ public:
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
 
-        // For mainnet (around line 151):
         checkpointData = {
             {
                 // BTQ: Genesis checkpoint
                 {0, genesis.GetHash()},
-                // BTQ: Add more checkpoints as the network grows
             }
         };
 
