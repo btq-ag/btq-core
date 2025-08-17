@@ -19,6 +19,7 @@
 #include <uint256.h>
 #include <util/chaintype.h>
 #include <util/strencodings.h>
+#include <arith_uint256.h>
 
 #include <algorithm>
 #include <cassert>
@@ -26,6 +27,8 @@
 #include <cstring>
 #include <type_traits>
 #include <climits>
+
+void MineGenesisBlock(CBlock &genesis);
 
 static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
@@ -86,7 +89,7 @@ public:
         // BTQ: Disable SegWit - set to INT_MAX to effectively disable
         consensus.SegwitHeight = INT_MAX;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256S("00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
@@ -124,11 +127,12 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ genesis block with custom timestamp
-        genesis = CreateGenesisBlock(1704067200, 0, 0x1d00ffff, 1, 50 * COIN); //TODO change timestamp to actual deployment time 
+        genesis = CreateGenesisBlock(1704067200, 52692, 0x1f00ffff, 1, 50 * COIN); //TODO change timestamp to actual deployment time 
+        //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        // BTQ: These assertions will need to be updated once we mine the actual genesis block
-        // assert(consensus.hashGenesisBlock == uint256S("0x[GENESIS_HASH]"));
-        // assert(genesis.hashMerkleRoot == uint256S("0x[MERKLE_ROOT]"));
+        // BTQ: Genesis block assertions with mined values
+        assert(consensus.hashGenesisBlock == uint256S("0x00004e49ccbf1f195f34f5fe088d8edb2c7d074fadcd575b46a6d445d20942a1"));
+        assert(genesis.hashMerkleRoot == uint256S("0xf9fea3db1bf427a4ebed47fd727c06fc4fa172cd095f300be88f8c44824dcc16"));
 
         // BTQ: Add BTQ seed nodes (replace with actual DNS seeds)
         vSeeds.emplace_back("seed1.btq.com");
@@ -194,7 +198,7 @@ public:
         // BTQ: Disable SegWit - set to INT_MAX to effectively disable
         consensus.SegwitHeight = INT_MAX;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256S("00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -348,7 +352,7 @@ public:
         consensus.nRuleChangeActivationThreshold = 1815; // 90% of 2016
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
+        consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         
         // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -566,4 +570,37 @@ std::unique_ptr<const CChainParams> CChainParams::Main()
 std::unique_ptr<const CChainParams> CChainParams::TestNet()
 {
     return std::make_unique<const CTestNetParams>();
+}
+
+void MineGenesisBlock(CBlock &genesis)
+{
+    arith_uint256 best = arith_uint256();
+    int n = 0;
+    
+    arith_uint256 hashTarget = arith_uint256().SetCompact(genesis.nBits);
+    while (UintToArith256(genesis.GetHash()) > hashTarget) {
+        
+        arith_uint256 c = UintToArith256(genesis.GetHash());
+        
+        if (c < best || n == 0) {
+            best = c;
+            n = 1;
+            
+            printf("%s %s %s nonce=%u\n", genesis.GetHash().GetHex().c_str(), hashTarget.GetHex().c_str(),
+                   best.GetHex().c_str(), genesis.nNonce); 
+        }
+        
+        ++genesis.nNonce;
+        if (genesis.nNonce == 0) { 
+            ++genesis.nTime; 
+            printf("Nonce wrapped, incremented time to %u\n", genesis.nTime);
+        }
+    }
+    
+    printf("\n*** FOUND GENESIS BLOCK ***\n");
+    printf("Nonce: %u\n", genesis.nNonce);
+    printf("Time: %u\n", genesis.nTime);
+    printf("Hash: %s\n", genesis.GetHash().GetHex().c_str());
+    printf("Merkle Root: %s\n", genesis.hashMerkleRoot.GetHex().c_str());
+    printf("Converting genesis hash to string: %s\n", genesis.ToString().c_str()); 
 }
