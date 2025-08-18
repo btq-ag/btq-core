@@ -12,26 +12,26 @@ std::string ChainTypeToString(ChainType chain)
 {
     switch (chain) {
     case ChainType::BTQMAIN:
-        return "btqmain";
+        return "main";
     case ChainType::BTQTEST:
-        return "btqtest";
+        return "test";
     case ChainType::BTQSIGNET:
-        return "btqsignet";
+        return "signet";
     case ChainType::BTQREGTEST:
-        return "btqregtest";
+        return "regtest";
     }
     assert(false);
 }
 
 std::optional<ChainType> ChainTypeFromString(std::string_view chain)
 {
-    if (chain == "btqmain") {
+    if (chain == "main") {
         return ChainType::BTQMAIN;
-    } else if (chain == "btqtest") {
+    } else if (chain == "test") {
         return ChainType::BTQTEST;
-    } else if (chain == "btqsignet") {
+    } else if (chain == "signet") {
         return ChainType::BTQSIGNET;
-    } else if (chain == "btqregtest") {
+    } else if (chain == "regtest") {
         return ChainType::BTQREGTEST;
     } else {
         return std::nullopt;

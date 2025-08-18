@@ -150,7 +150,8 @@ public:
 
         checkpointData = {
             {
-                // BTQ: Add checkpoints as the network grows
+                // BTQ: Genesis checkpoint
+                {0, genesis.GetHash()},
             }
         };
 
