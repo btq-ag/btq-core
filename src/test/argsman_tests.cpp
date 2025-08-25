@@ -81,7 +81,7 @@ struct TestArgsManager : public ArgsManager
 };
 
 //! Test GetSetting and GetArg type coercion, negation, and default value handling.
-class CheckValueTest : public TestChain100Setup
+class CheckValueTest
 {
 public:
     struct Expect {
