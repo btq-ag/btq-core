@@ -40,6 +40,7 @@ from test_framework.util import (
 )
 from test_framework.wallet import (
     MiniWallet,
+    MiniWalletMode,
     getnewdestination,
 )
 
@@ -203,9 +204,11 @@ class ChainstateWriteCrashTest(BTQTestFramework):
             num_transactions += 1
 
     def run_test(self):
-        self.wallet = MiniWallet(self.nodes[3])
+        # BTQ: Avoid witness/taproot; use legacy P2PK outputs
+        self.wallet = MiniWallet(self.nodes[3], mode=MiniWalletMode.RAW_P2PK)
         initial_height = self.nodes[3].getblockcount()
-        self.generate(self.nodes[3], COINBASE_MATURITY, sync_fun=self.no_op)
+        # Mine coinbases directly to the MiniWallet descriptor so it owns UTXOs
+        self.generatetodescriptor(self.nodes[3], COINBASE_MATURITY, self.wallet.get_descriptor(), sync_fun=self.no_op)
 
         # Track test coverage statistics
         self.restart_counts = [0, 0, 0]  # Track the restarts for nodes 0-2
@@ -255,8 +258,8 @@ class ChainstateWriteCrashTest(BTQTestFramework):
                 block_hashes.extend(self.generatetoaddress(
                     self.nodes[3],
                     nblocks=min(10, current_height + 1 - self.nodes[3].getblockcount()),
-                    # new address to avoid mining a block that has just been invalidated
-                    address=getnewdestination()[2],
+                    # new legacy address to avoid mining a block that has just been invalidated
+                    address=getnewdestination('legacy')[2],
                     sync_fun=self.no_op,
                 ))
             self.log.debug(f"Syncing {len(block_hashes)} new blocks...")
