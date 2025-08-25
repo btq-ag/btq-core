@@ -495,14 +495,14 @@ public:
             consensus.vDeployments[deployment_pos].min_activation_height = version_bits_params.min_activation_height;
         }
 
-        // BTQ: Create BTQ regtest genesis block
+        // BTQ: Create BTQ regtest genesis block with mined values
         const char* pszTimestamp = "BTQ Regtest Genesis Block - Quantum Resistant BTQ Fork 2024";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 2, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 3, 0x207fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        // BTQ: These assertions will need to be updated once you mine the actual genesis block
-        // assert(consensus.hashGenesisBlock == uint256S("0x[REGTEST_GENESIS_HASH]"));
-        // assert(genesis.hashMerkleRoot == uint256S("0x[REGTEST_MERKLE_ROOT]"));
+        // BTQ: Regtest genesis block assertions with mined values
+        assert(consensus.hashGenesisBlock == uint256S("0x2c5e2d54ebeabc869a508d034635c2c1aa5611d59f7e121c0811df74a8abdd04"));
+        assert(genesis.hashMerkleRoot == uint256S("0x6687a3aea1fc813a5908143a5f053bef556d4c1086c4dd18afcfa8141961cc02"));
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();
