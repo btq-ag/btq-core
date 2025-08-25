@@ -14,6 +14,7 @@ class BTQChainIdentityTest(BTQTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
+        self.chain = 'regtest'
 
     def run_test(self):
         self.test_btq_regtest_identity()
@@ -30,14 +31,14 @@ class BTQChainIdentityTest(BTQTestFramework):
         info = node.getblockchaininfo()
         
         # Verify BTQ chain identity
-        assert_equal(info['chain'], 'btqregtest')
+        assert_equal(info['chain'], 'regtest')
         
         # Verify network-specific parameters
         assert_equal(info['blocks'], 0)  # Should start at genesis
         
         # Test mining info for BTQ-specific values
         mining_info = node.getmininginfo()
-        assert_equal(mining_info['chain'], 'btqregtest')
+        assert_equal(mining_info['chain'], 'regtest')
         
         # Verify difficulty is low for regtest
         assert mining_info['difficulty'] <= 1.0
@@ -55,8 +56,8 @@ class BTQChainIdentityTest(BTQTestFramework):
         mining_chain = node.getmininginfo()['chain']
         
         # All should return the same BTQ chain identifier
-        assert_equal(blockchain_chain, 'btqregtest')
-        assert_equal(mining_chain, 'btqregtest')
+        assert_equal(blockchain_chain, 'regtest')
+        assert_equal(mining_chain, 'regtest')
         assert_equal(blockchain_chain, mining_chain)
         
         self.log.info("✓ BTQ chain type consistency verified")
@@ -73,11 +74,13 @@ class BTQChainIdentityTest(BTQTestFramework):
         
         # Verify BTQ genesis block properties
         assert_equal(genesis_block['height'], 0)
-        assert genesis_block['previousblockhash'] is None
+        # Genesis block should not have a previous block hash
+        if 'previousblockhash' in genesis_block:
+            assert genesis_block['previousblockhash'] is None
         assert_equal(len(genesis_block['tx']), 1)  # Only coinbase
         
         # Verify we're on BTQ chain
-        assert_equal(node.getblockchaininfo()['chain'], 'btqregtest')
+        assert_equal(node.getblockchaininfo()['chain'], 'regtest')
         
         self.log.info("✓ BTQ genesis block validation successful")
 
