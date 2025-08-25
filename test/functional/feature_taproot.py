@@ -91,7 +91,7 @@ from test_framework.script_util import (
     script_to_p2sh_script,
     script_to_p2wsh_script,
 )
-from test_framework.test_framework import BTQTestFramework
+from test_framework.test_framework import BTQTestFramework, SkipTest
 from test_framework.util import (
     assert_raises_rpc_error,
     assert_equal,
@@ -1755,6 +1755,11 @@ class TaprootTest(BTQTestFramework):
             print(json.dumps(tests, indent=4, sort_keys=False))
 
     def run_test(self):
+        # BTQ: Taproot/SegWit are disabled; skip this test
+        info = self.nodes[0].getblockchaininfo()
+        softforks = info.get('softforks', {})
+        if not softforks or not softforks.get('taproot', {}).get('active', False):
+            raise SkipTest("Taproot is disabled on BTQ; skipping feature_taproot")
         self.gen_test_vectors()
 
         self.log.info("Post-activation tests...")
