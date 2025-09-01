@@ -20,7 +20,7 @@ from test_framework.util import (
     assert_raises_rpc_error,
     satoshi_round,
 )
-from test_framework.wallet import MiniWallet
+from test_framework.wallet import MiniWallet, MiniWalletMode
 
 MAX_FILE_AGE = 60
 SECONDS_PER_HOUR = 60 * 60
@@ -388,7 +388,8 @@ class EstimateFeeTest(BTQTestFramework):
 
         # Split two coinbases into many small utxos
         self.start_node(0)
-        self.wallet = MiniWallet(self.nodes[0])
+        # BTQ: Avoid segwit/taproot witness by using legacy P2PK outputs
+        self.wallet = MiniWallet(self.nodes[0], mode=MiniWalletMode.RAW_P2PK)
         self.initial_split(self.nodes[0])
         self.log.info("Finished splitting")
 

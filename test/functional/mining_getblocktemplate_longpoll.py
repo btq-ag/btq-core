@@ -16,14 +16,14 @@ class LongpollThread(threading.Thread):
     def __init__(self, node):
         threading.Thread.__init__(self)
         # query current longpollid
-        template = node.getblocktemplate({'rules': ['segwit']})
+        template = node.getblocktemplate({'rules': []})
         self.longpollid = template['longpollid']
         # create a new connection to the node, we can't use the same
         # connection from two threads
         self.node = get_rpc_proxy(node.url, 1, timeout=600, coveragedir=node.coverage_dir)
 
     def run(self):
-        self.node.getblocktemplate({'longpollid': self.longpollid, 'rules': ['segwit']})
+        self.node.getblocktemplate({'longpollid': self.longpollid, 'rules': []})
 
 class GetBlockTemplateLPTest(BTQTestFramework):
     def set_test_params(self):
@@ -34,9 +34,9 @@ class GetBlockTemplateLPTest(BTQTestFramework):
         self.log.info("Warning: this test will take about 70 seconds in the best case. Be patient.")
         self.log.info("Test that longpollid doesn't change between successive getblocktemplate() invocations if nothing else happens")
         self.generate(self.nodes[0], 10)
-        template = self.nodes[0].getblocktemplate({'rules': ['segwit']})
+        template = self.nodes[0].getblocktemplate({'rules': []})
         longpollid = template['longpollid']
-        template2 = self.nodes[0].getblocktemplate({'rules': ['segwit']})
+        template2 = self.nodes[0].getblocktemplate({'rules': []})
         assert template2['longpollid'] == longpollid
 
         self.log.info("Test that longpoll waits if we do nothing")
@@ -47,7 +47,8 @@ class GetBlockTemplateLPTest(BTQTestFramework):
         thr.join(5)  # wait 5 seconds or until thread exits
         assert thr.is_alive()
 
-        self.miniwallet = MiniWallet(self.nodes[0])
+        from test_framework.wallet import MiniWalletMode
+        self.miniwallet = MiniWallet(self.nodes[0], mode=MiniWalletMode.RAW_P2PK)
         self.log.info("Test that longpoll will terminate if another node generates a block")
         self.generate(self.nodes[1], 1)  # generate a block on another node
         # check that thread will exit now that new transaction entered mempool
@@ -67,7 +68,8 @@ class GetBlockTemplateLPTest(BTQTestFramework):
         with self.nodes[0].assert_debug_log(["ThreadRPCServer method=getblocktemplate"], timeout=3):
             thr.start()
         # generate a transaction and submit it
-        self.miniwallet.send_self_transfer(from_node=random.choice(self.nodes))
+        tx = self.miniwallet.create_self_transfer()
+        random.choice(self.nodes).sendrawtransaction(tx['hex'])
         # after one minute, every 10 seconds the mempool is probed, so in 80 seconds it should have returned
         thr.join(60 + 20)
         assert not thr.is_alive()

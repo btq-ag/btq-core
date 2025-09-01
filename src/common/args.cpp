@@ -745,13 +745,13 @@ std::variant<ChainType, std::string> ArgsManager::GetChainArg() const
         return value.isNull() ? false : value.isBool() ? value.get_bool() : InterpretBool(value.get_str());
     };
 
-    const bool fBtqRegTest = get_net("-btqregtest");
-    const bool fBtqSigNet = get_net("-btqsignet");
-    const bool fBtqTest = get_net("-btqtest");
+    const bool fBtqRegTest = get_net("-regtest");
+    const bool fBtqSigNet = get_net("-signet");
+    const bool fBtqTest = get_net("-testnet");
     const auto chain_arg = GetArg("-chain");
 
     if ((int)chain_arg.has_value() + (int)fBtqRegTest + (int)fBtqSigNet + (int)fBtqTest > 1) {
-        throw std::runtime_error("Invalid combination of -btqregtest, -btqsignet, -btqtest and -chain. Can use at most one.");
+        throw std::runtime_error("Invalid combination of -regtest, -signet, -testnet and -chain. Can use at most one.");
     }
     if (chain_arg) {
         if (auto parsed = ChainTypeFromString(*chain_arg)) return *parsed;

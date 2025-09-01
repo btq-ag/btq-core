@@ -486,6 +486,7 @@ class PruneTest(BTQTestFramework):
     def test_scanblocks_pruned(self):
         node = self.nodes[5]
         genesis_blockhash = node.getblockhash(0)
+        # Use a descriptor that is expected to return false positives under basic filters
         false_positive_spk = bytes.fromhex("001400000000000000000000000000000000000cadcb")
 
         assert genesis_blockhash in node.scanblocks(

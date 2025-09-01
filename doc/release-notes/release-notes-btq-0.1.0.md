@@ -53,7 +53,7 @@ Please report bugs using the issue tracker at GitHub:
 - Fix segfault in `CCheckpointData::GetHeight()` when checkpoints are empty
 - Add support for regtest mining:
   - `generateblock`, `generatetoaddress`, `getblockchaininfo`
-- Chain identity correctly returns: `btqmain`, `btqtest`, `btqsignet`, `btqregtest`
+- Chain identity correctly returns: `main`, `test`, `signet`, `regtest`
 - New functional test: `btq_regtest_mining.py`
 - New functional test: `btq_chain_identity.py`
 

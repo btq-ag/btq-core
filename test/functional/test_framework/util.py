@@ -336,11 +336,20 @@ def get_rpc_proxy(url: str, node_number: int, *, timeout: Optional[int]=None, co
 
 def p2p_port(n):
     assert n <= MAX_NODES
-    return PORT_MIN + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+    # BTQ: Use BTQ-specific ports for BTQ regtest
+    # BTQ regtest P2P port: 19444, RPC port: 18443
+    # For multiple nodes, increment by 1 for each node
+    # Use a larger range to avoid conflicts between P2P and RPC ports
+    return 19444 + n
 
 
 def rpc_port(n):
-    return PORT_MIN + PORT_RANGE + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+    # BTQ: Use BTQ-specific ports for BTQ regtest
+    # BTQ regtest RPC port: 18443 (from chainparamsbase.cpp)
+    # For multiple nodes, increment by 1 for each node
+    # Use a larger range to avoid conflicts between P2P and RPC ports
+    # Start RPC ports at 18443, but use a larger increment to avoid conflicts
+    return 18443 + (n * 10)
 
 
 def rpc_url(datadir, i, chain, rpchost):
@@ -375,6 +384,10 @@ def write_config(config_path, *, n, chain, extra_config="", disable_autoconnect=
     if chain == 'testnet3':
         chain_name_conf_arg = 'testnet'
         chain_name_conf_section = 'test'
+    elif chain == 'regtest':
+        # BTQ: Use regtest for BTQ implementation
+        chain_name_conf_arg = 'regtest'
+        chain_name_conf_section = 'regtest'
     else:
         chain_name_conf_arg = chain
         chain_name_conf_section = chain
@@ -408,7 +421,9 @@ def write_config(config_path, *, n, chain, extra_config="", disable_autoconnect=
         # To improve SQLite wallet performance so that the tests don't timeout, use -unsafesqlitesync
         f.write("unsafesqlitesync=1\n")
         if disable_autoconnect:
-            f.write("connect=0\n")
+            # BTQ: Do not set connect=0, as it implicitly sets listen=0 and
+            # conflicts with bind=127.0.0.1 added by the framework.
+            pass
         f.write(extra_config)
 
 
