@@ -32,7 +32,7 @@ BTQ follows Bitcoin Core's development philosophy: **review is more important th
 
 ### Branch Types
 
-- **`main`**: Integration branch, always buildable
+- **`master`**: Integration branch, always buildable
 - **`release/X.Y`**: Cut at feature freeze, receives only blockers and backports
 - **`feature/description`**: Development branches for new features
 - **`fix/description`**: Bug fix branches
@@ -40,9 +40,9 @@ BTQ follows Bitcoin Core's development philosophy: **review is more important th
 ### Workflow
 
 1. Fork the repository
-2. Create a branch from `main`: `git checkout -b feature/your-feature`
+2. Create a branch from `master`: `git checkout -b feature/your-feature`
 3. Make your changes with tests
-4. Submit a Pull Request against `main`
+4. Submit a Pull Request against `master`
 
 ## Commit Standards
 
@@ -82,7 +82,7 @@ consensus, policy, mempool, p2p, rpc, wallet, script, crypto, build, tests, docs
 
 ### 1. Preparation
 
-- [ ] Branch from latest `main`
+- [ ] Branch from latest `master`
 - [ ] Include comprehensive tests
 - [ ] Update documentation if needed
 - [ ] Verify CI passes locally

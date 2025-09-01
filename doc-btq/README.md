@@ -74,7 +74,7 @@ BTQ follows Bitcoin Core's development model with some adaptations for post-quan
 ### Quick Start for Contributors
 
 1. Fork the repository
-2. Create a feature branch from `main`
+2. Create a feature branch from `master`
 3. Make your changes with appropriate tests
 4. Follow the PR template and submit for review
 5. Address feedback and iterate through ACK process

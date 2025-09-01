@@ -911,7 +911,7 @@ bool ParseAmount(const std::string& str, CAmount& amount) {
 3. **Implementation**: Code changes with tests
 4. **Review**: Peer review and iteration
 5. **Testing**: Comprehensive testing
-6. **Merge**: Integration into main branch
+6. **Merge**: Integration into master branch
 7. **Follow-up**: Monitor for issues and regressions
 
 ### Quality Checklist

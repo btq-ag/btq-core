@@ -9,7 +9,7 @@ BTQ follows a maintainer-led governance model similar to Bitcoin Core, emphasizi
 ### Maintainers
 
 **Primary Responsibilities:**
-- Gate merges to `main` and release branches
+- Gate merges to `master` and release branches
 - Enforce code review standards and ACK/NACK culture
 - Run merge scripts and maintain clean commit history
 - Resolve conflicts between contributors
