@@ -237,6 +237,7 @@ public:
         const char* pszTimestamp = "BTQ Testnet Genesis Block - Quantum Resistant BTQ Fork 2024";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
         genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 0, 0x207fffff, 1, 50 * COIN);
+        //MineGenesisBlock(genesis);  // Already mined - nonce=0
         consensus.hashGenesisBlock = genesis.GetHash();
         // BTQ: Testnet genesis block assertions with mined values
         assert(consensus.hashGenesisBlock == uint256S("0x212f4cabe852aab559e15fda37836d6f61b99cecd5f198394433ea3343279f0c"));
