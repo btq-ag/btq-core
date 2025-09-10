@@ -542,6 +542,7 @@ libbtq_wallet_tool_a_SOURCES = \
 
 # crypto #
 crypto_libbtq_crypto_base_la_CPPFLAGS = $(AM_CPPFLAGS)
+crypto_libbtq_crypto_base_la_CFLAGS = $(AM_CFLAGS) $(PIE_FLAGS) -static
 
 # Specify -static in both CXXFLAGS and LDFLAGS so libtool will only build a
 # static version of this library. We don't need a dynamic version, and a dynamic
@@ -558,6 +559,29 @@ crypto_libbtq_crypto_base_la_SOURCES = \
   crypto/chacha20poly1305.h \
   crypto/chacha20poly1305.cpp \
   crypto/common.h \
+  crypto/dilithium/ref/fips202.c \
+  crypto/dilithium/ref/fips202.h \
+  crypto/dilithium/ref/ntt.c \
+  crypto/dilithium/ref/ntt.h \
+  crypto/dilithium/ref/packing.c \
+  crypto/dilithium/ref/packing.h \
+  crypto/dilithium/ref/params.h \
+  crypto/dilithium/ref/poly.c \
+  crypto/dilithium/ref/poly.h \
+  crypto/dilithium/ref/polyvec.c \
+  crypto/dilithium/ref/polyvec.h \
+  crypto/dilithium/ref/randombytes.c \
+  crypto/dilithium/ref/randombytes.h \
+  crypto/dilithium/ref/reduce.c \
+  crypto/dilithium/ref/reduce.h \
+  crypto/dilithium/ref/rounding.c \
+  crypto/dilithium/ref/rounding.h \
+  crypto/dilithium/ref/sign.c \
+  crypto/dilithium/ref/sign.h \
+  crypto/dilithium/ref/symmetric-shake.c \
+  crypto/dilithium/ref/symmetric.h \
+  crypto/dilithium/ref/api.h \
+  crypto/dilithium/ref/config.h \
   crypto/hkdf_sha256_32.cpp \
   crypto/hkdf_sha256_32.h \
   crypto/hmac_sha256.cpp \
@@ -598,10 +622,30 @@ crypto_libbtq_crypto_sse41_la_SOURCES = crypto/sha256_sse41.cpp
 # CXXFLAGS above
 crypto_libbtq_crypto_avx2_la_LDFLAGS = $(AM_LDFLAGS) -static
 crypto_libbtq_crypto_avx2_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -static
-crypto_libbtq_crypto_avx2_la_CPPFLAGS = $(AM_CPPFLAGS)
+crypto_libbtq_crypto_avx2_la_CFLAGS = $(AM_CFLAGS) $(PIE_FLAGS) -static
+crypto_libbtq_crypto_avx2_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(srcdir)/crypto/dilithium/avx2
 crypto_libbtq_crypto_avx2_la_CXXFLAGS += $(AVX2_CXXFLAGS)
+crypto_libbtq_crypto_avx2_la_CFLAGS += $(AVX2_CXXFLAGS)
+crypto_libbtq_crypto_avx2_la_CCASFLAGS = $(AM_CCASFLAGS) $(AVX2_CXXFLAGS) -I$(srcdir)/crypto/dilithium/avx2
 crypto_libbtq_crypto_avx2_la_CPPFLAGS += -DENABLE_AVX2
-crypto_libbtq_crypto_avx2_la_SOURCES = crypto/sha256_avx2.cpp
+crypto_libbtq_crypto_avx2_la_SOURCES = \
+  crypto/sha256_avx2.cpp \
+  crypto/dilithium/avx2/consts.c \
+  crypto/dilithium/avx2/fips202.c \
+  crypto/dilithium/avx2/fips202x4.c \
+  crypto/dilithium/avx2/f1600x4.S \
+  crypto/dilithium/avx2/invntt.S \
+  crypto/dilithium/avx2/ntt.S \
+  crypto/dilithium/avx2/packing.c \
+  crypto/dilithium/avx2/pointwise.S \
+  crypto/dilithium/avx2/poly.c \
+  crypto/dilithium/avx2/polyvec.c \
+  crypto/dilithium/avx2/randombytes.c \
+  crypto/dilithium/avx2/rejsample.c \
+  crypto/dilithium/avx2/rounding.c \
+  crypto/dilithium/avx2/shuffle.S \
+  crypto/dilithium/avx2/sign.c \
+  crypto/dilithium/avx2/symmetric-shake.c
 
 # See explanation for -static in crypto_libbtq_crypto_base_la's LDFLAGS and
 # CXXFLAGS above
@@ -1034,6 +1078,8 @@ CLEANFILES += compat/*.gcda compat/*.gcno
 CLEANFILES += consensus/*.gcda consensus/*.gcno
 CLEANFILES += crc32c/src/*.gcda crc32c/src/*.gcno
 CLEANFILES += crypto/*.gcda crypto/*.gcno
+CLEANFILES += crypto/dilithium/ref/*.gcda crypto/dilithium/ref/*.gcno
+CLEANFILES += crypto/dilithium/avx2/*.gcda crypto/dilithium/avx2/*.gcno
 CLEANFILES += index/*.gcda index/*.gcno
 CLEANFILES += interfaces/*.gcda interfaces/*.gcno
 CLEANFILES += node/*.gcda node/*.gcno

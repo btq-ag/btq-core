@@ -69,6 +69,7 @@ else
   CXXFLAGS_overridden=no
 fi
 AC_PROG_CXX
+AM_PROG_AS
 
 dnl libtool overrides
 case $host in
