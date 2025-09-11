@@ -197,6 +197,7 @@ BTQ_CORE_H = \
   kernel/validation_cache_sizes.h \
   key.h \
   key_io.h \
+  crypto/dilithium_key.h \
   logging.h \
   logging/timer.h \
   mapport.h \
@@ -582,6 +583,10 @@ crypto_libbtq_crypto_base_la_SOURCES = \
   crypto/dilithium/ref/symmetric.h \
   crypto/dilithium/ref/api.h \
   crypto/dilithium/ref/config.h \
+  crypto/dilithium_wrapper.c \
+  crypto/dilithium_wrapper.h \
+  crypto/dilithium_key.cpp \
+  crypto/dilithium_key.h \
   crypto/hkdf_sha256_32.cpp \
   crypto/hkdf_sha256_32.h \
   crypto/hmac_sha256.cpp \
@@ -623,29 +628,13 @@ crypto_libbtq_crypto_sse41_la_SOURCES = crypto/sha256_sse41.cpp
 crypto_libbtq_crypto_avx2_la_LDFLAGS = $(AM_LDFLAGS) -static
 crypto_libbtq_crypto_avx2_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS) -static
 crypto_libbtq_crypto_avx2_la_CFLAGS = $(AM_CFLAGS) $(PIE_FLAGS) -static
-crypto_libbtq_crypto_avx2_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(srcdir)/crypto/dilithium/avx2
+crypto_libbtq_crypto_avx2_la_CPPFLAGS = $(AM_CPPFLAGS)
 crypto_libbtq_crypto_avx2_la_CXXFLAGS += $(AVX2_CXXFLAGS)
 crypto_libbtq_crypto_avx2_la_CFLAGS += $(AVX2_CXXFLAGS)
-crypto_libbtq_crypto_avx2_la_CCASFLAGS = $(AM_CCASFLAGS) $(AVX2_CXXFLAGS) -I$(srcdir)/crypto/dilithium/avx2
+crypto_libbtq_crypto_avx2_la_CCASFLAGS = $(AM_CCASFLAGS) $(AVX2_CXXFLAGS)
 crypto_libbtq_crypto_avx2_la_CPPFLAGS += -DENABLE_AVX2
 crypto_libbtq_crypto_avx2_la_SOURCES = \
-  crypto/sha256_avx2.cpp \
-  crypto/dilithium/avx2/consts.c \
-  crypto/dilithium/avx2/fips202.c \
-  crypto/dilithium/avx2/fips202x4.c \
-  crypto/dilithium/avx2/f1600x4.S \
-  crypto/dilithium/avx2/invntt.S \
-  crypto/dilithium/avx2/ntt.S \
-  crypto/dilithium/avx2/packing.c \
-  crypto/dilithium/avx2/pointwise.S \
-  crypto/dilithium/avx2/poly.c \
-  crypto/dilithium/avx2/polyvec.c \
-  crypto/dilithium/avx2/randombytes.c \
-  crypto/dilithium/avx2/rejsample.c \
-  crypto/dilithium/avx2/rounding.c \
-  crypto/dilithium/avx2/shuffle.S \
-  crypto/dilithium/avx2/sign.c \
-  crypto/dilithium/avx2/symmetric-shake.c
+  crypto/sha256_avx2.cpp
 
 # See explanation for -static in crypto_libbtq_crypto_base_la's LDFLAGS and
 # CXXFLAGS above
@@ -1079,7 +1068,7 @@ CLEANFILES += consensus/*.gcda consensus/*.gcno
 CLEANFILES += crc32c/src/*.gcda crc32c/src/*.gcno
 CLEANFILES += crypto/*.gcda crypto/*.gcno
 CLEANFILES += crypto/dilithium/ref/*.gcda crypto/dilithium/ref/*.gcno
-CLEANFILES += crypto/dilithium/avx2/*.gcda crypto/dilithium/avx2/*.gcno
+# CLEANFILES += crypto/dilithium/avx2/*.gcda crypto/dilithium/avx2/*.gcno
 CLEANFILES += index/*.gcda index/*.gcno
 CLEANFILES += interfaces/*.gcda interfaces/*.gcno
 CLEANFILES += node/*.gcda node/*.gcno
