@@ -312,6 +312,56 @@ public:
         obj.pushKV("witness_program", HexStr(id.GetWitnessProgram()));
         return obj;
     }
+
+    // Dilithium destination operators
+    UniValue operator()(const DilithiumPubKeyDestination& dest) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("isscript", false);
+        obj.pushKV("iswitness", false);
+        obj.pushKV("isdilithium", true);
+        return obj;
+    }
+
+    UniValue operator()(const DilithiumPKHash& keyID) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("isscript", false);
+        obj.pushKV("iswitness", false);
+        obj.pushKV("isdilithium", true);
+        return obj;
+    }
+
+    UniValue operator()(const DilithiumScriptHash& scriptID) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("isscript", true);
+        obj.pushKV("iswitness", false);
+        obj.pushKV("isdilithium", true);
+        return obj;
+    }
+
+    UniValue operator()(const DilithiumWitnessV0KeyHash& id) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("isscript", false);
+        obj.pushKV("iswitness", true);
+        obj.pushKV("witness_version", 0);
+        obj.pushKV("witness_program", HexStr(id));
+        obj.pushKV("isdilithium", true);
+        return obj;
+    }
+
+    UniValue operator()(const DilithiumWitnessV0ScriptHash& id) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("isscript", true);
+        obj.pushKV("iswitness", true);
+        obj.pushKV("witness_version", 0);
+        obj.pushKV("witness_program", HexStr(id));
+        obj.pushKV("isdilithium", true);
+        return obj;
+    }
 };
 
 UniValue DescribeAddress(const CTxDestination& dest)

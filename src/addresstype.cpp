@@ -4,6 +4,7 @@
 
 #include <addresstype.h>
 
+#include <crypto/dilithium_key.h>
 #include <crypto/sha256.h>
 #include <hash.h>
 #include <pubkey.h>
@@ -42,6 +43,19 @@ CScriptID ToScriptID(const ScriptHash& script_hash)
 }
 
 WitnessV0ScriptHash::WitnessV0ScriptHash(const CScript& in)
+{
+    CSHA256().Write(in.data(), in.size()).Finalize(begin());
+}
+
+// Dilithium destination constructors
+DilithiumPKHash::DilithiumPKHash(const CDilithiumPubKey& pubkey) : BaseHash(pubkey.GetID()) {}
+
+DilithiumScriptHash::DilithiumScriptHash(const CScript& in) : BaseHash(Hash160(in)) {}
+
+DilithiumWitnessV0KeyHash::DilithiumWitnessV0KeyHash(const CDilithiumPubKey& pubkey) : BaseHash(pubkey.GetID()) {}
+DilithiumWitnessV0KeyHash::DilithiumWitnessV0KeyHash(const DilithiumPKHash& pubkey_hash) : BaseHash{pubkey_hash} {}
+
+DilithiumWitnessV0ScriptHash::DilithiumWitnessV0ScriptHash(const CScript& in)
 {
     CSHA256().Write(in.data(), in.size()).Finalize(begin());
 }
@@ -91,6 +105,36 @@ bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet)
         addressRet = WitnessUnknown{vSolutions[0][0], vSolutions[1]};
         return true;
     }
+    case TxoutType::DILITHIUM_PUBKEY: {
+        CDilithiumPubKey pubKey(vSolutions[0]);
+        if (!pubKey.IsValid()) {
+            addressRet = CNoDestination(scriptPubKey);
+        } else {
+            addressRet = DilithiumPubKeyDestination(pubKey);
+        }
+        return false;
+    }
+    case TxoutType::DILITHIUM_PUBKEYHASH: {
+        addressRet = DilithiumPKHash(uint160(vSolutions[0]));
+        return true;
+    }
+    case TxoutType::DILITHIUM_SCRIPTHASH: {
+        addressRet = DilithiumScriptHash(uint160(vSolutions[0]));
+        return true;
+    }
+    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH: {
+        DilithiumWitnessV0KeyHash hash;
+        std::copy(vSolutions[0].begin(), vSolutions[0].end(), hash.begin());
+        addressRet = hash;
+        return true;
+    }
+    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH: {
+        DilithiumWitnessV0ScriptHash hash;
+        std::copy(vSolutions[0].begin(), vSolutions[0].end(), hash.begin());
+        addressRet = hash;
+        return true;
+    }
+    case TxoutType::DILITHIUM_MULTISIG:
     case TxoutType::MULTISIG:
     case TxoutType::NULL_DATA:
     case TxoutType::NONSTANDARD:
@@ -143,6 +187,31 @@ public:
     {
         return CScript() << CScript::EncodeOP_N(id.GetWitnessVersion()) << id.GetWitnessProgram();
     }
+
+    CScript operator()(const DilithiumPubKeyDestination& dest) const
+    {
+        return CScript() << ToByteVector(dest.GetPubKey()) << OP_CHECKSIGDILITHIUM;
+    }
+
+    CScript operator()(const DilithiumPKHash& keyID) const
+    {
+        return CScript() << OP_DUP << OP_HASH160 << ToByteVector(keyID) << OP_EQUALVERIFY << OP_CHECKSIGDILITHIUM;
+    }
+
+    CScript operator()(const DilithiumScriptHash& scriptID) const
+    {
+        return CScript() << OP_HASH160 << ToByteVector(scriptID) << OP_EQUAL;
+    }
+
+    CScript operator()(const DilithiumWitnessV0KeyHash& id) const
+    {
+        return CScript() << OP_0 << ToByteVector(id);
+    }
+
+    CScript operator()(const DilithiumWitnessV0ScriptHash& id) const
+    {
+        return CScript() << OP_0 << ToByteVector(id);
+    }
 };
 
 class ValidDestinationVisitor
@@ -156,6 +225,11 @@ public:
     bool operator()(const WitnessV0ScriptHash& dest) const { return true; }
     bool operator()(const WitnessV1Taproot& dest) const { return true; }
     bool operator()(const WitnessUnknown& dest) const { return true; }
+    bool operator()(const DilithiumPubKeyDestination& dest) const { return false; }
+    bool operator()(const DilithiumPKHash& dest) const { return true; }
+    bool operator()(const DilithiumScriptHash& dest) const { return true; }
+    bool operator()(const DilithiumWitnessV0KeyHash& dest) const { return true; }
+    bool operator()(const DilithiumWitnessV0ScriptHash& dest) const { return true; }
 };
 } // namespace
 

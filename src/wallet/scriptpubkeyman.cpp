@@ -201,6 +201,14 @@ IsMineResult IsMineInner(const LegacyScriptPubKeyMan& keystore, const CScript& s
         }
         break;
     }
+    case TxoutType::DILITHIUM_PUBKEY:
+    case TxoutType::DILITHIUM_PUBKEYHASH:
+    case TxoutType::DILITHIUM_SCRIPTHASH:
+    case TxoutType::DILITHIUM_MULTISIG:
+    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
+    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
+        // Dilithium scripts are not supported for wallet operations yet
+        break;
     } // no default case, so the compiler can warn about missing cases
 
     if (ret == IsMineResult::NO && keystore.HaveWatchOnly(scriptPubKey)) {
@@ -2298,6 +2306,11 @@ bool DescriptorScriptPubKeyMan::SetupDescriptorGeneration(const CExtKey& master_
     case OutputType::BECH32M: {
         desc_prefix = "tr(" + xpub + "/86h";
         break;
+    }
+    case OutputType::DILITHIUM_LEGACY:
+    case OutputType::DILITHIUM_BECH32: {
+        // Dilithium output types are not supported for descriptor generation yet
+        throw std::runtime_error("Dilithium output types not supported for descriptor generation");
     }
     case OutputType::UNKNOWN: {
         // We should never have a DescriptorScriptPubKeyMan for an UNKNOWN OutputType,
