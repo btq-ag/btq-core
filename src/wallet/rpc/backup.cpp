@@ -175,12 +175,33 @@ RPCHelpMan importprivkey()
             throw JSONRPCError(RPC_WALLET_ERROR, "Wallet is currently rescanning. Abort existing rescan or wait.");
         }
 
+        // Try to decode as regular ECDSA key first
         CKey key = DecodeSecret(strSecret);
-        if (!key.IsValid()) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key encoding");
-
-        CPubKey pubkey = key.GetPubKey();
-        CHECK_NONFATAL(key.VerifyPubKey(pubkey));
-        CKeyID vchAddress = pubkey.GetID();
+        CDilithiumKey dilithium_key;
+        bool is_dilithium = false;
+        
+        if (!key.IsValid()) {
+            // Try to decode as Dilithium key
+            dilithium_key = DecodeDilithiumSecret(strSecret);
+            if (dilithium_key.IsValid()) {
+                is_dilithium = true;
+            } else {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key encoding");
+            }
+        }
+        
+        CPubKey pubkey;
+        CKeyID vchAddress;
+        
+        if (is_dilithium) {
+            CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
+            pubkey = CPubKey(dilithium_pubkey.begin(), dilithium_pubkey.end());
+            vchAddress = pubkey.GetID();
+        } else {
+            pubkey = key.GetPubKey();
+            CHECK_NONFATAL(key.VerifyPubKey(pubkey));
+            vchAddress = pubkey.GetID();
+        }
         {
             pwallet->MarkDirty();
 
@@ -194,8 +215,15 @@ RPCHelpMan importprivkey()
             }
 
             // Use timestamp of 1 to scan the whole chain
-            if (!pwallet->ImportPrivKeys({{vchAddress, key}}, 1)) {
-                throw JSONRPCError(RPC_WALLET_ERROR, "Error adding key to wallet");
+            if (is_dilithium) {
+                // For Dilithium keys, use the Dilithium key import method
+                if (!pwallet->GetLegacyScriptPubKeyMan()->AddDilithiumKeyPubKey(dilithium_key, pubkey)) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Error adding Dilithium key to wallet");
+                }
+            } else {
+                if (!pwallet->ImportPrivKeys({{vchAddress, key}}, 1)) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Error adding key to wallet");
+                }
             }
 
             // Add the wpkh script for this key if possible
@@ -679,10 +707,22 @@ RPCHelpMan dumpprivkey()
         throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to a key");
     }
     CKey vchSecret;
+    CDilithiumKey dilithiumSecret;
+    bool is_dilithium = false;
+    
     if (!spk_man.GetKey(keyid, vchSecret)) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Private key for address " + strAddress + " is not known");
+        // Try to get as Dilithium key
+        if (!spk_man.GetDilithiumKey(keyid, dilithiumSecret)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Private key for address " + strAddress + " is not known");
+        }
+        is_dilithium = true;
     }
-    return EncodeSecret(vchSecret);
+    
+    if (is_dilithium) {
+        return EncodeDilithiumSecret(dilithiumSecret);
+    } else {
+        return EncodeSecret(vchSecret);
+    }
 },
     };
 }
@@ -920,7 +960,8 @@ static std::string RecurseImportData(const CScript& script, ImportData& import_d
     case TxoutType::DILITHIUM_MULTISIG:
     case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
     case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
-        return "dilithium script not supported for import";
+        // Dilithium scripts are now supported for import
+        return "";
     case TxoutType::NONSTANDARD:
     case TxoutType::WITNESS_UNKNOWN:
     case TxoutType::WITNESS_V1_TAPROOT:

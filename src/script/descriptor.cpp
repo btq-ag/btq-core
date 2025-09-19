@@ -4,6 +4,7 @@
 
 #include <script/descriptor.h>
 
+#include <crypto/dilithium_key.h>
 #include <hash.h>
 #include <key_io.h>
 #include <pubkey.h>
@@ -1250,6 +1251,7 @@ public:
         return 1;
     }
 };
+
 
 ////////////////////////////////////////////////////////////////////////////
 // Parser                                                                 //

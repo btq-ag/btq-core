@@ -265,6 +265,8 @@ static const std::unordered_set<OutputType> LEGACY_OUTPUT_TYPES {
     OutputType::LEGACY,
     OutputType::P2SH_SEGWIT,
     OutputType::BECH32,
+    OutputType::DILITHIUM_LEGACY,
+    OutputType::DILITHIUM_BECH32,
 };
 
 class DescriptorScriptPubKeyMan;
@@ -281,8 +283,12 @@ private:
     WalletBatch *encrypted_batch GUARDED_BY(cs_KeyStore) = nullptr;
 
     using CryptedKeyMap = std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>;
+    using CryptedDilithiumKeyMap = std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>;
+    using DilithiumKeyMap = std::map<CKeyID, CDilithiumKey>;
 
     CryptedKeyMap mapCryptedKeys GUARDED_BY(cs_KeyStore);
+    CryptedDilithiumKeyMap mapCryptedDilithiumKeys GUARDED_BY(cs_KeyStore);
+    DilithiumKeyMap mapDilithiumKeys GUARDED_BY(cs_KeyStore);
     WatchOnlySet setWatchOnly GUARDED_BY(cs_KeyStore);
     WatchKeyMap mapWatchKeys GUARDED_BY(cs_KeyStore);
 
@@ -293,6 +299,11 @@ private:
 
     bool AddKeyPubKeyInner(const CKey& key, const CPubKey &pubkey);
     bool AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
+    
+    // Dilithium key management
+    bool AddDilithiumKeyPubKeyInner(const CDilithiumKey& key, const CPubKey &pubkey);
+    bool AddCryptedDilithiumKeyInner(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
+    bool AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, const CDilithiumKey& secret, const CPubKey& pubkey);
 
     /**
      * Private version of AddWatchOnly method which does not accept a
@@ -431,6 +442,23 @@ public:
     bool AddCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
     //! Adds an encrypted key to the store, without saving it to disk (used by LoadWallet)
     bool LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret, bool checksum_valid);
+    
+    // Dilithium key management
+    //! Adds a Dilithium key to the store, and saves it to disk.
+    bool AddDilithiumKeyPubKey(const CDilithiumKey& key, const CPubKey &pubkey);
+    //! Adds a Dilithium key to the store, without saving it to disk (used by LoadWallet)
+    bool LoadDilithiumKey(const CDilithiumKey& key, const CPubKey &pubkey);
+    //! Adds an encrypted Dilithium key to the store, and saves it to disk.
+    bool AddCryptedDilithiumKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
+    //! Adds an encrypted Dilithium key to the store, without saving it to disk (used by LoadWallet)
+    bool LoadCryptedDilithiumKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret, bool checksum_valid);
+    //! Get a Dilithium key from the store
+    bool GetDilithiumKey(const CKeyID &address, CDilithiumKey& keyOut) const;
+    bool HaveDilithiumKey(const CKeyID &address) const;
+    //! Generate a new Dilithium key using HD derivation
+    CPubKey GenerateNewDilithiumKey(WalletBatch& batch, CHDChain& hd_chain, bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
+    //! Derive a new Dilithium child key using HD derivation
+    void DeriveNewDilithiumChildKey(WalletBatch &batch, CKeyMetadata& metadata, CDilithiumKey& secret, CHDChain& hd_chain, bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
     void UpdateTimeFirstKey(int64_t nCreateTime) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
     //! Adds a CScript to the store
     bool LoadCScript(const CScript& redeemScript);
@@ -555,6 +583,10 @@ private:
     using PubKeyMap = std::map<CPubKey, int32_t>; // Map of pubkeys involved in scripts to descriptor range index
     using CryptedKeyMap = std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>;
     using KeyMap = std::map<CKeyID, CKey>;
+    
+    // Dilithium key storage
+    using DilithiumKeyMap = std::map<CKeyID, CDilithiumKey>;
+    using CryptedDilithiumKeyMap = std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>;
 
     ScriptPubKeyMap m_map_script_pub_keys GUARDED_BY(cs_desc_man);
     PubKeyMap m_map_pubkeys GUARDED_BY(cs_desc_man);
@@ -562,6 +594,10 @@ private:
 
     KeyMap m_map_keys GUARDED_BY(cs_desc_man);
     CryptedKeyMap m_map_crypted_keys GUARDED_BY(cs_desc_man);
+    
+    // Dilithium key storage
+    DilithiumKeyMap m_map_dilithium_keys GUARDED_BY(cs_desc_man);
+    CryptedDilithiumKeyMap m_map_crypted_dilithium_keys GUARDED_BY(cs_desc_man);
 
     //! keeps track of whether Unlock has run a thorough check before
     bool m_decryption_thoroughly_checked = false;
@@ -570,6 +606,15 @@ private:
     int64_t m_keypool_size GUARDED_BY(cs_desc_man){DEFAULT_KEYPOOL_SIZE};
 
     bool AddDescriptorKeyWithDB(WalletBatch& batch, const CKey& key, const CPubKey &pubkey) EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    
+    // Dilithium key management
+    bool AddDilithiumKeyWithDB(WalletBatch& batch, const CDilithiumKey& key, const CKeyID &keyid) EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    bool AddCryptedDilithiumKeyWithDB(WalletBatch& batch, const CPubKey& pubkey, const std::vector<unsigned char>& crypted_secret) EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    bool GetDilithiumKey(const CKeyID& keyid, CDilithiumKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    bool HaveDilithiumKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    
+    // Override IsMine to handle Dilithium keys
+    isminetype IsMine(const CScript& script) const override;
 
     KeyMap GetKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
@@ -599,7 +644,6 @@ public:
     mutable RecursiveMutex cs_desc_man;
 
     util::Result<CTxDestination> GetNewDestination(const OutputType type) override;
-    isminetype IsMine(const CScript& script) const override;
 
     bool CheckDecryptionKey(const CKeyingMaterial& master_key, bool accept_no_keys = false) override;
     bool Encrypt(const CKeyingMaterial& master_key, WalletBatch* batch) override;

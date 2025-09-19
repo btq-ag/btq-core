@@ -347,6 +347,35 @@ std::string EncodeSecret(const CKey& key)
     return ret;
 }
 
+// Dilithium key WIF support
+CDilithiumKey DecodeDilithiumSecret(const std::string& str)
+{
+    CDilithiumKey key;
+    std::vector<unsigned char> data;
+    if (DecodeBase58Check(str, data, 34)) {
+        const std::vector<unsigned char>& privkey_prefix = Params().Base58Prefix(CChainParams::SECRET_KEY);
+        // Dilithium keys are much larger than ECDSA keys
+        if (data.size() == CDilithiumKey::GetKeySize() + privkey_prefix.size() &&
+            std::equal(privkey_prefix.begin(), privkey_prefix.end(), data.begin())) {
+            key.Set(data.begin() + privkey_prefix.size(), data.begin() + privkey_prefix.size() + CDilithiumKey::GetKeySize());
+        }
+    }
+    if (!data.empty()) {
+        memory_cleanse(data.data(), data.size());
+    }
+    return key;
+}
+
+std::string EncodeDilithiumSecret(const CDilithiumKey& key)
+{
+    assert(key.IsValid());
+    std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    data.insert(data.end(), key.begin(), key.end());
+    std::string ret = EncodeBase58Check(data);
+    memory_cleanse(data.data(), data.size());
+    return ret;
+}
+
 CExtPubKey DecodeExtPubKey(const std::string& str)
 {
     CExtPubKey key;

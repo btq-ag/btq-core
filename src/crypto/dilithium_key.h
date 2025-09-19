@@ -9,6 +9,7 @@
 #include <support/allocators/secure.h>
 #include <uint256.h>
 #include <span.h>
+#include <key.h>
 
 #include <array>
 #include <memory>
@@ -38,6 +39,7 @@ namespace DilithiumConstants {
 }
 
 class CDilithiumPubKey; // Forward declaration
+class CDilithiumExtPubKey; // Forward declaration
 
 /** An encapsulated Dilithium private key. */
 class CDilithiumKey
@@ -48,7 +50,7 @@ public:
 
 private:
     /** Internal data container for private key material. */
-    using KeyType = std::array<unsigned char, DilithiumConstants::SECRET_KEY_SIZE>;
+    using KeyType = std::array<unsigned char, DilithiumConstants::SECRET_KEY_SIZE + DilithiumConstants::PUBLIC_KEY_SIZE>;
 
     /** The actual private key data. nullptr for invalid keys. */
     secure_unique_ptr<KeyType> keydata;
@@ -166,10 +168,20 @@ public:
     std::vector<unsigned char> Serialize() const;
 
     //! Get key size in bytes
-    static constexpr size_t GetKeySize() { return DilithiumConstants::SECRET_KEY_SIZE; }
+    static constexpr size_t GetKeySize() { return DilithiumConstants::SECRET_KEY_SIZE + DilithiumConstants::PUBLIC_KEY_SIZE; }
     
     //! Get public key size in bytes
     static constexpr size_t GetPubKeySize() { return DilithiumConstants::PUBLIC_KEY_SIZE; }
+    
+    //! Get private key as CPrivKey
+    CPrivKey GetPrivKey() const
+    {
+        CPrivKey privkey;
+        if (IsValid()) {
+            privkey.assign(begin(), end());
+        }
+        return privkey;
+    }
 };
 
 /** An encapsulated Dilithium public key. */
@@ -297,6 +309,54 @@ public:
 
     //! Derive address from this public key (for Bitcoin address generation)
     std::vector<unsigned char> GetAddress() const;
+};
+
+/** Dilithium extended key for HD wallet support */
+class CDilithiumExtKey {
+public:
+    unsigned char nDepth;
+    unsigned char vchFingerprint[4];
+    unsigned int nChild;
+    ChainCode chaincode;
+    CDilithiumKey key;
+
+    friend bool operator==(const CDilithiumExtKey& a, const CDilithiumExtKey& b)
+    {
+        return a.nDepth == b.nDepth &&
+            memcmp(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) == 0 &&
+            a.nChild == b.nChild &&
+            a.chaincode == b.chaincode &&
+            a.key == b.key;
+    }
+
+    void Encode(unsigned char code[BIP32_EXTKEY_SIZE]) const;
+    void Decode(const unsigned char code[BIP32_EXTKEY_SIZE]);
+    [[nodiscard]] bool Derive(CDilithiumExtKey& out, unsigned int nChild) const;
+    CDilithiumExtPubKey Neuter() const;
+    void SetSeed(Span<const std::byte> seed);
+};
+
+/** Dilithium extended public key for HD wallet support */
+class CDilithiumExtPubKey {
+public:
+    unsigned char nDepth;
+    unsigned char vchFingerprint[4];
+    unsigned int nChild;
+    ChainCode chaincode;
+    CDilithiumPubKey pubkey;
+
+    friend bool operator==(const CDilithiumExtPubKey& a, const CDilithiumExtPubKey& b)
+    {
+        return a.nDepth == b.nDepth &&
+            memcmp(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) == 0 &&
+            a.nChild == b.nChild &&
+            a.chaincode == b.chaincode &&
+            a.pubkey == b.pubkey;
+    }
+
+    void Encode(unsigned char code[BIP32_EXTKEY_SIZE]) const;
+    void Decode(const unsigned char code[BIP32_EXTKEY_SIZE]);
+    [[nodiscard]] bool Derive(CDilithiumExtPubKey& out, unsigned int nChild) const;
 };
 
 /** Initialize the Dilithium cryptographic support. */

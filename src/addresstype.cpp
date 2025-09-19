@@ -225,6 +225,7 @@ public:
     bool operator()(const WitnessV0ScriptHash& dest) const { return true; }
     bool operator()(const WitnessV1Taproot& dest) const { return true; }
     bool operator()(const WitnessUnknown& dest) const { return true; }
+    // Dilithium destination operators
     bool operator()(const DilithiumPubKeyDestination& dest) const { return false; }
     bool operator()(const DilithiumPKHash& dest) const { return true; }
     bool operator()(const DilithiumScriptHash& dest) const { return true; }

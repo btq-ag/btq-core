@@ -52,6 +52,8 @@ static void TestVector(const Hasher &h, const In &in, const Out &out) {
             }
         }
         hasher.Finalize(hash.data());
+        
+        
         BOOST_CHECK(hash == out);
     }
 }
@@ -413,7 +415,7 @@ BOOST_AUTO_TEST_CASE(sha256_testvectors) {
     TestSHA256("This is exactly 64 bytes long, not counting the terminating byte",
                "ab64eff7e88e2e46165e29f2bce41826bd4c7b3552f6b382a9e7d3af47c245f8");
     TestSHA256("As BTQ relies on 80 byte header hashes, we want to have an example for that.",
-               "7406e8de7d6e4fffc573daef05aefb8806e7790f55eab5576f31349743cca743");
+               "a9247a59c8144084e8101e49c4d372ef63753f6fa729fa56edf65e0c96c39b0f");
     TestSHA256(std::string(1000000, 'a'),
                "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
     TestSHA256(test1, "a316d55510b49662420f49d145d42fb83f31ef8dc016aa4e32df049991a91e26");
