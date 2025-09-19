@@ -558,7 +558,13 @@ static RPCHelpMan decodescript()
         case TxoutType::SCRIPTHASH:
         case TxoutType::WITNESS_UNKNOWN:
         case TxoutType::WITNESS_V1_TAPROOT:
-            // Should not be wrapped
+        case TxoutType::DILITHIUM_PUBKEY:
+        case TxoutType::DILITHIUM_PUBKEYHASH:
+        case TxoutType::DILITHIUM_SCRIPTHASH:
+        case TxoutType::DILITHIUM_MULTISIG:
+        case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
+        case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
+            // Should not be wrapped (Dilithium scripts not supported for wrapping yet)
             return false;
         } // no default case, so the compiler can warn about missing cases
         if (!script.HasValidOps() || script.IsUnspendable()) {
@@ -600,7 +606,13 @@ static RPCHelpMan decodescript()
             case TxoutType::WITNESS_V0_KEYHASH:
             case TxoutType::WITNESS_V0_SCRIPTHASH:
             case TxoutType::WITNESS_V1_TAPROOT:
-                // Should not be wrapped
+            case TxoutType::DILITHIUM_PUBKEY:
+            case TxoutType::DILITHIUM_PUBKEYHASH:
+            case TxoutType::DILITHIUM_SCRIPTHASH:
+            case TxoutType::DILITHIUM_MULTISIG:
+            case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
+            case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
+                // Should not be wrapped (Dilithium scripts not supported for wrapping yet)
                 return false;
             } // no default case, so the compiler can warn about missing cases
             NONFATAL_UNREACHABLE();

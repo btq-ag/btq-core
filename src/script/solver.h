@@ -31,6 +31,13 @@ enum class TxoutType {
     WITNESS_V0_KEYHASH,
     WITNESS_V1_TAPROOT,
     WITNESS_UNKNOWN, //!< Only for Witness versions not already defined above
+    // Dilithium transaction types:
+    DILITHIUM_PUBKEY,
+    DILITHIUM_PUBKEYHASH,
+    DILITHIUM_SCRIPTHASH,
+    DILITHIUM_MULTISIG,
+    DILITHIUM_WITNESS_V0_KEYHASH,
+    DILITHIUM_WITNESS_V0_SCRIPTHASH,
 };
 
 /** Get the name of a TxoutType as a string */
@@ -62,5 +69,14 @@ std::optional<std::pair<int, std::vector<Span<const unsigned char>>>> MatchMulti
 
 /** Generate a multisig script. */
 CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys);
+
+// Forward declaration for Dilithium public key
+class CDilithiumPubKey;
+
+/** Generate a P2DPK script for the given Dilithium pubkey. */
+CScript GetScriptForRawDilithiumPubKey(const CDilithiumPubKey& pubkey);
+
+/** Generate a Dilithium multisig script. */
+CScript GetScriptForDilithiumMultisig(int nRequired, const std::vector<CDilithiumPubKey>& keys);
 
 #endif // BTQ_SCRIPT_SOLVER_H

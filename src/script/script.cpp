@@ -146,6 +146,13 @@ std::string GetOpName(opcodetype opcode)
     // Opcode added by BIP 342 (Tapscript)
     case OP_CHECKSIGADD            : return "OP_CHECKSIGADD";
 
+    // Dilithium opcodes
+    case OP_CHECKSIGDILITHIUM      : return "OP_CHECKSIGDILITHIUM";
+    case OP_CHECKSIGDILITHIUMVERIFY: return "OP_CHECKSIGDILITHIUMVERIFY";
+    case OP_CHECKMULTISIGDILITHIUM : return "OP_CHECKMULTISIGDILITHIUM";
+    case OP_CHECKMULTISIGDILITHIUMVERIFY: return "OP_CHECKMULTISIGDILITHIUMVERIFY";
+    case OP_DILITHIUM_PUBKEY       : return "OP_DILITHIUM_PUBKEY";
+
     case OP_INVALIDOPCODE          : return "OP_INVALIDOPCODE";
 
     default:

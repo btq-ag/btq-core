@@ -476,6 +476,13 @@ public:
 
     UniValue operator()(const WitnessV1Taproot& id) const { return UniValue(UniValue::VOBJ); }
     UniValue operator()(const WitnessUnknown& id) const { return UniValue(UniValue::VOBJ); }
+
+    // Dilithium destination operators
+    UniValue operator()(const DilithiumPubKeyDestination& dest) const { return UniValue(UniValue::VOBJ); }
+    UniValue operator()(const DilithiumPKHash& pkhash) const { return UniValue(UniValue::VOBJ); }
+    UniValue operator()(const DilithiumScriptHash& scripthash) const { return UniValue(UniValue::VOBJ); }
+    UniValue operator()(const DilithiumWitnessV0KeyHash& id) const { return UniValue(UniValue::VOBJ); }
+    UniValue operator()(const DilithiumWitnessV0ScriptHash& id) const { return UniValue(UniValue::VOBJ); }
 };
 
 static UniValue DescribeWalletAddress(const CWallet& wallet, const CTxDestination& dest)

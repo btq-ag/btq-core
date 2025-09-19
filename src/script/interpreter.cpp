@@ -5,6 +5,7 @@
 
 #include <script/interpreter.h>
 
+#include <crypto/dilithium_key.h>
 #include <crypto/ripemd160.h>
 #include <crypto/sha1.h>
 #include <crypto/sha256.h>
@@ -91,6 +92,41 @@ bool static IsCompressedPubKey(const valtype &vchPubKey) {
         //  Non-canonical public key: invalid prefix for compressed key
         return false;
     }
+    return true;
+}
+
+// Dilithium helper functions
+bool static IsValidDilithiumPubKey(const valtype &vchPubKey) {
+    if (vchPubKey.size() != CDilithiumPubKey::SIZE) {
+        return false;
+    }
+    CDilithiumPubKey pubkey(vchPubKey);
+    return pubkey.IsValid();
+}
+
+/** Helper for OP_CHECKSIGDILITHIUM and OP_CHECKSIGDILITHIUMVERIFY.
+ *
+ * A return value of false means the script fails entirely. When true is returned, the
+ * success variable indicates whether the signature check itself succeeded.
+ */
+static bool EvalChecksigDilithium(const valtype& sig, const valtype& pubkey, CScript::const_iterator pbegincodehash, CScript::const_iterator pend, ScriptExecutionData& execdata, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptError* serror, bool& success)
+{
+    // Check signature encoding
+    if (!CheckSignatureEncoding(sig, flags, serror)) {
+        return false;
+    }
+
+    // Check public key encoding
+    if (!IsValidDilithiumPubKey(pubkey)) {
+        return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
+    }
+
+    // Create Dilithium public key object
+    CDilithiumPubKey dilithium_pubkey(pubkey);
+
+    // Use the checker pattern like other signature types
+    CScript scriptCode(pbegincodehash, pend);
+    success = checker.CheckDilithiumSignature(sig, pubkey, scriptCode, sigversion);
     return true;
 }
 
@@ -1213,6 +1249,123 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 }
                 break;
 
+                case OP_CHECKSIGDILITHIUM:
+                case OP_CHECKSIGDILITHIUMVERIFY:
+                {
+                    // (sig pubkey -- bool)
+                    if (stack.size() < 2)
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+
+                    valtype& vchSig    = stacktop(-2);
+                    valtype& vchPubKey = stacktop(-1);
+
+                    bool fSuccess = true;
+                    if (!EvalChecksigDilithium(vchSig, vchPubKey, pbegincodehash, pend, execdata, flags, checker, sigversion, serror, fSuccess)) return false;
+                    popstack(stack);
+                    popstack(stack);
+                    stack.push_back(fSuccess ? vchTrue : vchFalse);
+                    if (opcode == OP_CHECKSIGDILITHIUMVERIFY)
+                    {
+                        if (fSuccess)
+                            popstack(stack);
+                        else
+                            return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
+                    }
+                }
+                break;
+
+                case OP_CHECKMULTISIGDILITHIUM:
+                case OP_CHECKMULTISIGDILITHIUMVERIFY:
+                {
+                    // ([sig ...] num_of_signatures [pubkey ...] num_of_pubkeys -- bool)
+                    // Similar to OP_CHECKMULTISIG but for Dilithium signatures
+                    int i = 1;
+                    if ((int)stack.size() < i)
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+
+                    int nKeysCount = CScriptNum(stacktop(-i), fRequireMinimal).getint();
+                    if (nKeysCount < 0 || nKeysCount > MAX_PUBKEYS_PER_MULTISIG)
+                        return set_error(serror, SCRIPT_ERR_PUBKEY_COUNT);
+                    nOpCount += nKeysCount;
+                    if (nOpCount > MAX_OPS_PER_SCRIPT)
+                        return set_error(serror, SCRIPT_ERR_OP_COUNT);
+                    int ikey = ++i;
+                    int ikey2 = nKeysCount + 2;
+                    i += nKeysCount;
+                    if ((int)stack.size() < i)
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+
+                    int nSigsCount = CScriptNum(stacktop(-i), fRequireMinimal).getint();
+                    if (nSigsCount < 0 || nSigsCount > nKeysCount)
+                        return set_error(serror, SCRIPT_ERR_SIG_COUNT);
+                    int isig = ++i;
+                    i += nSigsCount;
+                    if ((int)stack.size() < i)
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+
+                    bool fSuccess = true;
+                    while (fSuccess && nSigsCount > 0)
+                    {
+                        valtype& vchSig    = stacktop(-isig);
+                        valtype& vchPubKey = stacktop(-ikey);
+
+                        // Check signature
+                        if (!EvalChecksigDilithium(vchSig, vchPubKey, pbegincodehash, pend, execdata, flags, checker, sigversion, serror, fSuccess)) return false;
+
+                        if (fSuccess) {
+                            isig++;
+                            nSigsCount--;
+                        }
+                        ikey++;
+                        nKeysCount--;
+
+                        // If there are more signatures left than keys left,
+                        // then too many signatures have failed
+                        if (nSigsCount > nKeysCount)
+                            fSuccess = false;
+                    }
+
+                    // Clean up stack of actual arguments
+                    while (i-- > 1) {
+                        if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && !ikey2 && stacktop(-1).size())
+                            return set_error(serror, SCRIPT_ERR_SIG_NULLFAIL);
+                        if (ikey2 > 0)
+                            ikey2--;
+                        popstack(stack);
+                    }
+
+                    // A bug causes CHECKMULTISIG to consume one extra argument
+                    if (stack.size() < 1)
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    if ((flags & SCRIPT_VERIFY_NULLDUMMY) && stacktop(-1).size())
+                        return set_error(serror, SCRIPT_ERR_SIG_NULLDUMMY);
+                    popstack(stack);
+
+                    stack.push_back(fSuccess ? vchTrue : vchFalse);
+
+                    if (opcode == OP_CHECKMULTISIGDILITHIUMVERIFY)
+                    {
+                        if (fSuccess)
+                            popstack(stack);
+                        else
+                            return set_error(serror, SCRIPT_ERR_CHECKMULTISIGVERIFY);
+                    }
+                }
+                break;
+
+                case OP_DILITHIUM_PUBKEY:
+                {
+                    // (pubkey -- bool)
+                    if (stack.size() < 1)
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+
+                    valtype& vchPubKey = stacktop(-1);
+                    bool fSuccess = IsValidDilithiumPubKey(vchPubKey);
+                    popstack(stack);
+                    stack.push_back(fSuccess ? vchTrue : vchFalse);
+                }
+                break;
+
                 default:
                     return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
             }
@@ -1694,6 +1847,33 @@ bool GenericTransactionSignatureChecker<T>::CheckSchnorrSignature(Span<const uns
         return set_error(serror, SCRIPT_ERR_SCHNORR_SIG_HASHTYPE);
     }
     if (!VerifySchnorrSignature(sig, pubkey, sighash)) return set_error(serror, SCRIPT_ERR_SCHNORR_SIG);
+    return true;
+}
+
+template <class T>
+bool GenericTransactionSignatureChecker<T>::CheckDilithiumSignature(const std::vector<unsigned char>& vchSigIn, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
+{
+    // Create Dilithium public key object
+    CDilithiumPubKey pubkey(vchPubKey);
+    if (!pubkey.IsValid())
+        return false;
+
+    // Hash type is one byte tacked on to the end of the signature
+    std::vector<unsigned char> vchSig(vchSigIn);
+    if (vchSig.empty())
+        return false;
+    int nHashType = vchSig.back();
+    vchSig.pop_back();
+
+    // Witness sighashes need the amount.
+    if (sigversion == SigVersion::WITNESS_V0 && amount < 0) return HandleMissingData(m_mdb);
+
+    uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
+
+    // Verify the Dilithium signature
+    if (!pubkey.Verify(sighash, vchSig))
+        return false;
+
     return true;
 }
 

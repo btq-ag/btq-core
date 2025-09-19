@@ -79,6 +79,39 @@ public:
 
     std::string operator()(const CNoDestination& no) const { return {}; }
     std::string operator()(const PubKeyDestination& pk) const { return {}; }
+
+    // Dilithium destination encoders
+    std::string operator()(const DilithiumPKHash& id) const
+    {
+        std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::DILITHIUM_PUBKEY_ADDRESS);
+        data.insert(data.end(), id.begin(), id.end());
+        return EncodeBase58Check(data);
+    }
+
+    std::string operator()(const DilithiumScriptHash& id) const
+    {
+        std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::DILITHIUM_SCRIPT_ADDRESS);
+        data.insert(data.end(), id.begin(), id.end());
+        return EncodeBase58Check(data);
+    }
+
+    std::string operator()(const DilithiumWitnessV0KeyHash& id) const
+    {
+        std::vector<unsigned char> data = {0};
+        data.reserve(33);
+        ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.begin(), id.end());
+        return bech32::Encode(bech32::Encoding::BECH32, m_params.DilithiumBech32HRP(), data);
+    }
+
+    std::string operator()(const DilithiumWitnessV0ScriptHash& id) const
+    {
+        std::vector<unsigned char> data = {0};
+        data.reserve(53);
+        ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.begin(), id.end());
+        return bech32::Encode(bech32::Encoding::BECH32, m_params.DilithiumBech32HRP(), data);
+    }
+
+    std::string operator()(const DilithiumPubKeyDestination& pk) const { return {}; }
 };
 
 CTxDestination DecodeDestination(const std::string& str, const CChainParams& params, std::string& error_str, std::vector<int>* error_locations)
@@ -89,8 +122,9 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
 
     // Note this will be false if it is a valid Bech32 address for a different network
     bool is_bech32 = (ToLower(str.substr(0, params.Bech32HRP().size())) == params.Bech32HRP());
+    bool is_dilithium_bech32 = (ToLower(str.substr(0, params.DilithiumBech32HRP().size())) == params.DilithiumBech32HRP());
 
-    if (!is_bech32 && DecodeBase58Check(str, data, 21)) {
+    if (!is_bech32 && !is_dilithium_bech32 && DecodeBase58Check(str, data, 21)) {
         // base58-encoded BTQ addresses.
         // Public-key-hash-addresses have version 0 (or 111 testnet).
         // The data vector contains RIPEMD160(SHA256(pubkey)), where pubkey is the serialized public key.
@@ -106,18 +140,34 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
             std::copy(data.begin() + script_prefix.size(), data.end(), hash.begin());
             return ScriptHash(hash);
         }
+        // Dilithium public-key-hash-addresses
+        const std::vector<unsigned char>& dilithium_pubkey_prefix = params.Base58Prefix(CChainParams::DILITHIUM_PUBKEY_ADDRESS);
+        if (data.size() == hash.size() + dilithium_pubkey_prefix.size() && std::equal(dilithium_pubkey_prefix.begin(), dilithium_pubkey_prefix.end(), data.begin())) {
+            std::copy(data.begin() + dilithium_pubkey_prefix.size(), data.end(), hash.begin());
+            return DilithiumPKHash(hash);
+        }
+        // Dilithium script-hash-addresses
+        const std::vector<unsigned char>& dilithium_script_prefix = params.Base58Prefix(CChainParams::DILITHIUM_SCRIPT_ADDRESS);
+        if (data.size() == hash.size() + dilithium_script_prefix.size() && std::equal(dilithium_script_prefix.begin(), dilithium_script_prefix.end(), data.begin())) {
+            std::copy(data.begin() + dilithium_script_prefix.size(), data.end(), hash.begin());
+            return DilithiumScriptHash(hash);
+        }
 
-        // If the prefix of data matches either the script or pubkey prefix, the length must have been wrong
+        // If the prefix of data matches any known prefix, the length must have been wrong
         if ((data.size() >= script_prefix.size() &&
                 std::equal(script_prefix.begin(), script_prefix.end(), data.begin())) ||
             (data.size() >= pubkey_prefix.size() &&
-                std::equal(pubkey_prefix.begin(), pubkey_prefix.end(), data.begin()))) {
-            error_str = "Invalid length for Base58 address (P2PKH or P2SH)";
+                std::equal(pubkey_prefix.begin(), pubkey_prefix.end(), data.begin())) ||
+            (data.size() >= dilithium_script_prefix.size() &&
+                std::equal(dilithium_script_prefix.begin(), dilithium_script_prefix.end(), data.begin())) ||
+            (data.size() >= dilithium_pubkey_prefix.size() &&
+                std::equal(dilithium_pubkey_prefix.begin(), dilithium_pubkey_prefix.end(), data.begin()))) {
+            error_str = "Invalid length for Base58 address (P2PKH, P2SH, or Dilithium)";
         } else {
             error_str = "Invalid or unsupported Base58-encoded address.";
         }
         return CNoDestination();
-    } else if (!is_bech32) {
+    } else if (!is_bech32 && !is_dilithium_bech32) {
         // Try Base58 decoding without the checksum, using a much larger max length
         if (!DecodeBase58(str, data, 100)) {
             error_str = "Invalid or unsupported Segwit (Bech32) or Base58 encoding.";
@@ -136,6 +186,11 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
         }
         // Bech32 decoding
         if (dec.hrp != params.Bech32HRP()) {
+            // Check if it's a Dilithium Bech32 address
+            if (dec.hrp == params.DilithiumBech32HRP()) {
+                // This is a Dilithium Bech32 address, skip to Dilithium decoding
+                goto dilithium_bech32_decode;
+            }
             error_str = strprintf("Invalid or unsupported prefix for Segwit (Bech32) address (expected %s, got %s).", params.Bech32HRP(), dec.hrp);
             return CNoDestination();
         }
@@ -195,6 +250,61 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
         } else {
             error_str = strprintf("Invalid padding in Bech32 data section");
             return CNoDestination();
+        }
+    } else if (is_dilithium_bech32) {
+        // Dilithium Bech32 decoding
+        dilithium_bech32_decode:
+        const auto dec = bech32::Decode(str);
+        if (dec.encoding == bech32::Encoding::BECH32 || dec.encoding == bech32::Encoding::BECH32M) {
+            if (dec.data.empty()) {
+                error_str = "Empty Dilithium Bech32 data section";
+                return CNoDestination();
+            }
+            if (dec.hrp != params.DilithiumBech32HRP()) {
+                error_str = strprintf("Invalid or unsupported prefix for Dilithium Bech32 address (expected %s, got %s).", params.DilithiumBech32HRP(), dec.hrp);
+                return CNoDestination();
+            }
+            int version = dec.data[0]; // The first 5 bit symbol is the witness version (0-16)
+            if (version == 0 && dec.encoding != bech32::Encoding::BECH32) {
+                error_str = "Version 0 Dilithium witness address must use Bech32 checksum";
+                return CNoDestination();
+            }
+            if (version != 0 && dec.encoding != bech32::Encoding::BECH32M) {
+                error_str = "Version 1+ Dilithium witness address must use Bech32m checksum";
+                return CNoDestination();
+            }
+            // The rest of the symbols are converted witness program bytes.
+            data.reserve(((dec.data.size() - 1) * 5) / 8);
+            if (ConvertBits<5, 8, false>([&](unsigned char c) { data.push_back(c); }, dec.data.begin() + 1, dec.data.end())) {
+
+                std::string_view byte_str{data.size() == 1 ? "byte" : "bytes"};
+
+                if (version == 0) {
+                    {
+                        DilithiumWitnessV0KeyHash keyid;
+                        if (data.size() == keyid.size()) {
+                            std::copy(data.begin(), data.end(), keyid.begin());
+                            return keyid;
+                        }
+                    }
+                    {
+                        DilithiumWitnessV0ScriptHash scriptid;
+                        if (data.size() == scriptid.size()) {
+                            std::copy(data.begin(), data.end(), scriptid.begin());
+                            return scriptid;
+                        }
+                    }
+
+                    error_str = strprintf("Invalid Dilithium Bech32 v0 address program size (%d %s)", data.size(), byte_str);
+                    return CNoDestination();
+                }
+
+                error_str = strprintf("Invalid Dilithium Bech32 address program size (%d %s)", data.size(), byte_str);
+                return CNoDestination();
+            } else {
+                error_str = strprintf("Invalid padding in Dilithium Bech32 data section");
+                return CNoDestination();
+            }
         }
     }
 

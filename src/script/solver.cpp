@@ -8,6 +8,7 @@
 #include <script/script.h>
 #include <script/solver.h>
 #include <span.h>
+#include <crypto/dilithium_key.h>
 
 #include <algorithm>
 #include <cassert>
@@ -28,6 +29,12 @@ std::string GetTxnOutputType(TxoutType t)
     case TxoutType::WITNESS_V0_SCRIPTHASH: return "witness_v0_scripthash";
     case TxoutType::WITNESS_V1_TAPROOT: return "witness_v1_taproot";
     case TxoutType::WITNESS_UNKNOWN: return "witness_unknown";
+    case TxoutType::DILITHIUM_PUBKEY: return "dilithium_pubkey";
+    case TxoutType::DILITHIUM_PUBKEYHASH: return "dilithium_pubkeyhash";
+    case TxoutType::DILITHIUM_SCRIPTHASH: return "dilithium_scripthash";
+    case TxoutType::DILITHIUM_MULTISIG: return "dilithium_multisig";
+    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH: return "dilithium_witness_v0_keyhash";
+    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH: return "dilithium_witness_v0_scripthash";
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
@@ -103,6 +110,63 @@ static bool MatchMultisig(const CScript& script, int& required_sigs, std::vector
     return (it + 1 == script.end());
 }
 
+// Dilithium script matching functions
+static bool MatchPayToDilithiumPubkey(const CScript& script, valtype& pubkey)
+{
+    // Check for OP_PUSHDATA2 format (for large keys > 75 bytes)
+    if (script.size() == CDilithiumPubKey::SIZE + 4 && script[0] == OP_PUSHDATA2 && script.back() == OP_CHECKSIGDILITHIUM) {
+        // OP_PUSHDATA2 + 2 length bytes + data + opcode
+        pubkey = valtype(script.begin() + 3, script.begin() + CDilithiumPubKey::SIZE + 3);
+        return pubkey.size() == CDilithiumPubKey::SIZE;
+    }
+    // Check for direct push format (for small keys <= 75 bytes)
+    if (script.size() == CDilithiumPubKey::SIZE + 2 && script[0] == CDilithiumPubKey::SIZE && script.back() == OP_CHECKSIGDILITHIUM) {
+        pubkey = valtype(script.begin() + 1, script.begin() + CDilithiumPubKey::SIZE + 1);
+        return pubkey.size() == CDilithiumPubKey::SIZE;
+    }
+    return false;
+}
+
+static bool MatchPayToDilithiumPubkeyHash(const CScript& script, valtype& pubkeyhash)
+{
+    if (script.size() == 25 && script[0] == OP_DUP && script[1] == OP_HASH160 && script[2] == 20 && script[23] == OP_EQUALVERIFY && script[24] == OP_CHECKSIGDILITHIUM) {
+        pubkeyhash = valtype(script.begin() + 3, script.begin() + 23);
+        return true;
+    }
+    return false;
+}
+
+static bool MatchPayToDilithiumScriptHash(const CScript& script, valtype& scripthash)
+{
+    if (script.size() == 23 && script[0] == OP_HASH160 && script[1] == 20 && script[22] == OP_EQUAL) {
+        scripthash = valtype(script.begin() + 2, script.begin() + 22);
+        return scripthash.size() == 20;
+    }
+    return false;
+}
+
+static bool MatchDilithiumMultisig(const CScript& script, int& required_sigs, std::vector<valtype>& pubkeys)
+{
+    opcodetype opcode;
+    valtype data;
+
+    CScript::const_iterator it = script.begin();
+    if (script.size() < 1 || script.back() != OP_CHECKMULTISIGDILITHIUM) return false;
+
+    if (!script.GetOp(it, opcode, data)) return false;
+    auto req_sigs = GetScriptNumber(opcode, data, 1, MAX_PUBKEYS_PER_MULTISIG);
+    if (!req_sigs) return false;
+    required_sigs = *req_sigs;
+    while (script.GetOp(it, opcode, data) && data.size() == CDilithiumPubKey::SIZE) {
+        pubkeys.emplace_back(std::move(data));
+    }
+    auto num_keys = GetScriptNumber(opcode, data, required_sigs, MAX_PUBKEYS_PER_MULTISIG);
+    if (!num_keys) return false;
+    if (pubkeys.size() != static_cast<unsigned long>(*num_keys)) return false;
+
+    return (it + 1 == script.end());
+}
+
 std::optional<std::pair<int, std::vector<Span<const unsigned char>>>> MatchMultiA(const CScript& script)
 {
     std::vector<Span<const unsigned char>> keyspans;
@@ -140,6 +204,13 @@ std::optional<std::pair<int, std::vector<Span<const unsigned char>>>> MatchMulti
 TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned char>>& vSolutionsRet)
 {
     vSolutionsRet.clear();
+
+    // Check for Dilithium P2SH first (same format as regular P2SH)
+    std::vector<unsigned char> data;
+    if (MatchPayToDilithiumScriptHash(scriptPubKey, data)) {
+        vSolutionsRet.push_back(std::move(data));
+        return TxoutType::DILITHIUM_SCRIPTHASH;
+    }
 
     // Shortcut for pay-to-script-hash, which are more constrained than the other types:
     // it is always OP_HASH160 20 [20 byte hash] OP_EQUAL
@@ -182,7 +253,6 @@ TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned c
         return TxoutType::NULL_DATA;
     }
 
-    std::vector<unsigned char> data;
     if (MatchPayToPubkey(scriptPubKey, data)) {
         vSolutionsRet.push_back(std::move(data));
         return TxoutType::PUBKEY;
@@ -202,6 +272,24 @@ TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned c
         return TxoutType::MULTISIG;
     }
 
+    // Dilithium script matching
+    if (MatchPayToDilithiumPubkey(scriptPubKey, data)) {
+        vSolutionsRet.push_back(std::move(data));
+        return TxoutType::DILITHIUM_PUBKEY;
+    }
+
+    if (MatchPayToDilithiumPubkeyHash(scriptPubKey, data)) {
+        vSolutionsRet.push_back(std::move(data));
+        return TxoutType::DILITHIUM_PUBKEYHASH;
+    }
+
+    if (MatchDilithiumMultisig(scriptPubKey, required, keys)) {
+        vSolutionsRet.push_back({static_cast<unsigned char>(required)}); // safe as required is in range 1..20
+        vSolutionsRet.insert(vSolutionsRet.end(), keys.begin(), keys.end());
+        vSolutionsRet.push_back({static_cast<unsigned char>(keys.size())}); // safe as size is in range 1..20
+        return TxoutType::DILITHIUM_MULTISIG;
+    }
+
     vSolutionsRet.clear();
     return TxoutType::NONSTANDARD;
 }
@@ -219,6 +307,24 @@ CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys)
     for (const CPubKey& key : keys)
         script << ToByteVector(key);
     script << keys.size() << OP_CHECKMULTISIG;
+
+    return script;
+}
+
+// Dilithium script generation functions
+CScript GetScriptForRawDilithiumPubKey(const CDilithiumPubKey& pubKey)
+{
+    return CScript() << std::vector<unsigned char>(pubKey.begin(), pubKey.end()) << OP_CHECKSIGDILITHIUM;
+}
+
+CScript GetScriptForDilithiumMultisig(int nRequired, const std::vector<CDilithiumPubKey>& keys)
+{
+    CScript script;
+
+    script << nRequired;
+    for (const CDilithiumPubKey& key : keys)
+        script << ToByteVector(key);
+    script << keys.size() << OP_CHECKMULTISIGDILITHIUM;
 
     return script;
 }

@@ -209,11 +209,18 @@ enum opcodetype
     // Opcode added by BIP 342 (Tapscript)
     OP_CHECKSIGADD = 0xba,
 
+    // Dilithium opcodes
+    OP_CHECKSIGDILITHIUM = 0xbb,
+    OP_CHECKSIGDILITHIUMVERIFY = 0xbc,
+    OP_CHECKMULTISIGDILITHIUM = 0xbd,
+    OP_CHECKMULTISIGDILITHIUMVERIFY = 0xbe,
+    OP_DILITHIUM_PUBKEY = 0xbf,
+
     OP_INVALIDOPCODE = 0xff,
 };
 
 // Maximum value that an opcode can be
-static const unsigned int MAX_OPCODE = OP_NOP10;
+static const unsigned int MAX_OPCODE = OP_DILITHIUM_PUBKEY;
 
 std::string GetOpName(opcodetype opcode);
 

@@ -914,6 +914,13 @@ static std::string RecurseImportData(const CScript& script, ImportData& import_d
     }
     case TxoutType::NULL_DATA:
         return "unspendable script";
+    case TxoutType::DILITHIUM_PUBKEY:
+    case TxoutType::DILITHIUM_PUBKEYHASH:
+    case TxoutType::DILITHIUM_SCRIPTHASH:
+    case TxoutType::DILITHIUM_MULTISIG:
+    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
+    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
+        return "dilithium script not supported for import";
     case TxoutType::NONSTANDARD:
     case TxoutType::WITNESS_UNKNOWN:
     case TxoutType::WITNESS_V1_TAPROOT:

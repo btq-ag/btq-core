@@ -9,6 +9,7 @@
 #include <script/script.h>
 #include <uint256.h>
 #include <util/hash_type.h>
+#include <crypto/dilithium_key.h>
 
 #include <variant>
 #include <algorithm>
@@ -88,6 +89,49 @@ struct WitnessV1Taproot : public XOnlyPubKey
     explicit WitnessV1Taproot(const XOnlyPubKey& xpk) : XOnlyPubKey(xpk) {}
 };
 
+// Dilithium destination types
+struct DilithiumPubKeyDestination {
+private:
+    CDilithiumPubKey m_pubkey;
+
+public:
+    explicit DilithiumPubKeyDestination(const CDilithiumPubKey& pubkey) : m_pubkey(pubkey) {}
+
+    const CDilithiumPubKey& GetPubKey() const LIFETIMEBOUND { return m_pubkey; }
+
+    friend bool operator==(const DilithiumPubKeyDestination& a, const DilithiumPubKeyDestination& b) { return a.GetPubKey() == b.GetPubKey(); }
+    friend bool operator<(const DilithiumPubKeyDestination& a, const DilithiumPubKeyDestination& b) { return a.GetPubKey() < b.GetPubKey(); }
+};
+
+struct DilithiumPKHash : public BaseHash<uint160>
+{
+    DilithiumPKHash() : BaseHash() {}
+    explicit DilithiumPKHash(const uint160& hash) : BaseHash(hash) {}
+    explicit DilithiumPKHash(const CDilithiumPubKey& pubkey);
+};
+
+struct DilithiumScriptHash : public BaseHash<uint160>
+{
+    DilithiumScriptHash() : BaseHash() {}
+    explicit DilithiumScriptHash(const uint160& hash) : BaseHash(hash) {}
+    explicit DilithiumScriptHash(const CScript& script);
+};
+
+struct DilithiumWitnessV0KeyHash : public BaseHash<uint160>
+{
+    DilithiumWitnessV0KeyHash() : BaseHash() {}
+    explicit DilithiumWitnessV0KeyHash(const uint160& hash) : BaseHash(hash) {}
+    explicit DilithiumWitnessV0KeyHash(const CDilithiumPubKey& pubkey);
+    explicit DilithiumWitnessV0KeyHash(const DilithiumPKHash& pubkey_hash);
+};
+
+struct DilithiumWitnessV0ScriptHash : public BaseHash<uint256>
+{
+    DilithiumWitnessV0ScriptHash() : BaseHash() {}
+    explicit DilithiumWitnessV0ScriptHash(const uint256& hash) : BaseHash(hash) {}
+    explicit DilithiumWitnessV0ScriptHash(const CScript& script);
+};
+
 //! CTxDestination subtype to encode any future Witness version
 struct WitnessUnknown
 {
@@ -124,9 +168,14 @@ public:
  *  * WitnessV0KeyHash: TxoutType::WITNESS_V0_KEYHASH destination (P2WPKH address)
  *  * WitnessV1Taproot: TxoutType::WITNESS_V1_TAPROOT destination (P2TR address)
  *  * WitnessUnknown: TxoutType::WITNESS_UNKNOWN destination (P2W??? address)
+ *  * DilithiumPubKeyDestination: TxoutType::DILITHIUM_PUBKEY (P2DPK), no corresponding address
+ *  * DilithiumPKHash: TxoutType::DILITHIUM_PUBKEYHASH destination (P2DPKH address)
+ *  * DilithiumScriptHash: TxoutType::DILITHIUM_SCRIPTHASH destination (P2DSH address)
+ *  * DilithiumWitnessV0KeyHash: TxoutType::DILITHIUM_WITNESS_V0_KEYHASH destination (P2DWPKH address)
+ *  * DilithiumWitnessV0ScriptHash: TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH destination (P2DWSH address)
  *  A CTxDestination is the internal data type encoded in a btq address
  */
-using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessV1Taproot, WitnessUnknown>;
+using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessV1Taproot, WitnessUnknown, DilithiumPubKeyDestination, DilithiumPKHash, DilithiumScriptHash, DilithiumWitnessV0KeyHash, DilithiumWitnessV0ScriptHash>;
 
 /** Check whether a CTxDestination corresponds to one with an address. */
 bool IsValidDestination(const CTxDestination& dest);

@@ -19,6 +19,8 @@ enum class OutputType {
     P2SH_SEGWIT,
     BECH32,
     BECH32M,
+    DILITHIUM_LEGACY,
+    DILITHIUM_BECH32,
     UNKNOWN,
 };
 
@@ -27,6 +29,8 @@ static constexpr auto OUTPUT_TYPES = std::array{
     OutputType::P2SH_SEGWIT,
     OutputType::BECH32,
     OutputType::BECH32M,
+    OutputType::DILITHIUM_LEGACY,
+    OutputType::DILITHIUM_BECH32,
 };
 
 std::optional<OutputType> ParseOutputType(const std::string& str);

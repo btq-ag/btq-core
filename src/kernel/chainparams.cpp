@@ -144,8 +144,11 @@ public:
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,235); // BTQ: Private keys
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1F}; // BTQ: Extended public keys
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE5}; // BTQ: Extended private keys
+        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,76);  // BTQ: D... Dilithium addresses (76 = 'D')
+        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,136);  // BTQ: R... Dilithium script addresses (136 = 'R')
 
         bech32_hrp = "qbtc";
+        dilithium_bech32_hrp = "dbtc"; // BTQ: dbtc for Dilithium Bech32 addresses
 
         vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
 
@@ -255,8 +258,11 @@ public:
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239); // Standard testnet prefix
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
+        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);  // BTQ: Testnet Dilithium addresses
+        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,197);  // BTQ: Testnet Dilithium script addresses
 
         bech32_hrp = "tbtq"; // BTQ: tbtq for testnet Bech32 addresses
+        dilithium_bech32_hrp = "tdbt"; // BTQ: tdbt for testnet Dilithium Bech32 addresses
 
         vFixedSeeds.clear(); // BTQ: No fixed seeds initially
         
@@ -400,8 +406,11 @@ public:
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
+        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);  // BTQ: Signet Dilithium addresses
+        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,197);  // BTQ: Signet Dilithium script addresses
 
         bech32_hrp = "qtb"; // BTQ: qtb for signet (same as testnet)
+        dilithium_bech32_hrp = "sdbt"; // BTQ: sdbt for signet Dilithium Bech32 addresses
 
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
@@ -547,8 +556,11 @@ public:
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
+        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);  // BTQ: Regtest Dilithium addresses
+        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,197);  // BTQ: Regtest Dilithium script addresses
 
         bech32_hrp = "qcrt";
+        dilithium_bech32_hrp = "rdbt"; // BTQ: rdbt for regtest Dilithium Bech32 addresses
     }
 };
 

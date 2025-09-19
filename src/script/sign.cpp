@@ -475,6 +475,14 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
 
     case TxoutType::WITNESS_V1_TAPROOT:
         return SignTaproot(provider, creator, WitnessV1Taproot(XOnlyPubKey{vSolutions[0]}), sigdata, ret);
+    case TxoutType::DILITHIUM_PUBKEY:
+    case TxoutType::DILITHIUM_PUBKEYHASH:
+    case TxoutType::DILITHIUM_SCRIPTHASH:
+    case TxoutType::DILITHIUM_MULTISIG:
+    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
+    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
+        // Dilithium signing not implemented yet
+        return false;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
@@ -720,6 +728,7 @@ public:
     DummySignatureChecker() = default;
     bool CheckECDSASignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override { return sig.size() != 0; }
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror) const override { return sig.size() != 0; }
+    bool CheckDilithiumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override { return scriptSig.size() != 0; }
     bool CheckLockTime(const CScriptNum& nLockTime) const override { return true; }
     bool CheckSequence(const CScriptNum& nSequence) const override { return true; }
 };
