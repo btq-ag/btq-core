@@ -62,6 +62,7 @@
 #include <protocol.h>
 #include <rpc/blockchain.h>
 #include <rpc/register.h>
+#include <rpc/dilithium.h>
 #include <rpc/server.h>
 #include <rpc/util.h>
 #include <scheduler.h>

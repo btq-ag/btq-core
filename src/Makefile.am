@@ -452,6 +452,7 @@ libbtq_node_a_SOURCES = \
   rpc/node.cpp \
   rpc/output_script.cpp \
   rpc/rawtransaction.cpp \
+  rpc/dilithium.cpp \
   rpc/server.cpp \
   rpc/server_util.cpp \
   rpc/signmessage.cpp \

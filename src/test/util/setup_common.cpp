@@ -37,6 +37,7 @@
 #include <random.h>
 #include <rpc/blockchain.h>
 #include <rpc/register.h>
+#include <rpc/dilithium.h>
 #include <rpc/server.h>
 #include <scheduler.h>
 #include <script/sigcache.h>
