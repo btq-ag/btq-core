@@ -23,8 +23,8 @@
 #include <vector>
 
 // Maximum number of bytes pushable to the stack
-// Increased to 10000 to support post-quantum signatures and keys (Dilithium5 sig ~4595 bytes + key ~2592 bytes)
-static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 10000;
+// Increased to 15000 to support post-quantum signatures and keys (Dilithium5 sig ~4627 bytes + key ~2592 bytes + overhead)
+static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 15000;
 
 // Maximum number of non-push operations per script
 static const int MAX_OPS_PER_SCRIPT = 201;

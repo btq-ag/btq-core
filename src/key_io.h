@@ -10,11 +10,16 @@
 #include <chainparams.h>
 #include <key.h>
 #include <pubkey.h>
+#include <crypto/dilithium_key.h>
 
 #include <string>
 
 CKey DecodeSecret(const std::string& str);
 std::string EncodeSecret(const CKey& key);
+
+// Dilithium key WIF support
+CDilithiumKey DecodeDilithiumSecret(const std::string& str);
+std::string EncodeDilithiumSecret(const CDilithiumKey& key);
 
 CExtKey DecodeExtKey(const std::string& str);
 std::string EncodeExtKey(const CExtKey& extkey);

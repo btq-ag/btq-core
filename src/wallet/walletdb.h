@@ -89,6 +89,13 @@ extern const std::string WALLETDESCRIPTORKEY;
 extern const std::string WATCHMETA;
 extern const std::string WATCHS;
 
+// Dilithium key storage keys
+extern const std::string DILITHIUM_KEY;
+extern const std::string DILITHIUM_CRYPTED_KEY;
+extern const std::string DILITHIUM_KEYMETA;
+extern const std::string DILITHIUM_HDCHAIN;
+extern const std::string DILITHIUM_POOL;
+
 // Keys in this set pertain only to the legacy wallet (LegacyScriptPubKeyMan) and are removed during migration from legacy to descriptors.
 extern const std::unordered_set<std::string> LEGACY_TYPES;
 } // namespace DBKeys
@@ -238,6 +245,18 @@ public:
     bool WriteKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey, const CKeyMetadata &keyMeta);
     bool WriteCryptedKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
     bool WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey);
+
+    // Dilithium key storage methods
+    bool WriteDilithiumKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey, const CKeyMetadata &keyMeta);
+    bool WriteDilithiumKeyRaw(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata &keyMeta);
+    bool WriteCryptedDilithiumKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
+    
+    // Proper Dilithium key storage methods that don't require dummy CPubKey
+    bool WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata &keyMeta);
+    bool WriteCryptedDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
+    bool WriteDilithiumKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubkey, const bool overwrite);
+    bool WriteDilithiumHDChain(const CHDChain& chain);
+    bool WriteDilithiumPool(int64_t nPool, const CKeyPool& keypool);
 
     bool WriteCScript(const uint160& hash, const CScript& redeemScript);
 

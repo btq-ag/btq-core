@@ -7,6 +7,7 @@
 #include <common/system.h>
 #include <crypto/aes.h>
 #include <crypto/sha512.h>
+// #include <crypto/dilithium_key.h> // Temporarily disabled
 
 #include <vector>
 
@@ -136,5 +137,40 @@ bool DecryptKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned ch
 
     key.Set(vchSecret.begin(), vchSecret.end(), vchPubKey.IsCompressed());
     return key.VerifyPubKey(vchPubKey);
+}
+
+// Dilithium key encryption/decryption functions
+bool EncryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vchPlaintext, const uint256& nIV, std::vector<unsigned char> &vchCiphertext)
+{
+    CCrypter cKeyCrypter;
+    std::vector<unsigned char> chIV(WALLET_CRYPTO_IV_SIZE);
+    memcpy(chIV.data(), &nIV, WALLET_CRYPTO_IV_SIZE);
+    if(!cKeyCrypter.SetKey(vMasterKey, chIV))
+        return false;
+    return cKeyCrypter.Encrypt(vchPlaintext, vchCiphertext);
+}
+
+bool DecryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCiphertext, const uint256& nIV, CKeyingMaterial& vchPlaintext)
+{
+    CCrypter cKeyCrypter;
+    std::vector<unsigned char> chIV(WALLET_CRYPTO_IV_SIZE);
+    memcpy(chIV.data(), &nIV, WALLET_CRYPTO_IV_SIZE);
+    if(!cKeyCrypter.SetKey(vMasterKey, chIV))
+        return false;
+    return cKeyCrypter.Decrypt(vchCiphertext, vchPlaintext);
+}
+
+bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CPubKey& vchPubKey, CDilithiumKey& key)
+{
+    CKeyingMaterial vchSecret;
+    if(!DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, vchPubKey.GetHash(), vchSecret))
+        return false;
+
+    // Dilithium keys are much larger than ECDSA keys
+    if (vchSecret.size() != CDilithiumKey::GetKeySize())
+        return false;
+
+    key.Set(vchSecret.begin(), vchSecret.end());
+    return key.IsValid();
 }
 } // namespace wallet

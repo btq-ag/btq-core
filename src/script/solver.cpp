@@ -272,7 +272,6 @@ TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned c
         return TxoutType::MULTISIG;
     }
 
-    // Dilithium script matching
     if (MatchPayToDilithiumPubkey(scriptPubKey, data)) {
         vSolutionsRet.push_back(std::move(data));
         return TxoutType::DILITHIUM_PUBKEY;

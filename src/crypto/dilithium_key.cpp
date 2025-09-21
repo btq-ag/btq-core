@@ -11,6 +11,8 @@
 
 #include <cassert>
 #include <cstring>
+#include <cstdio>
+#include <logging.h>
 
 extern "C" {
 #include "dilithium_wrapper.h"
@@ -22,7 +24,7 @@ void CDilithiumKey::MakeNewKey()
 {
     MakeKeyData();
     
-    // Generate public key buffer (we'll discard it, but crypto_sign_keypair needs it)
+    // Generate public key buffer
     std::array<unsigned char, DilithiumConstants::PUBLIC_KEY_SIZE> pk;
     
     // Generate keypair using Dilithium's btq_dilithium_keypair
@@ -31,6 +33,10 @@ void CDilithiumKey::MakeNewKey()
     if (result != 0) {
         // Key generation failed, clear the key
         ClearKeyData();
+    } else {
+        // Store the public key in the key object
+        // We'll store it at the end of the secret key data
+        memcpy(keydata->data() + DilithiumConstants::SECRET_KEY_SIZE, pk.data(), DilithiumConstants::PUBLIC_KEY_SIZE);
     }
 }
 
@@ -40,15 +46,9 @@ CDilithiumPubKey CDilithiumKey::GetPubKey() const
         return CDilithiumPubKey(); // Return invalid pubkey
     }
     
-    // Extract the public key from the secret key using our wrapper function
-    std::array<unsigned char, DilithiumConstants::PUBLIC_KEY_SIZE> pk;
-    
-    int result = btq_dilithium_sk_to_pk(pk.data(), keydata->data());
-    if (result != 0) {
-        return CDilithiumPubKey(); // Return invalid pubkey on error
-    }
-    
-    return CDilithiumPubKey(pk.begin(), pk.end());
+    // Get the stored public key from the key data
+    const unsigned char* pk_data = keydata->data() + DilithiumConstants::SECRET_KEY_SIZE;
+    return CDilithiumPubKey(pk_data, pk_data + DilithiumConstants::PUBLIC_KEY_SIZE);
 }
 
 bool CDilithiumKey::Sign(const uint256& hash, std::vector<unsigned char>& vchSig, 
@@ -81,6 +81,7 @@ bool CDilithiumKey::SignMessage(Span<const unsigned char> message, std::vector<u
         keydata->data()
     );
     
+    
     if (result != 0) {
         vchSig.clear();
         return false;
@@ -104,7 +105,7 @@ bool CDilithiumKey::VerifyPubKey(const CDilithiumPubKey& pubkey) const
 
 bool CDilithiumKey::Load(Span<const unsigned char> privkey)
 {
-    if (privkey.size() != DilithiumConstants::SECRET_KEY_SIZE) {
+    if (privkey.size() != GetKeySize()) {
         ClearKeyData();
         return false;
     }
@@ -179,6 +180,7 @@ bool CDilithiumPubKey::VerifyMessage(Span<const unsigned char> message, const st
         context.data(), context.size(),
         vch.data()
     );
+    
     
     return result == 0; // 0 means success in Dilithium
 }

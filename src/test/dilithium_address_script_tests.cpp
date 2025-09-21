@@ -11,6 +11,8 @@
 #include <script/interpreter.h>
 #include <test/util/setup_common.h>
 #include <uint256.h>
+#include <util/strencodings.h>
+#include <iostream>
 
 #include <boost/test/unit_test.hpp>
 
@@ -180,6 +182,7 @@ BOOST_AUTO_TEST_CASE(dilithium_script_solving)
     CScript p2pk_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
     std::vector<std::vector<unsigned char>> solutions;
     TxoutType type = Solver(p2pk_script, solutions);
+    
     BOOST_CHECK(type == TxoutType::DILITHIUM_PUBKEY);
     BOOST_CHECK(solutions.size() == 1);
     BOOST_CHECK(solutions[0].size() == CDilithiumPubKey::SIZE);
@@ -190,6 +193,7 @@ BOOST_AUTO_TEST_CASE(dilithium_script_solving)
     CScript p2pkh_script = CScript() << OP_DUP << OP_HASH160 << ToByteVector(pk_hash) << OP_EQUALVERIFY << OP_CHECKSIGDILITHIUM;
     solutions.clear();
     type = Solver(p2pkh_script, solutions);
+    
     BOOST_CHECK(type == TxoutType::DILITHIUM_PUBKEYHASH);
     BOOST_CHECK(solutions.size() == 1);
     BOOST_CHECK(solutions[0].size() == 20);
