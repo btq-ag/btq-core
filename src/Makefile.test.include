@@ -91,6 +91,8 @@ BTQ_TESTS =\
   test/dilithium_key_tests.cpp \
   test/dilithium_address_script_tests.cpp \
   test/dilithium_descriptor_tests.cpp \
+  test/dilithium_basic_tests.cpp \
+  test/dilithium_network_policy_tests.cpp \
   test/cuckoocache_tests.cpp \
   test/dbwrapper_tests.cpp \
   test/denialofservice_tests.cpp \
