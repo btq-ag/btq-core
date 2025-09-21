@@ -341,6 +341,13 @@ struct CExtPubKey {
     ChainCode chaincode;
     CPubKey pubkey;
 
+    CExtPubKey() {
+        nDepth = 0;
+        nChild = 0;
+        memset(vchFingerprint, 0, sizeof(vchFingerprint));
+        memset(version, 0, sizeof(version));
+    }
+
     friend bool operator==(const CExtPubKey &a, const CExtPubKey &b)
     {
         return a.nDepth == b.nDepth &&

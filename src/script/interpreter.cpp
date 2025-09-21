@@ -1872,10 +1872,16 @@ bool GenericTransactionSignatureChecker<T>::CheckDilithiumSignature(const std::v
     uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
 
     // Verify the Dilithium signature
-    if (!pubkey.Verify(sighash, vchSig))
+    if (!VerifyDilithiumSignature(vchSig, pubkey, sighash))
         return false;
 
     return true;
+}
+
+template <class T>
+bool GenericTransactionSignatureChecker<T>::VerifyDilithiumSignature(const std::vector<unsigned char>& vchSig, const CDilithiumPubKey& pubkey, const uint256& sighash) const
+{
+    return pubkey.Verify(sighash, vchSig);
 }
 
 template <class T>

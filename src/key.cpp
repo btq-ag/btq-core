@@ -397,6 +397,7 @@ CExtPubKey CExtKey::Neuter() const {
     ret.nChild = nChild;
     ret.pubkey = key.GetPubKey();
     ret.chaincode = chaincode;
+    // Version will be set when the key is encoded/decoded
     return ret;
 }
 

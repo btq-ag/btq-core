@@ -10,6 +10,7 @@
 #include <script/script_error.h>
 #include <span.h>
 #include <primitives/transaction.h>
+#include <crypto/dilithium_key.h>
 
 #include <optional>
 #include <vector>
@@ -140,6 +141,9 @@ enum : uint32_t {
 
     // Making unknown public key versions (in BIP 342 scripts) non-standard
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE = (1U << 20),
+
+    // Dilithium signature validation
+    SCRIPT_VERIFY_DILITHIUM = (1U << 21),
 
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
@@ -296,6 +300,7 @@ private:
 protected:
     virtual bool VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
     virtual bool VerifySchnorrSignature(Span<const unsigned char> sig, const XOnlyPubKey& pubkey, const uint256& sighash) const;
+    virtual bool VerifyDilithiumSignature(const std::vector<unsigned char>& vchSig, const CDilithiumPubKey& pubkey, const uint256& sighash) const;
 
 public:
     GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(nullptr) {}

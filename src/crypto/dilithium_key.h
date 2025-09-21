@@ -15,6 +15,11 @@
 #include <memory>
 #include <vector>
 
+// Dilithium extended key size: 1 (depth) + 4 (fingerprint) + 4 (child) + 32 (chaincode) + 2560 (private key) = 2601 bytes
+const unsigned int DILITHIUM_EXTKEY_SIZE = 2601;
+// Dilithium extended pubkey size: 1 (depth) + 4 (fingerprint) + 4 (child) + 32 (chaincode) + 1952 (public key) = 1993 bytes  
+const unsigned int DILITHIUM_EXTPUBKEY_SIZE = 1993;
+
 // Forward declarations for Dilithium C API
 extern "C" {
 #include "dilithium_wrapper.h"
@@ -329,8 +334,8 @@ public:
             a.key == b.key;
     }
 
-    void Encode(unsigned char code[BIP32_EXTKEY_SIZE]) const;
-    void Decode(const unsigned char code[BIP32_EXTKEY_SIZE]);
+    void Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const;
+    void Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE]);
     [[nodiscard]] bool Derive(CDilithiumExtKey& out, unsigned int nChild) const;
     CDilithiumExtPubKey Neuter() const;
     void SetSeed(Span<const std::byte> seed);
@@ -354,8 +359,8 @@ public:
             a.pubkey == b.pubkey;
     }
 
-    void Encode(unsigned char code[BIP32_EXTKEY_SIZE]) const;
-    void Decode(const unsigned char code[BIP32_EXTKEY_SIZE]);
+    void Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const;
+    void Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE]);
     [[nodiscard]] bool Derive(CDilithiumExtPubKey& out, unsigned int nChild) const;
 };
 

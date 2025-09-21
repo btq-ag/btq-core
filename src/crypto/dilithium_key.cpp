@@ -5,6 +5,7 @@
 #include <crypto/dilithium_key.h>
 
 #include <crypto/common.h>
+#include <crypto/hmac_sha512.h>
 #include <hash.h>
 #include <random.h>
 #include <util/strencodings.h>
@@ -245,4 +246,142 @@ bool DilithiumSanityCheck()
     } catch (...) {
         return false;
     }
+}
+
+// CDilithiumExtKey implementation
+
+void CDilithiumExtKey::Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const
+{
+    code[0] = nDepth;
+    memcpy(code+1, vchFingerprint, 4);
+    WriteBE32(code+5, nChild);
+    memcpy(code+9, chaincode.begin(), 32);
+    assert(key.size() == DilithiumConstants::SECRET_KEY_SIZE);
+    memcpy(code+41, key.begin(), DilithiumConstants::SECRET_KEY_SIZE);
+}
+
+void CDilithiumExtKey::Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE])
+{
+    nDepth = code[0];
+    memcpy(vchFingerprint, code+1, 4);
+    nChild = ReadBE32(code+5);
+    memcpy(chaincode.begin(), code+9, 32);
+    key.Set(code+41, code+41+DilithiumConstants::SECRET_KEY_SIZE);
+    if ((nDepth == 0 && (nChild != 0 || ReadLE32(vchFingerprint) != 0)) || !key.IsValid()) {
+        key = CDilithiumKey();
+    }
+}
+
+bool CDilithiumExtKey::Derive(CDilithiumExtKey& out, unsigned int nChild) const
+{
+    if (nDepth == std::numeric_limits<unsigned char>::max()) return false;
+    out.nDepth = nDepth + 1;
+    uint160 id = key.GetPubKey().GetID();
+    memcpy(out.vchFingerprint, &id, 4);
+    out.nChild = nChild;
+    
+    // For Dilithium, we'll use a simplified derivation based on HMAC-SHA512
+    // This is not cryptographically secure for production use, but provides
+    // a basic HD wallet functionality
+    CHMAC_SHA512 hmac(chaincode.begin(), chaincode.size());
+    hmac.Write((unsigned char*)&nChild, sizeof(nChild));
+    hmac.Write(key.begin(), key.size());
+    
+    unsigned char out_bytes[64];
+    hmac.Finalize(out_bytes);
+    
+    // Use the first 32 bytes as the new chaincode
+    memcpy(out.chaincode.begin(), out_bytes, 32);
+    
+    // Use the last 32 bytes to modify the key (simplified approach)
+    // In a real implementation, this would need proper key derivation
+    std::vector<unsigned char> new_key_data(key.begin(), key.end());
+    for (size_t i = 0; i < 32 && i < new_key_data.size(); ++i) {
+        new_key_data[i] ^= out_bytes[32 + i];
+    }
+    
+    out.key.Set(new_key_data.begin(), new_key_data.end());
+    return out.key.IsValid();
+}
+
+CDilithiumExtPubKey CDilithiumExtKey::Neuter() const
+{
+    CDilithiumExtPubKey ret;
+    ret.nDepth = nDepth;
+    memcpy(ret.vchFingerprint, vchFingerprint, 4);
+    ret.nChild = nChild;
+    ret.chaincode = chaincode;
+    ret.pubkey = key.GetPubKey();
+    return ret;
+}
+
+void CDilithiumExtKey::SetSeed(Span<const std::byte> seed)
+{
+    // Use HMAC-SHA512 to derive the master key from seed
+    CHMAC_SHA512 hmac((unsigned char*)"Dilithium seed", 14);
+    hmac.Write(reinterpret_cast<const unsigned char*>(seed.data()), seed.size());
+    
+    unsigned char out_bytes[64];
+    hmac.Finalize(out_bytes);
+    
+    // Use first 32 bytes as chaincode
+    memcpy(chaincode.begin(), out_bytes, 32);
+    
+    // Use last 32 bytes as key material
+    std::vector<unsigned char> key_data(out_bytes + 32, out_bytes + 64);
+    key.Set(key_data.begin(), key_data.end());
+    
+    nDepth = 0;
+    memset(vchFingerprint, 0, 4);
+    nChild = 0;
+}
+
+// CDilithiumExtPubKey implementation
+
+void CDilithiumExtPubKey::Encode(unsigned char code[DILITHIUM_EXTPUBKEY_SIZE]) const
+{
+    code[0] = nDepth;
+    memcpy(code+1, vchFingerprint, 4);
+    WriteBE32(code+5, nChild);
+    memcpy(code+9, chaincode.begin(), 32);
+    assert(pubkey.size() == DilithiumConstants::PUBLIC_KEY_SIZE);
+    memcpy(code+41, pubkey.begin(), DilithiumConstants::PUBLIC_KEY_SIZE);
+}
+
+void CDilithiumExtPubKey::Decode(const unsigned char code[DILITHIUM_EXTPUBKEY_SIZE])
+{
+    nDepth = code[0];
+    memcpy(vchFingerprint, code+1, 4);
+    nChild = ReadBE32(code+5);
+    memcpy(chaincode.begin(), code+9, 32);
+    pubkey.Set(code+41, code+41+DilithiumConstants::PUBLIC_KEY_SIZE);
+    if ((nDepth == 0 && (nChild != 0 || ReadLE32(vchFingerprint) != 0)) || !pubkey.IsFullyValid()) {
+        pubkey = CDilithiumPubKey();
+    }
+}
+
+bool CDilithiumExtPubKey::Derive(CDilithiumExtPubKey& out, unsigned int nChild) const
+{
+    if (nDepth == std::numeric_limits<unsigned char>::max()) return false;
+    out.nDepth = nDepth + 1;
+    uint160 id = pubkey.GetID();
+    memcpy(out.vchFingerprint, &id, 4);
+    out.nChild = nChild;
+    
+    // For Dilithium public key derivation, we use a similar approach
+    // This is simplified and not cryptographically secure for production
+    CHMAC_SHA512 hmac(chaincode.begin(), chaincode.size());
+    hmac.Write((unsigned char*)&nChild, sizeof(nChild));
+    hmac.Write(pubkey.begin(), pubkey.size());
+    
+    unsigned char out_bytes[64];
+    hmac.Finalize(out_bytes);
+    
+    // Use the first 32 bytes as the new chaincode
+    memcpy(out.chaincode.begin(), out_bytes, 32);
+    
+    // For public key derivation, we would need the corresponding private key
+    // This is a limitation of the current approach
+    // In a real implementation, this would need proper key derivation
+    return false; // Public key derivation not fully implemented
 }
