@@ -135,6 +135,14 @@ public:
     void MakeNewKey();
 
     /**
+     * Generate a new private key from provided entropy.
+     * This is used for deterministic key derivation in HD wallets.
+     * @param entropy 32 bytes of entropy for key generation
+     * @return true if key was generated successfully
+     */
+    bool GenerateFromEntropy(const std::vector<unsigned char>& entropy);
+
+    /**
      * Compute the public key from this private key.
      * This is expensive but necessary for Dilithium.
      */

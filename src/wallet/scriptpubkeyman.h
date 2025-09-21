@@ -610,8 +610,6 @@ private:
     // Dilithium key management
     bool AddDilithiumKeyWithDB(WalletBatch& batch, const CDilithiumKey& key, const CKeyID &keyid) EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool AddCryptedDilithiumKeyWithDB(WalletBatch& batch, const CPubKey& pubkey, const std::vector<unsigned char>& crypted_secret) EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
-    bool GetDilithiumKey(const CKeyID& keyid, CDilithiumKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
-    bool HaveDilithiumKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     
     // Override IsMine to handle Dilithium keys
     isminetype IsMine(const CScript& script) const override;
@@ -644,6 +642,12 @@ public:
     mutable RecursiveMutex cs_desc_man;
 
     util::Result<CTxDestination> GetNewDestination(const OutputType type) override;
+
+    // Dilithium key management
+    bool AddDilithiumKeyPubKey(const CDilithiumKey& key, const CPubKey& pubkey);
+    bool LoadDilithiumKey(const CDilithiumKey& key, const CPubKey& pubkey);
+    bool GetDilithiumKey(const CKeyID& keyid, CDilithiumKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    bool HaveDilithiumKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
     bool CheckDecryptionKey(const CKeyingMaterial& master_key, bool accept_no_keys = false) override;
     bool Encrypt(const CKeyingMaterial& master_key, WalletBatch* batch) override;

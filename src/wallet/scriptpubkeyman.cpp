@@ -987,8 +987,8 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyInner(const CDilithiumKey& key,
 {
     LOCK(cs_KeyStore);
     if (!m_storage.HasEncryptionKeys()) {
-        // For now, we'll store Dilithium keys in a separate map
-        // TODO: Integrate with FillableSigningProvider
+        // Store Dilithium keys in the unencrypted map
+        mapDilithiumKeys[pubkey.GetID()] = key;
         return true;
     }
 
@@ -1064,8 +1064,12 @@ bool LegacyScriptPubKeyMan::GetDilithiumKey(const CKeyID &address, CDilithiumKey
 {
     LOCK(cs_KeyStore);
     if (!m_storage.HasEncryptionKeys()) {
-        // For unencrypted wallets, we need to implement Dilithium key storage
-        // This is a TODO - Dilithium keys need to be stored in a separate map
+        // For unencrypted wallets, retrieve from the Dilithium keys map
+        DilithiumKeyMap::const_iterator mi = mapDilithiumKeys.find(address);
+        if (mi != mapDilithiumKeys.end()) {
+            keyOut = mi->second;
+            return true;
+        }
         return false;
     }
 
@@ -2804,6 +2808,12 @@ bool DescriptorScriptPubKeyMan::AddDilithiumKeyWithDB(WalletBatch& batch, const 
     LogPrintf("DEBUG: Wallet has encryption keys: %s\n", m_storage.HasEncryptionKeys() ? "yes" : "no");
     LogPrintf("DEBUG: Wallet is locked: %s\n", m_storage.IsLocked() ? "yes" : "no");
     
+    // Check if key already exists
+    if (HaveDilithiumKey(keyid)) {
+        LogPrintf("DEBUG: Dilithium key already exists, skipping storage\n");
+        return true;
+    }
+    
     if (m_storage.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
         LogPrintf("DEBUG: Wallet has private keys disabled\n");
         return false;
@@ -2880,6 +2890,38 @@ bool DescriptorScriptPubKeyMan::HaveDilithiumKey(const CKeyID& keyid) const
     } else {
         return m_map_crypted_dilithium_keys.count(keyid) > 0;
     }
+}
+
+bool DescriptorScriptPubKeyMan::AddDilithiumKeyPubKey(const CDilithiumKey& key, const CPubKey& pubkey)
+{
+    LogPrintf("DEBUG: AddDilithiumKeyPubKey - Starting\n");
+    LOCK(cs_desc_man);
+    WalletBatch batch(m_storage.GetDatabase());
+    // Use the Dilithium public key ID, not the dummy CPubKey ID
+    LogPrintf("DEBUG: AddDilithiumKeyPubKey - Getting Dilithium public key\n");
+    CDilithiumPubKey dilithium_pubkey = key.GetPubKey();
+    LogPrintf("DEBUG: AddDilithiumKeyPubKey - Got Dilithium public key\n");
+    CKeyID dilithium_key_id = CKeyID(static_cast<uint160>(dilithium_pubkey.GetID()));
+    LogPrintf("DEBUG: AddDilithiumKeyPubKey - Dilithium key ID: %s\n", dilithium_key_id.ToString().c_str());
+    LogPrintf("DEBUG: AddDilithiumKeyPubKey - Calling AddDilithiumKeyWithDB\n");
+    if (!AddDilithiumKeyWithDB(batch, key, dilithium_key_id)) {
+        LogPrintf("DEBUG: AddDilithiumKeyPubKey - AddDilithiumKeyWithDB failed\n");
+        throw std::runtime_error(std::string(__func__) + ": writing Dilithium key failed");
+    }
+    LogPrintf("DEBUG: AddDilithiumKeyPubKey - Successfully completed\n");
+    return true;
+}
+
+bool DescriptorScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& key, const CPubKey& pubkey)
+{
+    LOCK(cs_desc_man);
+    // For descriptor wallets, we just store the key in memory
+    // The key will be persisted when the wallet is saved
+    // Use the Dilithium public key ID, not the dummy CPubKey ID
+    CDilithiumPubKey dilithium_pubkey = key.GetPubKey();
+    CKeyID keyID = CKeyID(static_cast<uint160>(dilithium_pubkey.GetID()));
+    m_map_dilithium_keys[keyID] = key;
+    return true;
 }
 
 bool DescriptorScriptPubKeyMan::SetupDescriptorGeneration(const CExtKey& master_key, OutputType addr_type, bool internal)

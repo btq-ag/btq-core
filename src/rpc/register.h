@@ -20,7 +20,6 @@ void RegisterRawTransactionRPCCommands(CRPCTable &tableRPC);
 void RegisterSignMessageRPCCommands(CRPCTable&);
 void RegisterSignerRPCCommands(CRPCTable &tableRPC);
 void RegisterTxoutProofRPCCommands(CRPCTable&);
-void RegisterDilithiumRPCCommands(CRPCTable&);
 
 static inline void RegisterAllCoreRPCCommands(CRPCTable &t)
 {
@@ -37,7 +36,6 @@ static inline void RegisterAllCoreRPCCommands(CRPCTable &t)
     RegisterSignerRPCCommands(t);
 #endif // ENABLE_EXTERNAL_SIGNER
     RegisterTxoutProofRPCCommands(t);
-    RegisterDilithiumRPCCommands(t);
 }
 
 #endif // BTQ_RPC_REGISTER_H

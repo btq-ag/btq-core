@@ -452,7 +452,6 @@ libbtq_node_a_SOURCES = \
   rpc/node.cpp \
   rpc/output_script.cpp \
   rpc/rawtransaction.cpp \
-  rpc/dilithium.cpp \
   rpc/server.cpp \
   rpc/server_util.cpp \
   rpc/signmessage.cpp \
@@ -511,6 +510,7 @@ libbtq_wallet_a_SOURCES = \
   wallet/rpc/addresses.cpp \
   wallet/rpc/backup.cpp \
   wallet/rpc/coins.cpp \
+  wallet/rpc/dilithium.cpp \
   wallet/rpc/encrypt.cpp \
   wallet/rpc/spend.cpp \
   wallet/rpc/signmessage.cpp \
