@@ -1,7 +1,7 @@
 BTQ Core integration/staging tree
 =====================================
 
-[https://bitcoinquantum.com](www.bitcoinquantum.com/)
+https://bitcoinquantum.com/
 
 For an immediately usable, binary version of the BTQ Core software, see
 https://btqcore.org/en/download/.
