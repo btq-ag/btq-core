@@ -384,6 +384,8 @@ CExtPubKey DecodeExtPubKey(const std::string& str)
         const std::vector<unsigned char>& prefix = Params().Base58Prefix(CChainParams::EXT_PUBLIC_KEY);
         if (data.size() == BIP32_EXTKEY_SIZE + prefix.size() && std::equal(prefix.begin(), prefix.end(), data.begin())) {
             key.Decode(data.data() + prefix.size());
+            // Set version from the prefix
+            memcpy(key.version, prefix.data(), 4);
         }
     }
     return key;

@@ -2115,6 +2115,9 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
         flags |= SCRIPT_VERIFY_TAPROOT;
     }
     
+    // BTQ: Enable Dilithium signature validation
+    flags |= SCRIPT_VERIFY_DILITHIUM;
+    
     const auto it{consensusparams.script_flag_exceptions.find(*Assert(block_index.phashBlock))};
     if (it != consensusparams.script_flag_exceptions.end()) {
         flags = it->second;

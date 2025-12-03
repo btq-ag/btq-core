@@ -10,6 +10,7 @@
 #include <pubkey.h>
 #include <random.h>
 #include <uint256.h>
+#include <crypto/dilithium_key.h>
 
 #include <cuckoocache.h>
 
@@ -28,9 +29,10 @@ namespace {
 class CSignatureCache
 {
 private:
-     //! Entries are SHA256(nonce || 'E' or 'S' || 31 zero bytes || signature hash || public key || signature):
+     //! Entries are SHA256(nonce || 'E' or 'S' or 'D' || 31 zero bytes || signature hash || public key || signature):
     CSHA256 m_salted_hasher_ecdsa;
     CSHA256 m_salted_hasher_schnorr;
+    CSHA256 m_salted_hasher_dilithium;
     typedef CuckooCache::cache<uint256, SignatureCacheHasher> map_type;
     map_type setValid;
     std::shared_mutex cs_sigcache;
@@ -45,10 +47,13 @@ public:
         // 'S' for Schnorr (followed by 0 bytes).
         static constexpr unsigned char PADDING_ECDSA[32] = {'E'};
         static constexpr unsigned char PADDING_SCHNORR[32] = {'S'};
+        static constexpr unsigned char PADDING_DILITHIUM[32] = {'D'};
         m_salted_hasher_ecdsa.Write(nonce.begin(), 32);
         m_salted_hasher_ecdsa.Write(PADDING_ECDSA, 32);
         m_salted_hasher_schnorr.Write(nonce.begin(), 32);
         m_salted_hasher_schnorr.Write(PADDING_SCHNORR, 32);
+        m_salted_hasher_dilithium.Write(nonce.begin(), 32);
+        m_salted_hasher_dilithium.Write(PADDING_DILITHIUM, 32);
     }
 
     void
@@ -63,6 +68,13 @@ public:
     {
         CSHA256 hasher = m_salted_hasher_schnorr;
         hasher.Write(hash.begin(), 32).Write(pubkey.data(), pubkey.size()).Write(sig.data(), sig.size()).Finalize(entry.begin());
+    }
+
+    void
+    ComputeEntryDilithium(uint256& entry, const uint256 &hash, const std::vector<unsigned char>& vchSig, const CDilithiumPubKey& pubkey) const
+    {
+        CSHA256 hasher = m_salted_hasher_dilithium;
+        hasher.Write(hash.begin(), 32).Write(pubkey.data(), pubkey.size()).Write(vchSig.data(), vchSig.size()).Finalize(entry.begin());
     }
 
     bool
@@ -124,6 +136,16 @@ bool CachingTransactionSignatureChecker::VerifySchnorrSignature(Span<const unsig
     signatureCache.ComputeEntrySchnorr(entry, sighash, sig, pubkey);
     if (signatureCache.Get(entry, !store)) return true;
     if (!TransactionSignatureChecker::VerifySchnorrSignature(sig, pubkey, sighash)) return false;
+    if (store) signatureCache.Set(entry);
+    return true;
+}
+
+bool CachingTransactionSignatureChecker::VerifyDilithiumSignature(const std::vector<unsigned char>& vchSig, const CDilithiumPubKey& pubkey, const uint256& sighash) const
+{
+    uint256 entry;
+    signatureCache.ComputeEntryDilithium(entry, sighash, vchSig, pubkey);
+    if (signatureCache.Get(entry, !store)) return true;
+    if (!TransactionSignatureChecker::VerifyDilithiumSignature(vchSig, pubkey, sighash)) return false;
     if (store) signatureCache.Set(entry);
     return true;
 }

@@ -13,6 +13,7 @@
 #include <script/keyorigin.h>
 #include <script/script.h>
 #include <sync.h>
+#include <crypto/dilithium_key.h>
 
 struct ShortestVectorFirstComparator
 {
@@ -159,6 +160,9 @@ public:
     virtual bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const { return false; }
     virtual bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const { return false; }
     virtual bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const { return false; }
+    virtual bool GetDilithiumPubKey(const DilithiumPKHash& address, CDilithiumPubKey& pubkey) const { return false; }
+    virtual bool GetDilithiumKeyByHash(const DilithiumPKHash& address, CDilithiumKey& key) const { return false; }
+    virtual bool GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const { return false; }
 
     bool GetKeyByXOnly(const XOnlyPubKey& pubkey, CKey& key) const
     {

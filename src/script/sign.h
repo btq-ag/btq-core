@@ -33,6 +33,7 @@ public:
     /** Create a singular (non-script) signature. */
     virtual bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& keyid, const CScript& scriptCode, SigVersion sigversion) const =0;
     virtual bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* merkle_root, SigVersion sigversion) const =0;
+    virtual bool CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion) const =0;
 };
 
 /** A signature creator for transactions. */
@@ -51,6 +52,7 @@ public:
     const BaseSignatureChecker& Checker() const override { return checker; }
     bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& keyid, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* merkle_root, SigVersion sigversion) const override;
+    bool CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion) const override;
 };
 
 /** A signature checker that accepts all signatures */
@@ -76,12 +78,16 @@ struct SignatureData {
     std::optional<TaprootBuilder> tr_builder; ///< Taproot tree used to build tr_spenddata.
     std::map<CKeyID, SigPair> signatures; ///< BIP 174 style partial signatures for the input. May contain all signatures necessary for producing a final scriptSig or scriptWitness.
     std::map<CKeyID, std::pair<CPubKey, KeyOriginInfo>> misc_pubkeys;
+    std::map<DilithiumPKHash, std::pair<CDilithiumPubKey, std::vector<unsigned char>>> dilithium_signatures; ///< Dilithium signatures for the input.
+    std::map<DilithiumPKHash, std::pair<CDilithiumPubKey, KeyOriginInfo>> dilithium_misc_pubkeys; ///< Miscellaneous Dilithium pubkeys involved in this input.
     std::vector<unsigned char> taproot_key_path_sig; /// Schnorr signature for key path spending
     std::map<std::pair<XOnlyPubKey, uint256>, std::vector<unsigned char>> taproot_script_sigs; ///< (Partial) schnorr signatures, indexed by XOnlyPubKey and leaf_hash.
     std::map<XOnlyPubKey, std::pair<std::set<uint256>, KeyOriginInfo>> taproot_misc_pubkeys; ///< Miscellaneous Taproot pubkeys involved in this input along with their leaf script hashes and key origin data. Also includes the Taproot internal key (may have no leaf script hashes).
     std::map<CKeyID, XOnlyPubKey> tap_pubkeys; ///< Misc Taproot pubkeys involved in this input, by hash. (Equivalent of misc_pubkeys but for Taproot.)
     std::vector<CKeyID> missing_pubkeys; ///< KeyIDs of pubkeys which could not be found
     std::vector<CKeyID> missing_sigs; ///< KeyIDs of pubkeys for signatures which could not be found
+    std::vector<DilithiumPKHash> missing_dilithium_pubkeys; ///< DilithiumPKHash of Dilithium pubkeys which could not be found
+    std::vector<DilithiumPKHash> missing_dilithium_sigs; ///< DilithiumPKHash of Dilithium pubkeys for signatures which could not be found
     uint160 missing_redeem_script; ///< ScriptID of the missing redeemScript (if any)
     uint256 missing_witness_script; ///< SHA256 of the missing witnessScript (if any)
     std::map<std::vector<uint8_t>, std::vector<uint8_t>> sha256_preimages; ///< Mapping from a SHA256 hash to its preimage provided to solve a Script

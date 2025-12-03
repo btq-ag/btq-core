@@ -9,6 +9,7 @@
 #include <script/interpreter.h>
 #include <span.h>
 #include <util/hasher.h>
+#include <crypto/dilithium_key.h>
 
 #include <optional>
 #include <vector>
@@ -30,6 +31,7 @@ public:
 
     bool VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const override;
     bool VerifySchnorrSignature(Span<const unsigned char> sig, const XOnlyPubKey& pubkey, const uint256& sighash) const override;
+    bool VerifyDilithiumSignature(const std::vector<unsigned char>& vchSig, const CDilithiumPubKey& pubkey, const uint256& sighash) const override;
 };
 
 [[nodiscard]] bool InitSignatureCache(size_t max_size_bytes);

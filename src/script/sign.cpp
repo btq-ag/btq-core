@@ -90,6 +90,27 @@ bool MutableTransactionSignatureCreator::CreateSchnorrSig(const SigningProvider&
     return true;
 }
 
+bool MutableTransactionSignatureCreator::CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion) const
+{
+    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0);
+
+    CDilithiumKey key;
+    if (!provider.GetDilithiumKeyByHash(keyid, key))
+        return false;
+
+    // Signing without known amount does not work in witness scripts.
+    if (sigversion == SigVersion::WITNESS_V0 && !MoneyRange(amount)) return false;
+
+    // BASE/WITNESS_V0 signatures don't support explicit SIGHASH_DEFAULT, use SIGHASH_ALL instead.
+    const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
+
+    uint256 hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
+    if (!key.Sign(hash, vchSig))
+        return false;
+    vchSig.push_back((unsigned char)hashtype);
+    return true;
+}
+
 static bool GetCScript(const SigningProvider& provider, const SignatureData& sigdata, const CScriptID& scriptid, CScript& script)
 {
     if (provider.GetCScript(scriptid, script)) {
@@ -129,6 +150,24 @@ static bool GetPubKey(const SigningProvider& provider, const SignatureData& sigd
     return provider.GetPubKey(address, pubkey);
 }
 
+static bool GetDilithiumPubKey(const SigningProvider& provider, const SignatureData& sigdata, const DilithiumPKHash& address, CDilithiumPubKey& pubkey)
+{
+    // Look for Dilithium pubkey in all partial sigs
+    const auto it = sigdata.dilithium_signatures.find(address);
+    if (it != sigdata.dilithium_signatures.end()) {
+        pubkey = it->second.first;
+        return true;
+    }
+    // Look for Dilithium pubkey in pubkey lists
+    const auto& pk_it = sigdata.dilithium_misc_pubkeys.find(address);
+    if (pk_it != sigdata.dilithium_misc_pubkeys.end()) {
+        pubkey = pk_it->second.first;
+        return true;
+    }
+    // Query the underlying provider
+    return provider.GetDilithiumPubKey(address, pubkey);
+}
+
 static bool CreateSig(const BaseSignatureCreator& creator, SignatureData& sigdata, const SigningProvider& provider, std::vector<unsigned char>& sig_out, const CPubKey& pubkey, const CScript& scriptcode, SigVersion sigversion)
 {
     CKeyID keyid = pubkey.GetID();
@@ -148,6 +187,28 @@ static bool CreateSig(const BaseSignatureCreator& creator, SignatureData& sigdat
     }
     // Could not make signature or signature not found, add keyid to missing
     sigdata.missing_sigs.push_back(keyid);
+    return false;
+}
+
+static bool CreateDilithiumSig(const BaseSignatureCreator& creator, SignatureData& sigdata, const SigningProvider& provider, std::vector<unsigned char>& sig_out, const CDilithiumPubKey& pubkey, const CScript& scriptcode, SigVersion sigversion)
+{
+    DilithiumPKHash keyid(pubkey.GetID());
+    const auto it = sigdata.dilithium_signatures.find(keyid);
+    if (it != sigdata.dilithium_signatures.end()) {
+        sig_out = it->second.second;
+        return true;
+    }
+    KeyOriginInfo info;
+    if (provider.GetDilithiumKeyOrigin(keyid, info)) {
+        sigdata.dilithium_misc_pubkeys.emplace(keyid, std::make_pair(pubkey, std::move(info)));
+    }
+    if (creator.CreateDilithiumSig(provider, sig_out, keyid, scriptcode, sigversion)) {
+        auto i = sigdata.dilithium_signatures.emplace(keyid, std::make_pair(pubkey, sig_out));
+        assert(i.second);
+        return true;
+    }
+    // Could not make signature or signature not found, add keyid to missing
+    sigdata.missing_dilithium_sigs.push_back(keyid);
     return false;
 }
 
@@ -475,13 +536,65 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
 
     case TxoutType::WITNESS_V1_TAPROOT:
         return SignTaproot(provider, creator, WitnessV1Taproot(XOnlyPubKey{vSolutions[0]}), sigdata, ret);
-    case TxoutType::DILITHIUM_PUBKEY:
-    case TxoutType::DILITHIUM_PUBKEYHASH:
-    case TxoutType::DILITHIUM_SCRIPTHASH:
-    case TxoutType::DILITHIUM_MULTISIG:
+    case TxoutType::DILITHIUM_PUBKEY: {
+        if (!CreateDilithiumSig(creator, sigdata, provider, sig, CDilithiumPubKey(vSolutions[0]), scriptPubKey, sigversion)) return false;
+        ret.push_back(std::move(sig));
+        return true;
+    }
+    case TxoutType::DILITHIUM_PUBKEYHASH: {
+        DilithiumPKHash keyID = DilithiumPKHash(uint160(vSolutions[0]));
+        CDilithiumPubKey pubkey;
+        if (!GetDilithiumPubKey(provider, sigdata, keyID, pubkey)) {
+            // Pubkey could not be found, add to missing
+            sigdata.missing_dilithium_pubkeys.push_back(keyID);
+            return false;
+        }
+        if (!CreateDilithiumSig(creator, sigdata, provider, sig, pubkey, scriptPubKey, sigversion)) return false;
+        ret.push_back(std::move(sig));
+        ret.push_back(ToByteVector(pubkey));
+        return true;
+    }
+    case TxoutType::DILITHIUM_SCRIPTHASH: {
+        uint160 h160{vSolutions[0]};
+        if (GetCScript(provider, sigdata, CScriptID{h160}, scriptRet)) {
+            ret.emplace_back(scriptRet.begin(), scriptRet.end());
+            return true;
+        }
+        // Could not find redeemScript, add to missing
+        sigdata.missing_redeem_script = h160;
+        return false;
+    }
+    case TxoutType::DILITHIUM_MULTISIG: {
+        size_t required = vSolutions.front()[0];
+        ret.emplace_back(); // workaround CHECKMULTISIGDILITHIUM bug
+        for (size_t i = 1; i < vSolutions.size() - 1; ++i) {
+            CDilithiumPubKey pubkey = CDilithiumPubKey(vSolutions[i]);
+            // We need to always call CreateDilithiumSig in order to fill sigdata with all
+            // possible signatures that we can create. This will allow further PSBT
+            // processing to work as it needs all possible signature and pubkey pairs
+            if (CreateDilithiumSig(creator, sigdata, provider, sig, pubkey, scriptPubKey, sigversion)) {
+                if (ret.size() < required + 1) {
+                    ret.push_back(std::move(sig));
+                }
+            }
+        }
+        bool ok = ret.size() == required + 1;
+        for (size_t i = 0; i + ret.size() < required + 1; ++i) {
+            ret.emplace_back();
+        }
+        return ok;
+    }
     case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
+        ret.push_back(vSolutions[0]);
+        return true;
+
     case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
-        // Dilithium signing not implemented yet
+        if (GetCScript(provider, sigdata, CScriptID{RIPEMD160(vSolutions[0])}, scriptRet)) {
+            ret.emplace_back(scriptRet.begin(), scriptRet.end());
+            return true;
+        }
+        // Could not find witnessScript, add to missing
+        sigdata.missing_witness_script = uint256(vSolutions[0]);
         return false;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
@@ -762,6 +875,13 @@ public:
     bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* tweak, SigVersion sigversion) const override
     {
         sig.assign(64, '\000');
+        return true;
+    }
+    bool CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion) const override
+    {
+        // Create a dummy Dilithium signature
+        vchSig.assign(DilithiumConstants::SIGNATURE_SIZE, '\000');
+        vchSig.push_back(SIGHASH_ALL);
         return true;
     }
 };

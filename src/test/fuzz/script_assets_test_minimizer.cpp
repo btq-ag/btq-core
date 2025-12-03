@@ -96,13 +96,14 @@ const std::map<std::string, unsigned int> FLAG_NAMES = {
     {std::string("CHECKSEQUENCEVERIFY"), (unsigned int)SCRIPT_VERIFY_CHECKSEQUENCEVERIFY},
     {std::string("WITNESS"), (unsigned int)SCRIPT_VERIFY_WITNESS},
     {std::string("TAPROOT"), (unsigned int)SCRIPT_VERIFY_TAPROOT},
+    {std::string("DILITHIUM"), (unsigned int)SCRIPT_VERIFY_DILITHIUM},
 };
 
 std::vector<unsigned int> AllFlags()
 {
     std::vector<unsigned int> ret;
 
-    for (unsigned int i = 0; i < 128; ++i) {
+    for (unsigned int i = 0; i < 256; ++i) {
         unsigned int flag = 0;
         if (i & 1) flag |= SCRIPT_VERIFY_P2SH;
         if (i & 2) flag |= SCRIPT_VERIFY_DERSIG;
@@ -111,6 +112,7 @@ std::vector<unsigned int> AllFlags()
         if (i & 16) flag |= SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
         if (i & 32) flag |= SCRIPT_VERIFY_WITNESS;
         if (i & 64) flag |= SCRIPT_VERIFY_TAPROOT;
+        if (i & 128) flag |= SCRIPT_VERIFY_DILITHIUM;
 
         // SCRIPT_VERIFY_WITNESS requires SCRIPT_VERIFY_P2SH
         if (flag & SCRIPT_VERIFY_WITNESS && !(flag & SCRIPT_VERIFY_P2SH)) continue;

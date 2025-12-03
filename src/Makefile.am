@@ -510,6 +510,7 @@ libbtq_wallet_a_SOURCES = \
   wallet/rpc/addresses.cpp \
   wallet/rpc/backup.cpp \
   wallet/rpc/coins.cpp \
+  wallet/rpc/dilithium.cpp \
   wallet/rpc/encrypt.cpp \
   wallet/rpc/spend.cpp \
   wallet/rpc/signmessage.cpp \
