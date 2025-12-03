@@ -86,8 +86,8 @@ public:
         consensus.BIP66Height = 1; // DERSIG (BIP66) at height 1
         consensus.CSVHeight = 1;   // CSV at height 1
         
-        // BTQ: Disable SegWit - set to INT_MAX to effectively disable
-        consensus.SegwitHeight = INT_MAX;
+        // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
+        consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
@@ -198,8 +198,8 @@ public:
         consensus.BIP66Height = 1; // DERSIG (BIP66) at height 1
         consensus.CSVHeight = 1;   // CSV at height 1
         
-        // BTQ: Disable SegWit - set to INT_MAX to effectively disable
-        consensus.SegwitHeight = INT_MAX;
+        // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
+        consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
@@ -349,8 +349,8 @@ public:
         consensus.BIP66Height = 1;
         consensus.CSVHeight = 1;
         
-        // BTQ: Disable SegWit - set to INT_MAX to effectively disable
-        consensus.SegwitHeight = INT_MAX;
+        // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
+        consensus.SegwitHeight = 1;
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
@@ -441,8 +441,8 @@ public:
         consensus.BIP66Height = 1;  // Always active unless overridden
         consensus.CSVHeight = 1;    // Always active unless overridden
         
-        // BTQ: Disable SegWit - set to INT_MAX to effectively disable
-        consensus.SegwitHeight = INT_MAX; // Disabled unless overridden
+        // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
+        consensus.SegwitHeight = 1; // Disabled unless overridden
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks

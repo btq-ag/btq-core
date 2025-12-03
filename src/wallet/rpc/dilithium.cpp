@@ -115,8 +115,31 @@ static bool SignTransactionWithDilithium(const CWallet& wallet, CMutableTransact
                 continue;
             }
             
+            // Determine script type and create appropriate scriptCode
+            std::vector<std::vector<unsigned char>> solutions;
+            TxoutType script_type = Solver(coin.out.scriptPubKey, solutions);
+            
+            // Get the Dilithium public key
+            CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
+            
+            CScript scriptCode;
+            SigVersion sigversion;
+            
+            if (script_type == TxoutType::WITNESS_V0_KEYHASH || 
+                script_type == TxoutType::DILITHIUM_WITNESS_V0_KEYHASH) {
+                // For witness v0 keyhash, construct the scriptCode like P2WPKH but with CHECKSIGDILITHIUM
+                // scriptCode: OP_DUP OP_HASH160 <pubkeyhash> OP_EQUALVERIFY OP_CHECKSIGDILITHIUM
+                uint160 pubkeyhash(solutions[0]);
+                scriptCode << OP_DUP << OP_HASH160 << ToByteVector(pubkeyhash) << OP_EQUALVERIFY << OP_CHECKSIGDILITHIUM;
+                sigversion = SigVersion::WITNESS_V0;
+            } else {
+                // For non-witness scripts, use the scriptPubKey directly
+                scriptCode = coin.out.scriptPubKey;
+                sigversion = SigVersion::BASE;
+            }
+            
             // Create the signature hash for this input
-            uint256 sighash_hash = SignatureHash(coin.out.scriptPubKey, tx, i, sighash, coin.out.nValue, SigVersion::BASE);
+            uint256 sighash_hash = SignatureHash(scriptCode, tx, i, sighash, coin.out.nValue, sigversion);
             
             // Sign with Dilithium key
             std::vector<unsigned char> vchSig;
@@ -126,21 +149,32 @@ static bool SignTransactionWithDilithium(const CWallet& wallet, CMutableTransact
                 continue;
             }
             
-            // For witness scripts, put signature in witness field; for non-witness, use scriptSig
-            std::vector<std::vector<unsigned char>> solutions;
-            TxoutType script_type = Solver(coin.out.scriptPubKey, solutions);
+            // Add sighash type to signature
+            vchSig.push_back(static_cast<unsigned char>(sighash));
             
             if (script_type == TxoutType::WITNESS_V0_KEYHASH || 
                 script_type == TxoutType::DILITHIUM_WITNESS_V0_KEYHASH) {
-                // For witness scripts, signature goes in witness field
+                // For witness scripts, signature and pubkey go in witness field
+                // Witness stack: <signature> <pubkey>
                 tx.vin[i].scriptWitness.stack.clear();
                 tx.vin[i].scriptWitness.stack.push_back(vchSig);
+                
+                // Push public key to witness stack
+                std::vector<unsigned char> vchPubKey(dilithium_pubkey.begin(), dilithium_pubkey.end());
+                tx.vin[i].scriptWitness.stack.push_back(vchPubKey);
+                
                 // scriptSig must be empty for witness transactions
                 tx.vin[i].scriptSig = CScript();
             } else {
-                // For non-witness scripts, signature goes in scriptSig
+                // For non-witness scripts, signature AND pubkey go in scriptSig
+                // scriptSig: <signature> <pubkey> (same as standard P2PKH)
                 CScript scriptSig;
                 scriptSig << vchSig;
+                
+                // Push the Dilithium public key
+                std::vector<unsigned char> vchPubKey(dilithium_pubkey.begin(), dilithium_pubkey.end());
+                scriptSig << vchPubKey;
+                
                 tx.vin[i].scriptSig = scriptSig;
             }
         }
@@ -181,17 +215,15 @@ RPCHelpMan getnewdilithiumaddress()
             if (!request.params[0].isNull())
                 label = LabelFromValue(request.params[0]);
 
-            OutputType output_type = OutputType::BECH32;
+            // Default to LEGACY for Dilithium to avoid witness v0 ambiguity
+            // (witness v0 scripts look identical for Dilithium and ECDSA)
+            OutputType output_type = OutputType::LEGACY;
             if (!request.params[1].isNull()) {
                 std::optional<OutputType> parsed = ParseOutputType(request.params[1].get_str());
                 if (!parsed) {
                     throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Unknown address type '%s'", request.params[1].get_str()));
                 }
                 output_type = *parsed;
-            }
-
-            if (!wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
-                throw JSONRPCError(RPC_WALLET_ERROR, "Dilithium addresses are only available with descriptor wallets");
             }
 
             // Generate new Dilithium key
@@ -333,10 +365,6 @@ RPCHelpMan importdilithiumkey()
 
             LOCK(wallet->cs_wallet);
 
-            if (!wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
-                throw JSONRPCError(RPC_WALLET_ERROR, "Dilithium keys are only available with descriptor wallets");
-            }
-
             std::string strSecret = request.params[0].get_str();
             std::string strLabel = "";
             if (!request.params[1].isNull())
@@ -363,17 +391,29 @@ RPCHelpMan importdilithiumkey()
             }
 
             // Add the Dilithium key to the wallet's key store
-            // Convert Dilithium public key to CPubKey for compatibility
-            CPubKey pubkey(dilithium_pubkey.begin(), dilithium_pubkey.end());
+            bool stored = false;
             
-            // Get the ScriptPubKeyMan for key management
-            LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
-            if (!spk_man) {
-                throw JSONRPCError(RPC_WALLET_ERROR, "Legacy wallet not available");
+            if (wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+                // Store in descriptor wallet
+                auto spk_mans = wallet->GetAllScriptPubKeyMans();
+                for (auto& spk_man : spk_mans) {
+                    DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+                    if (desc_spk_man) {
+                        if (desc_spk_man->AddDilithiumKeyPubKey(dilithium_key, CPubKey())) {
+                            stored = true;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // Store in legacy wallet
+                LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+                if (spk_man && spk_man->AddDilithiumKeyPubKey(dilithium_key, CPubKey())) {
+                    stored = true;
+                }
             }
             
-            // Add the Dilithium key to the wallet
-            if (!spk_man->AddDilithiumKeyPubKey(dilithium_key, pubkey)) {
+            if (!stored) {
                 throw JSONRPCError(RPC_WALLET_ERROR, "Failed to add Dilithium key to wallet");
             }
 

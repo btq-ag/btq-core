@@ -732,7 +732,17 @@ protected:
     std::vector<CScript> MakeScripts(const std::vector<CPubKey>&, Span<const CScript>, FlatSigningProvider&) const override { return Vector(GetScriptForDestination(m_destination)); }
 public:
     AddressDescriptor(CTxDestination destination) : DescriptorImpl({}, "addr"), m_destination(std::move(destination)) {}
-    bool IsSolvable() const final { return false; }
+    bool IsSolvable() const final { 
+        // Dilithium addresses are solvable if we have the key (checked separately in wallet code)
+        // For now, mark Dilithium addresses as potentially solvable
+        if (std::holds_alternative<DilithiumPKHash>(m_destination) ||
+            std::holds_alternative<DilithiumWitnessV0KeyHash>(m_destination) ||
+            std::holds_alternative<DilithiumScriptHash>(m_destination) ||
+            std::holds_alternative<DilithiumWitnessV0ScriptHash>(m_destination)) {
+            return true;  // Dilithium addresses are solvable if we have the key
+        }
+        return false; 
+    }
 
     std::optional<OutputType> GetOutputType() const override
     {
@@ -742,6 +752,28 @@ public:
     bool ToPrivateString(const SigningProvider& arg, std::string& out) const final { return false; }
 
     std::optional<int64_t> ScriptSize() const override { return GetScriptForDestination(m_destination).size(); }
+    
+    std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
+        // For Dilithium addresses, provide the actual satisfaction size
+        if (std::holds_alternative<DilithiumPKHash>(m_destination) ||
+            std::holds_alternative<DilithiumWitnessV0KeyHash>(m_destination)) {
+            // Dilithium signature (2420 + 1 hashtype) + public key (1312) + push opcodes
+            const int64_t DILITHIUM_SIG_SIZE = 2421;
+            const int64_t DILITHIUM_PUBKEY_SIZE = 1312;
+            const int64_t PUSH_OVERHEAD = 6;  // Push opcodes for sig and pubkey
+            return (DILITHIUM_SIG_SIZE + DILITHIUM_PUBKEY_SIZE + PUSH_OVERHEAD) * WITNESS_SCALE_FACTOR;
+        }
+        return {};  // Unknown size for other address types
+    }
+    
+    std::optional<int64_t> MaxSatisfactionElems() const override {
+        // For Dilithium addresses, return the number of stack elements needed
+        if (std::holds_alternative<DilithiumPKHash>(m_destination) ||
+            std::holds_alternative<DilithiumWitnessV0KeyHash>(m_destination)) {
+            return 2;  // Signature and public key (same as P2PKH)
+        }
+        return {};  // Unknown for other address types
+    }
 };
 
 /** A parsed raw(H) descriptor. */
@@ -1901,6 +1933,37 @@ std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptCo
         }
         if (ok) return std::make_unique<MultisigDescriptor>((int)data[0][0], std::move(providers));
     }
+    
+    // Dilithium script types - return AddressDescriptor since they're solvable if we have the key
+    if (txntype == TxoutType::DILITHIUM_PUBKEYHASH && (ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH)) {
+        // For Dilithium P2PKH, extract destination and check if we have the key
+        CTxDestination dest;
+        if (ExtractDestination(script, dest)) {
+            return std::make_unique<AddressDescriptor>(std::move(dest));
+        }
+    }
+    if (txntype == TxoutType::DILITHIUM_WITNESS_V0_KEYHASH && (ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH)) {
+        // For Dilithium witness v0 keyhash
+        CTxDestination dest;
+        if (ExtractDestination(script, dest)) {
+            return std::make_unique<AddressDescriptor>(std::move(dest));
+        }
+    }
+    if (txntype == TxoutType::DILITHIUM_SCRIPTHASH && ctx == ParseScriptContext::TOP) {
+        // For Dilithium script hash
+        CTxDestination dest;
+        if (ExtractDestination(script, dest)) {
+            return std::make_unique<AddressDescriptor>(std::move(dest));
+        }
+    }
+    if (txntype == TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH && (ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH)) {
+        // For Dilithium witness v0 script hash
+        CTxDestination dest;
+        if (ExtractDestination(script, dest)) {
+            return std::make_unique<AddressDescriptor>(std::move(dest));
+        }
+    }
+    
     if (txntype == TxoutType::SCRIPTHASH && ctx == ParseScriptContext::TOP) {
         uint160 hash(data[0]);
         CScriptID scriptid(hash);

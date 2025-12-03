@@ -950,6 +950,10 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, cons
     // Make sure we aren't adding private keys to private key disabled wallets
     assert(!m_storage.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS));
 
+    // Get the actual Dilithium key ID
+    CDilithiumPubKey dilithium_pubkey = secret.GetPubKey();
+    CKeyID keyID = CKeyID(dilithium_pubkey.GetID());
+
     // FillableSigningProvider has no concept of wallet databases, but calls AddCryptedDilithiumKey
     // which is overridden below.  To avoid flushes, the database handle is
     // tunneled through to it.
@@ -963,22 +967,18 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, cons
     }
     if (needsDB) encrypted_batch = nullptr;
 
-    // check if we need to remove from watch-only
+    // check if we need to remove from watch-only (using Dilithium key ID)
     CScript script;
-    script = GetScriptForDestination(PKHash(pubkey));
-    if (HaveWatchOnly(script)) {
-        RemoveWatchOnly(script);
-    }
-    script = GetScriptForRawPubKey(pubkey);
+    script = GetScriptForDestination(DilithiumPKHash(dilithium_pubkey));
     if (HaveWatchOnly(script)) {
         RemoveWatchOnly(script);
     }
 
     m_storage.UnsetBlankWalletFlag(batch);
     if (!m_storage.HasEncryptionKeys()) {
-        return batch.WriteDilithiumKey(pubkey,
-                                                 secret.GetPrivKey(),
-                                                 mapKeyMetadata[pubkey.GetID()]);
+        // Use the new WriteDilithiumKeyByID method that properly stores by CKeyID
+        std::vector<unsigned char> vchPrivKey(secret.begin(), secret.end());
+        return batch.WriteDilithiumKeyByID(keyID, vchPrivKey, mapKeyMetadata[keyID]);
     }
     return true;
 }
@@ -986,9 +986,14 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, cons
 bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyInner(const CDilithiumKey& key, const CPubKey &pubkey)
 {
     LOCK(cs_KeyStore);
+    
+    // Get the actual Dilithium key ID (not from the dummy CPubKey)
+    CDilithiumPubKey dilithium_pubkey = key.GetPubKey();
+    CKeyID keyID = CKeyID(dilithium_pubkey.GetID());
+    
     if (!m_storage.HasEncryptionKeys()) {
-        // Store Dilithium keys in the unencrypted map
-        mapDilithiumKeys[pubkey.GetID()] = key;
+        // Store Dilithium keys in the unencrypted map using the correct key ID
+        mapDilithiumKeys[keyID] = key;
         return true;
     }
 
@@ -998,13 +1003,21 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyInner(const CDilithiumKey& key,
 
     std::vector<unsigned char> vchCryptedSecret;
     CKeyingMaterial vchSecret(key.begin(), key.end());
-    if (!EncryptDilithiumSecret(m_storage.GetEncryptionKey(), vchSecret, pubkey.GetHash(), vchCryptedSecret)) {
+    // Use the Dilithium key ID for encryption salt
+    if (!EncryptDilithiumSecret(m_storage.GetEncryptionKey(), vchSecret, uint256(keyID), vchCryptedSecret)) {
         return false;
     }
 
-    if (!AddCryptedDilithiumKey(pubkey, vchCryptedSecret)) {
-        return false;
+    // Store the encrypted key using the key ID
+    // Create a dummy CPubKey with the correct ID for compatibility
+    CPubKey dummy_pubkey;
+    mapCryptedDilithiumKeys[keyID] = make_pair(dummy_pubkey, vchCryptedSecret);
+    
+    // Write to database using the proper method
+    if (encrypted_batch) {
+        return encrypted_batch->WriteCryptedDilithiumKeyByID(keyID, vchCryptedSecret, mapKeyMetadata[keyID]);
     }
+    
     return true;
 }
 

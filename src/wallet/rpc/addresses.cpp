@@ -585,6 +585,52 @@ RPCHelpMan getaddressinfo()
     if (provider) {
         auto inferred = InferDescriptor(scriptPubKey, *provider);
         bool solvable = inferred->IsSolvable();
+        
+        // Special handling for Dilithium addresses
+        // InferDescriptor doesn't recognize Dilithium, but we can check if we have the key
+        if (!solvable) {
+            // Check if this is a Dilithium address and if we have the key
+            if (std::holds_alternative<DilithiumPKHash>(dest) ||
+                std::holds_alternative<DilithiumWitnessV0KeyHash>(dest) ||
+                std::holds_alternative<DilithiumScriptHash>(dest) ||
+                std::holds_alternative<DilithiumWitnessV0ScriptHash>(dest)) {
+                
+                // For Dilithium addresses, check if we have the private key
+                CKeyID keyID;
+                if (std::holds_alternative<DilithiumPKHash>(dest)) {
+                    keyID = CKeyID(static_cast<uint160>(std::get<DilithiumPKHash>(dest)));
+                } else if (std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) {
+                    keyID = CKeyID(static_cast<uint160>(std::get<DilithiumWitnessV0KeyHash>(dest)));
+                }
+                
+                // Check all ScriptPubKeyMans for Dilithium key
+                bool has_dilithium_key = false;
+                auto spk_mans = pwallet->GetAllScriptPubKeyMans();
+                for (auto& spk_manager : spk_mans) {
+                    DescriptorScriptPubKeyMan* desc_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_manager);
+                    if (desc_man) {
+                        CDilithiumKey dilithium_key;
+                        if (desc_man->GetDilithiumKey(keyID, dilithium_key)) {
+                            has_dilithium_key = true;
+                            break;
+                        }
+                    }
+                    LegacyScriptPubKeyMan* legacy_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_manager);
+                    if (legacy_man) {
+                        CDilithiumKey dilithium_key;
+                        if (legacy_man->GetDilithiumKey(keyID, dilithium_key)) {
+                            has_dilithium_key = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (has_dilithium_key) {
+                    solvable = true;
+                }
+            }
+        }
+        
         ret.pushKV("solvable", solvable);
         if (solvable) {
             ret.pushKV("desc", inferred->ToString());
@@ -610,6 +656,14 @@ RPCHelpMan getaddressinfo()
 
     UniValue detail = DescribeWalletAddress(*pwallet, dest);
     ret.pushKVs(detail);
+    
+    // Add isdilithium flag for Dilithium addresses
+    bool is_dilithium = std::holds_alternative<DilithiumPKHash>(dest) ||
+                        std::holds_alternative<DilithiumWitnessV0KeyHash>(dest) ||
+                        std::holds_alternative<DilithiumScriptHash>(dest) ||
+                        std::holds_alternative<DilithiumWitnessV0ScriptHash>(dest) ||
+                        std::holds_alternative<DilithiumPubKeyDestination>(dest);
+    ret.pushKV("isdilithium", is_dilithium);
 
     ret.pushKV("ischange", ScriptIsChange(*pwallet, scriptPubKey));
 
