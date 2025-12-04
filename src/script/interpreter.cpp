@@ -239,6 +239,15 @@ bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned i
     if (vchSig.size() == 0) {
         return true;
     }
+    
+    // Dilithium signatures are much larger than ECDSA signatures (2420-4627 bytes vs ~71 bytes)
+    // Skip DER encoding checks for Dilithium signatures
+    // Use 500 bytes as threshold to distinguish Dilithium from ECDSA
+    if (vchSig.size() > 500) {
+        // This is a Dilithium signature - no DER encoding required
+        return true;
+    }
+    
     if ((flags & (SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S | SCRIPT_VERIFY_STRICTENC)) != 0 && !IsValidSignatureEncoding(vchSig)) {
         return set_error(serror, SCRIPT_ERR_SIG_DER);
     } else if ((flags & SCRIPT_VERIFY_LOW_S) != 0 && !IsLowDERSignature(vchSig, serror)) {
@@ -2082,7 +2091,19 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
             if (stack.size() != 2) {
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH); // 2 items in witness
             }
-            exec_script << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
+            
+            // Check if this is a Dilithium signature by examining the pubkey size
+            // Dilithium public keys are 1312 or 2592 bytes, ECDSA keys are 33 bytes
+            // Use 100 bytes as a threshold to distinguish them
+            bool is_dilithium = (stack.back().size() > 100);
+            
+            if (is_dilithium) {
+                // Dilithium witness v0 keyhash
+                exec_script << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIGDILITHIUM;
+            } else {
+                // Standard ECDSA witness v0 keyhash
+                exec_script << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
+            }
             return ExecuteWitnessScript(stack, exec_script, flags, SigVersion::WITNESS_V0, checker, execdata, serror);
         } else {
             return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH);

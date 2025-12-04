@@ -115,11 +115,15 @@ bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet)
         return false;
     }
     case TxoutType::DILITHIUM_PUBKEYHASH: {
-        addressRet = DilithiumPKHash(uint160(vSolutions[0]));
+        DilithiumPKHash hash;
+        std::copy(vSolutions[0].begin(), vSolutions[0].end(), hash.begin());
+        addressRet = hash;
         return true;
     }
     case TxoutType::DILITHIUM_SCRIPTHASH: {
-        addressRet = DilithiumScriptHash(uint160(vSolutions[0]));
+        DilithiumScriptHash hash;
+        std::copy(vSolutions[0].begin(), vSolutions[0].end(), hash.begin());
+        addressRet = hash;
         return true;
     }
     case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH: {

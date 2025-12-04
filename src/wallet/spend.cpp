@@ -82,6 +82,7 @@ int CalculateMaximumSignedInputSize(const CTxOut& txout, const COutPoint outpoin
 {
     if (!provider) return -1;
 
+    // Use InferDescriptor which now properly handles Dilithium scripts
     if (const auto desc = InferDescriptor(txout.scriptPubKey, *provider)) {
         if (const auto weight = MaxInputWeight(*desc, {}, coin_control, true, can_grind_r)) {
             return static_cast<int>(GetVirtualTransactionSize(*weight, 0, 0));

@@ -40,6 +40,11 @@ public:
         return std::vector<unsigned char>{m_hash.begin(), m_hash.end()};
     }
 
+    operator HashType() const
+    {
+        return m_hash;
+    }
+
     std::string ToString() const
     {
         return m_hash.ToString();
