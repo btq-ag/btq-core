@@ -542,7 +542,8 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
         return true;
     }
     case TxoutType::DILITHIUM_PUBKEYHASH: {
-        DilithiumPKHash keyID = DilithiumPKHash(uint160(vSolutions[0]));
+        DilithiumPKHash keyID;
+        std::copy(vSolutions[0].begin(), vSolutions[0].end(), keyID.begin());
         CDilithiumPubKey pubkey;
         if (!GetDilithiumPubKey(provider, sigdata, keyID, pubkey)) {
             // Pubkey could not be found, add to missing
@@ -555,13 +556,14 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
         return true;
     }
     case TxoutType::DILITHIUM_SCRIPTHASH: {
-        uint160 h160{vSolutions[0]};
-        if (GetCScript(provider, sigdata, CScriptID{h160}, scriptRet)) {
+        DilithiumScriptHash scriptID;
+        std::copy(vSolutions[0].begin(), vSolutions[0].end(), scriptID.begin());
+        if (GetCScript(provider, sigdata, CScriptID{static_cast<uint160>(scriptID)}, scriptRet)) {
             ret.emplace_back(scriptRet.begin(), scriptRet.end());
             return true;
         }
         // Could not find redeemScript, add to missing
-        sigdata.missing_redeem_script = h160;
+        sigdata.missing_redeem_script = static_cast<uint160>(scriptID);
         return false;
     }
     case TxoutType::DILITHIUM_MULTISIG: {

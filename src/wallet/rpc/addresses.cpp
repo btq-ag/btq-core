@@ -598,9 +598,16 @@ RPCHelpMan getaddressinfo()
                 // For Dilithium addresses, check if we have the private key
                 CKeyID keyID;
                 if (std::holds_alternative<DilithiumPKHash>(dest)) {
-                    keyID = CKeyID(static_cast<uint160>(std::get<DilithiumPKHash>(dest)));
+                    // Extract hash using memcpy to match IsMine logic
+                    const auto& pkh = std::get<DilithiumPKHash>(dest);
+                    keyID = CKeyID();
+                    std::memcpy(keyID.begin(), pkh.begin(), 20);
+                    LogPrintf("DEBUG: getaddressinfo - Looking up DilithiumPKHash keyID: %s\n", keyID.ToString());
                 } else if (std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) {
-                    keyID = CKeyID(static_cast<uint160>(std::get<DilithiumWitnessV0KeyHash>(dest)));
+                    const auto& wkh = std::get<DilithiumWitnessV0KeyHash>(dest);
+                    keyID = CKeyID();
+                    std::memcpy(keyID.begin(), wkh.begin(), 20);
+                    LogPrintf("DEBUG: getaddressinfo - Looking up DilithiumWitnessV0KeyHash keyID: %s\n", keyID.ToString());
                 }
                 
                 // Check all ScriptPubKeyMans for Dilithium key
@@ -609,6 +616,7 @@ RPCHelpMan getaddressinfo()
                 for (auto& spk_manager : spk_mans) {
                     DescriptorScriptPubKeyMan* desc_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_manager);
                     if (desc_man) {
+                        LOCK(desc_man->cs_desc_man);
                         CDilithiumKey dilithium_key;
                         if (desc_man->GetDilithiumKey(keyID, dilithium_key)) {
                             has_dilithium_key = true;
@@ -617,6 +625,7 @@ RPCHelpMan getaddressinfo()
                     }
                     LegacyScriptPubKeyMan* legacy_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_manager);
                     if (legacy_man) {
+                        LOCK(legacy_man->cs_KeyStore);
                         CDilithiumKey dilithium_key;
                         if (legacy_man->GetDilithiumKey(keyID, dilithium_key)) {
                             has_dilithium_key = true;
@@ -636,7 +645,51 @@ RPCHelpMan getaddressinfo()
             ret.pushKV("desc", inferred->ToString());
         }
     } else {
-        ret.pushKV("solvable", false);
+        // provider is null - check if this is a Dilithium address we can solve
+        bool solvable = false;
+        if (std::holds_alternative<DilithiumPKHash>(dest) ||
+            std::holds_alternative<DilithiumWitnessV0KeyHash>(dest) ||
+            std::holds_alternative<DilithiumScriptHash>(dest) ||
+            std::holds_alternative<DilithiumWitnessV0ScriptHash>(dest)) {
+            
+            CKeyID keyID;
+            if (std::holds_alternative<DilithiumPKHash>(dest)) {
+                const auto& pkh = std::get<DilithiumPKHash>(dest);
+                keyID = CKeyID();
+                std::memcpy(keyID.begin(), pkh.begin(), 20);
+            } else if (std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) {
+                const auto& wkh = std::get<DilithiumWitnessV0KeyHash>(dest);
+                keyID = CKeyID();
+                std::memcpy(keyID.begin(), wkh.begin(), 20);
+            }
+            
+            // Check all ScriptPubKeyMans for Dilithium key
+            bool has_dilithium_key = false;
+            auto spk_mans = pwallet->GetAllScriptPubKeyMans();
+            for (auto& spk_manager : spk_mans) {
+                DescriptorScriptPubKeyMan* desc_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_manager);
+                if (desc_man) {
+                    LOCK(desc_man->cs_desc_man);
+                    CDilithiumKey dilithium_key;
+                    if (desc_man->GetDilithiumKey(keyID, dilithium_key)) {
+                        has_dilithium_key = true;
+                        break;
+                    }
+                }
+                LegacyScriptPubKeyMan* legacy_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_manager);
+                if (legacy_man) {
+                    LOCK(legacy_man->cs_KeyStore);
+                    CDilithiumKey dilithium_key;
+                    if (legacy_man->GetDilithiumKey(keyID, dilithium_key)) {
+                        has_dilithium_key = true;
+                        break;
+                    }
+                }
+            }
+            
+            solvable = has_dilithium_key;
+        }
+        ret.pushKV("solvable", solvable);
     }
 
     const auto& spk_mans = pwallet->GetScriptPubKeyMans(scriptPubKey);

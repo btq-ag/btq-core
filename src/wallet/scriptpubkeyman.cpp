@@ -253,7 +253,9 @@ IsMineResult IsMineInner(const LegacyScriptPubKeyMan& keystore, const CScript& s
     }
     case TxoutType::DILITHIUM_PUBKEYHASH:
     {
-        keyID = CKeyID(uint160(vSolutions[0]));
+        assert(vSolutions[0].size() == 20);
+        keyID = CKeyID();
+        std::memcpy(keyID.begin(), vSolutions[0].data(), 20);
         if (keystore.HaveDilithiumKey(keyID)) {
             ret = std::max(ret, IsMineResult::SPENDABLE);
         }
@@ -267,7 +269,9 @@ IsMineResult IsMineInner(const LegacyScriptPubKeyMan& keystore, const CScript& s
         if (sigversion == IsMineSigVersion::TOP && !keystore.HaveCScript(CScriptID(CScript() << OP_0 << vSolutions[0]))) {
             break;
         }
-        keyID = CKeyID(uint160(vSolutions[0]));
+        assert(vSolutions[0].size() == 20);
+        keyID = CKeyID();
+        std::memcpy(keyID.begin(), vSolutions[0].data(), 20);
         if (keystore.HaveDilithiumKey(keyID)) {
             ret = std::max(ret, IsMineResult::SPENDABLE);
         }
@@ -2541,8 +2545,14 @@ isminetype DescriptorScriptPubKeyMan::IsMine(const CScript& script) const
     }
     case TxoutType::DILITHIUM_PUBKEYHASH:
     {
-        keyID = CKeyID(uint160(vSolutions[0]));
-        LogPrintf("DEBUG: DILITHIUM_PUBKEYHASH, checking keyID: %s\n", keyID.ToString());
+        // vSolutions[0] contains the 20-byte hash from the script  
+        // We need to construct a CKeyID that matches what was stored
+        // The stored keyID comes from Hash160(pubkey) which writes bytes to uint160.begin()
+        // So we need to copy the script bytes in the SAME way
+        assert(vSolutions[0].size() == 20);
+        keyID = CKeyID();
+        std::memcpy(keyID.begin(), vSolutions[0].data(), 20);
+        LogPrintf("DEBUG: DILITHIUM_PUBKEYHASH, checking keyID: %s (script hash: %s)\n", keyID.ToString(), HexStr(vSolutions[0]));
         if (HaveDilithiumKey(keyID)) {
             LogPrintf("DEBUG: Found Dilithium key for DILITHIUM_PUBKEYHASH\n");
             return ISMINE_SPENDABLE;
@@ -2551,7 +2561,9 @@ isminetype DescriptorScriptPubKeyMan::IsMine(const CScript& script) const
     }
     case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
     {
-        keyID = CKeyID(uint160(vSolutions[0]));
+        assert(vSolutions[0].size() == 20);
+        keyID = CKeyID();
+        std::memcpy(keyID.begin(), vSolutions[0].data(), 20);
         LogPrintf("DEBUG: DILITHIUM_WITNESS_V0_KEYHASH, checking keyID: %s\n", keyID.ToString());
         if (HaveDilithiumKey(keyID)) {
             LogPrintf("DEBUG: Found Dilithium key for DILITHIUM_WITNESS_V0_KEYHASH\n");
@@ -2877,20 +2889,38 @@ bool DescriptorScriptPubKeyMan::GetDilithiumKey(const CKeyID& keyid, CDilithiumK
 {
     AssertLockHeld(cs_desc_man);
     
+    LogPrintf("DEBUG: GetDilithiumKey - Looking for keyID: %s\n", keyid.ToString());
+    LogPrintf("DEBUG: GetDilithiumKey - m_map_dilithium_keys size: %zu\n", m_map_dilithium_keys.size());
+    LogPrintf("DEBUG: GetDilithiumKey - m_map_crypted_dilithium_keys size: %zu\n", m_map_crypted_dilithium_keys.size());
+    
+    // Check unencrypted keys first
     if (!m_storage.HasEncryptionKeys()) {
         DilithiumKeyMap::const_iterator mi = m_map_dilithium_keys.find(keyid);
         if (mi != m_map_dilithium_keys.end()) {
+            LogPrintf("DEBUG: GetDilithiumKey - Found in m_map_dilithium_keys!\n");
             key = mi->second;
             return true;
+        } else {
+            LogPrintf("DEBUG: GetDilithiumKey - NOT found in m_map_dilithium_keys\n");
+            // List all keys in the map for debugging
+            for (const auto& pair : m_map_dilithium_keys) {
+                LogPrintf("DEBUG: GetDilithiumKey - Available key: %s\n", pair.first.ToString());
+            }
         }
-    } else {
-        CryptedDilithiumKeyMap::const_iterator mi = m_map_crypted_dilithium_keys.find(keyid);
-        if (mi != m_map_crypted_dilithium_keys.end()) {
+    }
+    
+    // Check encrypted keys (either if wallet is encrypted, or as fallback)
+    CryptedDilithiumKeyMap::const_iterator mi = m_map_crypted_dilithium_keys.find(keyid);
+    if (mi != m_map_crypted_dilithium_keys.end()) {
+        if (m_storage.HasEncryptionKeys()) {
+            LogPrintf("DEBUG: GetDilithiumKey - Found in m_map_crypted_dilithium_keys!\n");
             const CPubKey& pubkey = mi->second.first;
             const std::vector<unsigned char>& crypted_secret = mi->second.second;
             return DecryptDilithiumKey(m_storage.GetEncryptionKey(), crypted_secret, pubkey, key);
         }
     }
+    
+    LogPrintf("DEBUG: GetDilithiumKey - Key not found anywhere\n");
     return false;
 }
 
