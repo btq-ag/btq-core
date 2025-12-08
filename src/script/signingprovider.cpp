@@ -53,6 +53,21 @@ bool HidingSigningProvider::GetTaprootBuilder(const XOnlyPubKey& output_key, Tap
     return m_provider->GetTaprootBuilder(output_key, builder);
 }
 
+bool HidingSigningProvider::GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const
+{
+    return m_provider->GetDilithiumPubKey(keyid, pubkey);
+}
+bool HidingSigningProvider::GetDilithiumKeyByHash(const DilithiumPKHash& keyid, CDilithiumKey& key) const
+{
+    if (m_hide_secret) return false;
+    return m_provider->GetDilithiumKeyByHash(keyid, key);
+}
+bool HidingSigningProvider::GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const
+{
+    if (m_hide_origin) return false;
+    return m_provider->GetDilithiumKeyOrigin(keyid, info);
+}
+
 bool FlatSigningProvider::GetCScript(const CScriptID& scriptid, CScript& script) const { return LookupHelper(scripts, scriptid, script); }
 bool FlatSigningProvider::GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const { return LookupHelper(pubkeys, keyid, pubkey); }
 bool FlatSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const
@@ -289,6 +304,30 @@ bool MultiSigningProvider::GetTaprootBuilder(const XOnlyPubKey& output_key, Tapr
 {
     for (const auto& provider: m_providers) {
         if (provider->GetTaprootBuilder(output_key, builder)) return true;
+    }
+    return false;
+}
+
+bool MultiSigningProvider::GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const
+{
+    for (const auto& provider: m_providers) {
+        if (provider->GetDilithiumPubKey(keyid, pubkey)) return true;
+    }
+    return false;
+}
+
+bool MultiSigningProvider::GetDilithiumKeyByHash(const DilithiumPKHash& keyid, CDilithiumKey& key) const
+{
+    for (const auto& provider: m_providers) {
+        if (provider->GetDilithiumKeyByHash(keyid, key)) return true;
+    }
+    return false;
+}
+
+bool MultiSigningProvider::GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const
+{
+    for (const auto& provider: m_providers) {
+        if (provider->GetDilithiumKeyOrigin(keyid, info)) return true;
     }
     return false;
 }

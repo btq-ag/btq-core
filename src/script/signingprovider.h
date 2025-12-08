@@ -206,6 +206,9 @@ public:
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
+    bool GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const override;
+    bool GetDilithiumKeyByHash(const DilithiumPKHash& keyid, CDilithiumKey& key) const override;
+    bool GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const override;
 };
 
 struct FlatSigningProvider final : public SigningProvider
@@ -215,6 +218,11 @@ struct FlatSigningProvider final : public SigningProvider
     std::map<CKeyID, std::pair<CPubKey, KeyOriginInfo>> origins;
     std::map<CKeyID, CKey> keys;
     std::map<XOnlyPubKey, TaprootBuilder> tr_trees; /** Map from output key to Taproot tree (which can then make the TaprootSpendData */
+    
+    // Dilithium key storage
+    std::map<DilithiumPKHash, CDilithiumPubKey> dilithium_pubkeys;
+    std::map<DilithiumPKHash, std::pair<CDilithiumPubKey, KeyOriginInfo>> dilithium_origins;
+    std::map<DilithiumPKHash, CDilithiumKey> dilithium_keys;
 
     bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
     bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
@@ -222,6 +230,11 @@ struct FlatSigningProvider final : public SigningProvider
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
+    
+    // Dilithium methods
+    bool GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const override;
+    bool GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const override;
+    bool GetDilithiumKeyByHash(const DilithiumPKHash& keyid, CDilithiumKey& key) const override;
 
     FlatSigningProvider& Merge(FlatSigningProvider&& b) LIFETIMEBOUND;
 };
@@ -315,6 +328,9 @@ public:
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
+    bool GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const override;
+    bool GetDilithiumKeyByHash(const DilithiumPKHash& keyid, CDilithiumKey& key) const override;
+    bool GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const override;
 };
 
 #endif // BTQ_SCRIPT_SIGNINGPROVIDER_H

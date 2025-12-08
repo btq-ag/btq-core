@@ -615,6 +615,7 @@ private:
     isminetype IsMine(const CScript& script) const override;
 
     KeyMap GetKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    std::map<DilithiumPKHash, CDilithiumKey> GetDilithiumKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
     // Cached FlatSigningProviders to avoid regenerating them each time they are needed.
     mutable std::map<int32_t, FlatSigningProvider> m_map_signing_providers;
