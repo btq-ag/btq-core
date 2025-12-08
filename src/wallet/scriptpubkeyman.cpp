@@ -2694,6 +2694,17 @@ std::map<CKeyID, CKey> DescriptorScriptPubKeyMan::GetKeys() const
     return m_map_keys;
 }
 
+std::map<DilithiumPKHash, CDilithiumKey> DescriptorScriptPubKeyMan::GetDilithiumKeys() const
+{
+    AssertLockHeld(cs_desc_man);
+    // Return unencrypted Dilithium keys
+    std::map<DilithiumPKHash, CDilithiumKey> result;
+    for (const auto& key_pair : m_map_dilithium_keys) {
+        result[DilithiumPKHash(key_pair.second.GetPubKey())] = key_pair.second;
+    }
+    return result;
+}
+
 bool DescriptorScriptPubKeyMan::TopUp(unsigned int size)
 {
     LOCK(cs_desc_man);
@@ -3145,6 +3156,7 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
     if (HavePrivateKeys() && include_private) {
         FlatSigningProvider master_provider;
         master_provider.keys = GetKeys();
+        master_provider.dilithium_keys = GetDilithiumKeys();  // Add Dilithium keys to signing provider
         m_wallet_descriptor.descriptor->ExpandPrivate(index, master_provider, *out_keys);
     }
 

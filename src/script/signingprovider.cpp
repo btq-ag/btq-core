@@ -63,6 +63,16 @@ bool FlatSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info)
     return ret;
 }
 bool FlatSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const { return LookupHelper(keys, keyid, key); }
+
+bool FlatSigningProvider::GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const { return LookupHelper(dilithium_pubkeys, keyid, pubkey); }
+bool FlatSigningProvider::GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const
+{
+    std::pair<CDilithiumPubKey, KeyOriginInfo> out;
+    bool ret = LookupHelper(dilithium_origins, keyid, out);
+    if (ret) info = std::move(out.second);
+    return ret;
+}
+bool FlatSigningProvider::GetDilithiumKeyByHash(const DilithiumPKHash& keyid, CDilithiumKey& key) const { return LookupHelper(dilithium_keys, keyid, key); }
 bool FlatSigningProvider::GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const
 {
     TaprootBuilder builder;
@@ -84,6 +94,9 @@ FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
     keys.merge(b.keys);
     origins.merge(b.origins);
     tr_trees.merge(b.tr_trees);
+    dilithium_pubkeys.merge(b.dilithium_pubkeys);
+    dilithium_keys.merge(b.dilithium_keys);
+    dilithium_origins.merge(b.dilithium_origins);
     return *this;
 }
 
