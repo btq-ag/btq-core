@@ -2697,11 +2697,21 @@ std::map<CKeyID, CKey> DescriptorScriptPubKeyMan::GetKeys() const
 std::map<DilithiumPKHash, CDilithiumKey> DescriptorScriptPubKeyMan::GetDilithiumKeys() const
 {
     AssertLockHeld(cs_desc_man);
+    LogPrintf("DEBUG: GetDilithiumKeys called, m_map_dilithium_keys size: %zu\n", m_map_dilithium_keys.size());
+    
     // Return unencrypted Dilithium keys
     std::map<DilithiumPKHash, CDilithiumKey> result;
     for (const auto& key_pair : m_map_dilithium_keys) {
-        result[DilithiumPKHash(key_pair.second.GetPubKey())] = key_pair.second;
+        // key_pair.first is CKeyID, key_pair.second is CDilithiumKey
+        // We need to convert CKeyID to DilithiumPKHash
+        // Since both wrap uint160, we can construct DilithiumPKHash from the CKeyID
+        DilithiumPKHash dilithium_hash;
+        std::memcpy(dilithium_hash.begin(), key_pair.first.begin(), 20);
+        result[dilithium_hash] = key_pair.second;
+        LogPrintf("DEBUG: GetDilithiumKeys - Added key with CKeyID: %s -> DilithiumPKHash: %s\n", 
+                  key_pair.first.ToString(), HexStr(dilithium_hash));
     }
+    LogPrintf("DEBUG: GetDilithiumKeys returning %zu keys\n", result.size());
     return result;
 }
 
@@ -3083,7 +3093,8 @@ bool DescriptorScriptPubKeyMan::CanGetAddresses(bool internal) const
 bool DescriptorScriptPubKeyMan::HavePrivateKeys() const
 {
     LOCK(cs_desc_man);
-    return m_map_keys.size() > 0 || m_map_crypted_keys.size() > 0;
+    return m_map_keys.size() > 0 || m_map_crypted_keys.size() > 0 || 
+           m_map_dilithium_keys.size() > 0 || m_map_crypted_dilithium_keys.size() > 0;
 }
 
 std::optional<int64_t> DescriptorScriptPubKeyMan::GetOldestKeyPoolTime() const
@@ -3109,11 +3120,53 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
 {
     LOCK(cs_desc_man);
 
+    LogPrintf("DEBUG: GetSigningProvider(script) called, include_private=%d, script=%s\n", include_private, HexStr(script));
+    LogPrintf("DEBUG: GetSigningProvider - m_map_script_pub_keys size: %zu\n", m_map_script_pub_keys.size());
+
     // Find the index of the script
     auto it = m_map_script_pub_keys.find(script);
     if (it == m_map_script_pub_keys.end()) {
+        LogPrintf("DEBUG: GetSigningProvider - Script NOT found in m_map_script_pub_keys\n");
+        // Script not found in descriptor-generated scripts
+        // Check if it's a Dilithium script we own
+        std::vector<valtype> vSolutions;
+        TxoutType scriptType = Solver(script, vSolutions);
+        LogPrintf("DEBUG: GetSigningProvider - Script type: %d\n", (int)scriptType);
+        
+        if (scriptType == TxoutType::DILITHIUM_PUBKEYHASH && vSolutions.size() > 0) {
+            // Extract the keyID from the script
+            CKeyID keyid;
+            std::memcpy(keyid.begin(), vSolutions[0].data(), 20);
+            LogPrintf("DEBUG: GetSigningProvider - Dilithium script, keyID: %s\n", keyid.ToString());
+            
+            if (HaveDilithiumKey(keyid)) {
+                LogPrintf("DEBUG: GetSigningProvider - Creating provider for Dilithium key\n");
+                // We have this Dilithium key! Create a signing provider for it
+                std::unique_ptr<FlatSigningProvider> provider = std::make_unique<FlatSigningProvider>();
+                
+                // Add the Dilithium pubkey for fee estimation
+                CDilithiumKey dilithium_key;
+                if (GetDilithiumKey(keyid, dilithium_key)) {
+                    DilithiumPKHash dilithium_hash;
+                    std::memcpy(dilithium_hash.begin(), keyid.begin(), 20);
+                    provider->dilithium_pubkeys[dilithium_hash] = dilithium_key.GetPubKey();
+                    LogPrintf("DEBUG: GetSigningProvider - Added Dilithium pubkey\n");
+                    
+                    // Add private key if requested
+                    if (include_private) {
+                        provider->dilithium_keys[dilithium_hash] = dilithium_key;
+                        LogPrintf("DEBUG: GetSigningProvider - Added Dilithium private key\n");
+                    }
+                }
+                
+                return provider;
+            }
+        }
+        
         return nullptr;
     }
+    
+    LogPrintf("DEBUG: GetSigningProvider - Script FOUND in m_map_script_pub_keys at index %d\n", it->second);
     int32_t index = it->second;
 
     return GetSigningProvider(index, include_private);
@@ -3153,11 +3206,27 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
         m_map_signing_providers[index] = *out_keys;
     }
 
+    // Always add Dilithium pubkeys for fee estimation (even if include_private=false)
+    // Convert Dilithium keys to pubkeys for solving
+    for (const auto& key_pair : m_map_dilithium_keys) {
+        DilithiumPKHash dilithium_hash;
+        std::memcpy(dilithium_hash.begin(), key_pair.first.begin(), 20);
+        out_keys->dilithium_pubkeys[dilithium_hash] = key_pair.second.GetPubKey();
+    }
+    
     if (HavePrivateKeys() && include_private) {
         FlatSigningProvider master_provider;
         master_provider.keys = GetKeys();
-        master_provider.dilithium_keys = GetDilithiumKeys();  // Add Dilithium keys to signing provider
+        LogPrintf("DEBUG: GetSigningProvider - Added %zu ECDSA keys to master_provider\n", master_provider.keys.size());
+        
         m_wallet_descriptor.descriptor->ExpandPrivate(index, master_provider, *out_keys);
+        LogPrintf("DEBUG: GetSigningProvider - After ExpandPrivate, out_keys has %zu ECDSA keys\n", out_keys->keys.size());
+        
+        // Manually add Dilithium private keys for signing
+        auto dilithium_keys = GetDilithiumKeys();
+        LogPrintf("DEBUG: GetSigningProvider - Got %zu Dilithium keys from GetDilithiumKeys()\n", dilithium_keys.size());
+        out_keys->dilithium_keys.insert(dilithium_keys.begin(), dilithium_keys.end());
+        LogPrintf("DEBUG: GetSigningProvider - After insert, out_keys has %zu Dilithium keys\n", out_keys->dilithium_keys.size());
     }
 
     return out_keys;
