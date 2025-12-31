@@ -58,7 +58,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    const char* pszTimestamp = "BTQ Genesis Block - Quantum Resistant BTQ Fork 2024"; //TODO think of a better timestamp
+    const char* pszTimestamp = "Quantum is no longer a far future thing. https://www.calcalistech.com/ctechnews/article/rkb3zkze11e. Amy Shapiro 09:35, 31.12.25";
     const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
@@ -127,12 +127,12 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ genesis block with custom timestamp
-        genesis = CreateGenesisBlock(1704067200, 52692, 0x1f00ffff, 1, 50 * COIN); //TODO change timestamp to actual deployment time 
+        genesis = CreateGenesisBlock(1704067200, 159149, 0x1f00ffff, 1, 50 * COIN); //TODO change timestamp to actual deployment time 
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         // BTQ: Genesis block assertions with mined values
-        assert(consensus.hashGenesisBlock == uint256S("0x00004e49ccbf1f195f34f5fe088d8edb2c7d074fadcd575b46a6d445d20942a1"));
-        assert(genesis.hashMerkleRoot == uint256S("0xf9fea3db1bf427a4ebed47fd727c06fc4fa172cd095f300be88f8c44824dcc16"));
+        assert(consensus.hashGenesisBlock == uint256S("0x0000c29244d7dc36ec72f8b32efc6c7eca98c1b51e197f90d29392eaca1cc562"));
+        assert(genesis.hashMerkleRoot == uint256S("0x86988e63923798f1c16fb40d2e0cc8a71caa90a2032bd8e24f4017d53ad38a60"));
 
         // BTQ: Add BTQ seed nodes (replace with actual DNS seeds)
         vSeeds.emplace_back("seed1.btq.com");
@@ -237,14 +237,14 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ testnet genesis block with mined values
-        const char* pszTimestamp = "BTQ Testnet Genesis Block - Quantum Resistant BTQ Fork 2024";
+        const char* pszTimestamp = "Quantum is no longer a far future thing. https://www.calcalistech.com/ctechnews/article/rkb3zkze11e. Amy Shapiro 09:35, 31.12.25";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
         genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 0, 0x207fffff, 1, 50 * COIN);
-        //MineGenesisBlock(genesis);  // Already mined - nonce=0
+        //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         // BTQ: Testnet genesis block assertions with mined values
-        assert(consensus.hashGenesisBlock == uint256S("0x212f4cabe852aab559e15fda37836d6f61b99cecd5f198394433ea3343279f0c"));
-        assert(genesis.hashMerkleRoot == uint256S("0x52a953f737c03be1abd87b4d6cfb00cc38c899bd71c402497203423d2ed2aa86"));
+        assert(consensus.hashGenesisBlock == uint256S("0x4347d747d553b30207412ab6325fdf5f3691b6d07b30359640c2ad67bbda4707"));
+        assert(genesis.hashMerkleRoot == uint256S("0x86988e63923798f1c16fb40d2e0cc8a71caa90a2032bd8e24f4017d53ad38a60"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -381,14 +381,15 @@ public:
         nDefaultPort = 38333;
         nPruneAfterHeight = 1000;
 
-        // BTQ: Create BTQ SigNet genesis block (around line 364)
-        const char* pszTimestamp = "BTQ SigNet Genesis Block - Quantum Resistant BTQ Fork 2024";
+        // BTQ: Create BTQ SigNet genesis block
+        const char* pszTimestamp = "Quantum is no longer a far future thing. https://www.calcalistech.com/ctechnews/article/rkb3zkze11e. Amy Shapiro 09:35, 31.12.25";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 0, 0x1e0377ae, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 1562723, 0x1e0377ae, 1, 50 * COIN);
+        //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        // BTQ: Update these assertions after mining the genesis block
-        // assert(consensus.hashGenesisBlock == uint256S("0x[BTQ_SIGNET_GENESIS_HASH]"));
-        // assert(genesis.hashMerkleRoot == uint256S("0x[BTQ_SIGNET_MERKLE_ROOT]"));
+        // BTQ: SigNet genesis block assertions with mined values
+        assert(consensus.hashGenesisBlock == uint256S("0x00000359520ce460fd6c26feb5e9db7477e577d0505b668b7558393312316543"));
+        assert(genesis.hashMerkleRoot == uint256S("0x86988e63923798f1c16fb40d2e0cc8a71caa90a2032bd8e24f4017d53ad38a60"));
 
         vFixedSeeds.clear();
 
@@ -506,13 +507,14 @@ public:
         }
 
         // BTQ: Create BTQ regtest genesis block with mined values
-        const char* pszTimestamp = "BTQ Regtest Genesis Block - Quantum Resistant BTQ Fork 2024";
+        const char* pszTimestamp = "Quantum is no longer a far future thing. https://www.calcalistech.com/ctechnews/article/rkb3zkze11e. Amy Shapiro 09:35, 31.12.25";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 3, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 0, 0x207fffff, 1, 50 * COIN);
+        //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         // BTQ: Regtest genesis block assertions with mined values
-        assert(consensus.hashGenesisBlock == uint256S("0x2c5e2d54ebeabc869a508d034635c2c1aa5611d59f7e121c0811df74a8abdd04"));
-        assert(genesis.hashMerkleRoot == uint256S("0x6687a3aea1fc813a5908143a5f053bef556d4c1086c4dd18afcfa8141961cc02"));
+        assert(consensus.hashGenesisBlock == uint256S("0x4347d747d553b30207412ab6325fdf5f3691b6d07b30359640c2ad67bbda4707"));
+        assert(genesis.hashMerkleRoot == uint256S("0x86988e63923798f1c16fb40d2e0cc8a71caa90a2032bd8e24f4017d53ad38a60"));
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();
