@@ -124,7 +124,7 @@ bool CDilithiumKey::GenerateFromEntropy(const std::vector<unsigned char>& entrop
         hkdf.Finalize(expanded);
         
         // Copy as much as we can from this round
-        size_t bytes_to_copy = std::min(64UL, bytes_needed - bytes_generated);
+        size_t bytes_to_copy = std::min<size_t>(64, bytes_needed - bytes_generated);
         memcpy(seed.data() + bytes_generated, expanded, bytes_to_copy);
         bytes_generated += bytes_to_copy;
         

@@ -58,7 +58,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    const char* pszTimestamp = "Quantum is no longer a far future thing. https://www.calcalistech.com/ctechnews/article/rkb3zkze11e. Amy Shapiro 09:35, 31.12.25";
+    const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
     const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
@@ -127,12 +127,12 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ genesis block with custom timestamp
-        genesis = CreateGenesisBlock(1704067200, 159149, 0x1f00ffff, 1, 50 * COIN); //TODO change timestamp to actual deployment time 
+        genesis = CreateGenesisBlock(1704067200, 106189, 0x1f00ffff, 1, 50 * COIN); //TODO change timestamp to actual deployment time 
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         // BTQ: Genesis block assertions with mined values
-        assert(consensus.hashGenesisBlock == uint256S("0x0000c29244d7dc36ec72f8b32efc6c7eca98c1b51e197f90d29392eaca1cc562"));
-        assert(genesis.hashMerkleRoot == uint256S("0x86988e63923798f1c16fb40d2e0cc8a71caa90a2032bd8e24f4017d53ad38a60"));
+        assert(consensus.hashGenesisBlock == uint256S("0x000089627847a1209221851f0d29279ac71a528c84a405c272eb7c6a19d15a81"));
+        assert(genesis.hashMerkleRoot == uint256S("0x0ef1a6cc7841e9664ce821bb2f0716265712e16c75735387a35c6358f6543c1c"));
 
         // BTQ: Add BTQ seed nodes (replace with actual DNS seeds)
         vSeeds.emplace_back("seed1.btq.com");
@@ -237,14 +237,14 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ testnet genesis block with mined values
-        const char* pszTimestamp = "Quantum is no longer a far future thing. https://www.calcalistech.com/ctechnews/article/rkb3zkze11e. Amy Shapiro 09:35, 31.12.25";
+        const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 0, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 2, 0x207fffff, 1, 50 * COIN);
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         // BTQ: Testnet genesis block assertions with mined values
-        assert(consensus.hashGenesisBlock == uint256S("0x4347d747d553b30207412ab6325fdf5f3691b6d07b30359640c2ad67bbda4707"));
-        assert(genesis.hashMerkleRoot == uint256S("0x86988e63923798f1c16fb40d2e0cc8a71caa90a2032bd8e24f4017d53ad38a60"));
+        assert(consensus.hashGenesisBlock == uint256S("0x52ded125c7a3118a36504619aef2dad3807090825c68f417646f8b80debc2f72"));
+        assert(genesis.hashMerkleRoot == uint256S("0x0ef1a6cc7841e9664ce821bb2f0716265712e16c75735387a35c6358f6543c1c"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -382,14 +382,14 @@ public:
         nPruneAfterHeight = 1000;
 
         // BTQ: Create BTQ SigNet genesis block
-        const char* pszTimestamp = "Quantum is no longer a far future thing. https://www.calcalistech.com/ctechnews/article/rkb3zkze11e. Amy Shapiro 09:35, 31.12.25";
+        const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 1562723, 0x1e0377ae, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 8487867, 0x1e0377ae, 1, 50 * COIN);
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         // BTQ: SigNet genesis block assertions with mined values
-        assert(consensus.hashGenesisBlock == uint256S("0x00000359520ce460fd6c26feb5e9db7477e577d0505b668b7558393312316543"));
-        assert(genesis.hashMerkleRoot == uint256S("0x86988e63923798f1c16fb40d2e0cc8a71caa90a2032bd8e24f4017d53ad38a60"));
+        assert(consensus.hashGenesisBlock == uint256S("0x0000021ef1e940da5200d0a9fc6cd161d2b89d2a1b006764ced236d571a403c9"));
+        assert(genesis.hashMerkleRoot == uint256S("0x0ef1a6cc7841e9664ce821bb2f0716265712e16c75735387a35c6358f6543c1c"));
 
         vFixedSeeds.clear();
 
@@ -507,14 +507,14 @@ public:
         }
 
         // BTQ: Create BTQ regtest genesis block with mined values
-        const char* pszTimestamp = "Quantum is no longer a far future thing. https://www.calcalistech.com/ctechnews/article/rkb3zkze11e. Amy Shapiro 09:35, 31.12.25";
+        const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 0, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 2, 0x207fffff, 1, 50 * COIN);
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         // BTQ: Regtest genesis block assertions with mined values
-        assert(consensus.hashGenesisBlock == uint256S("0x4347d747d553b30207412ab6325fdf5f3691b6d07b30359640c2ad67bbda4707"));
-        assert(genesis.hashMerkleRoot == uint256S("0x86988e63923798f1c16fb40d2e0cc8a71caa90a2032bd8e24f4017d53ad38a60"));
+        assert(consensus.hashGenesisBlock == uint256S("0x52ded125c7a3118a36504619aef2dad3807090825c68f417646f8b80debc2f72"));
+        assert(genesis.hashMerkleRoot == uint256S("0x0ef1a6cc7841e9664ce821bb2f0716265712e16c75735387a35c6358f6543c1c"));
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();
