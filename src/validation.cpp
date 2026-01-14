@@ -3673,8 +3673,12 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
     // checks that use witness data may be performed here.
 
     // Size limits
-    if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT || ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT)
-        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-length", "size limits failed");
+    size_t nBlockSize = ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS);
+    size_t nBlockWeight = nBlockSize * WITNESS_SCALE_FACTOR;
+    if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT || nBlockWeight > MAX_BLOCK_WEIGHT)
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-length", 
+            strprintf("size limits failed: block_size=%zu bytes, block_weight=%zu, max_weight=%u, num_txs=%zu", 
+                      nBlockSize, nBlockWeight, MAX_BLOCK_WEIGHT, block.vtx.size()));
 
     // First transaction must be coinbase, the rest must not be
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase())

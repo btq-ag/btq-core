@@ -160,7 +160,9 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     pblocktemplate->vchCoinbaseCommitment = m_chainstate.m_chainman.GenerateCoinbaseCommitment(*pblock, pindexPrev);
     pblocktemplate->vTxFees[0] = -nFees;
 
-    LogPrintf("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, nFees, nBlockSigOpsCost);
+    size_t nBlockSerializedSize = ::GetSerializeSize(*pblock, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS);
+    LogPrintf("CreateNewBlock(): block_size=%zu bytes (max=%u), weight=%u, txs=%u, fees=%ld, sigops=%d\n", 
+              nBlockSerializedSize, MAX_BLOCK_SERIALIZED_SIZE, GetBlockWeight(*pblock), nBlockTx, nFees, nBlockSigOpsCost);
 
     // Fill in header
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
