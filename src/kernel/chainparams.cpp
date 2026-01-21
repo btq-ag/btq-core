@@ -90,12 +90,14 @@ public:
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
-        consensus.nPowTargetSpacing = 10 * 60;
+        // BTQ: Optimized block timing for better UTXO consolidation with large Dilithium signatures
+        consensus.nPowTargetTimespan = 7 * 24 * 60 * 60; // one week (reduced for 1-min blocks)
+        consensus.nPowTargetSpacing = 1 * 60;            // 1 minute blocks (was 10 minutes)
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 1815; // 90% of 2016
-        consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
+        // Difficulty adjustment: 10080 blocks = 1 week at 1-min blocks
+        consensus.nRuleChangeActivationThreshold = 9072; // 90% of 10080
+        consensus.nMinerConfirmationWindow = 10080;      // nPowTargetTimespan / nPowTargetSpacing
         
         // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -202,12 +204,14 @@ public:
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
-        consensus.nPowTargetSpacing = 10 * 60;
+        // BTQ: Optimized block timing for better UTXO consolidation with large Dilithium signatures
+        consensus.nPowTargetTimespan = 7 * 24 * 60 * 60; // one week (reduced for 1-min blocks)
+        consensus.nPowTargetSpacing = 1 * 60;            // 1 minute blocks (was 10 minutes)
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 1512; // 75% for testchains
-        consensus.nMinerConfirmationWindow = 2016;
+        // Difficulty adjustment: 10080 blocks = 1 week at 1-min blocks
+        consensus.nRuleChangeActivationThreshold = 7560; // 75% of 10080 for testchains
+        consensus.nMinerConfirmationWindow = 10080;      // nPowTargetTimespan / nPowTargetSpacing
         
         // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -351,12 +355,14 @@ public:
         
         // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
         consensus.SegwitHeight = 1;
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
-        consensus.nPowTargetSpacing = 10 * 60;
+        // BTQ: Optimized block timing for better UTXO consolidation with large Dilithium signatures
+        consensus.nPowTargetTimespan = 7 * 24 * 60 * 60; // one week (reduced for 1-min blocks)
+        consensus.nPowTargetSpacing = 1 * 60;            // 1 minute blocks (was 10 minutes)
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 1815; // 90% of 2016
-        consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
+        // Difficulty adjustment: 10080 blocks = 1 week at 1-min blocks
+        consensus.nRuleChangeActivationThreshold = 9072; // 90% of 10080
+        consensus.nMinerConfirmationWindow = 10080;      // nPowTargetTimespan / nPowTargetSpacing
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         
@@ -446,12 +452,14 @@ public:
         consensus.SegwitHeight = 1; // Disabled unless overridden
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
-        consensus.nPowTargetSpacing = 10 * 60;
+        // BTQ: Optimized block timing for consistency with mainnet/testnet (1-min blocks)
+        // Note: fPowNoRetargeting=true means nPowTargetTimespan doesn't affect difficulty
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (doesn't retarget anyway)
+        consensus.nPowTargetSpacing = 1 * 60;             // 1 minute blocks for consistency
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
-        consensus.nMinerConfirmationWindow = 144; // Faster than normal for regtest (144 instead of 2016)
+        consensus.nMinerConfirmationWindow = 144; // Faster than normal for regtest (144 instead of 10080)
 
         // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
