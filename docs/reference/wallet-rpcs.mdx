@@ -1,0 +1,243 @@
+---
+title: Wallet RPCs
+description: "RPC commands for wallet management"
+---
+
+# Wallet RPCs
+
+Commands for creating, managing, and querying BTQ wallets.
+
+## Wallet Management
+
+### createwallet
+
+Create a new wallet.
+
+```bash
+./btq-cli -testnet createwallet "wallet_name"
+```
+
+**Parameters:**
+- `wallet_name` (string, required) - Name for the new wallet
+
+**Response:**
+```json
+{
+  "name": "wallet_name",
+  "warnings": []
+}
+```
+
+### loadwallet
+
+Load an existing wallet.
+
+```bash
+./btq-cli -testnet loadwallet "wallet_name"
+```
+
+### unloadwallet
+
+Unload a wallet from memory.
+
+```bash
+./btq-cli -testnet unloadwallet "wallet_name"
+```
+
+### listwallets
+
+List currently loaded wallets.
+
+```bash
+./btq-cli -testnet listwallets
+```
+
+### listwalletdir
+
+List wallets in the wallet directory.
+
+```bash
+./btq-cli -testnet listwalletdir
+```
+
+## Address Generation
+
+### getnewaddress
+
+Generate a new address.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" getnewaddress "label" "address_type"
+```
+
+**Parameters:**
+- `label` (string, optional) - Label for the address
+- `address_type` (string, optional) - `legacy`, `p2sh-segwit`, or `bech32`
+
+<Tip>
+For quantum-resistant addresses, use `getnewdilithiumaddress` instead. See [Dilithium RPCs](/reference/dilithium-rpcs).
+</Tip>
+
+### getaddressinfo
+
+Get detailed information about an address.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" getaddressinfo "address"
+```
+
+**Response includes:**
+- `ismine` - Whether wallet owns this address
+- `solvable` - Whether wallet can sign for it
+- `desc` - Output descriptor
+- `pubkey` - Public key (if available)
+
+## Balance and UTXOs
+
+### getbalance
+
+Get wallet balance.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" getbalance
+```
+
+**Parameters:**
+- `minconf` (int, optional) - Minimum confirmations (default: 0)
+- `include_watchonly` (bool, optional) - Include watch-only addresses
+
+### listunspent
+
+List unspent transaction outputs (UTXOs).
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" listunspent
+```
+
+**Response:**
+```json
+[
+  {
+    "txid": "abc123...",
+    "vout": 0,
+    "address": "n7bCZs...",
+    "amount": 10.00000000,
+    "confirmations": 6,
+    "spendable": true
+  }
+]
+```
+
+**Parameters:**
+- `minconf` (int, optional) - Minimum confirmations
+- `maxconf` (int, optional) - Maximum confirmations
+- `addresses` (array, optional) - Filter by addresses
+
+### listreceivedbyaddress
+
+List balances by receiving address.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" listreceivedbyaddress 0 true
+```
+
+## Sending
+
+### sendtoaddress
+
+Send BTQ to an address (simple method).
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" sendtoaddress "address" amount
+```
+
+<Note>
+For Dilithium transactions, use raw transaction methods with `signtransactionwithdilithium`. See [Transactions Guide](/guides/transactions).
+</Note>
+
+### sendmany
+
+Send to multiple addresses in one transaction.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" sendmany "" '{"addr1":0.1,"addr2":0.2}'
+```
+
+## Transaction History
+
+### listtransactions
+
+List recent transactions.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" listtransactions
+```
+
+**Parameters:**
+- `label` (string, optional) - Filter by label
+- `count` (int, optional) - Number of transactions (default: 10)
+- `skip` (int, optional) - Number to skip
+
+### gettransaction
+
+Get detailed transaction information.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" gettransaction "txid"
+```
+
+## Security
+
+### encryptwallet
+
+Encrypt the wallet with a passphrase.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" encryptwallet "passphrase"
+```
+
+<Warning>
+This operation restarts the wallet. Remember your passphrase - if lost, funds are unrecoverable.
+</Warning>
+
+### walletpassphrase
+
+Unlock an encrypted wallet.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" walletpassphrase "passphrase" timeout
+```
+
+**Parameters:**
+- `passphrase` (string, required) - Wallet passphrase
+- `timeout` (int, required) - Seconds to stay unlocked
+
+### walletlock
+
+Lock the wallet.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" walletlock
+```
+
+### backupwallet
+
+Backup wallet file.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" backupwallet "/path/to/backup.dat"
+```
+
+## Getting Help
+
+Get help for any command:
+
+```bash
+./btq-cli help createwallet
+```
+
+## Related Topics
+
+- [Wallet Setup Guide](/guides/wallet-setup) - Step-by-step wallet creation
+- [Dilithium RPCs](/reference/dilithium-rpcs) - Quantum-resistant commands
+- [Transactions Guide](/guides/transactions) - Sending BTQ

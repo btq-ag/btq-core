@@ -1,0 +1,62 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "BTQ Core",
+  "theme": "mint",
+  "colors": {
+    "primary": "#F7931A",
+    "light": "#FFB84D",
+    "dark": "#C77400"
+  },
+  "topbarLinks": [
+    {
+      "name": "Website",
+      "url": "https://bitcoinquantum.com/"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Download",
+    "url": "https://btqcore.org/en/download/"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/wallet-setup",
+              "guides/mining",
+              "guides/transactions",
+              "guides/running-a-node",
+              "guides/troubleshooting"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/dilithium",
+              "concepts/addresses"
+            ]
+          },
+          {
+            "group": "RPC Reference",
+            "pages": [
+              "reference/rpc-overview",
+              "reference/wallet-rpcs",
+              "reference/dilithium-rpcs"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footerSocials": {
+    "github": "https://github.com/pqcfox/btq-core"
+  }
+}

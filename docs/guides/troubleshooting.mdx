@@ -1,0 +1,243 @@
+---
+title: Troubleshooting
+description: "Common issues and solutions for BTQ Core"
+---
+
+# Troubleshooting
+
+Solutions for common issues when running BTQ Core.
+
+## Daemon Issues
+
+### Daemon Won't Start
+
+**Symptoms:** `btqd` exits immediately or shows errors.
+
+**Solutions:**
+
+1. **Check if already running:**
+   ```bash
+   ps aux | grep btqd
+   ```
+   If running, use the existing instance or stop it first.
+
+2. **Check for lock file:**
+   ```bash
+   ls ~/.btq/.lock
+   ```
+   Remove stale lock file if daemon isn't running:
+   ```bash
+   rm ~/.btq/.lock
+   ```
+
+3. **Verify disk space:**
+   ```bash
+   df -h ~/.btq
+   ```
+
+4. **Check configuration syntax:**
+   ```bash
+   ./btqd -printtoconsole
+   ```
+   Look for configuration errors in output.
+
+### Node Not Syncing
+
+**Symptoms:** Block height not increasing, `verificationprogress` stuck.
+
+**Solutions:**
+
+1. **Check peer connections:**
+   ```bash
+   ./btq-cli getconnectioncount
+   ```
+   If 0, check firewall and network settings.
+
+2. **Add seed nodes manually:**
+   ```bash
+   ./btq-cli addnode "seed.bitcoinquantum.com" "add"
+   ```
+
+3. **Verify network mode:**
+   Ensure you're on the correct network (testnet vs mainnet):
+   ```bash
+   ./btq-cli getblockchaininfo | grep chain
+   ```
+
+## Wallet Issues
+
+### Wallet Not Found
+
+**Error:** `Requested wallet does not exist or is not loaded`
+
+**Solution:** Load the wallet first:
+```bash
+./btq-cli -testnet loadwallet "wallet_name"
+```
+
+List available wallets:
+```bash
+./btq-cli -testnet listwalletdir
+```
+
+### Wallet Locked
+
+**Error:** `Error: Please enter the wallet passphrase with walletpassphrase first`
+
+**Solution:** Unlock the wallet:
+```bash
+./btq-cli -testnet -rpcwallet="wallet_name" walletpassphrase "your-passphrase" 60
+```
+
+### Signing Fails
+
+**Error:** `Unable to sign transaction` or `complete: false`
+
+**Solutions:**
+
+1. **Verify wallet owns the UTXOs:**
+   ```bash
+   ./btq-cli -testnet -rpcwallet="wallet_name" listunspent
+   ```
+
+2. **Check wallet is unlocked** (see above)
+
+3. **Ensure Dilithium keys exist:**
+   The wallet must contain Dilithium keys for the input addresses.
+
+## Transaction Issues
+
+### Transaction Rejected
+
+**Error:** `Transaction rejected` or `mempool min fee not met`
+
+**Solutions:**
+
+1. **Increase fee:**
+   Dilithium transactions are larger. Use a higher fee.
+
+2. **Check UTXO is unspent:**
+   ```bash
+   ./btq-cli -testnet gettxout "<txid>" <vout>
+   ```
+   Returns `null` if already spent.
+
+### Dust Output
+
+**Error:** `dust` or output amount too small
+
+**Solution:** Minimum output amounts apply. Avoid outputs below 0.00001 BTQ.
+
+### Invalid JSON
+
+**Error:** `JSON parsing error`
+
+**Solutions:**
+
+1. **Use single quotes around JSON:**
+   ```bash
+   ./btq-cli createrawtransaction '[{"txid":"...","vout":0}]' '{"addr":1.0}'
+   ```
+
+2. **Escape properly in scripts:**
+   ```bash
+   ./btq-cli createrawtransaction "[{\"txid\":\"...\",\"vout\":0}]" "{\"addr\":1.0}"
+   ```
+
+## RPC Issues
+
+### Connection Refused
+
+**Error:** `Could not connect to the server`
+
+**Solutions:**
+
+1. **Verify daemon is running:**
+   ```bash
+   ps aux | grep btqd
+   ```
+
+2. **Check RPC is enabled in config:**
+   ```ini
+   server=1
+   rpcuser=user
+   rpcpassword=pass
+   ```
+
+3. **Verify network flag matches:**
+   Use `-testnet` with `btq-cli` if daemon runs in testnet mode.
+
+### Authentication Failed
+
+**Error:** `Incorrect rpcuser or rpcpassword`
+
+**Solutions:**
+
+1. **Check credentials in `~/.btq/btq.conf`**
+
+2. **Use cookie authentication:**
+   ```bash
+   ./btq-cli -rpccookiefile=~/.btq/.cookie getblockchaininfo
+   ```
+
+## Mining Issues
+
+### Pool Connection Fails
+
+**Solutions:**
+
+1. **Verify pool address:**
+   Check [pool.bitcoinquantum.com](https://pool.bitcoinquantum.com) for current address.
+
+2. **Check firewall allows outbound:**
+   ```bash
+   curl -v telnet://pool.bitcoinquantum.com:3333
+   ```
+
+3. **Verify mining address is valid:**
+   Use a proper Dilithium or legacy address.
+
+### No Shares Accepted
+
+**Solutions:**
+
+1. **Ensure node is fully synced:**
+   ```bash
+   ./btq-cli getblockchaininfo | grep verificationprogress
+   ```
+   Should be close to `1.0`.
+
+2. **Check CCMiner algorithm:**
+   Must use `-a sha256d`.
+
+## Database Issues
+
+### Corrupted Database
+
+**Symptoms:** Crashes on startup, invalid block errors.
+
+**Solutions:**
+
+1. **Try reindexing:**
+   ```bash
+   ./btqd -reindex
+   ```
+   This rebuilds indexes from existing blocks.
+
+2. **Full resync (last resort):**
+   ```bash
+   rm -rf ~/.btq/blocks ~/.btq/chainstate
+   ./btqd -daemon
+   ```
+
+<Warning>
+Before deleting data, ensure you have wallet backups. The `wallets/` directory should be preserved.
+</Warning>
+
+## Getting Help
+
+If these solutions don't resolve your issue:
+
+- [Telegram Support](https://t.me/+bE6I4gqX4Vo1ODJh)
+- [GitHub Issues](https://github.com/btq-ag/BTQ-Core/issues)
+- [Block Explorer](https://explorer.bitcoinquantum.com) - Verify transactions

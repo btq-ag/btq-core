@@ -1,0 +1,183 @@
+---
+title: Dilithium RPCs
+description: "RPC commands for quantum-resistant Dilithium operations"
+---
+
+# Dilithium RPCs
+
+Commands for working with Dilithium (post-quantum) addresses and signatures.
+
+## Address Generation
+
+### getnewdilithiumaddress
+
+Generate a new quantum-resistant Dilithium address.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" getnewdilithiumaddress
+```
+
+**Response:**
+```
+nDctjCD73Rsq3feYuu2eERVHLJsPpETC3F
+```
+
+**Parameters:**
+- `label` (string, optional) - Label for the address
+
+<Tip>
+Always use Dilithium addresses for new wallets to ensure quantum resistance.
+</Tip>
+
+## Transaction Signing
+
+### signtransactionwithdilithium
+
+Sign a raw transaction using Dilithium keys.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" signtransactionwithdilithium "hex"
+```
+
+**Parameters:**
+- `hex` (string, required) - Raw transaction hex from `createrawtransaction`
+
+**Response:**
+```json
+{
+  "hex": "02000000...",
+  "complete": true
+}
+```
+
+**Important fields:**
+- `hex` - Signed transaction, ready for broadcast
+- `complete` - `true` if all inputs are signed
+
+<Warning>
+If `complete` is `false`, the wallet doesn't have keys for all inputs. Verify the wallet is loaded and unlocked.
+</Warning>
+
+### Example Workflow
+
+```bash
+# 1. Create raw transaction
+RAW=$(./btq-cli -testnet createrawtransaction \
+  '[{"txid":"abc...","vout":0}]' \
+  '{"recipient_addr":10,"change_addr":5}')
+
+# 2. Sign with Dilithium
+SIGNED=$(./btq-cli -testnet -rpcwallet="wallet" \
+  signtransactionwithdilithium $RAW)
+
+# 3. Extract signed hex
+HEX=$(echo $SIGNED | jq -r '.hex')
+
+# 4. Broadcast
+./btq-cli -testnet sendrawtransaction $HEX
+```
+
+## Message Signing
+
+### signmessagewithdilithium
+
+Sign an arbitrary message with a Dilithium address.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" signmessagewithdilithium "address" "message"
+```
+
+**Parameters:**
+- `address` (string, required) - Dilithium address to sign with
+- `message` (string, required) - Message to sign
+
+**Response:**
+```
+H4sIAAAAAAAAA2NgGAWjYBSMglEwCkYBNQAA...
+```
+
+**Use cases:**
+- Proving address ownership
+- Signing agreements or statements
+- Authentication
+
+### verifydilithiumsignature
+
+Verify a Dilithium message signature.
+
+```bash
+./btq-cli -testnet verifydilithiumsignature "address" "signature" "message"
+```
+
+**Parameters:**
+- `address` (string, required) - Address that supposedly signed
+- `signature` (string, required) - Signature to verify
+- `message` (string, required) - Original message
+
+**Response:**
+```
+true
+```
+
+Returns `true` if signature is valid, `false` otherwise.
+
+## Key Management
+
+### importdilithiumkey
+
+Import a Dilithium private key.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" importdilithiumkey "privkey" "label" rescan
+```
+
+**Parameters:**
+- `privkey` (string, required) - Dilithium private key
+- `label` (string, optional) - Label for the imported key
+- `rescan` (bool, optional) - Rescan blockchain for transactions (default: true)
+
+<Warning>
+Importing keys with `rescan=true` can take significant time as it scans the entire blockchain.
+</Warning>
+
+### dumpdilithiumkey
+
+Export a Dilithium private key.
+
+```bash
+./btq-cli -testnet -rpcwallet="wallet" dumpdilithiumkey "address"
+```
+
+**Parameters:**
+- `address` (string, required) - Dilithium address to export
+
+<Warning>
+Never share private keys. Store exports securely and delete after use.
+</Warning>
+
+## Signature Characteristics
+
+Dilithium signatures differ from ECDSA:
+
+| Property | ECDSA | Dilithium |
+|----------|-------|-----------|
+| Size | ~72 bytes | ~2,420 bytes |
+| Quantum Safe | No | Yes |
+| Verification Speed | Fast | Moderate |
+
+## Error Handling
+
+Common errors and solutions:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Wallet not found` | Wallet not loaded | `loadwallet "name"` |
+| `Wallet locked` | Encrypted wallet | `walletpassphrase` |
+| `Key not found` | Address not in wallet | Check address ownership |
+| `complete: false` | Missing keys | Verify UTXOs belong to wallet |
+
+## Related Topics
+
+- [Dilithium Signatures](/concepts/dilithium) - How the cryptography works
+- [Transactions Guide](/guides/transactions) - Complete transaction workflow
+- [Wallet RPCs](/reference/wallet-rpcs) - General wallet commands

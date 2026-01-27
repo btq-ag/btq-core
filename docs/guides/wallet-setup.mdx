@@ -1,0 +1,118 @@
+---
+title: Wallet Setup
+description: "Create and manage BTQ wallets with quantum-resistant Dilithium addresses"
+---
+
+# Wallet Setup
+
+This guide covers creating wallets and generating addresses in BTQ Core.
+
+## Prerequisites
+
+- BTQ Core daemon running (`btqd`)
+- `btq-cli` available in your PATH
+
+## Create a Wallet
+
+Create a new wallet to store your keys and track balances:
+
+```bash
+./btq-cli -testnet createwallet "my_wallet"
+```
+
+Response:
+```json
+{
+  "name": "my_wallet",
+  "warnings": []
+}
+```
+
+<Note>
+Wallet files are stored in `~/.btq/testnet3/wallets/` (testnet) or `~/.btq/wallets/` (mainnet).
+</Note>
+
+## Generate a Dilithium Address
+
+Generate a quantum-resistant Dilithium address (recommended):
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" getnewdilithiumaddress
+```
+
+This returns a Dilithium address starting with `n` (testnet) or `1` (mainnet).
+
+### Alternative Address Types
+
+| Type | Command | Use Case |
+|------|---------|----------|
+| Dilithium (recommended) | `getnewdilithiumaddress` | Quantum-resistant transactions |
+| Legacy | `getnewaddress "" "legacy"` | Compatibility with older systems |
+| Bech32 | `getnewaddress "" "bech32"` | Standard SegWit addresses |
+
+## Load an Existing Wallet
+
+If your wallet isn't loaded, load it first:
+
+```bash
+./btq-cli -testnet loadwallet "my_wallet"
+```
+
+## Check Your Balance
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" getbalance
+```
+
+## List Your Addresses
+
+View all addresses in your wallet:
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" listreceivedbyaddress 0 true
+```
+
+## Backup Your Wallet
+
+<Warning>
+Loss of your wallet file means loss of funds. Always maintain secure backups.
+</Warning>
+
+Copy the wallet file to a secure location:
+
+```bash
+cp ~/.btq/testnet3/wallets/my_wallet/wallet.dat /path/to/backup/
+```
+
+Or use the backup RPC:
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" backupwallet "/path/to/backup/wallet.dat"
+```
+
+## Encrypt Your Wallet
+
+Protect your wallet with a passphrase:
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" encryptwallet "your-strong-passphrase"
+```
+
+<Warning>
+If you forget your passphrase, your funds are permanently inaccessible. Store it securely.
+</Warning>
+
+## Unlock for Transactions
+
+After encryption, unlock the wallet to sign transactions:
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" walletpassphrase "your-passphrase" 60
+```
+
+The `60` is the unlock duration in seconds.
+
+## Next Steps
+
+- [Mining Guide](/guides/mining) - Start mining BTQ
+- [Transactions Guide](/guides/transactions) - Send and receive BTQ

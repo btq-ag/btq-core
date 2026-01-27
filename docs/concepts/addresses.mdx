@@ -1,0 +1,140 @@
+---
+title: Address Types
+description: "Understanding BTQ address formats and when to use each"
+---
+
+# Address Types
+
+BTQ supports multiple address types for different use cases. This guide explains each type and when to use it.
+
+## Address Types Overview
+
+| Type | Prefix (Mainnet) | Prefix (Testnet) | Quantum Resistant |
+|------|------------------|------------------|-------------------|
+| Dilithium | `1` | `n` or `m` | Yes |
+| Legacy (P2PKH) | `1` | `n` or `m` | No |
+| SegWit (P2WPKH) | `bc1q` | `tb1q` | No |
+
+## Dilithium Addresses (Recommended)
+
+Dilithium addresses use post-quantum cryptography and are the recommended choice for new wallets.
+
+### Generate a Dilithium Address
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" getnewdilithiumaddress
+```
+
+### Characteristics
+
+- **Quantum resistant** - Secure against quantum computer attacks
+- **Larger transactions** - Signatures are ~2.4 KB
+- **Full functionality** - Supports all BTQ features
+
+### When to Use
+
+- New wallets and addresses
+- Long-term storage of funds
+- Maximum security requirements
+
+## Legacy Addresses (P2PKH)
+
+Legacy addresses are compatible with traditional Bitcoin infrastructure.
+
+### Generate a Legacy Address
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" getnewaddress "" "legacy"
+```
+
+### Characteristics
+
+- **Compatible** - Works with existing Bitcoin tools
+- **Smaller transactions** - Traditional ECDSA signatures (~72 bytes)
+- **Not quantum resistant** - Uses ECDSA cryptography
+
+### When to Use
+
+- Compatibility with legacy systems
+- Smaller transaction sizes needed
+- Short-term use before quantum computers arrive
+
+## SegWit Addresses (P2WPKH)
+
+Bech32 addresses provide efficiency improvements over legacy.
+
+### Generate a SegWit Address
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" getnewaddress "" "bech32"
+```
+
+### Characteristics
+
+- **Lower fees** - More efficient encoding
+- **Error detection** - Bech32 includes checksum
+- **Not quantum resistant** - Uses ECDSA cryptography
+
+### When to Use
+
+- Fee optimization (non-Dilithium transactions)
+- Better error detection needed
+
+## Address Prefixes
+
+### Mainnet
+
+| Type | Prefix | Example |
+|------|--------|---------|
+| Legacy | `1` | `1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2` |
+| SegWit | `bc1q` | `bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq` |
+| Dilithium | `1` | `1DilithiumXXXXXXXXXXXXXXXXXXXXXX` |
+
+### Testnet
+
+| Type | Prefix | Example |
+|------|--------|---------|
+| Legacy | `n` or `m` | `n7bCZsYRayHTadfZUgrQYgWb5dGMMK4mnt` |
+| SegWit | `tb1q` | `tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx` |
+| Dilithium | `n` or `m` | `nDctjCD73Rsq3feYuu2eERVHLJsPpETC3F` |
+
+## Checking Address Type
+
+Get information about an address:
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" getaddressinfo "address"
+```
+
+Key fields:
+- `ismine` - Whether the wallet owns this address
+- `solvable` - Whether the wallet can sign for it
+- `desc` - Descriptor showing address type
+
+## Migration Strategy
+
+For maximum security, consider migrating from ECDSA to Dilithium addresses:
+
+1. **Generate new Dilithium addresses** in your wallet
+2. **Transfer funds** from legacy addresses to Dilithium addresses
+3. **Stop using** legacy addresses for new transactions
+
+<Tip>
+You can have both address types in the same wallet. Gradually migrate as you spend from legacy addresses.
+</Tip>
+
+## Transaction Size Comparison
+
+| Transaction Type | Typical Size |
+|------------------|--------------|
+| Legacy (P2PKH) | ~225 bytes |
+| SegWit (P2WPKH) | ~140 bytes |
+| Dilithium | ~3,800 bytes |
+
+Dilithium transactions are larger due to signature size, but provide quantum resistance.
+
+## Related Topics
+
+- [Wallet Setup](/guides/wallet-setup) - Create wallets and addresses
+- [Dilithium Signatures](/concepts/dilithium) - How the cryptography works
+- [Transactions](/guides/transactions) - Send funds between addresses

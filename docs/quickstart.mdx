@@ -1,0 +1,94 @@
+---
+title: Quickstart
+description: "Build and run BTQ Core"
+---
+
+# Quickstart
+
+This guide covers building BTQ Core from source on Linux/Unix systems.
+
+## Prerequisites
+
+### Ubuntu & Debian
+
+```bash
+# Build tools
+sudo apt-get install build-essential libtool autotools-dev automake pkg-config bsdmainutils python3
+
+# Required dependencies
+sudo apt-get install libevent-dev libboost-dev libsqlite3-dev
+
+# Optional: GUI dependencies
+sudo apt-get install libqt5gui5 libqt5core5a libqt5dbus5 qttools5-dev qttools5-dev-tools
+```
+
+### Fedora
+
+```bash
+# Build tools
+sudo dnf install gcc-c++ libtool make autoconf automake python3
+
+# Required dependencies
+sudo dnf install libevent-devel boost-devel sqlite-devel
+
+# Optional: GUI dependencies
+sudo dnf install qt5-qttools-devel qt5-qtbase-devel
+```
+
+### Arch Linux
+
+```bash
+pacman --sync --needed autoconf automake boost gcc git libevent libtool make pkgconf python sqlite
+```
+
+## Build from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/pqcfox/btq-core.git
+cd btq-core
+
+# Build
+./autogen.sh
+./configure
+make -j$(nproc)
+
+# Optional: Install system-wide
+sudo make install
+```
+
+<Note>
+Building requires at least 1.5 GB of available memory. On memory-constrained systems, use `./configure CXXFLAGS="-O2"` to reduce memory usage.
+</Note>
+
+## Run BTQ Core
+
+### Start the daemon
+
+```bash
+./src/btqd
+```
+
+### Start with GUI
+
+```bash
+./src/qt/btq-qt
+```
+
+## Verify Installation
+
+```bash
+# Check version
+./src/btqd --version
+
+# Run tests
+make check
+```
+
+## Next Steps
+
+- Configure your node with `btq.conf`
+- Connect to the BTQ network
+- Create a wallet and generate Dilithium addresses
+
+For detailed build instructions for other platforms, see the [doc/](https://github.com/pqcfox/btq-core/tree/master/doc) folder in the repository.

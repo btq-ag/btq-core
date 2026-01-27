@@ -1,0 +1,194 @@
+---
+title: Running a Node
+description: "Set up and operate a BTQ full node"
+---
+
+# Running a Node
+
+This guide covers setting up and operating a BTQ full node for validating transactions and supporting the network.
+
+## Node Types
+
+| Type | Description | Storage | Use Case |
+|------|-------------|---------|----------|
+| Full Node | Downloads and validates entire blockchain | ~10+ GB | Maximum security, mining |
+| Pruned Node | Validates but discards old blocks | ~2 GB | Limited storage environments |
+
+## Installation
+
+### Download Binaries
+
+Download the latest release from [GitHub Releases](https://github.com/btq-ag/BTQ-Core/releases) for your platform:
+- Linux (x86_64)
+- Windows
+- macOS
+
+### Build from Source
+
+See the [Quickstart](/quickstart) guide for build instructions.
+
+## Configuration
+
+Create the data directory:
+
+```bash
+mkdir -p ~/.btq
+```
+
+Create `~/.btq/btq.conf`:
+
+```ini
+# === Network ===
+# Uncomment for testnet
+#testnet=1
+
+# === RPC Server ===
+server=1
+rpcuser=your_username
+rpcpassword=your_strong_password
+rpcallowip=127.0.0.1
+
+# === Performance ===
+# Database cache size in MB (default: 450)
+dbcache=450
+
+# Maximum connections (default: 125)
+maxconnections=40
+
+# === Pruning (optional) ===
+# Keep only the last N MB of blocks
+#prune=2000
+```
+
+## Network Ports
+
+Ensure these ports are accessible for P2P connections:
+
+| Network | RPC Port | P2P Port |
+|---------|----------|----------|
+| Mainnet | 8334 | 9333 |
+| Testnet | 18334 | 19333 |
+
+## Starting the Node
+
+### Mainnet
+
+```bash
+./btqd -daemon
+```
+
+### Testnet
+
+```bash
+./btqd -daemon -testnet
+```
+
+### Foreground (for debugging)
+
+```bash
+./btqd -printtoconsole
+```
+
+## Checking Status
+
+### Blockchain Info
+
+```bash
+./btq-cli getblockchaininfo
+```
+
+Key fields:
+- `blocks` - Current block height
+- `headers` - Headers synced (may be ahead of blocks during initial sync)
+- `verificationprogress` - Sync progress (1.0 = complete)
+- `initialblockdownload` - `true` if still syncing
+
+### Network Info
+
+```bash
+./btq-cli getnetworkinfo
+```
+
+### Peer Connections
+
+```bash
+./btq-cli getpeerinfo
+```
+
+## Initial Sync
+
+The first sync downloads and validates the entire blockchain. This may take several hours depending on your connection and hardware.
+
+Monitor progress:
+
+```bash
+watch -n 10 './btq-cli getblockchaininfo | grep -E "blocks|headers|progress"'
+```
+
+<Tip>
+Increase `dbcache` in your config for faster initial sync if you have available RAM.
+</Tip>
+
+## Stopping the Node
+
+Gracefully stop the daemon:
+
+```bash
+./btq-cli stop
+```
+
+<Warning>
+Never kill the process abruptly (`kill -9`). This can corrupt the database and require a resync.
+</Warning>
+
+## Data Directories
+
+| OS | Default Location |
+|----|------------------|
+| Linux | `~/.btq/` |
+| macOS | `~/Library/Application Support/BTQ/` |
+| Windows | `%APPDATA%\BTQ\` |
+
+Testnet data is stored in a `testnet3/` subdirectory.
+
+## Maintenance
+
+### Check Disk Usage
+
+```bash
+du -sh ~/.btq/
+```
+
+### Verify Database
+
+```bash
+./btq-cli verifychain
+```
+
+### Backup Important Files
+
+Always back up:
+- `wallet.dat` (or wallet directories)
+- `btq.conf` (your configuration)
+
+## Firewall Configuration
+
+### Linux (UFW)
+
+```bash
+sudo ufw allow 9333/tcp  # Mainnet P2P
+sudo ufw allow 19333/tcp # Testnet P2P
+```
+
+### Linux (iptables)
+
+```bash
+iptables -A INPUT -p tcp --dport 9333 -j ACCEPT
+iptables -A INPUT -p tcp --dport 19333 -j ACCEPT
+```
+
+## Next Steps
+
+- [Mining Guide](/guides/mining) - Start mining with your node
+- [Wallet Setup](/guides/wallet-setup) - Create wallets on your node
+- [Troubleshooting](/guides/troubleshooting) - Common node issues

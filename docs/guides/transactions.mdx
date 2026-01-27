@@ -1,0 +1,168 @@
+---
+title: Sending Transactions
+description: "Send BTQ using Dilithium signatures"
+---
+
+# Sending Transactions
+
+This guide walks through sending BTQ from one wallet to another using `btq-cli`. It covers the complete flow: inspecting UTXOs, creating transactions, signing with Dilithium, and broadcasting.
+
+## Prerequisites
+
+- BTQ daemon running and synced
+- `btq-cli` available
+- A funded wallet loaded
+- Recipient's BTQ address
+
+Load your wallet if needed:
+
+```bash
+./btq-cli -testnet loadwallet "my_wallet"
+```
+
+## 1. Inspect Available UTXOs
+
+List spendable outputs in your wallet:
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" listunspent
+```
+
+Example output:
+```json
+[
+  {
+    "txid": "afc225a3f4303b47301044020d7463b84e3f27dc802e50ebfd9267cd093e2b99",
+    "vout": 5,
+    "address": "nDctjCD73Rsq3feYuu2eERVHLJsPpETC3F",
+    "amount": 19.52510000,
+    "confirmations": 46,
+    "spendable": true
+  }
+]
+```
+
+Note the `txid`, `vout`, and `amount` for the UTXO you plan to spend.
+
+## 2. Create the Raw Transaction
+
+Construct a transaction with inputs and outputs:
+
+```bash
+./btq-cli -testnet createrawtransaction \
+  '[{"txid":"<TXID>","vout":<VOUT>}]' \
+  '{"<RECIPIENT_ADDRESS>":<SEND_AMOUNT>,"<CHANGE_ADDRESS>":<CHANGE_AMOUNT>}'
+```
+
+### Example
+
+Sending 10 BTQ from a 19.525 BTQ UTXO with ~0.025 BTQ fee:
+
+```bash
+./btq-cli -testnet createrawtransaction \
+  '[{"txid":"afc225a3f4303b47301044020d7463b84e3f27dc802e50ebfd9267cd093e2b99","vout":5}]' \
+  '{"n7bCZsYRayHTadfZUgrQYgWb5dGMMK4mnt":10,"nDctjCD73Rsq3feYuu2eERVHLJsPpETC3F":9.5}'
+```
+
+This returns a raw transaction hex string. **Save this for the next step.**
+
+<Tip>
+The fee is implicit: `inputs_total - outputs_total = fee`. If you omit the change output, the entire remainder becomes the miner fee.
+</Tip>
+
+## 3. Sign with Dilithium
+
+Sign the raw transaction using your Dilithium wallet:
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" signtransactionwithdilithium <RAW_HEX>
+```
+
+Response:
+```json
+{
+  "hex": "<SIGNED_HEX>",
+  "complete": true
+}
+```
+
+<Warning>
+If `complete` is `false`, ensure:
+- The wallet is loaded and unlocked
+- The input UTXOs belong to this wallet
+- The wallet contains the required Dilithium keys
+</Warning>
+
+## 4. Verify the Transaction (Optional)
+
+Decode and inspect before broadcasting:
+
+```bash
+./btq-cli -testnet decoderawtransaction <SIGNED_HEX>
+```
+
+Check that:
+- `vout` entries match your intended recipients and amounts
+- `vin` references the correct UTXO(s)
+- Total outputs + fee equals total inputs
+
+## 5. Broadcast the Transaction
+
+Submit the signed transaction to the network:
+
+```bash
+./btq-cli -testnet sendrawtransaction <SIGNED_HEX>
+```
+
+This returns the transaction ID (`txid`). Track it with:
+
+```bash
+./btq-cli -testnet gettransaction <TXID>
+```
+
+Or view it on the [BTQ Block Explorer](https://explorer.bitcoinquantum.com).
+
+## Fee Guidelines
+
+| Scenario | Recommended Fee |
+|----------|-----------------|
+| Normal transaction | 0.0001 BTQ |
+| High priority | 0.001 BTQ |
+| Low priority | 0.00001 BTQ |
+
+<Note>
+Dilithium transactions are larger (~3.8 KB vs 250 bytes for ECDSA) due to signature size. Fees may need adjustment during high network activity.
+</Note>
+
+## Common Errors
+
+| Error | Solution |
+|-------|----------|
+| Invalid JSON | Ensure proper escaping; wrap JSON in single quotes |
+| Signing fails | Verify wallet is loaded/unlocked and owns the UTXOs |
+| Dust output | Avoid tiny amounts below network minimum |
+| Insufficient funds | Check balance with `getbalance` |
+
+## Complete Example
+
+```bash
+# 1. Check UTXOs
+./btq-cli -testnet -rpcwallet="my_wallet" listunspent
+
+# 2. Create transaction (10 BTQ to recipient, 9.5 BTQ change)
+RAW=$(./btq-cli -testnet createrawtransaction \
+  '[{"txid":"afc225...2b99","vout":5}]' \
+  '{"n7bCZsYR...4mnt":10,"nDctjCD7...TC3F":9.5}')
+
+# 3. Sign with Dilithium
+SIGNED=$(./btq-cli -testnet -rpcwallet="my_wallet" \
+  signtransactionwithdilithium $RAW | jq -r '.hex')
+
+# 4. Broadcast
+./btq-cli -testnet sendrawtransaction $SIGNED
+```
+
+## Next Steps
+
+- [Wallet Setup](/guides/wallet-setup) - Create additional wallets
+- [RPC Reference](/reference/dilithium-rpcs) - All Dilithium RPC commands

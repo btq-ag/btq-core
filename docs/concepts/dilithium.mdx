@@ -1,0 +1,123 @@
+---
+title: Dilithium Signatures
+description: "Understanding CRYSTALS-Dilithium post-quantum cryptography"
+---
+
+# Dilithium Signatures
+
+BTQ uses **CRYSTALS-Dilithium** for quantum-resistant digital signatures, standardized by NIST as FIPS 204.
+
+## What is Dilithium?
+
+Dilithium is a lattice-based digital signature scheme. Unlike ECDSA (which Bitcoin uses), Dilithium's security relies on mathematical problems believed to be resistant to both classical and quantum computers.
+
+### Security Foundation
+
+Dilithium's security is based on the hardness of:
+
+- **Module Learning With Errors (MLWE)** - Finding a secret vector given noisy linear equations
+- **Module Short Integer Solution (MSIS)** - Finding short vectors in lattices
+
+These problems remain hard even for quantum computers using known algorithms.
+
+## Key Characteristics
+
+| Property | Dilithium2 (BTQ Default) |
+|----------|-------------------------|
+| Security Level | NIST Level 2 (~128-bit) |
+| Public Key Size | 1,312 bytes |
+| Signature Size | 2,420 bytes |
+| Private Key Size | 2,560 bytes |
+
+<Note>
+Dilithium signatures are ~33x larger than ECDSA signatures (~72 bytes). BTQ's block size adjustments accommodate this increase.
+</Note>
+
+## Comparison with ECDSA
+
+| Aspect | ECDSA (Bitcoin) | Dilithium (BTQ) |
+|--------|-----------------|-----------------|
+| Quantum Resistant | No | Yes |
+| Signature Size | ~72 bytes | ~2,420 bytes |
+| Verification Speed | Fast | Moderate |
+| Standardization | Widely adopted | NIST FIPS 204 |
+| Key Generation | Fast | Fast |
+
+## How BTQ Uses Dilithium
+
+### Key Generation
+
+When you run `getnewdilithiumaddress`, BTQ:
+
+1. Generates a Dilithium key pair using secure randomness
+2. Derives an address from the public key
+3. Stores the private key encrypted in your wallet
+
+### Transaction Signing
+
+When you sign a transaction with `signtransactionwithdilithium`:
+
+1. The transaction data is serialized
+2. A sighash is computed (similar to Bitcoin)
+3. The Dilithium private key signs the sighash
+4. The signature is placed in the witness stack
+
+### Signature Verification
+
+Nodes verify Dilithium signatures by:
+
+1. Extracting the signature from the witness
+2. Reconstructing the signed message (sighash)
+3. Verifying using the public key via `OP_CHECKSIGDILITHIUM`
+
+## Script Opcodes
+
+BTQ extends Bitcoin Script with Dilithium-specific opcodes:
+
+```
+OP_CHECKSIGDILITHIUM (0xbb)
+```
+
+Verifies a Dilithium signature against a public key and message hash.
+
+```
+OP_CHECKMULTISIGDILITHIUM
+```
+
+Multi-signature verification for Dilithium keys.
+
+## Security Considerations
+
+### Advantages
+
+- **Future-proof** - Secure against known quantum algorithms
+- **Standardized** - NIST-vetted, not experimental
+- **Proven security** - Based on well-studied lattice problems
+
+### Trade-offs
+
+- **Larger signatures** - ~33x larger than ECDSA
+- **Larger transactions** - Higher bandwidth and storage requirements
+- **Newer technology** - Less real-world deployment history than ECDSA
+
+## NIST Standardization
+
+Dilithium was selected by NIST after a multi-year evaluation process:
+
+- **2017** - NIST post-quantum competition began
+- **2022** - Dilithium selected as primary signature standard
+- **2024** - Published as FIPS 204
+
+This rigorous process provides confidence in the algorithm's security.
+
+## Technical Resources
+
+- [NIST FIPS 204](https://csrc.nist.gov/pubs/fips/204/final) - Official standard
+- [CRYSTALS-Dilithium](https://pq-crystals.org/dilithium/) - Algorithm website
+- [BTQ Integration Design](https://github.com/btq-ag/BTQ-Core) - Implementation details
+
+## Related Topics
+
+- [What is BTQ?](/concepts/overview) - Project overview
+- [Address Types](/concepts/addresses) - Dilithium address formats
+- [Dilithium RPCs](/reference/dilithium-rpcs) - RPC commands

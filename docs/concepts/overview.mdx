@@ -1,0 +1,94 @@
+---
+title: What is BTQ?
+description: "Understanding Bitcoin Quantum and post-quantum resistance"
+---
+
+# What is BTQ?
+
+**BTQ (Bitcoin Quantum)** is a post-quantum resistant cryptocurrency that combines Bitcoin's proven architecture with quantum-safe cryptography.
+
+## Why Quantum Resistance?
+
+Quantum computers pose a threat to traditional cryptographic algorithms. Bitcoin uses ECDSA (Elliptic Curve Digital Signature Algorithm) for transaction signatures. A sufficiently powerful quantum computer could potentially:
+
+- **Break ECDSA** - Derive private keys from public keys using Shor's algorithm
+- **Compromise funds** - Steal coins from addresses with exposed public keys
+- **Forge signatures** - Create fraudulent transactions
+
+While large-scale quantum computers don't exist yet, the threat is real enough that NIST has standardized post-quantum cryptographic algorithms.
+
+## BTQ's Solution
+
+BTQ addresses this by implementing **CRYSTALS-Dilithium**, a NIST-standardized post-quantum digital signature scheme (FIPS 204).
+
+<CardGroup cols={2}>
+  <Card title="Quantum Resistant" icon="shield-halved">
+    Dilithium signatures cannot be broken by quantum computers using known algorithms
+  </Card>
+  <Card title="Bitcoin Compatible" icon="bitcoin-sign">
+    Maintains Bitcoin's UTXO model, consensus rules, and familiar architecture
+  </Card>
+  <Card title="NIST Standardized" icon="certificate">
+    Uses FIPS 204 standardized cryptography, not experimental algorithms
+  </Card>
+  <Card title="Backward Compatible" icon="rotate">
+    Supports legacy address types alongside Dilithium addresses
+  </Card>
+</CardGroup>
+
+## Key Differences from Bitcoin
+
+| Feature | Bitcoin | BTQ |
+|---------|---------|-----|
+| Signature Scheme | ECDSA | ECDSA + Dilithium |
+| Signature Size | ~72 bytes | ~2,420 bytes (Dilithium) |
+| Public Key Size | 33 bytes | ~1,312 bytes (Dilithium) |
+| Block Size | 4 MB (weight) | 64 MB limit, 32 MB soft cap |
+| Quantum Resistant | No | Yes (with Dilithium addresses) |
+
+## How It Works
+
+### Dilithium Signatures
+
+When you create a Dilithium address, BTQ generates a key pair using the Dilithium algorithm. Transactions from this address are signed with Dilithium signatures instead of ECDSA.
+
+### Larger Transactions
+
+Dilithium signatures are significantly larger than ECDSA (~2.4 KB vs ~72 bytes). BTQ accommodates this with:
+
+- Increased block size limits
+- Adjusted weight calculations
+- Updated mempool policies
+
+### Script Integration
+
+BTQ extends Bitcoin's scripting with new opcodes:
+
+- `OP_CHECKSIGDILITHIUM` - Verify Dilithium signatures
+- `OP_CHECKMULTISIGDILITHIUM` - Multi-signature support
+
+## Network Parameters
+
+| Parameter | Mainnet | Testnet |
+|-----------|---------|---------|
+| P2P Port | 9333 | 19333 |
+| RPC Port | 8334 | 18334 |
+| Address Prefix | `1` | `n` or `m` |
+
+## Development Roadmap
+
+BTQ follows a phased integration approach:
+
+1. **Phase 1** ✅ - Core cryptography wrappers
+2. **Phase 2** ✅ - Address and script extensions
+3. **Phase 3** ✅ - Wallet and key management
+4. **Phase 4** ✅ - Transaction signing
+5. **Phase 5** ✅ - Networking and mempool
+6. **Phase 6** ✅ - RPC and user interface
+7. **Phase 7** - Security hardening and mainnet
+
+## Learn More
+
+- [Dilithium Signatures](/concepts/dilithium) - Technical details on the cryptography
+- [Address Types](/concepts/addresses) - Understanding BTQ address formats
+- [Wallet Setup](/guides/wallet-setup) - Create your first BTQ wallet

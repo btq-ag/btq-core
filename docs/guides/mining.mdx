@@ -1,0 +1,144 @@
+---
+title: Mining Guide
+description: "Set up mining for BTQ testnet using CCMiner"
+---
+
+# Mining Guide
+
+This guide walks through setting up mining on the BTQ testnet using CCMiner.
+
+## Prerequisites
+
+- BTQ Core binaries (`btqd`, `btq-cli`)
+- BTQ-CCMiner software
+- NVIDIA GPU with CUDA 11 support
+- Linux/WSL or UNIX environment
+
+## 1. Configure the Daemon
+
+Create the configuration directory:
+
+```bash
+mkdir -p ~/.btq
+```
+
+Create `~/.btq/btq.conf` with your settings:
+
+```ini
+# Network
+testnet=1
+
+# RPC Settings
+server=1
+rpcuser=your_rpc_user
+rpcpassword=your_strong_password
+rpcallowip=127.0.0.1
+
+# Optional: allow external connections
+#rpcallowip=0.0.0.0/0
+#rpcbind=0.0.0.0
+```
+
+<Warning>
+Change the default RPC password to a strong, unique value. Never use default credentials in production.
+</Warning>
+
+## 2. Start the Daemon
+
+Launch the BTQ daemon:
+
+```bash
+./btqd -daemon -testnet
+```
+
+Verify it's running and syncing:
+
+```bash
+./btq-cli -testnet getblockchaininfo
+```
+
+Wait for synchronization to complete. Check progress with:
+
+```bash
+./btq-cli -testnet getblockcount
+```
+
+## 3. Create a Mining Wallet
+
+Create a wallet for mining rewards:
+
+```bash
+./btq-cli -testnet createwallet "mining_wallet"
+```
+
+## 4. Generate a Mining Address
+
+Generate a Dilithium address to receive mining rewards:
+
+```bash
+./btq-cli -testnet -rpcwallet="mining_wallet" getnewdilithiumaddress
+```
+
+Save this address - you'll need it for the mining pool.
+
+## 5. Connect to the Mining Pool
+
+Connect to the BTQ mining pool using CCMiner:
+
+```bash
+./ccminer -a sha256d -o stratum+tcp://pool.bitcoinquantum.com:3333 -u YOUR_ADDRESS -p x
+```
+
+Replace `YOUR_ADDRESS` with the Dilithium address from step 4.
+
+<Note>
+The pool address `pool.bitcoinquantum.com:3333` is for testnet. Check the official website for current pool addresses.
+</Note>
+
+## 6. Monitor Mining
+
+Watch your CCMiner output for:
+- **Hashrate** (MH/s) - Your mining speed
+- **Accepted shares** - Successfully submitted work
+- **Difficulty** - Current mining difficulty
+
+Check your wallet balance periodically:
+
+```bash
+./btq-cli -testnet -rpcwallet="mining_wallet" getbalance
+```
+
+## Network Ports
+
+| Network | RPC Port | P2P Port |
+|---------|----------|----------|
+| Mainnet | 8334 | 9333 |
+| Testnet | 18334 | 19333 |
+
+## Troubleshooting
+
+### Daemon won't start
+- Check if another instance is running: `ps aux | grep btqd`
+- Verify configuration file syntax
+- Check disk space and permissions
+
+### Pool connection fails
+- Verify your internet connection
+- Confirm the pool address is correct
+- Check firewall settings for outbound connections
+
+### No shares accepted
+- Ensure your node is fully synced
+- Verify your mining address is valid
+- Check CCMiner version compatibility
+
+## Resources
+
+- [Mining Pool](https://pool.bitcoinquantum.com)
+- [Block Explorer](https://explorer.bitcoinquantum.com)
+- [Telegram Support](https://t.me/+bE6I4gqX4Vo1ODJh)
+
+## Next Steps
+
+- [Transactions Guide](/guides/transactions) - Send your mined BTQ
+- [Troubleshooting](/guides/troubleshooting) - Common issues and solutions

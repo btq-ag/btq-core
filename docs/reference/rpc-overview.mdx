@@ -1,0 +1,188 @@
+---
+title: RPC Overview
+description: "Introduction to BTQ Core's RPC interface"
+---
+
+# RPC Overview
+
+BTQ Core provides a JSON-RPC interface for programmatic interaction with the node. This is the same interface used by `btq-cli`.
+
+## Connecting to RPC
+
+### Configuration
+
+Enable RPC in `~/.btq/btq.conf`:
+
+```ini
+server=1
+rpcuser=your_username
+rpcpassword=your_strong_password
+rpcallowip=127.0.0.1
+```
+
+### Using btq-cli
+
+The simplest way to call RPCs:
+
+```bash
+./btq-cli -testnet getblockchaininfo
+```
+
+With a specific wallet:
+
+```bash
+./btq-cli -testnet -rpcwallet="my_wallet" getbalance
+```
+
+### Using curl
+
+Direct HTTP requests:
+
+```bash
+curl --user user:pass --data-binary \
+  '{"jsonrpc":"1.0","method":"getblockchaininfo","params":[]}' \
+  -H 'content-type:text/plain;' http://127.0.0.1:18334/
+```
+
+### Using Python
+
+```python
+from bitcoinrpc.authproxy import AuthServiceProxy
+
+rpc = AuthServiceProxy("http://user:pass@127.0.0.1:18334")
+info = rpc.getblockchaininfo()
+print(info['blocks'])
+```
+
+## RPC Categories
+
+### Blockchain
+
+| Command | Description |
+|---------|-------------|
+| `getblockchaininfo` | Current blockchain state |
+| `getblock` | Block data by hash |
+| `getblockcount` | Current block height |
+| `getblockhash` | Block hash at height |
+| `gettxout` | Unspent transaction output |
+
+### Wallet
+
+| Command | Description |
+|---------|-------------|
+| `createwallet` | Create new wallet |
+| `loadwallet` | Load existing wallet |
+| `getbalance` | Wallet balance |
+| `listunspent` | Available UTXOs |
+| `getnewaddress` | Generate address |
+
+See [Wallet RPCs](/reference/wallet-rpcs) for details.
+
+### Dilithium
+
+| Command | Description |
+|---------|-------------|
+| `getnewdilithiumaddress` | Generate Dilithium address |
+| `signtransactionwithdilithium` | Sign transaction |
+| `signmessagewithdilithium` | Sign message |
+| `verifydilithiumsignature` | Verify signature |
+
+See [Dilithium RPCs](/reference/dilithium-rpcs) for details.
+
+### Network
+
+| Command | Description |
+|---------|-------------|
+| `getnetworkinfo` | Network state |
+| `getpeerinfo` | Connected peers |
+| `getconnectioncount` | Number of connections |
+| `addnode` | Add peer manually |
+
+### Mining
+
+| Command | Description |
+|---------|-------------|
+| `getmininginfo` | Mining status |
+| `getblocktemplate` | Block template for mining |
+| `submitblock` | Submit mined block |
+
+### Transactions
+
+| Command | Description |
+|---------|-------------|
+| `createrawtransaction` | Create unsigned transaction |
+| `decoderawtransaction` | Decode transaction hex |
+| `sendrawtransaction` | Broadcast transaction |
+| `gettransaction` | Transaction details |
+
+## Authentication
+
+### Password Authentication
+
+Set in config file:
+
+```ini
+rpcuser=myuser
+rpcpassword=mypassword
+```
+
+### Cookie Authentication
+
+BTQ automatically creates a cookie file at `~/.btq/.cookie`. Use it with:
+
+```bash
+./btq-cli -rpccookiefile=~/.btq/.cookie getblockchaininfo
+```
+
+## Error Handling
+
+RPC errors return a JSON object:
+
+```json
+{
+  "error": {
+    "code": -5,
+    "message": "Invalid or non-wallet transaction id"
+  }
+}
+```
+
+Common error codes:
+
+| Code | Meaning |
+|------|---------|
+| -1 | General error |
+| -5 | Invalid address or key |
+| -6 | Insufficient funds |
+| -13 | Wallet unlock needed |
+| -18 | Wallet not found |
+
+## Network Flags
+
+Always use the correct network flag:
+
+| Network | Flag | RPC Port |
+|---------|------|----------|
+| Mainnet | (none) | 8334 |
+| Testnet | `-testnet` | 18334 |
+| Regtest | `-regtest` | 18443 |
+
+## Getting Help
+
+List all available commands:
+
+```bash
+./btq-cli help
+```
+
+Get help for a specific command:
+
+```bash
+./btq-cli help getnewdilithiumaddress
+```
+
+## Related Topics
+
+- [Wallet RPCs](/reference/wallet-rpcs) - Wallet management commands
+- [Dilithium RPCs](/reference/dilithium-rpcs) - Quantum-resistant operations
+- [Troubleshooting](/guides/troubleshooting) - Common RPC issues
