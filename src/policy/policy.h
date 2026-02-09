@@ -20,11 +20,14 @@ class CFeeRate;
 class CScript;
 
 /** Default for -blockmaxweight, which controls the range of block weights the mining code will create **/
-static constexpr unsigned int DEFAULT_BLOCK_MAX_WEIGHT{52000000}; // 52 MB soft cap (hard cap is 64 MB)
+// BTQ: 95% of 8MW hard cap. With WITNESS_SCALE_FACTOR=16, this allows ~500KB non-witness + ~7.6MB witness per block
+static constexpr unsigned int DEFAULT_BLOCK_MAX_WEIGHT{7600000}; // 7.6 MW soft cap (hard cap is 8 MW)
 /** Default for -blockmintxfee, which sets the minimum feerate for a transaction in blocks created by mining code **/
 static constexpr unsigned int DEFAULT_BLOCK_MIN_TX_FEE{1000};
 /** The maximum weight for transactions we're willing to relay/mine */
-static constexpr int32_t MAX_STANDARD_TX_WEIGHT{4'000'000}; // 4 MB for large consolidation txs
+// BTQ: 400K WU allows ~106 Dilithium inputs per consolidation tx
+// (each input: ~40 bytes non-witness * 16 + ~3,733 bytes witness = ~4,373 WU)
+static constexpr int32_t MAX_STANDARD_TX_WEIGHT{400'000};
 /** The minimum non-witness size for transactions we're willing to relay/mine: one larger than 64  */
 static constexpr unsigned int MIN_STANDARD_TX_NONWITNESS_SIZE{65};
 /** Maximum number of signature check operations in an IsStandard() P2SH script */
@@ -56,13 +59,13 @@ static constexpr unsigned int DUST_RELAY_TX_FEE{3000};
 /** Default for -minrelaytxfee, minimum relay fee for transactions */
 static constexpr unsigned int DEFAULT_MIN_RELAY_TX_FEE{1000};
 /** Default for -limitancestorcount, max number of in-mempool ancestors */
-static constexpr unsigned int DEFAULT_ANCESTOR_LIMIT{50};
+static constexpr unsigned int DEFAULT_ANCESTOR_LIMIT{25};
 /** Default for -limitancestorsize, maximum kilobytes of tx + all in-mempool ancestors */
-static constexpr unsigned int DEFAULT_ANCESTOR_SIZE_LIMIT_KVB{10000};
+static constexpr unsigned int DEFAULT_ANCESTOR_SIZE_LIMIT_KVB{2000}; // 2 MB
 /** Default for -limitdescendantcount, max number of in-mempool descendants */
-static constexpr unsigned int DEFAULT_DESCENDANT_LIMIT{50};
+static constexpr unsigned int DEFAULT_DESCENDANT_LIMIT{25};
 /** Default for -limitdescendantsize, maximum kilobytes of in-mempool descendants */
-static constexpr unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT_KVB{10000};
+static constexpr unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT_KVB{2000}; // 2 MB
 /** Default for -datacarrier */
 static const bool DEFAULT_ACCEPT_DATACARRIER = true;
 /**

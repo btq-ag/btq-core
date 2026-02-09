@@ -141,24 +141,21 @@ public:
 class TxValidationState : public ValidationState<TxValidationResult> {};
 class BlockValidationState : public ValidationState<BlockValidationResult> {};
 
-// These implement the weight = (stripped_size * 4) + witness_size formula,
-// using only serialization with and without witness data. As witness_size
-// is equal to total_size - stripped_size, this formula is identical to:
-// weight = (stripped_size * 3) + total_size.
+// BTQ: Witness discount restored with WITNESS_SCALE_FACTOR = 16.
+// Weight = stripped_size * (WITNESS_SCALE_FACTOR - 1) + total_size
+// This makes witness data (signatures, pubkeys) 16x cheaper than non-witness data
+// (outputs, scriptPubKeys) because witness data is prunable while UTXO data is permanent.
 static inline int32_t GetTransactionWeight(const CTransaction& tx)
 {
-    // Weight equals serialized size (disable witness discounting)
-    return ::GetSerializeSize(tx, PROTOCOL_VERSION);
+    return ::GetSerializeSize(tx, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(tx, PROTOCOL_VERSION);
 }
 static inline int64_t GetBlockWeight(const CBlock& block)
 {
-    // Weight equals serialized size (disable witness discounting)
-    return ::GetSerializeSize(block, PROTOCOL_VERSION);
+    return ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(block, PROTOCOL_VERSION);
 }
 static inline int64_t GetTransactionInputWeight(const CTxIn& txin)
 {
-    // Weight equals serialized size (disable witness discounting)
-    return ::GetSerializeSize(txin, PROTOCOL_VERSION);
+    return ::GetSerializeSize(txin, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(txin, PROTOCOL_VERSION);
 }
 
 /** Compute at which vout of the block's coinbase transaction the witness commitment occurs, or -1 if not found */
