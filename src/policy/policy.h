@@ -20,7 +20,7 @@ class CFeeRate;
 class CScript;
 
 /** Default for -blockmaxweight, which controls the range of block weights the mining code will create **/
-// BTQ: 95% of 8MW hard cap. With WITNESS_SCALE_FACTOR=16, this allows ~500KB non-witness + ~7.6MB witness per block
+// BTQ: 95% of 8MW hard cap. Example: 250KB non-witness + 4MB witness = 7.75 MW
 static constexpr unsigned int DEFAULT_BLOCK_MAX_WEIGHT{7600000}; // 7.6 MW soft cap (hard cap is 8 MW)
 /** Default for -blockmintxfee, which sets the minimum feerate for a transaction in blocks created by mining code **/
 static constexpr unsigned int DEFAULT_BLOCK_MIN_TX_FEE{1000};
