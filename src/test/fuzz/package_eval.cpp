@@ -142,7 +142,7 @@ FUZZ_TARGET(tx_package_eval, .init = initialize_tx_pool)
     std::map<COutPoint, CAmount> outpoints_value;
     for (const auto& outpoint : g_outpoints_coinbase_init_mature) {
         Assert(mempool_outpoints.insert(outpoint).second);
-        outpoints_value[outpoint] = 50 * COIN;
+        outpoints_value[outpoint] = 5 * COIN; // BTQ: 5 BTQ per block
     }
 
     auto outpoints_updater = std::make_shared<OutpointsUpdater>(mempool_outpoints);
