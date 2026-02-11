@@ -115,9 +115,9 @@ struct Params {
      * This prevents us from warning about the CSV and segwit activations. */
     int MinBIP9WarningHeight;
     /**
-     * Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
-     * (nPowTargetTimespan / nPowTargetSpacing) which is also used for BIP9 deployments.
-     * Examples: 1916 for 95%, 1512 for testchains.
+     * Minimum blocks including miner confirmation of the total of nMinerConfirmationWindow blocks
+     * in a retargeting period (nPowTargetTimespan / nPowTargetSpacing), also used for BIP9 deployments.
+     * BTQ uses 20160 blocks (14 days / 1-minute blocks). Examples: 18144 for 90%, 15120 for testchains.
      */
     uint32_t nRuleChangeActivationThreshold;
     uint32_t nMinerConfirmationWindow;
