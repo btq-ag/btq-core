@@ -58,7 +58,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    const char* pszTimestamp = "BTQ Genesis: Quantum-resistant blockchain - 03/Feb/2026";
+    const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
     const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
@@ -72,7 +72,7 @@ public:
         m_chain_type = ChainType::BTQMAIN;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.nSubsidyHalvingInterval = 2100000; // BTQ: 10x Bitcoin for 1-min blocks, same ~4yr halving
         
         // BTQ: Set signature algorithm to NONE initially (stub implementation)
         consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
@@ -90,14 +90,12 @@ public:
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        // BTQ: Optimized block timing for better UTXO consolidation with large Dilithium signatures
-        consensus.nPowTargetTimespan = 7 * 24 * 60 * 60; // one week (reduced for 1-min blocks)
-        consensus.nPowTargetSpacing = 1 * 60;            // 1 minute blocks (was 10 minutes)
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetSpacing = 1 * 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
-        // Difficulty adjustment: 10080 blocks = 1 week at 1-min blocks
-        consensus.nRuleChangeActivationThreshold = 9072; // 90% of 10080
-        consensus.nMinerConfirmationWindow = 10080;      // nPowTargetTimespan / nPowTargetSpacing
+        consensus.nRuleChangeActivationThreshold = 18144; // 90% of 20160
+        consensus.nMinerConfirmationWindow = 20160; // nPowTargetTimespan / nPowTargetSpacing (14 days / 1 min)
         
         // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -129,13 +127,11 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ genesis block with custom timestamp
-        genesis = CreateGenesisBlock(1704067200, 106189, 0x1f00ffff, 1, 50 * COIN); //TODO change timestamp to actual deployment time 
+        genesis = CreateGenesisBlock(1704067200, 194445, 0x1f00ffff, 1, 5 * COIN); //TODO change timestamp to actual deployment time 
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        // BTQ: Genesis block assertions with mined values
-        // TODO: Update these after mining the genesis block with new timestamp
-        //assert(consensus.hashGenesisBlock == uint256S("0x000089627847a1209221851f0d29279ac71a528c84a405c272eb7c6a19d15a81"));
-        //assert(genesis.hashMerkleRoot == uint256S("0x0ef1a6cc7841e9664ce821bb2f0716265712e16c75735387a35c6358f6543c1c"));
+        assert(consensus.hashGenesisBlock == uint256S("0x0000630a5e65a4bdeb8ad46b1c659de7917c6b75a8c15a997cd10c0260e8f038"));
+        assert(genesis.hashMerkleRoot == uint256S("0xc8d6a9eb714de74c9eff54ad5818da2a8afd11703a30202c227ac6974f728511"));
 
         // BTQ: Add BTQ seed nodes (replace with actual DNS seeds)
         vSeeds.emplace_back("seed1.btq.com");
@@ -153,7 +149,7 @@ public:
         bech32_hrp = "qbtc";
         dilithium_bech32_hrp = "dbtc"; // BTQ: dbtc for Dilithium Bech32 addresses
 
-        vFixedSeeds.clear(); // BTQ: No fixed seeds initially, will use DNS seeds
+        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
 
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
@@ -187,7 +183,7 @@ public:
         m_chain_type = ChainType::BTQTEST;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.nSubsidyHalvingInterval = 2100000; // BTQ: 10x Bitcoin for 1-min blocks, same ~4yr halving
         
         // BTQ: Set signature algorithm to NONE initially (stub implementation)
         consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
@@ -205,14 +201,12 @@ public:
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        // BTQ: Optimized block timing for better UTXO consolidation with large Dilithium signatures
-        consensus.nPowTargetTimespan = 7 * 24 * 60 * 60; // one week (reduced for 1-min blocks)
-        consensus.nPowTargetSpacing = 1 * 60;            // 1 minute blocks (was 10 minutes)
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetSpacing = 1 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
-        // Difficulty adjustment: 10080 blocks = 1 week at 1-min blocks
-        consensus.nRuleChangeActivationThreshold = 7560; // 75% of 10080 for testchains
-        consensus.nMinerConfirmationWindow = 10080;      // nPowTargetTimespan / nPowTargetSpacing
+        consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
+        consensus.nMinerConfirmationWindow = 20160; // nPowTargetTimespan / nPowTargetSpacing (14 days / 1 min)
         
         // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -242,20 +236,19 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ testnet genesis block with mined values
-        const char* pszTimestamp = "BTQ Genesis: Quantum-resistant blockchain - 03/Feb/2026";
+        const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1738540800, 0, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1738540800, 0, 0x207fffff, 1, 5 * COIN);
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        // BTQ: Testnet genesis block assertions with mined values (mined 03/Feb/2026)
-        assert(consensus.hashGenesisBlock == uint256S("0x736dfed9772ef17b1ed92d3e2694071d6e5b20e3e4f6e2857c36e15d5a7d51f0"));
-        assert(genesis.hashMerkleRoot == uint256S("0x8e74483e594e08277a141c67d4265939f71c49d2bace346561af008994e7fee8"));
+        assert(consensus.hashGenesisBlock == uint256S("0x1bac0760b85ab8c6e58d5e830c589b8203765e3f03cf886caec17cba5441fb4b"));
+        assert(genesis.hashMerkleRoot == uint256S("0xc8d6a9eb714de74c9eff54ad5818da2a8afd11703a30202c227ac6974f728511"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
         // BTQ: Add BTQ testnet seed nodes
-        vSeeds.emplace_back("seed1.bitcoinquantum.com");
-        vSeeds.emplace_back("seed2.bitcoinquantum.com");
+        vSeeds.emplace_back("testnet-seed1.btq.com");
+        vSeeds.emplace_back("testnet-seed2.btq.com");
 
         // BTQ: Testnet uses same address prefixes as mainnet for simplicity
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111); // Standard testnet prefix
@@ -342,7 +335,7 @@ public:
         m_chain_type = ChainType::BTQSIGNET;
         consensus.signet_blocks = true;
         consensus.signet_challenge.assign(bin.begin(), bin.end());
-        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.nSubsidyHalvingInterval = 2100000; // BTQ: 10x Bitcoin for 1-min blocks, same ~4yr halving
         
         // BTQ: Set signature algorithm to NONE initially (stub implementation)
         consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
@@ -356,14 +349,12 @@ public:
         
         // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
         consensus.SegwitHeight = 1;
-        // BTQ: Optimized block timing for better UTXO consolidation with large Dilithium signatures
-        consensus.nPowTargetTimespan = 7 * 24 * 60 * 60; // one week (reduced for 1-min blocks)
-        consensus.nPowTargetSpacing = 1 * 60;            // 1 minute blocks (was 10 minutes)
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetSpacing = 1 * 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
-        // Difficulty adjustment: 10080 blocks = 1 week at 1-min blocks
-        consensus.nRuleChangeActivationThreshold = 9072; // 90% of 10080
-        consensus.nMinerConfirmationWindow = 10080;      // nPowTargetTimespan / nPowTargetSpacing
+        consensus.nRuleChangeActivationThreshold = 18144; // 90% of 20160
+        consensus.nMinerConfirmationWindow = 20160; // nPowTargetTimespan / nPowTargetSpacing (14 days / 1 min)
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         
@@ -389,25 +380,18 @@ public:
         nPruneAfterHeight = 1000;
 
         // BTQ: Create BTQ SigNet genesis block
-        const char* pszTimestamp = "BTQ Genesis: Quantum-resistant blockchain - 03/Feb/2026";
+        const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 8487867, 0x1e0377ae, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 12871552, 0x1e0377ae, 1, 5 * COIN);
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        // BTQ: SigNet genesis block assertions with mined values
-        // TODO: Update these after mining the genesis block with new timestamp
-        //assert(consensus.hashGenesisBlock == uint256S("0x0000021ef1e940da5200d0a9fc6cd161d2b89d2a1b006764ced236d571a403c9"));
-        //assert(genesis.hashMerkleRoot == uint256S("0x0ef1a6cc7841e9664ce821bb2f0716265712e16c75735387a35c6358f6543c1c"));
+        assert(consensus.hashGenesisBlock == uint256S("0x0000023375058c22d1702928d6f02be61902cc6cd4b15ef5b39b7c4165745aba"));
+        assert(genesis.hashMerkleRoot == uint256S("0xc8d6a9eb714de74c9eff54ad5818da2a8afd11703a30202c227ac6974f728511"));
 
         vFixedSeeds.clear();
 
         m_assumeutxo_data = {
-            {
-                .height = 160'000,
-                .hash_serialized = AssumeutxoHash{uint256S("0xfe0a44309b74d6b5883d246cb419c6221bcccf0b308c9b59b7d70783dbdf928a")},
-                .nChainTx = 2289496,
-                .blockhash = uint256S("0x0000003ca3c99aff040f2563c2ad8f8ec88bd0fd6b8f0895cfaf1ef90353a62c")
-            }
+            // BTQ: Add signet assumeutxo data once chain is running
         };
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
@@ -438,7 +422,7 @@ public:
         m_chain_type = ChainType::BTQREGTEST;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 150;
+        consensus.nSubsidyHalvingInterval = 1500; // BTQ: 10x Bitcoin for 1-min blocks
         
         // BTQ: Set signature algorithm to NONE initially (stub implementation)
         consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
@@ -454,14 +438,12 @@ public:
         consensus.SegwitHeight = 1; // Disabled unless overridden
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        // BTQ: Optimized block timing for consistency with mainnet/testnet (1-min blocks)
-        // Note: fPowNoRetargeting=true means nPowTargetTimespan doesn't affect difficulty
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (doesn't retarget anyway)
-        consensus.nPowTargetSpacing = 1 * 60;             // 1 minute blocks for consistency
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetSpacing = 1 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
-        consensus.nMinerConfirmationWindow = 144; // Faster than normal for regtest (144 instead of 10080)
+        consensus.nMinerConfirmationWindow = 144; // Faster than normal for regtest (144 instead of 20160)
 
         // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -517,14 +499,13 @@ public:
         }
 
         // BTQ: Create BTQ regtest genesis block with mined values
-        const char* pszTimestamp = "BTQ Genesis: Quantum-resistant blockchain - 03/Feb/2026";
+        const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1738540800, 0, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1738540800, 0, 0x207fffff, 1, 5 * COIN);
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        // BTQ: Regtest genesis block assertions with mined values (mined 03/Feb/2026)
-        assert(consensus.hashGenesisBlock == uint256S("0x736dfed9772ef17b1ed92d3e2694071d6e5b20e3e4f6e2857c36e15d5a7d51f0"));
-        assert(genesis.hashMerkleRoot == uint256S("0x8e74483e594e08277a141c67d4265939f71c49d2bace346561af008994e7fee8"));
+        assert(consensus.hashGenesisBlock == uint256S("0x1bac0760b85ab8c6e58d5e830c589b8203765e3f03cf886caec17cba5441fb4b"));
+        assert(genesis.hashMerkleRoot == uint256S("0xc8d6a9eb714de74c9eff54ad5818da2a8afd11703a30202c227ac6974f728511"));
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();
@@ -541,20 +522,7 @@ public:
         };
 
         m_assumeutxo_data = {
-            {
-                // BTQ: Add regtest assumeutxo data for testing when we have it
-                .height = 110,
-                .hash_serialized = AssumeutxoHash{uint256S("0x6657b736d4fe4db0cbc796789e812d5dba7f5c143764b1b6905612f1830609d1")},
-                .nChainTx = 111,
-                .blockhash = uint256S("0x696e92821f65549c7ee134edceeeeaaa4105647a3c4fd9f298c0aec0ab50425c")
-            },
-            {
-                // For use by test/functional/feature_assumeutxo.py
-                .height = 299,
-                .hash_serialized = AssumeutxoHash{uint256S("0x61d9c2b29a2571a5fe285fe2d8554f91f93309666fc9b8223ee96338de25ff53")},
-                .nChainTx = 300,
-                .blockhash = uint256S("0x7e0517ef3ea6ecbed9117858e42eedc8eb39e8698a38dcbd1b3962a283233f4c")
-            },
+            // BTQ: Add regtest assumeutxo data once chain parameters are finalized
         };
 
         chainTxData = ChainTxData{

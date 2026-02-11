@@ -53,7 +53,7 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     // See discussion in https://github.com/btq/btq/pull/22779 for details.
     if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
         // sum the sizes of the parts of a transaction input
-        // with 75% segwit discount applied to the script size.
+        // with witness discount applied to the script size (1/WITNESS_SCALE_FACTOR weight).
         nSize += (32 + 4 + 1 + (107 / WITNESS_SCALE_FACTOR) + 4);
     } else {
         nSize += (32 + 4 + 1 + 107 + 4); // the 148 mentioned above
