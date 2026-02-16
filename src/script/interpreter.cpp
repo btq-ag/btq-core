@@ -1261,6 +1261,11 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 case OP_CHECKSIGDILITHIUM:
                 case OP_CHECKSIGDILITHIUMVERIFY:
                 {
+                    // BTQ: Dilithium opcodes are disabled in tapscript. Taproot outputs
+                    // are quantum-vulnerable due to the exposed key path public key, so
+                    // Dilithium in tapscript provides a false sense of security.
+                    if (sigversion == SigVersion::TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+
                     // (sig pubkey -- bool)
                     if (stack.size() < 2)
                         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
@@ -1287,6 +1292,9 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 case OP_CHECKMULTISIGDILITHIUM:
                 case OP_CHECKMULTISIGDILITHIUMVERIFY:
                 {
+                    // BTQ: Dilithium opcodes are disabled in tapscript.
+                    if (sigversion == SigVersion::TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+
                     // ([sig ...] num_of_signatures [pubkey ...] num_of_pubkeys -- bool)
                     // Similar to OP_CHECKMULTISIG but for Dilithium signatures
                     int i = 1;
@@ -1365,6 +1373,9 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 
                 case OP_DILITHIUM_PUBKEY:
                 {
+                    // BTQ: Dilithium opcodes are disabled in tapscript.
+                    if (sigversion == SigVersion::TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+
                     // (pubkey -- bool)
                     if (stack.size() < 1)
                         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
