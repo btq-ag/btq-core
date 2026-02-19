@@ -121,6 +121,15 @@ static bool EvalChecksigDilithium(const valtype& sig, const valtype& pubkey, CSc
         return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
     }
 
+    // In P2MR tapscript, enforce validation weight for Dilithium sig checks
+    if (sigversion == SigVersion::P2MR_TAPSCRIPT && !sig.empty()) {
+        assert(execdata.m_validation_weight_left_init);
+        execdata.m_validation_weight_left -= VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED;
+        if (execdata.m_validation_weight_left < 0) {
+            return set_error(serror, SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT);
+        }
+    }
+
     // Create Dilithium public key object
     CDilithiumPubKey dilithium_pubkey(pubkey);
 
@@ -390,7 +399,7 @@ static bool EvalChecksigPreTapscript(const valtype& vchSig, const valtype& vchPu
 
 static bool EvalChecksigTapscript(const valtype& sig, const valtype& pubkey, ScriptExecutionData& execdata, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptError* serror, bool& success)
 {
-    assert(sigversion == SigVersion::TAPSCRIPT);
+    assert(sigversion == SigVersion::TAPSCRIPT || sigversion == SigVersion::P2MR_TAPSCRIPT);
 
     /*
      *  The following validation sequence is consensus critical. Please note how --
@@ -440,6 +449,7 @@ static bool EvalChecksig(const valtype& sig, const valtype& pubkey, CScript::con
     case SigVersion::WITNESS_V0:
         return EvalChecksigPreTapscript(sig, pubkey, pbegincodehash, pend, flags, checker, sigversion, serror, success);
     case SigVersion::TAPSCRIPT:
+    case SigVersion::P2MR_TAPSCRIPT:
         return EvalChecksigTapscript(sig, pubkey, execdata, flags, checker, sigversion, serror, success);
     case SigVersion::TAPROOT:
         // Key path spending in Taproot has no script, so this is unreachable.
@@ -459,7 +469,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
     static const valtype vchTrue(1, 1);
 
     // sigversion cannot be TAPROOT here, as it admits no script execution.
-    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::TAPSCRIPT);
+    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::TAPSCRIPT || sigversion == SigVersion::P2MR_TAPSCRIPT);
 
     CScript::const_iterator pc = script.begin();
     CScript::const_iterator pend = script.end();
@@ -655,7 +665,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                             return set_error(serror, SCRIPT_ERR_UNBALANCED_CONDITIONAL);
                         valtype& vch = stacktop(-1);
                         // Tapscript requires minimal IF/NOTIF inputs as a consensus rule.
-                        if (sigversion == SigVersion::TAPSCRIPT) {
+                        if (sigversion == SigVersion::TAPSCRIPT || sigversion == SigVersion::P2MR_TAPSCRIPT) {
                             // The input argument to the OP_IF and OP_NOTIF opcodes must be either
                             // exactly 0 (the empty vector) or exactly 1 (the one-byte vector with value 1).
                             if (vch.size() > 1 || (vch.size() == 1 && vch[0] != 1)) {
@@ -1149,7 +1159,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 case OP_CHECKMULTISIG:
                 case OP_CHECKMULTISIGVERIFY:
                 {
-                    if (sigversion == SigVersion::TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_CHECKMULTISIG);
+                    if (sigversion == SigVersion::TAPSCRIPT || sigversion == SigVersion::P2MR_TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_CHECKMULTISIG);
 
                     // ([sig ...] num_of_signatures [pubkey ...] num_of_pubkeys -- bool)
 
@@ -1658,6 +1668,7 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
         // key_version is not used and left uninitialized.
         break;
     case SigVersion::TAPSCRIPT:
+    case SigVersion::P2MR_TAPSCRIPT:
         ext_flag = 1;
         // key_version must be 0 for now, representing the current version of
         // 32-byte public keys in the tapscript signature opcode execution.
@@ -1725,8 +1736,8 @@ bool SignatureHashSchnorr(uint256& hash_out, ScriptExecutionData& execdata, cons
         ss << execdata.m_output_hash.value();
     }
 
-    // Additional data for BIP 342 signatures
-    if (sigversion == SigVersion::TAPSCRIPT) {
+    // Additional data for BIP 342 signatures (also applies to P2MR tapscript)
+    if (sigversion == SigVersion::TAPSCRIPT || sigversion == SigVersion::P2MR_TAPSCRIPT) {
         assert(execdata.m_tapleaf_hash_init);
         ss << execdata.m_tapleaf_hash;
         ss << key_version;
@@ -1846,7 +1857,7 @@ bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vecto
 template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey_in, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror) const
 {
-    assert(sigversion == SigVersion::TAPROOT || sigversion == SigVersion::TAPSCRIPT);
+    assert(sigversion == SigVersion::TAPROOT || sigversion == SigVersion::TAPSCRIPT || sigversion == SigVersion::P2MR_TAPSCRIPT);
     // Schnorr signatures have 32-byte public keys. The caller is responsible for enforcing this.
     assert(pubkey_in.size() == 32);
     // Note that in Tapscript evaluation, empty signatures are treated specially (invalid signature that does not
@@ -1996,7 +2007,7 @@ static bool ExecuteWitnessScript(const Span<const valtype>& stack_span, const CS
 {
     std::vector<valtype> stack{stack_span.begin(), stack_span.end()};
 
-    if (sigversion == SigVersion::TAPSCRIPT) {
+    if (sigversion == SigVersion::TAPSCRIPT || sigversion == SigVersion::P2MR_TAPSCRIPT) {
         // OP_SUCCESSx processing overrides everything, including stack element size limits
         CScript::const_iterator pc = exec_script.begin();
         while (pc < exec_script.end()) {
@@ -2014,7 +2025,7 @@ static bool ExecuteWitnessScript(const Span<const valtype>& stack_span, const CS
             }
         }
 
-        // Tapscript enforces initial stack size limits (altstack is empty here)
+        // Tapscript/P2MR enforces initial stack size limits (altstack is empty here)
         if (stack.size() > MAX_STACK_SIZE) return set_error(serror, SCRIPT_ERR_STACK_SIZE);
     }
 
@@ -2075,6 +2086,22 @@ static bool VerifyTaprootCommitment(const std::vector<unsigned char>& control, c
     const uint256 merkle_root = ComputeTaprootMerkleRoot(control, tapleaf_hash);
     // Verify that the output pubkey matches the tweaked internal pubkey, after correcting for parity.
     return q.CheckTapTweak(p, merkle_root, control[0] & 1);
+}
+
+/** BIP360 P2MR: Verify that the witness program equals the Merkle root of the script tree.
+ *  Unlike Taproot, there is no internal key and no tweak -- the witness program IS the root. */
+static bool VerifyP2MRCommitment(const std::vector<unsigned char>& control, const std::vector<unsigned char>& program, const uint256& tapleaf_hash)
+{
+    assert(control.size() >= P2MR_CONTROL_BASE_SIZE);
+    assert(program.size() >= uint256::size());
+
+    const int path_len = (control.size() - P2MR_CONTROL_BASE_SIZE) / P2MR_CONTROL_NODE_SIZE;
+    uint256 k = tapleaf_hash;
+    for (int i = 0; i < path_len; ++i) {
+        Span node{Span{control}.subspan(P2MR_CONTROL_BASE_SIZE + P2MR_CONTROL_NODE_SIZE * i, P2MR_CONTROL_NODE_SIZE)};
+        k = ComputeTapbranchHash(k, node);
+    }
+    return k == uint256(Span{program});
 }
 
 static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, const std::vector<unsigned char>& program, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* serror, bool is_p2sh)
@@ -2162,6 +2189,50 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
             }
             return set_success(serror);
         }
+    } else if (witversion == 2 && program.size() == WITNESS_V2_P2MR_SIZE && !is_p2sh) {
+        // BIP360 P2MR: 32-byte non-P2SH witness v2 program (which encodes the script tree Merkle root)
+        if (!(flags & SCRIPT_VERIFY_P2MR)) return set_success(serror);
+        if (stack.size() == 0) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
+        // Handle optional annex (same rules as Taproot)
+        if (stack.size() >= 2 && !stack.back().empty() && stack.back()[0] == ANNEX_TAG) {
+            const valtype& annex = SpanPopBack(stack);
+            execdata.m_annex_hash = (HashWriter{} << annex).GetSHA256();
+            execdata.m_annex_present = true;
+        } else {
+            execdata.m_annex_present = false;
+        }
+        execdata.m_annex_init = true;
+        // P2MR has NO key path spend. Require at least two witness elements (script + control block).
+        if (stack.size() < 2) {
+            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+        }
+        // Script path spending (always, since there is no key path)
+        const valtype& control = SpanPopBack(stack);
+        const valtype& script = SpanPopBack(stack);
+        if (control.size() < P2MR_CONTROL_BASE_SIZE || control.size() > P2MR_CONTROL_MAX_SIZE ||
+            ((control.size() - P2MR_CONTROL_BASE_SIZE) % P2MR_CONTROL_NODE_SIZE) != 0) {
+            return set_error(serror, SCRIPT_ERR_TAPROOT_WRONG_CONTROL_SIZE);
+        }
+        // Per BIP360, the parity bit (last bit of control byte) must be 1
+        if ((control[0] & 1) != 1) {
+            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+        }
+        execdata.m_tapleaf_hash = ComputeTapleafHash(control[0] & TAPROOT_LEAF_MASK, script);
+        if (!VerifyP2MRCommitment(control, program, execdata.m_tapleaf_hash)) {
+            return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+        }
+        execdata.m_tapleaf_hash_init = true;
+        if ((control[0] & TAPROOT_LEAF_MASK) == TAPROOT_LEAF_TAPSCRIPT) {
+            // Tapscript execution within P2MR context (Dilithium opcodes are enabled)
+            exec_script = CScript(script.begin(), script.end());
+            execdata.m_validation_weight_left = ::GetSerializeSize(witness.stack, PROTOCOL_VERSION) + VALIDATION_WEIGHT_OFFSET;
+            execdata.m_validation_weight_left_init = true;
+            return ExecuteWitnessScript(stack, exec_script, flags, SigVersion::P2MR_TAPSCRIPT, checker, execdata, serror);
+        }
+        if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION) {
+            return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION);
+        }
+        return set_success(serror);
     } else {
         if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
             return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);

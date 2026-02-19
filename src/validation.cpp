@@ -2117,6 +2117,9 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     
     // BTQ: Enable Dilithium signature validation
     flags |= SCRIPT_VERIFY_DILITHIUM;
+
+    // BTQ: Enable BIP360 P2MR (Pay-to-Merkle-Root) validation
+    flags |= SCRIPT_VERIFY_P2MR;
     
     const auto it{consensusparams.script_flag_exceptions.find(*Assert(block_index.phashBlock))};
     if (it != consensusparams.script_flag_exceptions.end()) {

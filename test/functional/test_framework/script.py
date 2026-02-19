@@ -940,3 +940,20 @@ def is_op_success(o):
     # BTQ: Exclude Dilithium opcodes (0xbb-0xbf) from OP_SUCCESSx range.
     # Must match IsOpSuccess() in src/script/script.cpp
     return o == 0x50 or o == 0x62 or o == 0x89 or o == 0x8a or o == 0x8d or o == 0x8e or (o >= 0x7e and o <= 0x81) or (o >= 0x83 and o <= 0x86) or (o >= 0x95 and o <= 0x99) or (o >= 0xc0 and o <= 0xfe)
+
+# BIP360 P2MR (Pay-to-Merkle-Root) support
+P2MRInfo = namedtuple("P2MRInfo", "scriptPubKey,leaves,merkle_root")
+P2MRLeafInfo = namedtuple("P2MRLeafInfo", "script,version,merklebranch,leaf_hash")
+
+def p2mr_construct(scripts=None):
+    """Construct a P2MR (BIP360) output from a script tree (no internal key).
+
+    scripts: same format as taproot_construct scripts argument
+    Returns: a P2MRInfo object with scriptPubKey, leaves, and merkle_root
+    """
+    if scripts is None:
+        scripts = []
+
+    ret, h = taproot_tree_helper(scripts)
+    leaves = dict((name, P2MRLeafInfo(script, version, merklebranch, leaf)) for name, version, script, merklebranch, leaf in ret)
+    return P2MRInfo(CScript([OP_2, h]), leaves, h)

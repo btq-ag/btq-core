@@ -288,6 +288,27 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
                 return false;
             }
         }
+
+        if (witnessversion == 2 && witnessprogram.size() == WITNESS_V2_P2MR_SIZE && !p2sh) {
+            // BIP360 P2MR spend (non-P2SH-wrapped, version 2, witness program size 32)
+            Span stack{tx.vin[i].scriptWitness.stack};
+            if (stack.size() >= 2 && !stack.back().empty() && stack.back()[0] == ANNEX_TAG) {
+                return false; // Annexes are nonstandard
+            }
+            if (stack.size() >= 2) {
+                const auto& control_block = SpanPopBack(stack);
+                SpanPopBack(stack);
+                if (control_block.empty()) return false;
+                if ((control_block[0] & TAPROOT_LEAF_MASK) == TAPROOT_LEAF_TAPSCRIPT) {
+                    for (const auto& item : stack) {
+                        if (item.size() > MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE) return false;
+                    }
+                }
+            } else {
+                // P2MR has no key path; fewer than 2 elements is invalid
+                return false;
+            }
+        }
     }
     return true;
 }

@@ -60,6 +60,11 @@ static constexpr unsigned int ANNEX_TAG = 0x50;
 // Validation weight per passing signature (Tapscript only, see BIP 342).
 static constexpr int64_t VALIDATION_WEIGHT_PER_SIGOP_PASSED{50};
 
+// Validation weight per passing Dilithium signature (P2MR tapscript only).
+// Dilithium verification is significantly more expensive than Schnorr, so the
+// weight cost is higher to prevent DoS via validation time.
+static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED{500};
+
 // How much weight budget is added to the witness size (Tapscript only, see BIP 342).
 static constexpr int64_t VALIDATION_WEIGHT_OFFSET{50};
 

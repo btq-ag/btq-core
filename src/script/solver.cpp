@@ -28,6 +28,7 @@ std::string GetTxnOutputType(TxoutType t)
     case TxoutType::WITNESS_V0_KEYHASH: return "witness_v0_keyhash";
     case TxoutType::WITNESS_V0_SCRIPTHASH: return "witness_v0_scripthash";
     case TxoutType::WITNESS_V1_TAPROOT: return "witness_v1_taproot";
+    case TxoutType::WITNESS_V2_P2MR: return "witness_v2_p2mr";
     case TxoutType::WITNESS_UNKNOWN: return "witness_unknown";
     case TxoutType::DILITHIUM_PUBKEY: return "dilithium_pubkey";
     case TxoutType::DILITHIUM_PUBKEYHASH: return "dilithium_pubkeyhash";
@@ -235,6 +236,10 @@ TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned c
         if (witnessversion == 1 && witnessprogram.size() == WITNESS_V1_TAPROOT_SIZE) {
             vSolutionsRet.push_back(std::move(witnessprogram));
             return TxoutType::WITNESS_V1_TAPROOT;
+        }
+        if (witnessversion == 2 && witnessprogram.size() == WITNESS_V2_P2MR_SIZE) {
+            vSolutionsRet.push_back(std::move(witnessprogram));
+            return TxoutType::WITNESS_V2_P2MR;
         }
         if (witnessversion != 0) {
             vSolutionsRet.push_back(std::vector<unsigned char>{(unsigned char)witnessversion});

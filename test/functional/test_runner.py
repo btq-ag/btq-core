@@ -99,6 +99,7 @@ BASE_SCRIPTS = [
     'feature_fee_estimation.py',
     'feature_taproot.py',
     'feature_dilithium_sigops.py',
+    'feature_p2mr.py',
     'feature_block.py',
     # vv Tests less than 2m vv
     'mining_getblocktemplate_longpoll.py',
