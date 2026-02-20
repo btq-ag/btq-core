@@ -415,6 +415,9 @@ private:
     // ScriptPubKeyMan::GetID. In many cases it will be the hash of an internal structure
     std::map<uint256, std::unique_ptr<ScriptPubKeyMan>> m_spk_managers;
 
+    /** Cache IsMine results to avoid repeated lookups across all SPK managers during rescan */
+    mutable std::map<CScript, isminetype> m_ismine_cache GUARDED_BY(cs_wallet);
+
     // Appends spk managers into the main 'm_spk_managers'.
     // Must be the only method adding data to it.
     void AddScriptPubKeyMan(const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man);

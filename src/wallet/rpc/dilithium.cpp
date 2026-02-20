@@ -226,111 +226,70 @@ RPCHelpMan getnewdilithiumaddress()
                 output_type = *parsed;
             }
 
-            // Generate new Dilithium key
-            LogPrintf("DEBUG: getnewdilithiumaddress - Starting key generation\n");
             CDilithiumKey dilithium_key;
-            LogPrintf("DEBUG: getnewdilithiumaddress - Calling MakeNewKey()\n");
             dilithium_key.MakeNewKey();
-            LogPrintf("DEBUG: getnewdilithiumaddress - MakeNewKey() completed\n");
-            
+
             if (!dilithium_key.IsValid()) {
-                LogPrintf("DEBUG: getnewdilithiumaddress - Dilithium key is not valid\n");
                 throw JSONRPCError(RPC_WALLET_ERROR, "Failed to generate Dilithium key");
             }
-            LogPrintf("DEBUG: getnewdilithiumaddress - Dilithium key is valid\n");
 
-            // Get the public key
-            LogPrintf("DEBUG: getnewdilithiumaddress - Getting public key\n");
             CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
-            LogPrintf("DEBUG: getnewdilithiumaddress - Got public key\n");
             if (!dilithium_pubkey.IsValid()) {
-                LogPrintf("DEBUG: getnewdilithiumaddress - Dilithium public key is not valid\n");
                 throw JSONRPCError(RPC_WALLET_ERROR, "Failed to get Dilithium public key");
             }
-            LogPrintf("DEBUG: getnewdilithiumaddress - Dilithium public key is valid\n");
 
-            // Create address based on output type
-            LogPrintf("DEBUG: getnewdilithiumaddress - Creating address for output type: %d\n", static_cast<int>(output_type));
             std::string address;
             switch (output_type) {
                 case OutputType::LEGACY: {
-                    LogPrintf("DEBUG: getnewdilithiumaddress - Creating legacy address\n");
                     DilithiumPKHash dilithium_dest(dilithium_pubkey.GetID());
                     address = EncodeDestination(dilithium_dest);
-                    LogPrintf("DEBUG: getnewdilithiumaddress - Legacy address created: %s\n", address.c_str());
                     break;
                 }
                 case OutputType::P2SH_SEGWIT: {
-                    LogPrintf("DEBUG: getnewdilithiumaddress - Creating P2SH-SegWit address\n");
                     DilithiumPKHash dilithium_dest(dilithium_pubkey.GetID());
                     DilithiumScriptHash script_hash(GetScriptForDestination(dilithium_dest));
                     address = EncodeDestination(script_hash);
-                    LogPrintf("DEBUG: getnewdilithiumaddress - P2SH-SegWit address created: %s\n", address.c_str());
                     break;
                 }
                 case OutputType::BECH32: {
-                    LogPrintf("DEBUG: getnewdilithiumaddress - Creating Bech32 address\n");
                     DilithiumWitnessV0KeyHash witness_dest(dilithium_pubkey);
                     address = EncodeDestination(witness_dest);
-                    LogPrintf("DEBUG: getnewdilithiumaddress - Bech32 address created: %s\n", address.c_str());
                     break;
                 }
                 default:
-                    LogPrintf("DEBUG: getnewdilithiumaddress - Unsupported output type: %d\n", static_cast<int>(output_type));
                     throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unsupported address type for Dilithium");
             }
 
-            // Store the Dilithium key in the wallet
-            LogPrintf("DEBUG: getnewdilithiumaddress - Starting key storage\n");
             if (wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
-                LogPrintf("DEBUG: getnewdilithiumaddress - Storing in descriptor wallet\n");
-                // Store in descriptor wallet
                 bool stored = false;
                 auto spk_mans = wallet->GetAllScriptPubKeyMans();
-                LogPrintf("DEBUG: getnewdilithiumaddress - Found %zu script pub key managers\n", spk_mans.size());
                 for (auto& spk_man : spk_mans) {
                     DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
                     if (desc_spk_man) {
-                        LogPrintf("DEBUG: getnewdilithiumaddress - Found descriptor script pub key manager\n");
-                        // Create a dummy CPubKey for compatibility (Dilithium keys don't use CPubKey)
                         CPubKey dummy_pubkey;
-                        LogPrintf("DEBUG: getnewdilithiumaddress - Calling AddDilithiumKeyPubKey\n");
                         if (desc_spk_man->AddDilithiumKeyPubKey(dilithium_key, dummy_pubkey)) {
-                            LogPrintf("DEBUG: getnewdilithiumaddress - Successfully stored Dilithium key\n");
                             stored = true;
                             break;
-                        } else {
-                            LogPrintf("DEBUG: getnewdilithiumaddress - Failed to store Dilithium key in descriptor wallet\n");
                         }
                     }
                 }
                 if (!stored) {
-                    LogPrintf("DEBUG: getnewdilithiumaddress - No descriptor script pub key manager could store the key\n");
                     throw JSONRPCError(RPC_WALLET_ERROR, "Failed to store Dilithium key in descriptor wallet");
                 }
             } else {
-                LogPrintf("DEBUG: getnewdilithiumaddress - Storing in legacy wallet\n");
-                // Store in legacy wallet
                 LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
                 if (!spk_man) {
-                    LogPrintf("DEBUG: getnewdilithiumaddress - Legacy wallet not available\n");
                     throw JSONRPCError(RPC_WALLET_ERROR, "Legacy wallet not available");
                 }
-                LogPrintf("DEBUG: getnewdilithiumaddress - Calling AddDilithiumKeyPubKey on legacy wallet\n");
                 if (!spk_man->AddDilithiumKeyPubKey(dilithium_key, CPubKey())) {
-                    LogPrintf("DEBUG: getnewdilithiumaddress - Failed to store Dilithium key in legacy wallet\n");
                     throw JSONRPCError(RPC_WALLET_ERROR, "Failed to store Dilithium key in legacy wallet");
                 }
-                LogPrintf("DEBUG: getnewdilithiumaddress - Successfully stored Dilithium key in legacy wallet\n");
             }
 
-            // Set the label
             if (!label.empty()) {
-                LogPrintf("DEBUG: getnewdilithiumaddress - Setting address book label\n");
                 wallet->SetAddressBook(DecodeDestination(address), label, AddressPurpose::RECEIVE);
             }
 
-            LogPrintf("DEBUG: getnewdilithiumaddress - Returning address: %s\n", address.c_str());
             return address;
         },
     };
@@ -476,33 +435,20 @@ RPCHelpMan signmessagewithdilithium()
             CDilithiumKey dilithium_key;
             
             bool key_found = false;
-    // Try all script pub key managers (both legacy and descriptor)
     auto spk_mans = wallet->GetAllScriptPubKeyMans();
-    LogPrintf("DEBUG: Message signing - Found %zu script pub key managers\n", spk_mans.size());
-    LogPrintf("DEBUG: Message signing - Looking for keyID: %s\n", keyID.ToString());
     for (auto& spk_man : spk_mans) {
-        // Try descriptor wallet first
         DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
         if (desc_spk_man) {
-            LogPrintf("DEBUG: Message signing - Checking descriptor script pub key manager\n");
             if (desc_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
-                LogPrintf("DEBUG: Message signing - Found Dilithium key in descriptor wallet\n");
                 key_found = true;
                 break;
-            } else {
-                LogPrintf("DEBUG: Message signing - Dilithium key not found in descriptor wallet\n");
             }
         }
-        // Try legacy wallet
         LegacyScriptPubKeyMan* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man);
         if (legacy_spk_man) {
-            LogPrintf("DEBUG: Message signing - Checking legacy script pub key manager\n");
             if (legacy_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
-                LogPrintf("DEBUG: Message signing - Found Dilithium key in legacy wallet\n");
                 key_found = true;
                 break;
-            } else {
-                LogPrintf("DEBUG: Message signing - Dilithium key not found in legacy wallet\n");
             }
         }
     }

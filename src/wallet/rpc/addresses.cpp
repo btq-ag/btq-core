@@ -603,12 +603,10 @@ RPCHelpMan getaddressinfo()
                     const auto& pkh = std::get<DilithiumPKHash>(dest);
                     keyID = CKeyID();
                     std::memcpy(keyID.begin(), pkh.begin(), 20);
-                    LogPrintf("DEBUG: getaddressinfo - Looking up DilithiumPKHash keyID: %s\n", keyID.ToString());
                 } else if (std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) {
                     const auto& wkh = std::get<DilithiumWitnessV0KeyHash>(dest);
                     keyID = CKeyID();
                     std::memcpy(keyID.begin(), wkh.begin(), 20);
-                    LogPrintf("DEBUG: getaddressinfo - Looking up DilithiumWitnessV0KeyHash keyID: %s\n", keyID.ToString());
                 }
                 
                 // Check all ScriptPubKeyMans for Dilithium key

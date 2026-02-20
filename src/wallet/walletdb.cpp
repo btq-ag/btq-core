@@ -541,8 +541,6 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         std::vector<unsigned char> vchDilithiumKey;
         ssValue >> vchDilithiumKey;
         
-        LogPrintf("DEBUG: LoadDilithiumKey called for keyID: %s, key size: %zu\n", keyID.ToString(), vchDilithiumKey.size());
-        
         // Create CDilithiumKey from the stored data
         CDilithiumKey dilithiumKey;
         // The stored key includes both secret key and public key
@@ -561,19 +559,14 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
             // Try descriptor wallet first
             DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
             if (desc_spk_man) {
-                LogPrintf("DEBUG: Loading Dilithium key into descriptor wallet\n");
                 if (desc_spk_man->LoadDilithiumKey(dilithiumKey, CPubKey())) {
-                    LogPrintf("DEBUG: Successfully loaded Dilithium key into descriptor wallet\n");
                     loaded = true;
                     break;
                 }
             }
-            // Try legacy wallet
             LegacyScriptPubKeyMan* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man);
             if (legacy_spk_man) {
-                LogPrintf("DEBUG: Loading Dilithium key into legacy wallet\n");
                 if (legacy_spk_man->LoadDilithiumKey(dilithiumKey, CPubKey())) {
-                    LogPrintf("DEBUG: Successfully loaded Dilithium key into legacy wallet\n");
                     loaded = true;
                     break;
                 }
@@ -1388,12 +1381,10 @@ DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
         result = std::max(LoadDecryptionKeys(pwallet, *m_batch), result);
 
         // Load Dilithium keys for descriptor wallets
-        LogPrintf("DEBUG: Starting Dilithium key loading for descriptor wallet\n");
         LoadResult dilithium_key_res = LoadRecords(pwallet, *m_batch, DBKeys::DILITHIUM_KEY,
             [] (CWallet* pwallet, DataStream& key, CDataStream& value, std::string& err) {
             return LoadDilithiumKey(pwallet, key, value, err) ? DBErrors::LOAD_OK : DBErrors::CORRUPT;
         });
-        LogPrintf("DEBUG: Dilithium key loading completed, loaded %d keys\n", dilithium_key_res.m_records);
         result = std::max(result, dilithium_key_res.m_result);
     } catch (...) {
         // Exceptions that can be ignored or treated as non-critical are handled by the individual loading functions.
