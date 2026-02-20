@@ -628,3 +628,141 @@ std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> TaprootBui
     }
     return tuples;
 }
+
+// ==========================================================================
+//  BIP360 P2MR Builder Implementation
+// ==========================================================================
+
+void P2MRSpendData::Merge(P2MRSpendData other)
+{
+    if (merkle_root.IsNull() && !other.merkle_root.IsNull()) {
+        merkle_root = other.merkle_root;
+    }
+    for (auto& [key, control_blocks] : other.scripts) {
+        scripts[key].merge(std::move(control_blocks));
+    }
+}
+
+/*static*/ P2MRBuilder::NodeInfo P2MRBuilder::Combine(NodeInfo&& a, NodeInfo&& b)
+{
+    NodeInfo ret;
+    for (auto& leaf : a.leaves) {
+        leaf.merkle_branch.push_back(b.hash);
+        ret.leaves.emplace_back(std::move(leaf));
+    }
+    for (auto& leaf : b.leaves) {
+        leaf.merkle_branch.push_back(a.hash);
+        ret.leaves.emplace_back(std::move(leaf));
+    }
+    ret.hash = ComputeTapbranchHash(a.hash, b.hash);
+    return ret;
+}
+
+void P2MRBuilder::Insert(P2MRBuilder::NodeInfo&& node, int depth)
+{
+    assert(depth >= 0 && (size_t)depth <= P2MR_CONTROL_MAX_NODE_COUNT);
+    if ((size_t)depth + 1 < m_branch.size()) {
+        m_valid = false;
+        return;
+    }
+    while (m_valid && m_branch.size() > (size_t)depth && m_branch[depth].has_value()) {
+        node = Combine(std::move(node), std::move(*m_branch[depth]));
+        m_branch.pop_back();
+        if (depth == 0) m_valid = false;
+        --depth;
+    }
+    if (m_valid) {
+        if (m_branch.size() <= (size_t)depth) m_branch.resize((size_t)depth + 1);
+        assert(!m_branch[depth].has_value());
+        m_branch[depth] = std::move(node);
+    }
+}
+
+/*static*/ bool P2MRBuilder::ValidDepths(const std::vector<int>& depths)
+{
+    std::vector<bool> branch;
+    for (int depth : depths) {
+        if (depth < 0 || (size_t)depth > P2MR_CONTROL_MAX_NODE_COUNT) return false;
+        if ((size_t)depth + 1 < branch.size()) return false;
+        while (branch.size() > (size_t)depth && branch[depth]) {
+            branch.pop_back();
+            if (depth == 0) return false;
+            --depth;
+        }
+        if (branch.size() <= (size_t)depth) branch.resize((size_t)depth + 1);
+        assert(!branch[depth]);
+        branch[depth] = true;
+    }
+    return branch.size() == 0 || (branch.size() == 1 && branch[0]);
+}
+
+P2MRBuilder& P2MRBuilder::Add(int depth, Span<const unsigned char> script, int leaf_version, bool track)
+{
+    assert((leaf_version & ~TAPROOT_LEAF_MASK) == 0);
+    if (!IsValid()) return *this;
+    NodeInfo node;
+    node.hash = ComputeTapleafHash(leaf_version, script);
+    if (track) node.leaves.emplace_back(LeafInfo{std::vector<unsigned char>(script.begin(), script.end()), leaf_version, {}});
+    Insert(std::move(node), depth);
+    return *this;
+}
+
+P2MRBuilder& P2MRBuilder::AddOmitted(int depth, const uint256& hash)
+{
+    if (!IsValid()) return *this;
+    NodeInfo node;
+    node.hash = hash;
+    Insert(std::move(node), depth);
+    return *this;
+}
+
+P2MRBuilder& P2MRBuilder::Finalize()
+{
+    assert(IsComplete());
+    assert(m_branch.size() > 0);
+    m_merkle_root = m_branch[0]->hash;
+    return *this;
+}
+
+WitnessV2P2MR P2MRBuilder::GetOutput()
+{
+    return WitnessV2P2MR{m_merkle_root};
+}
+
+P2MRSpendData P2MRBuilder::GetSpendData() const
+{
+    assert(IsComplete());
+    P2MRSpendData spd;
+    spd.merkle_root = m_branch.size() == 0 ? uint256() : m_branch[0]->hash;
+    if (m_branch.size()) {
+        for (const auto& leaf : m_branch[0]->leaves) {
+            std::vector<unsigned char> control_block;
+            control_block.resize(P2MR_CONTROL_BASE_SIZE + P2MR_CONTROL_NODE_SIZE * leaf.merkle_branch.size());
+            // Per BIP360, parity bit is always 1 (no internal key)
+            control_block[0] = leaf.leaf_version | 1;
+            if (leaf.merkle_branch.size()) {
+                std::copy(leaf.merkle_branch[0].begin(),
+                          leaf.merkle_branch[0].begin() + P2MR_CONTROL_NODE_SIZE * leaf.merkle_branch.size(),
+                          control_block.begin() + P2MR_CONTROL_BASE_SIZE);
+            }
+            spd.scripts[{leaf.script, leaf.leaf_version}].insert(std::move(control_block));
+        }
+    }
+    return spd;
+}
+
+std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> P2MRBuilder::GetTreeTuples() const
+{
+    assert(IsComplete());
+    std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> tuples;
+    if (m_branch.size()) {
+        const auto& leaves = m_branch[0]->leaves;
+        for (const auto& leaf : leaves) {
+            assert(leaf.merkle_branch.size() <= P2MR_CONTROL_MAX_NODE_COUNT);
+            uint8_t depth = (uint8_t)leaf.merkle_branch.size();
+            uint8_t leaf_ver = (uint8_t)leaf.leaf_version;
+            tuples.emplace_back(depth, leaf_ver, leaf.script);
+        }
+    }
+    return tuples;
+}

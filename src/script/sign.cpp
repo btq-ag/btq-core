@@ -61,7 +61,7 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
 
 bool MutableTransactionSignatureCreator::CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* merkle_root, SigVersion sigversion) const
 {
-    assert(sigversion == SigVersion::TAPROOT || sigversion == SigVersion::TAPSCRIPT);
+    assert(sigversion == SigVersion::TAPROOT || sigversion == SigVersion::TAPSCRIPT || sigversion == SigVersion::P2MR_TAPSCRIPT);
 
     CKey key;
     if (!provider.GetKeyByXOnly(pubkey, key)) return false;
@@ -74,7 +74,7 @@ bool MutableTransactionSignatureCreator::CreateSchnorrSig(const SigningProvider&
     ScriptExecutionData execdata;
     execdata.m_annex_init = true;
     execdata.m_annex_present = false; // Only support annex-less signing for now.
-    if (sigversion == SigVersion::TAPSCRIPT) {
+    if (sigversion == SigVersion::TAPSCRIPT || sigversion == SigVersion::P2MR_TAPSCRIPT) {
         execdata.m_codeseparator_pos_init = true;
         execdata.m_codeseparator_pos = 0xFFFFFFFF; // Only support non-OP_CODESEPARATOR BIP342 signing for now.
         if (!leaf_hash) return false; // BIP342 signing needs leaf hash.

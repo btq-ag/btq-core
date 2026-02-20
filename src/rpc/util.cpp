@@ -304,6 +304,16 @@ public:
         return obj;
     }
 
+    UniValue operator()(const WitnessV2P2MR& p2mr) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("isscript", true);
+        obj.pushKV("iswitness", true);
+        obj.pushKV("witness_version", 2);
+        obj.pushKV("witness_program", HexStr(Span{p2mr.begin(), p2mr.end()}));
+        return obj;
+    }
+
     UniValue operator()(const WitnessUnknown& id) const
     {
         UniValue obj(UniValue::VOBJ);

@@ -101,6 +101,12 @@ bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet)
         addressRet = tap;
         return true;
     }
+    case TxoutType::WITNESS_V2_P2MR: {
+        WitnessV2P2MR p2mr;
+        std::copy(vSolutions[0].begin(), vSolutions[0].end(), p2mr.begin());
+        addressRet = p2mr;
+        return true;
+    }
     case TxoutType::WITNESS_UNKNOWN: {
         addressRet = WitnessUnknown{vSolutions[0][0], vSolutions[1]};
         return true;
@@ -187,6 +193,11 @@ public:
         return CScript() << OP_1 << ToByteVector(tap);
     }
 
+    CScript operator()(const WitnessV2P2MR& p2mr) const
+    {
+        return CScript() << OP_2 << std::vector<unsigned char>(p2mr.begin(), p2mr.end());
+    }
+
     CScript operator()(const WitnessUnknown& id) const
     {
         return CScript() << CScript::EncodeOP_N(id.GetWitnessVersion()) << id.GetWitnessProgram();
@@ -228,6 +239,7 @@ public:
     bool operator()(const WitnessV0KeyHash& dest) const { return true; }
     bool operator()(const WitnessV0ScriptHash& dest) const { return true; }
     bool operator()(const WitnessV1Taproot& dest) const { return true; }
+    bool operator()(const WitnessV2P2MR& dest) const { return true; }
     bool operator()(const WitnessUnknown& dest) const { return true; }
     // Dilithium destination operators
     bool operator()(const DilithiumPubKeyDestination& dest) const { return false; }

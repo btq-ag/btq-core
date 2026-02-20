@@ -147,6 +147,52 @@ public:
  */
 std::optional<std::vector<std::tuple<int, std::vector<unsigned char>, int>>> InferTaprootTree(const TaprootSpendData& spenddata, const XOnlyPubKey& output);
 
+/** BIP360 P2MR spending data. Similar to TaprootSpendData but without the internal key. */
+struct P2MRSpendData
+{
+    uint256 merkle_root;
+    std::map<std::pair<std::vector<unsigned char>, int>, std::set<std::vector<unsigned char>, ShortestVectorFirstComparator>> scripts;
+    void Merge(P2MRSpendData other);
+};
+
+/** Utility class to construct P2MR outputs from a script tree (no internal key). */
+class P2MRBuilder
+{
+private:
+    struct LeafInfo
+    {
+        std::vector<unsigned char> script;
+        int leaf_version;
+        std::vector<uint256> merkle_branch;
+    };
+
+    struct NodeInfo
+    {
+        uint256 hash;
+        std::vector<LeafInfo> leaves;
+    };
+
+    bool m_valid = true;
+    std::vector<std::optional<NodeInfo>> m_branch;
+    uint256 m_merkle_root;
+
+    static NodeInfo Combine(NodeInfo&& a, NodeInfo&& b);
+    void Insert(NodeInfo&& node, int depth);
+
+public:
+    P2MRBuilder& Add(int depth, Span<const unsigned char> script, int leaf_version, bool track = true);
+    P2MRBuilder& AddOmitted(int depth, const uint256& hash);
+    P2MRBuilder& Finalize();
+
+    bool IsValid() const { return m_valid; }
+    bool IsComplete() const { return m_valid && (m_branch.size() == 0 || (m_branch.size() == 1 && m_branch[0].has_value())); }
+    WitnessV2P2MR GetOutput();
+    static bool ValidDepths(const std::vector<int>& depths);
+    P2MRSpendData GetSpendData() const;
+    std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> GetTreeTuples() const;
+    bool HasScripts() const { return !m_branch.empty(); }
+};
+
 /** An interface to be implemented by keystores that support signing. */
 class SigningProvider
 {

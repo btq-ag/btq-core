@@ -65,6 +65,14 @@ public:
         return bech32::Encode(bech32::Encoding::BECH32M, m_params.Bech32HRP(), data);
     }
 
+    std::string operator()(const WitnessV2P2MR& p2mr) const
+    {
+        std::vector<unsigned char> data = {2}; // SegWit version 2 -> bc1z prefix
+        data.reserve(53);
+        ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, p2mr.begin(), p2mr.end());
+        return bech32::Encode(bech32::Encoding::BECH32M, m_params.Bech32HRP(), data);
+    }
+
     std::string operator()(const WitnessUnknown& id) const
     {
         const std::vector<unsigned char>& program = id.GetWitnessProgram();
@@ -234,6 +242,12 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
                 WitnessV1Taproot tap;
                 std::copy(data.begin(), data.end(), tap.begin());
                 return tap;
+            }
+
+            if (version == 2 && data.size() == WITNESS_V2_P2MR_SIZE) {
+                WitnessV2P2MR p2mr;
+                std::copy(data.begin(), data.end(), p2mr.begin());
+                return p2mr;
             }
 
             if (version > 16) {

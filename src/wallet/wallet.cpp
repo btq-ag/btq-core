@@ -1580,10 +1580,19 @@ isminetype CWallet::IsMine(const CTxDestination& dest) const
 isminetype CWallet::IsMine(const CScript& script) const
 {
     AssertLockHeld(cs_wallet);
+
+    auto cache_it = m_ismine_cache.find(script);
+    if (cache_it != m_ismine_cache.end()) {
+        return cache_it->second;
+    }
+
     isminetype result = ISMINE_NO;
     for (const auto& spk_man_pair : m_spk_managers) {
         result = std::max(result, spk_man_pair.second->IsMine(script));
+        if (result == ISMINE_SPENDABLE) break;
     }
+
+    m_ismine_cache[script] = result;
     return result;
 }
 
@@ -2448,6 +2457,7 @@ bool CWallet::TopUpKeyPool(unsigned int kpSize)
     for (auto spk_man : GetActiveScriptPubKeyMans()) {
         res &= spk_man->TopUp(kpSize);
     }
+    m_ismine_cache.clear();
     return res;
 }
 
@@ -3495,6 +3505,7 @@ LegacyScriptPubKeyMan* CWallet::GetOrCreateLegacyScriptPubKeyMan()
 void CWallet::AddScriptPubKeyMan(const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man)
 {
     const auto& spkm = m_spk_managers[id] = std::move(spkm_man);
+    m_ismine_cache.clear();
 
     // Update birth time if needed
     FirstKeyTimeChanged(spkm.get(), spkm->GetTimeFirstKey());

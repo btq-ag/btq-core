@@ -13,7 +13,6 @@
 #include <cassert>
 #include <cstring>
 #include <cstdio>
-#include <logging.h>
 
 extern "C" {
 #include "dilithium_wrapper.h"
@@ -23,75 +22,43 @@ extern "C" {
 
 void CDilithiumKey::MakeNewKey()
 {
-    LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Starting\n");
     MakeKeyData();
-    LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - MakeKeyData completed\n");
-    
-    // Generate random entropy for key generation
-    LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Generating entropy\n");
+
     std::array<unsigned char, DilithiumConstants::SECRET_KEY_SIZE> entropy;
-    
-    // Bitcoin Core's GetStrongRandBytes is limited to 32 bytes, but Dilithium needs 2560 bytes
-    // We need to generate entropy in chunks and combine them
-    LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Generating entropy in chunks (32 bytes each)\n");
+
+    // GetStrongRandBytes is limited to 32 bytes; Dilithium needs SECRET_KEY_SIZE bytes
     constexpr size_t CHUNK_SIZE = 32;
     constexpr size_t NUM_CHUNKS = DilithiumConstants::SECRET_KEY_SIZE / CHUNK_SIZE;
-    
+
     for (size_t i = 0; i < NUM_CHUNKS; i++) {
-        LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Generating chunk %zu/%zu\n", i + 1, NUM_CHUNKS);
         try {
             GetStrongRandBytes(Span<unsigned char>(entropy.data() + i * CHUNK_SIZE, CHUNK_SIZE));
-        } catch (const std::exception& e) {
-            LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - GetStrongRandBytes exception in chunk %zu: %s\n", i + 1, e.what());
-            ClearKeyData();
-            return;
         } catch (...) {
-            LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - GetStrongRandBytes unknown exception in chunk %zu\n", i + 1);
             ClearKeyData();
             return;
         }
     }
-    
-    // Handle any remaining bytes
+
     size_t remaining_bytes = DilithiumConstants::SECRET_KEY_SIZE % CHUNK_SIZE;
     if (remaining_bytes > 0) {
-        LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Generating remaining %zu bytes\n", remaining_bytes);
         try {
             GetStrongRandBytes(Span<unsigned char>(entropy.data() + NUM_CHUNKS * CHUNK_SIZE, remaining_bytes));
-        } catch (const std::exception& e) {
-            LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - GetStrongRandBytes exception for remaining bytes: %s\n", e.what());
-            ClearKeyData();
-            return;
         } catch (...) {
-            LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - GetStrongRandBytes unknown exception for remaining bytes\n");
             ClearKeyData();
             return;
         }
     }
-    
-    LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Entropy generated successfully\n");
-    
-    // Generate public key buffer
-    LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Creating public key buffer\n");
+
     std::array<unsigned char, DilithiumConstants::PUBLIC_KEY_SIZE> pk;
-    
-    // Generate keypair using Dilithium's btq_dilithium_keypair with proper entropy
-    LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Calling btq_dilithium_keypair\n");
+
     int result = btq_dilithium_keypair(pk.data(), entropy.data());
-    LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - btq_dilithium_keypair returned: %d\n", result);
-    
+
     if (result != 0) {
-        LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Key generation failed, clearing key\n");
-        // Key generation failed, clear the key
         ClearKeyData();
     } else {
-        LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Key generation successful, storing key material\n");
-        // Store the generated key material
         memcpy(keydata->data(), entropy.data(), DilithiumConstants::SECRET_KEY_SIZE);
         memcpy(keydata->data() + DilithiumConstants::SECRET_KEY_SIZE, pk.data(), DilithiumConstants::PUBLIC_KEY_SIZE);
-        LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Key material stored successfully\n");
     }
-    LogPrintf("DEBUG: CDilithiumKey::MakeNewKey - Completed\n");
 }
 
 bool CDilithiumKey::GenerateFromEntropy(const std::vector<unsigned char>& entropy)

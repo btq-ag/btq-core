@@ -170,9 +170,11 @@ unsigned int CScript::GetSigOpCount(bool fAccurate) const
         opcodetype opcode;
         if (!GetOp(pc, opcode))
             break;
-        if (opcode == OP_CHECKSIG || opcode == OP_CHECKSIGVERIFY)
+        if (opcode == OP_CHECKSIG || opcode == OP_CHECKSIGVERIFY ||
+            opcode == OP_CHECKSIGDILITHIUM || opcode == OP_CHECKSIGDILITHIUMVERIFY)
             n++;
-        else if (opcode == OP_CHECKMULTISIG || opcode == OP_CHECKMULTISIGVERIFY)
+        else if (opcode == OP_CHECKMULTISIG || opcode == OP_CHECKMULTISIGVERIFY ||
+                 opcode == OP_CHECKMULTISIGDILITHIUM || opcode == OP_CHECKMULTISIGDILITHIUMVERIFY)
         {
             if (fAccurate && lastOpcode >= OP_1 && lastOpcode <= OP_16)
                 n += DecodeOP_N(lastOpcode);
@@ -344,10 +346,13 @@ bool GetScriptOp(CScriptBase::const_iterator& pc, CScriptBase::const_iterator en
 
 bool IsOpSuccess(const opcodetype& opcode)
 {
+    // BTQ: Exclude Dilithium opcodes (0xbb-0xbf = 187-191) from OP_SUCCESSx range.
+    // Without this exclusion, any tapscript containing a Dilithium opcode would
+    // unconditionally succeed, making it anyone-can-spend.
     return opcode == 80 || opcode == 98 || (opcode >= 126 && opcode <= 129) ||
            (opcode >= 131 && opcode <= 134) || (opcode >= 137 && opcode <= 138) ||
            (opcode >= 141 && opcode <= 142) || (opcode >= 149 && opcode <= 153) ||
-           (opcode >= 187 && opcode <= 254);
+           (opcode >= 192 && opcode <= 254);
 }
 
 bool CheckMinimalPush(const std::vector<unsigned char>& data, opcodetype opcode) {

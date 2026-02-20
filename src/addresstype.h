@@ -89,6 +89,34 @@ struct WitnessV1Taproot : public XOnlyPubKey
     explicit WitnessV1Taproot(const XOnlyPubKey& xpk) : XOnlyPubKey(xpk) {}
 };
 
+/** BIP360 P2MR: 32-byte script tree Merkle root (no public key) */
+struct WitnessV2P2MR
+{
+    static constexpr size_t SIZE = 32;
+    unsigned char m_merkle_root[SIZE];
+
+    WitnessV2P2MR() { memset(m_merkle_root, 0, SIZE); }
+    explicit WitnessV2P2MR(const std::vector<unsigned char>& data) {
+        assert(data.size() == SIZE);
+        memcpy(m_merkle_root, data.data(), SIZE);
+    }
+    explicit WitnessV2P2MR(const uint256& root) {
+        memcpy(m_merkle_root, root.begin(), SIZE);
+    }
+
+    const unsigned char* begin() const { return m_merkle_root; }
+    const unsigned char* end() const { return m_merkle_root + SIZE; }
+    unsigned char* begin() { return m_merkle_root; }
+    unsigned char* end() { return m_merkle_root + SIZE; }
+
+    friend bool operator==(const WitnessV2P2MR& a, const WitnessV2P2MR& b) {
+        return memcmp(a.m_merkle_root, b.m_merkle_root, SIZE) == 0;
+    }
+    friend bool operator<(const WitnessV2P2MR& a, const WitnessV2P2MR& b) {
+        return memcmp(a.m_merkle_root, b.m_merkle_root, SIZE) < 0;
+    }
+};
+
 // Dilithium destination types
 struct DilithiumPubKeyDestination {
 private:
@@ -175,7 +203,7 @@ public:
  *  * DilithiumWitnessV0ScriptHash: TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH destination (P2DWSH address)
  *  A CTxDestination is the internal data type encoded in a btq address
  */
-using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessV1Taproot, WitnessUnknown, DilithiumPubKeyDestination, DilithiumPKHash, DilithiumScriptHash, DilithiumWitnessV0KeyHash, DilithiumWitnessV0ScriptHash>;
+using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessV1Taproot, WitnessV2P2MR, WitnessUnknown, DilithiumPubKeyDestination, DilithiumPKHash, DilithiumScriptHash, DilithiumWitnessV0KeyHash, DilithiumWitnessV0ScriptHash>;
 
 /** Check whether a CTxDestination corresponds to one with an address. */
 bool IsValidDestination(const CTxDestination& dest);
