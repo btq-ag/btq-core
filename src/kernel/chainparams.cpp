@@ -133,9 +133,9 @@ public:
         assert(consensus.hashGenesisBlock == uint256S("0x0000630a5e65a4bdeb8ad46b1c659de7917c6b75a8c15a997cd10c0260e8f038"));
         assert(genesis.hashMerkleRoot == uint256S("0xc8d6a9eb714de74c9eff54ad5818da2a8afd11703a30202c227ac6974f728511"));
 
-        // BTQ: Add BTQ seed nodes (replace with actual DNS seeds)
+        // BTQ: Add BTQ seed nodes
+        vSeeds.emplace_back("13.53.68.231");
         vSeeds.emplace_back("seed1.btq.com");
-        //vSeeds.emplace_back("TODO: MORE SEED NODES");
 
         // BTQ: Custom Base58 prefixes for BTQ addresses
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,75);  // BTQ: B... addresses (25 = 'B')
