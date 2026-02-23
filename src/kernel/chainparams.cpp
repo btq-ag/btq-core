@@ -58,7 +58,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
+    const char* pszTimestamp = "To freeze or not to freeze: Satoshi and the $440 billion in bitcoin threatened by quantum computing - coindesk.com 23/Feb/2026";
     const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
@@ -127,15 +127,15 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ genesis block with custom timestamp
-        genesis = CreateGenesisBlock(1704067200, 194445, 0x1f00ffff, 1, 5 * COIN); //TODO change timestamp to actual deployment time 
+        genesis = CreateGenesisBlock(1771804800, 170574, 0x1f00ffff, 1, 5 * COIN); 
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x0000630a5e65a4bdeb8ad46b1c659de7917c6b75a8c15a997cd10c0260e8f038"));
-        assert(genesis.hashMerkleRoot == uint256S("0xc8d6a9eb714de74c9eff54ad5818da2a8afd11703a30202c227ac6974f728511"));
+        assert(consensus.hashGenesisBlock == uint256S("0x0000cc522ce12fe2ed0f73294ad9cd2eb92b6aaab45650c625181c797b606917"));
+        assert(genesis.hashMerkleRoot == uint256S("0x5098822d0c85a1a40f209911c11e4e1a598092641369cfb5ef51671d5d2bea82"));
 
-        // BTQ: Add BTQ seed nodes
-        vSeeds.emplace_back("13.53.68.231");
+        // BTQ: Add BTQ seed nodes (replace with actual DNS seeds)
         vSeeds.emplace_back("seed1.btq.com");
+        //vSeeds.emplace_back("TODO: MORE SEED NODES");
 
         // BTQ: Custom Base58 prefixes for BTQ addresses
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,75);  // BTQ: B... addresses (25 = 'B')
@@ -167,7 +167,7 @@ public:
 
         chainTxData = ChainTxData{
             // BTQ: Initial chain data - will be changed once we deploy mainnet
-            .nTime    = 1704067200, // Jan 1, 2024
+            .nTime    = 1771804800, // Feb 23, 2026
             .nTxCount = 1,          // Genesis transaction
             .dTxRate  = 0.0,        // No transactions yet
         };
@@ -236,13 +236,13 @@ public:
         m_assumed_chain_state_size = 0;
 
         // BTQ: Create BTQ testnet genesis block with mined values
-        const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
+        const char* pszTimestamp = "To freeze or not to freeze: Satoshi and the $440 billion in bitcoin threatened by quantum computing - coindesk.com 23/Feb/2026";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1738540800, 0, 0x207fffff, 1, 5 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771804800, 3, 0x207fffff, 1, 5 * COIN);
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x1bac0760b85ab8c6e58d5e830c589b8203765e3f03cf886caec17cba5441fb4b"));
-        assert(genesis.hashMerkleRoot == uint256S("0xc8d6a9eb714de74c9eff54ad5818da2a8afd11703a30202c227ac6974f728511"));
+        assert(consensus.hashGenesisBlock == uint256S("0x66e9653658f21f700cec5c07713c3721e07bf0ba7e4983cfee872b2fd09c1465"));
+        assert(genesis.hashMerkleRoot == uint256S("0x5098822d0c85a1a40f209911c11e4e1a598092641369cfb5ef51671d5d2bea82"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -279,7 +279,7 @@ public:
 
         chainTxData = ChainTxData{
             // BTQ: Initial testnet chain data
-            .nTime    = 1704067200, // Jan 1, 2024
+            .nTime    = 1771804800, // Feb 23, 2026
             .nTxCount = 1,          // Genesis transaction
             .dTxRate  = 0.0,        // No transactions yet
         };
@@ -310,7 +310,7 @@ public:
             m_assumed_blockchain_size = 0;
             m_assumed_chain_state_size = 0;
             chainTxData = ChainTxData{
-                1704067200, // Jan 1, 2024
+                1771804800, // Feb 23, 2026
                 1,          // Genesis transaction
                 0.0,        // No transactions yet
             };
@@ -380,13 +380,13 @@ public:
         nPruneAfterHeight = 1000;
 
         // BTQ: Create BTQ SigNet genesis block
-        const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
+        const char* pszTimestamp = "To freeze or not to freeze: Satoshi and the $440 billion in bitcoin threatened by quantum computing - coindesk.com 23/Feb/2026";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1704067200, 12871552, 0x1e0377ae, 1, 5 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771804800, 148573, 0x1e0377ae, 1, 5 * COIN);
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x0000023375058c22d1702928d6f02be61902cc6cd4b15ef5b39b7c4165745aba"));
-        assert(genesis.hashMerkleRoot == uint256S("0xc8d6a9eb714de74c9eff54ad5818da2a8afd11703a30202c227ac6974f728511"));
+        assert(consensus.hashGenesisBlock == uint256S("0x000002c99c9f021e0947ea6f461354cf60554ca0fca01818bf59ebe4b352538e"));
+        assert(genesis.hashMerkleRoot == uint256S("0x5098822d0c85a1a40f209911c11e4e1a598092641369cfb5ef51671d5d2bea82"));
 
         vFixedSeeds.clear();
 
@@ -499,13 +499,13 @@ public:
         }
 
         // BTQ: Create BTQ regtest genesis block with mined values
-        const char* pszTimestamp = "Quantum is here - calcalistech.com/rkb3zkze11e 31/12/25";
+        const char* pszTimestamp = "To freeze or not to freeze: Satoshi and the $440 billion in bitcoin threatened by quantum computing - coindesk.com 23/Feb/2026";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1738540800, 0, 0x207fffff, 1, 5 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771804800, 3, 0x207fffff, 1, 5 * COIN);
         //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x1bac0760b85ab8c6e58d5e830c589b8203765e3f03cf886caec17cba5441fb4b"));
-        assert(genesis.hashMerkleRoot == uint256S("0xc8d6a9eb714de74c9eff54ad5818da2a8afd11703a30202c227ac6974f728511"));
+        assert(consensus.hashGenesisBlock == uint256S("0x66e9653658f21f700cec5c07713c3721e07bf0ba7e4983cfee872b2fd09c1465"));
+        assert(genesis.hashMerkleRoot == uint256S("0x5098822d0c85a1a40f209911c11e4e1a598092641369cfb5ef51671d5d2bea82"));
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();
