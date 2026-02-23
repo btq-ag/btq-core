@@ -586,8 +586,7 @@ crypto_libbtq_crypto_base_la_SOURCES = \
   crypto/dilithium/ref/config.h \
   crypto/dilithium_wrapper.c \
   crypto/dilithium_wrapper.h \
-  crypto/dilithium_key.cpp \
-  crypto/dilithium_key.h \
+  crypto/dilithium_pubkey.cpp \
   crypto/hkdf_sha256_32.cpp \
   crypto/hkdf_sha256_32.h \
   crypto/hmac_sha256.cpp \
@@ -718,6 +717,7 @@ libbtq_common_a_SOURCES = \
   external_signer.cpp \
   init/common.cpp \
   kernel/chainparams.cpp \
+  crypto/dilithium_key.cpp \
   key.cpp \
   key_io.cpp \
   merkleblock.cpp \
