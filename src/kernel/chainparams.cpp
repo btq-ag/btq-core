@@ -247,7 +247,7 @@ public:
         vFixedSeeds.clear();
         vSeeds.clear();
         // BTQ: Add BTQ testnet seed nodes
-        vSeeds.emplace_back("testnet-seed1.btq.com");
+        vSeeds.emplace_back("testnet-seed1.bitcoinquantum.com");
         vSeeds.emplace_back("testnet-seed2.btq.com");
 
         // BTQ: Testnet uses same address prefixes as mainnet for simplicity
