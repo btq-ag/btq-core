@@ -248,7 +248,7 @@ public:
         vSeeds.clear();
         // BTQ: Add BTQ testnet seed nodes
         vSeeds.emplace_back("testnet-seed1.bitcoinquantum.com");
-        vSeeds.emplace_back("testnet-seed2.btq.com");
+        vSeeds.emplace_back("testnet-seed2.bitcoinquantum.com");
 
         // BTQ: Testnet uses same address prefixes as mainnet for simplicity
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111); // Standard testnet prefix
