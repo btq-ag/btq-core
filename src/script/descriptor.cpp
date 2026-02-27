@@ -754,23 +754,30 @@ public:
     std::optional<int64_t> ScriptSize() const override { return GetScriptForDestination(m_destination).size(); }
     
     std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
-        // For Dilithium addresses, provide the actual satisfaction size
-        if (std::holds_alternative<DilithiumPKHash>(m_destination) ||
-            std::holds_alternative<DilithiumWitnessV0KeyHash>(m_destination)) {
-            // Dilithium signature (2420 + 1 hashtype) + public key (1312) + push opcodes
-            const int64_t DILITHIUM_SIG_SIZE = 2421;
-            const int64_t DILITHIUM_PUBKEY_SIZE = 1312;
-            const int64_t PUSH_OVERHEAD = 6;  // Push opcodes for sig and pubkey
-            return (DILITHIUM_SIG_SIZE + DILITHIUM_PUBKEY_SIZE + PUSH_OVERHEAD) * WITNESS_SCALE_FACTOR;
+        // For Dilithium keyhash destinations, provide a concrete max satisfaction size.
+        // NOTE:
+        // - Legacy P2PKH-style satisfactions are measured in bytes and multiplied by 4.
+        // - Witness-v0 satisfactions are already measured in witness weight units (no *4).
+        const int64_t sig_with_hashtype = static_cast<int64_t>(DilithiumConstants::SIGNATURE_SIZE) + 1;
+        const int64_t pubkey_size = static_cast<int64_t>(DilithiumConstants::PUBLIC_KEY_SIZE);
+        const int64_t push_overhead = 6; // large element varint/push overhead for signature + pubkey
+
+        if (std::holds_alternative<DilithiumPKHash>(m_destination)) {
+            return (sig_with_hashtype + pubkey_size + push_overhead) * WITNESS_SCALE_FACTOR;
         }
+
+        if (std::holds_alternative<DilithiumWitnessV0KeyHash>(m_destination)) {
+            return sig_with_hashtype + pubkey_size + push_overhead;
+        }
+
         return {};  // Unknown size for other address types
     }
     
     std::optional<int64_t> MaxSatisfactionElems() const override {
-        // For Dilithium addresses, return the number of stack elements needed
+        // For Dilithium keyhash destinations, satisfaction is [signature, pubkey].
         if (std::holds_alternative<DilithiumPKHash>(m_destination) ||
             std::holds_alternative<DilithiumWitnessV0KeyHash>(m_destination)) {
-            return 2;  // Signature and public key (same as P2PKH)
+            return 2;
         }
         return {};  // Unknown for other address types
     }
