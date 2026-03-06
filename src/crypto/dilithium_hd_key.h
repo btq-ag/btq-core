@@ -1,6 +1,17 @@
 // Copyright (c) 2024 The BTQ Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
+//
+// Reference:
+//   Deegan, Fitzwater, Gur, Nugent. "Lattice HD Wallets: Post-Quantum BIP32
+//   Hierarchical Deterministic Wallets from Lattice Assumptions."
+//   Cryptology ePrint Archive, Paper 2026/380.
+//   https://eprint.iacr.org/2026/380
+//
+// NOTE: The current derivation logic in dilithium_hd_key.cpp is a placeholder.
+// A conforming implementation of the constructions from the above paper has not
+// yet been completed. In particular, non-hardened public key derivation requires
+// the Raccoon-G scheme (Construction 2), which is not yet implemented.
 
 #ifndef BTQ_CRYPTO_DILITHIUM_HD_KEY_H
 #define BTQ_CRYPTO_DILITHIUM_HD_KEY_H
