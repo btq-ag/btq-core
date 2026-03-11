@@ -52,6 +52,14 @@ bool HidingSigningProvider::GetTaprootBuilder(const XOnlyPubKey& output_key, Tap
 {
     return m_provider->GetTaprootBuilder(output_key, builder);
 }
+bool HidingSigningProvider::GetP2MRSpendData(const WitnessV2P2MR& output, P2MRSpendData& spenddata) const
+{
+    return m_provider->GetP2MRSpendData(output, spenddata);
+}
+bool HidingSigningProvider::GetP2MRBuilder(const WitnessV2P2MR& output, P2MRBuilder& builder) const
+{
+    return m_provider->GetP2MRBuilder(output, builder);
+}
 
 bool HidingSigningProvider::GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const
 {
@@ -101,6 +109,19 @@ bool FlatSigningProvider::GetTaprootBuilder(const XOnlyPubKey& output_key, Tapro
 {
     return LookupHelper(tr_trees, output_key, builder);
 }
+bool FlatSigningProvider::GetP2MRSpendData(const WitnessV2P2MR& output, P2MRSpendData& spenddata) const
+{
+    P2MRBuilder builder;
+    if (LookupHelper(p2mr_trees, output, builder)) {
+        spenddata = builder.GetSpendData();
+        return true;
+    }
+    return false;
+}
+bool FlatSigningProvider::GetP2MRBuilder(const WitnessV2P2MR& output, P2MRBuilder& builder) const
+{
+    return LookupHelper(p2mr_trees, output, builder);
+}
 
 FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
 {
@@ -109,6 +130,7 @@ FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
     keys.merge(b.keys);
     origins.merge(b.origins);
     tr_trees.merge(b.tr_trees);
+    p2mr_trees.merge(b.p2mr_trees);
     dilithium_pubkeys.merge(b.dilithium_pubkeys);
     dilithium_keys.merge(b.dilithium_keys);
     dilithium_origins.merge(b.dilithium_origins);
@@ -304,6 +326,20 @@ bool MultiSigningProvider::GetTaprootBuilder(const XOnlyPubKey& output_key, Tapr
 {
     for (const auto& provider: m_providers) {
         if (provider->GetTaprootBuilder(output_key, builder)) return true;
+    }
+    return false;
+}
+bool MultiSigningProvider::GetP2MRSpendData(const WitnessV2P2MR& output, P2MRSpendData& spenddata) const
+{
+    for (const auto& provider: m_providers) {
+        if (provider->GetP2MRSpendData(output, spenddata)) return true;
+    }
+    return false;
+}
+bool MultiSigningProvider::GetP2MRBuilder(const WitnessV2P2MR& output, P2MRBuilder& builder) const
+{
+    for (const auto& provider: m_providers) {
+        if (provider->GetP2MRBuilder(output, builder)) return true;
     }
     return false;
 }

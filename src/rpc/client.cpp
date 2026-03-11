@@ -302,6 +302,14 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "sendmsgtopeer", 0, "peer_id" },
     { "stop", 0, "wait" },
     { "addnode", 2, "v2transport" },
+    // P2MR wallet RPCs
+    { "getnewp2mraddress", 0, "tree" },
+    { "sendtop2mr", 0, "tree" },
+    { "sendtop2mr", 1, "amount" },
+    { "sendtop2mr", 5, "subtractfeefromamount" },
+    { "createp2mrspend", 2, "amount" },
+    { "createp2mrspend", 3, "fee" },
+    { "signp2mrtransaction", 2, "witness_args" },
 };
 // clang-format on
 

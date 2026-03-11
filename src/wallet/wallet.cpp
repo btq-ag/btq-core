@@ -2843,6 +2843,38 @@ bool CWallet::EraseAddressReceiveRequest(WalletBatch& batch, const CTxDestinatio
     return true;
 }
 
+namespace {
+static constexpr std::string_view P2MR_RECEIVE_REQUEST_PREFIX{"rrp2mr:"};
+}
+
+bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value)
+{
+    return SetAddressReceiveRequest(batch, dest, std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id, value);
+}
+
+bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const
+{
+    const auto* entry{common::FindKey(m_address_book, dest)};
+    if (!entry) return false;
+    const auto full_id = std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id;
+    const auto* request{common::FindKey(entry->receive_requests, full_id)};
+    if (!request) return false;
+    value = *request;
+    return true;
+}
+
+std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata() const
+{
+    std::vector<std::tuple<CTxDestination, std::string, std::string>> out;
+    for (const auto& [dest, entry] : m_address_book) {
+        for (const auto& [id, request] : entry.receive_requests) {
+            if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) != 0) continue;
+            out.emplace_back(dest, id.substr(P2MR_RECEIVE_REQUEST_PREFIX.size()), request);
+        }
+    }
+    return out;
+}
+
 std::unique_ptr<WalletDatabase> MakeWalletDatabase(const std::string& name, const DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error_string)
 {
     // Do some checking on wallet path. It should be either a:
