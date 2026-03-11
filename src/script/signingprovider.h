@@ -206,6 +206,8 @@ public:
     virtual bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const { return false; }
     virtual bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const { return false; }
     virtual bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const { return false; }
+    virtual bool GetP2MRSpendData(const WitnessV2P2MR& output, P2MRSpendData& spenddata) const { return false; }
+    virtual bool GetP2MRBuilder(const WitnessV2P2MR& output, P2MRBuilder& builder) const { return false; }
     virtual bool GetDilithiumPubKey(const DilithiumPKHash& address, CDilithiumPubKey& pubkey) const { return false; }
     virtual bool GetDilithiumKeyByHash(const DilithiumPKHash& address, CDilithiumKey& key) const { return false; }
     virtual bool GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const { return false; }
@@ -252,6 +254,8 @@ public:
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
+    bool GetP2MRSpendData(const WitnessV2P2MR& output, P2MRSpendData& spenddata) const override;
+    bool GetP2MRBuilder(const WitnessV2P2MR& output, P2MRBuilder& builder) const override;
     bool GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const override;
     bool GetDilithiumKeyByHash(const DilithiumPKHash& keyid, CDilithiumKey& key) const override;
     bool GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const override;
@@ -264,6 +268,7 @@ struct FlatSigningProvider final : public SigningProvider
     std::map<CKeyID, std::pair<CPubKey, KeyOriginInfo>> origins;
     std::map<CKeyID, CKey> keys;
     std::map<XOnlyPubKey, TaprootBuilder> tr_trees; /** Map from output key to Taproot tree (which can then make the TaprootSpendData */
+    std::map<WitnessV2P2MR, P2MRBuilder> p2mr_trees; /** Map from p2mr output key to p2mr tree */
     
     // Dilithium key storage
     std::map<DilithiumPKHash, CDilithiumPubKey> dilithium_pubkeys;
@@ -276,6 +281,8 @@ struct FlatSigningProvider final : public SigningProvider
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
+    bool GetP2MRSpendData(const WitnessV2P2MR& output, P2MRSpendData& spenddata) const override;
+    bool GetP2MRBuilder(const WitnessV2P2MR& output, P2MRBuilder& builder) const override;
     
     // Dilithium methods
     bool GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const override;
@@ -374,6 +381,8 @@ public:
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
+    bool GetP2MRSpendData(const WitnessV2P2MR& output, P2MRSpendData& spenddata) const override;
+    bool GetP2MRBuilder(const WitnessV2P2MR& output, P2MRBuilder& builder) const override;
     bool GetDilithiumPubKey(const DilithiumPKHash& keyid, CDilithiumPubKey& pubkey) const override;
     bool GetDilithiumKeyByHash(const DilithiumPKHash& keyid, CDilithiumKey& key) const override;
     bool GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const override;

@@ -346,12 +346,13 @@ struct WshSatisfier: Satisfier<CPubKey> {
 /** Miniscript satisfier specific to Tapscript context. */
 struct TapSatisfier: Satisfier<XOnlyPubKey> {
     const uint256& m_leaf_hash;
+    SigVersion m_sigversion;
 
     explicit TapSatisfier(const SigningProvider& provider LIFETIMEBOUND, SignatureData& sig_data LIFETIMEBOUND,
                           const BaseSignatureCreator& creator LIFETIMEBOUND, const CScript& script LIFETIMEBOUND,
-                          const uint256& leaf_hash LIFETIMEBOUND)
+                          const uint256& leaf_hash LIFETIMEBOUND, SigVersion sigversion)
                           : Satisfier(provider, sig_data, creator, script, miniscript::MiniscriptContext::TAPSCRIPT),
-                            m_leaf_hash(leaf_hash) {}
+                            m_leaf_hash(leaf_hash), m_sigversion(sigversion) {}
 
     //! Conversion from a raw xonly public key.
     template <typename I>
@@ -371,14 +372,14 @@ struct TapSatisfier: Satisfier<XOnlyPubKey> {
 
     //! Satisfy a BIP340 signature check.
     miniscript::Availability Sign(const XOnlyPubKey& key, std::vector<unsigned char>& sig) const {
-        if (CreateTaprootScriptSig(m_creator, m_sig_data, m_provider, sig, key, m_leaf_hash, SigVersion::TAPSCRIPT)) {
+        if (CreateTaprootScriptSig(m_creator, m_sig_data, m_provider, sig, key, m_leaf_hash, m_sigversion)) {
             return miniscript::Availability::YES;
         }
         return miniscript::Availability::NO;
     }
 };
 
-static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatureCreator& creator, SignatureData& sigdata, int leaf_version, Span<const unsigned char> script_bytes, std::vector<valtype>& result)
+static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatureCreator& creator, SignatureData& sigdata, int leaf_version, Span<const unsigned char> script_bytes, SigVersion sigversion, std::vector<valtype>& result)
 {
     // Only BIP342 tapscript signing is supported for now.
     if (leaf_version != TAPROOT_LEAF_TAPSCRIPT) return false;
@@ -386,7 +387,7 @@ static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatu
     uint256 leaf_hash = ComputeTapleafHash(leaf_version, script_bytes);
     CScript script = CScript(script_bytes.begin(), script_bytes.end());
 
-    TapSatisfier ms_satisfier{provider, sigdata, creator, script, leaf_hash};
+    TapSatisfier ms_satisfier{provider, sigdata, creator, script, leaf_hash, sigversion};
     const auto ms = miniscript::FromScript(script, ms_satisfier);
     return ms && ms->Satisfy(ms_satisfier, result) == miniscript::Availability::YES;
 }
@@ -436,7 +437,7 @@ static bool SignTaproot(const SigningProvider& provider, const BaseSignatureCrea
     for (const auto& [key, control_blocks] : sigdata.tr_spenddata.scripts) {
         const auto& [script, leaf_ver] = key;
         std::vector<std::vector<unsigned char>> result_stack;
-        if (SignTaprootScript(provider, creator, sigdata, leaf_ver, script, result_stack)) {
+        if (SignTaprootScript(provider, creator, sigdata, leaf_ver, script, SigVersion::TAPSCRIPT, result_stack)) {
             result_stack.emplace_back(std::begin(script), std::end(script)); // Push the script
             result_stack.push_back(*control_blocks.begin()); // Push the smallest control block
             if (smallest_result_stack.size() == 0 ||
@@ -450,6 +451,33 @@ static bool SignTaproot(const SigningProvider& provider, const BaseSignatureCrea
         return true;
     }
 
+    return false;
+}
+
+static bool SignP2MR(const SigningProvider& provider, const BaseSignatureCreator& creator, const WitnessV2P2MR& output, SignatureData& sigdata, std::vector<valtype>& result)
+{
+    P2MRSpendData spenddata;
+    if (provider.GetP2MRSpendData(output, spenddata)) {
+        sigdata.p2mr_spenddata.Merge(spenddata);
+    }
+
+    std::vector<std::vector<unsigned char>> smallest_result_stack;
+    for (const auto& [key, control_blocks] : sigdata.p2mr_spenddata.scripts) {
+        const auto& [script, leaf_ver] = key;
+        std::vector<std::vector<unsigned char>> result_stack;
+        if (SignTaprootScript(provider, creator, sigdata, leaf_ver, script, SigVersion::P2MR_TAPSCRIPT, result_stack)) {
+            result_stack.emplace_back(std::begin(script), std::end(script)); // Push the script
+            result_stack.push_back(*control_blocks.begin()); // Push the smallest control block
+            if (smallest_result_stack.empty() ||
+                GetSerializeSize(result_stack, PROTOCOL_VERSION) < GetSerializeSize(smallest_result_stack, PROTOCOL_VERSION)) {
+                smallest_result_stack = std::move(result_stack);
+            }
+        }
+    }
+    if (!smallest_result_stack.empty()) {
+        result = std::move(smallest_result_stack);
+        return true;
+    }
     return false;
 }
 
@@ -536,6 +564,8 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
 
     case TxoutType::WITNESS_V1_TAPROOT:
         return SignTaproot(provider, creator, WitnessV1Taproot(XOnlyPubKey{vSolutions[0]}), sigdata, ret);
+    case TxoutType::WITNESS_V2_P2MR:
+        return SignP2MR(provider, creator, WitnessV2P2MR(uint256(vSolutions[0])), sigdata, ret);
     case TxoutType::DILITHIUM_PUBKEY: {
         if (!CreateDilithiumSig(creator, sigdata, provider, sig, CDilithiumPubKey(vSolutions[0]), scriptPubKey, sigversion)) return false;
         ret.push_back(std::move(sig));
@@ -811,6 +841,8 @@ void SignatureData::MergeSignatureData(SignatureData sigdata)
     if (witness_script.empty() && !sigdata.witness_script.empty()) {
         witness_script = sigdata.witness_script;
     }
+    tr_spenddata.Merge(std::move(sigdata.tr_spenddata));
+    p2mr_spenddata.Merge(std::move(sigdata.p2mr_spenddata));
     signatures.insert(std::make_move_iterator(sigdata.signatures.begin()), std::make_move_iterator(sigdata.signatures.end()));
 }
 
