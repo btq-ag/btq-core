@@ -77,46 +77,38 @@ public:
         // BTQ: Set signature algorithm to NONE initially (stub implementation)
         consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
         
-        // BTQ: No script flag exceptions for clean start
-        
         // BTQ: Enable all features from height 1 for clean activation
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256{};
-        consensus.BIP65Height = 1; // CLTV (BIP65) at height 1
-        consensus.BIP66Height = 1; // DERSIG (BIP66) at height 1
-        consensus.CSVHeight = 1;   // CSV at height 1
+        consensus.BIP65Height = 1;
+        consensus.BIP66Height = 1;
+        consensus.CSVHeight = 1;
         
         // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
+        consensus.nLWMAHeight = 300000;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 18144; // 90% of 20160
         consensus.nMinerConfirmationWindow = 20160; // nPowTargetTimespan / nPowTargetSpacing (14 days / 1 min)
         
-        // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0;
 
-        // BTQ: Disable Taproot (BIPs 340-342) - mark as NEVER_ACTIVE
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
 
-        /**
-         * BTQ: Quantum network message start - unique identifier
-         * The characters are rarely used upper ASCII, not valid as UTF-8, and produce
-         * a large 32-bit integer with any alignment.
-         */
         pchMessageStart[0] = 0xf1;
         pchMessageStart[1] = 0xb2;
         pchMessageStart[2] = 0xa3;
@@ -126,28 +118,23 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        // BTQ: Create BTQ genesis block with custom timestamp
         genesis = CreateGenesisBlock(1771804800, 184980, 0x1f00ffff, 1, 5 * COIN); 
-        //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         assert(consensus.hashGenesisBlock == uint256S("0x0000ca45ea08433961609b50cd0c3f76d14589f8f61973ebbc344c3a160f7cdd"));
         assert(genesis.hashMerkleRoot == uint256S("0xec88310bd306cf5f9554cc257db16b81147e4bd0efda75f11b38467a5d918db1"));
 
-        // BTQ: Add BTQ seed nodes (replace with actual DNS seeds)
         vSeeds.emplace_back("seed1.btq.com");
-        //vSeeds.emplace_back("TODO: MORE SEED NODES");
 
-        // BTQ: Custom Base58 prefixes for BTQ addresses
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,75);  // BTQ: B... addresses (25 = 'B')
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,135);  // BTQ: Q... script addresses (85 = 'Q')
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,235); // BTQ: Private keys
-        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1F}; // BTQ: Extended public keys
-        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE5}; // BTQ: Extended private keys
-        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,76);  // BTQ: D... Dilithium addresses (76 = 'D')
-        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,136);  // BTQ: R... Dilithium script addresses (136 = 'R')
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,75);
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,135);
+        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,235);
+        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1F};
+        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE5};
+        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,76);
+        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,136);
 
         bech32_hrp = "qbtc";
-        dilithium_bech32_hrp = "dbtc"; // BTQ: dbtc for Dilithium Bech32 addresses
+        dilithium_bech32_hrp = "dbtc";
 
         vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
 
@@ -156,26 +143,23 @@ public:
 
         checkpointData = {
             {
-                // BTQ: Genesis checkpoint
                 {0, genesis.GetHash()},
             }
         };
 
         m_assumeutxo_data = {
-            // BTQ: Add assumeutxo data in future updates
         };
 
         chainTxData = ChainTxData{
-            // BTQ: Initial chain data - will be changed once we deploy mainnet
-            .nTime    = 1771804800, // Feb 23, 2026
-            .nTxCount = 1,          // Genesis transaction
-            .dTxRate  = 0.0,        // No transactions yet
+            .nTime    = 1771804800,
+            .nTxCount = 1,
+            .dTxRate  = 0.0,
         };
     }
 };
 
 /**
- * BTQ Quantum Test network - replaces BTQ testnet
+ * BTQ Quantum Test network
  */
 class CTestNetParams : public CChainParams {
 public:
@@ -183,105 +167,89 @@ public:
         m_chain_type = ChainType::BTQTEST;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 2100000; // BTQ: 10x Bitcoin for 1-min blocks, same ~4yr halving
+        consensus.nSubsidyHalvingInterval = 2100000;
         
-        // BTQ: Set signature algorithm to NONE initially (stub implementation)
         consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
         
-        // BTQ: No script flag exceptions for clean start
-        
-        // BTQ: Enable all features from height 1 for clean activation
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256{};
-        consensus.BIP65Height = 1; // CLTV (BIP65) at height 1
-        consensus.BIP66Height = 1; // DERSIG (BIP66) at height 1
-        consensus.CSVHeight = 1;   // CSV at height 1
+        consensus.BIP65Height = 1;
+        consensus.BIP66Height = 1;
+        consensus.CSVHeight = 1;
         
-        // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
+        consensus.nLWMAHeight = 300000;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
-        consensus.nMinerConfirmationWindow = 20160; // nPowTargetTimespan / nPowTargetSpacing (14 days / 1 min)
+        consensus.nMinerConfirmationWindow = 20160;
         
-        // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0;
 
-        // BTQ: Disable Taproot (BIPs 340-342) - mark as NEVER_ACTIVE
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
 
-        /**
-         * BTQ: Quantum testnet message start
-         */
         pchMessageStart[0] = 0x0c;
         pchMessageStart[1] = 0x12;
         pchMessageStart[2] = 0x0a;
         pchMessageStart[3] = 0x08;
-        nDefaultPort = 19333; // BTQ: Unique port for BTQ testnet
+        nDefaultPort = 19333;
         nPruneAfterHeight = 1000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        // BTQ: Create BTQ testnet genesis block with mined values
         const char* pszTimestamp = "BTQ genesis remine: quantum-safe launch baseline, 26/Feb/2026";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
         genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771804800, 3, 0x207fffff, 1, 5 * COIN);
-        //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         assert(consensus.hashGenesisBlock == uint256S("0x5a6c309a7e9bb2fa314e63630520ca3c598c86a91dd2c6737e160cfadfc50f38"));
         assert(genesis.hashMerkleRoot == uint256S("0xec88310bd306cf5f9554cc257db16b81147e4bd0efda75f11b38467a5d918db1"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
-        // BTQ: Add BTQ testnet seed nodes
         vSeeds.emplace_back("testnet-seed1.bitcoinquantum.com");
         vSeeds.emplace_back("testnet-seed2.bitcoinquantum.com");
 
-        // BTQ: Testnet uses same address prefixes as mainnet for simplicity
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111); // Standard testnet prefix
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196); // Standard testnet prefix
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239); // Standard testnet prefix
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
+        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
-        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);  // BTQ: Testnet Dilithium addresses
-        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,197);  // BTQ: Testnet Dilithium script addresses
+        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);
+        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,197);
 
-        bech32_hrp = "tbtq"; // BTQ: tbtq for testnet Bech32 addresses
-        dilithium_bech32_hrp = "tdbt"; // BTQ: tdbt for testnet Dilithium Bech32 addresses
+        bech32_hrp = "tbtq";
+        dilithium_bech32_hrp = "tdbt";
 
-        vFixedSeeds.clear(); // BTQ: No fixed seeds initially
+        vFixedSeeds.clear();
         
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
 
         checkpointData = {
             {
-                // BTQ: Add testnet checkpoints as the network grows
             }
         };
 
         m_assumeutxo_data = {
-            // BTQ: Add testnet assumeutxo data in future updates
         };
 
         chainTxData = ChainTxData{
-            // BTQ: Initial testnet chain data
-            .nTime    = 1771804800, // Feb 23, 2026
-            .nTxCount = 1,          // Genesis transaction
-            .dTxRate  = 0.0,        // No transactions yet
+            .nTime    = 1771804800,
+            .nTxCount = 1,
+            .dTxRate  = 0.0,
         };
     }
 };
@@ -297,22 +265,19 @@ public:
         vSeeds.clear();
 
         if (!options.challenge) {
-            // BTQ: Use BTQ-specific SigNet challenge instead of BTQ's
-            bin = ParseHex("512103[YOUR_BTQ_SIGNET_PUBKEY]210359[YOUR_BTQ_SIGNET_PUBKEY2]52ae"); //TODO: We need to set up a admin key for Signet at some point, this is invalid
+            bin = ParseHex("512103[YOUR_BTQ_SIGNET_PUBKEY]210359[YOUR_BTQ_SIGNET_PUBKEY2]52ae");
             
-            // BTQ: Use BTQ SigNet seeds
             vSeeds.emplace_back("signet-seed1.btq.com");
             vSeeds.emplace_back("signet-seed2.btq.com");
             
-            // BTQ: Reset chain work and assume valid for new BTQ SigNet
             consensus.nMinimumChainWork = uint256{};
             consensus.defaultAssumeValid = uint256{};
             m_assumed_blockchain_size = 0;
             m_assumed_chain_state_size = 0;
             chainTxData = ChainTxData{
-                1771804800, // Feb 23, 2026
-                1,          // Genesis transaction
-                0.0,        // No transactions yet
+                1771804800,
+                1,
+                0.0,
             };
         } else {
             bin = *options.challenge;
@@ -335,40 +300,36 @@ public:
         m_chain_type = ChainType::BTQSIGNET;
         consensus.signet_blocks = true;
         consensus.signet_challenge.assign(bin.begin(), bin.end());
-        consensus.nSubsidyHalvingInterval = 2100000; // BTQ: 10x Bitcoin for 1-min blocks, same ~4yr halving
+        consensus.nSubsidyHalvingInterval = 2100000;
         
-        // BTQ: Set signature algorithm to NONE initially (stub implementation)
         consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
         
-        // BTQ: Keep BIP34/66/CSV at height 1 (already optimal)
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256{};
         consensus.BIP65Height = 1;
         consensus.BIP66Height = 1;
         consensus.CSVHeight = 1;
         
-        // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
         consensus.SegwitHeight = 1;
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
+        consensus.nLWMAHeight = 300000;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 18144; // 90% of 20160
-        consensus.nMinerConfirmationWindow = 20160; // nPowTargetTimespan / nPowTargetSpacing (14 days / 1 min)
+        consensus.nMinerConfirmationWindow = 20160;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         
-        // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0;
 
-        // BTQ: Disable Taproot (BIPs 340-342) - mark as NEVER_ACTIVE
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
         // message start is defined as the first 4 bytes of the sha256d of the block script
         HashWriter h{};
@@ -379,11 +340,9 @@ public:
         nDefaultPort = 38333;
         nPruneAfterHeight = 1000;
 
-        // BTQ: Create BTQ SigNet genesis block
         const char* pszTimestamp = "BTQ genesis remine: quantum-safe launch baseline, 26/Feb/2026";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
         genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771804800, 2666531, 0x1e0377ae, 1, 5 * COIN);
-        //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         assert(consensus.hashGenesisBlock == uint256S("0x00000120a12ac337785653cdff1f23b4891d3ffeb492a011cc95b165e86a4b15"));
         assert(genesis.hashMerkleRoot == uint256S("0xec88310bd306cf5f9554cc257db16b81147e4bd0efda75f11b38467a5d918db1"));
@@ -391,7 +350,6 @@ public:
         vFixedSeeds.clear();
 
         m_assumeutxo_data = {
-            // BTQ: Add signet assumeutxo data once chain is running
         };
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
@@ -399,11 +357,11 @@ public:
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
-        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);  // BTQ: Signet Dilithium addresses
-        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,197);  // BTQ: Signet Dilithium script addresses
+        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);
+        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,197);
 
-        bech32_hrp = "qtb"; // BTQ: qtb for signet (same as testnet)
-        dilithium_bech32_hrp = "sdbt"; // BTQ: sdbt for signet Dilithium Bech32 addresses
+        bech32_hrp = "qtb";
+        dilithium_bech32_hrp = "sdbt";
 
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
@@ -422,52 +380,44 @@ public:
         m_chain_type = ChainType::BTQREGTEST;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 1500; // BTQ: 10x Bitcoin for 1-min blocks
+        consensus.nSubsidyHalvingInterval = 1500;
         
-        // BTQ: Set signature algorithm to NONE initially (stub implementation)
         consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
         
-        // BTQ: Keep BIP34/66/CSV at height 1 (already optimal)
-        consensus.BIP34Height = 1; // Always active unless overridden
+        consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256();
-        consensus.BIP65Height = 1;  // Always active unless overridden
-        consensus.BIP66Height = 1;  // Always active unless overridden
-        consensus.CSVHeight = 1;    // Always active unless overridden
+        consensus.BIP65Height = 1;
+        consensus.BIP66Height = 1;
+        consensus.CSVHeight = 1;
         
-        // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
-        consensus.SegwitHeight = 1; // Disabled unless overridden
+        consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
-        consensus.nMinerConfirmationWindow = 144; // Faster than normal for regtest (144 instead of 20160)
+        consensus.nMinerConfirmationWindow = 144;
 
-        // BTQ: Disable all version bits deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 0;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0;
 
-        // BTQ: Disable Taproot (BIPs 340-342) - mark as NEVER_ACTIVE
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
 
-        /**
-         * BTQ: Quantum regtest message start
-         */
         pchMessageStart[0] = 0xfa;
         pchMessageStart[1] = 0xbf;
         pchMessageStart[2] = 0xb5;
         pchMessageStart[3] = 0xda;
-        nDefaultPort = 19444; // BTQ: Unique port for BTQ regtest
+        nDefaultPort = 19444;
         nPruneAfterHeight = opts.fastprune ? 100 : 1000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
@@ -489,6 +439,9 @@ public:
             case Consensus::BuriedDeployment::DEPLOYMENT_CSV:
                 consensus.CSVHeight = int{height};
                 break;
+            case Consensus::BuriedDeployment::DEPLOYMENT_LWMA:
+                consensus.nLWMAHeight = int{height};
+                break;
             }
         }
 
@@ -498,16 +451,14 @@ public:
             consensus.vDeployments[deployment_pos].min_activation_height = version_bits_params.min_activation_height;
         }
 
-        // BTQ: Create BTQ regtest genesis block with mined values
         const char* pszTimestamp = "BTQ genesis remine: quantum-safe launch baseline, 26/Feb/2026";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
         genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771804800, 3, 0x207fffff, 1, 5 * COIN);
-        //MineGenesisBlock(genesis);
         consensus.hashGenesisBlock = genesis.GetHash();
         assert(consensus.hashGenesisBlock == uint256S("0x5a6c309a7e9bb2fa314e63630520ca3c598c86a91dd2c6737e160cfadfc50f38"));
         assert(genesis.hashMerkleRoot == uint256S("0xec88310bd306cf5f9554cc257db16b81147e4bd0efda75f11b38467a5d918db1"));
 
-        vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
+        vFixedSeeds.clear();
         vSeeds.clear();
         vSeeds.emplace_back("dummySeed.invalid.");
 
@@ -516,13 +467,11 @@ public:
 
         checkpointData = {
             {
-                // BTQ: Genesis checkpoint
                 {0, genesis.GetHash()},
             }
         };
 
         m_assumeutxo_data = {
-            // BTQ: Add regtest assumeutxo data once chain parameters are finalized
         };
 
         chainTxData = ChainTxData{
@@ -536,11 +485,11 @@ public:
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
-        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);  // BTQ: Regtest Dilithium addresses
-        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,197);  // BTQ: Regtest Dilithium script addresses
+        base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);
+        base58Prefixes[DILITHIUM_SCRIPT_ADDRESS] = std::vector<unsigned char>(1,197);
 
         bech32_hrp = "qcrt";
-        dilithium_bech32_hrp = "rdbt"; // BTQ: rdbt for regtest Dilithium Bech32 addresses
+        dilithium_bech32_hrp = "rdbt";
     }
 };
 

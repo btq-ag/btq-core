@@ -10,10 +10,19 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
+#include <algorithm>
+
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
+
+    // After LWMA hard fork: per-block difficulty adjustment
+    if (pindexLast->nHeight + 1 >= params.nLWMAHeight) {
+        return LwmaGetNextWorkRequired(pindexLast, pblock, params);
+    }
+
+    // --- Legacy difficulty adjustment (pre-fork) ---
 
     // Only change once per difficulty adjustment interval
     if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)
@@ -46,6 +55,54 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
     return CalculateNextWorkRequired(pindexLast, pindexFirst->GetBlockTime(), params);
 }
 
+unsigned int LwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
+{
+    const int64_t T = params.nPowTargetSpacing;
+    const int N = Consensus::Params::LWMA_WINDOW;
+    const int64_t k = static_cast<int64_t>(N) * (N + 1) * T / 2;
+    const int height = pindexLast->nHeight;
+    const arith_uint256 powLimit = UintToArith256(params.powLimit);
+
+    if (height < N) {
+        return powLimit.GetCompact();
+    }
+
+    arith_uint256 sumTarget;
+    int64_t weightedSolvetimes = 0;
+    int64_t previousTimestamp = pindexLast->GetAncestor(height - N)->GetBlockTime();
+
+    for (int i = 1; i <= N; i++) {
+        const CBlockIndex* block = pindexLast->GetAncestor(height - N + i);
+        int64_t thisTimestamp = block->GetBlockTime();
+
+        int64_t solvetime = thisTimestamp - previousTimestamp;
+        solvetime = std::min(solvetime, 6 * T);
+        solvetime = std::max(solvetime, -6 * T);
+
+        weightedSolvetimes += solvetime * i;
+
+        arith_uint256 target;
+        target.SetCompact(block->nBits);
+        // Divide early to prevent overflow in the final multiplication.
+        // Precision loss is negligible for targets > ~2^22.
+        sumTarget += target / arith_uint256(static_cast<uint64_t>(k) * static_cast<uint64_t>(N));
+
+        previousTimestamp = thisTimestamp;
+    }
+
+    if (weightedSolvetimes < 1) {
+        weightedSolvetimes = 1;
+    }
+
+    arith_uint256 nextTarget = sumTarget * static_cast<uint32_t>(weightedSolvetimes);
+
+    if (nextTarget > powLimit) {
+        nextTarget = powLimit;
+    }
+
+    return nextTarget.GetCompact();
+}
+
 unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params& params)
 {
     if (params.fPowNoRetargeting)
@@ -76,6 +133,9 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
 bool PermittedDifficultyTransition(const Consensus::Params& params, int64_t height, uint32_t old_nbits, uint32_t new_nbits)
 {
     if (params.fPowAllowMinDifficultyBlocks) return true;
+
+    // LWMA adjusts difficulty every block
+    if (height >= params.nLWMAHeight) return true;
 
     if (height % params.DifficultyAdjustmentInterval() == 0) {
         int64_t smallest_timespan = params.nPowTargetTimespan/4;
