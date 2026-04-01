@@ -443,7 +443,7 @@ static RPCHelpMan getmininginfo()
 }
 
 
-// NOTE: Unlike wallet RPC (which use BTQ values), mining RPCs follow GBT (BIP 22) in using satoshi amounts
+// NOTE: Unlike wallet RPC (which use BTC values), mining RPCs follow GBT (BIP 22) in using satoshi amounts
 static RPCHelpMan prioritisetransaction()
 {
     return RPCHelpMan{"prioritisetransaction",
@@ -867,6 +867,9 @@ static RPCHelpMan getblocktemplate()
         // indicate to miner that they must understand signet rules
         // when attempting to mine with this template
         aRules.push_back("!signet");
+    }
+    if (DeploymentActiveAt(*pindexPrev, consensusParams, Consensus::DEPLOYMENT_LWMA, chainman.m_versionbitscache)) {
+        aRules.push_back("!lwma");
     }
 
     UniValue vbavailable(UniValue::VOBJ);
