@@ -323,6 +323,7 @@ BASE_SCRIPTS = [
     'rpc_getblockstats.py',
     'feature_bind_port_externalip.py',
     'wallet_create_tx.py --legacy-wallet',
+    'wallet_bip360_send_paths.py',
     'wallet_send.py --legacy-wallet',
     'wallet_send.py --descriptors',
     'wallet_sendall.py --legacy-wallet',
