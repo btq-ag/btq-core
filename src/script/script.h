@@ -221,11 +221,17 @@ enum opcodetype
     OP_CHECKMULTISIGDILITHIUMVERIFY = 0xbe,
     OP_DILITHIUM_PUBKEY = 0xbf,
 
+    // OPTX Phase 7: Topological Knot Proof opcodes (GENSYS OPTX btQ v1.0)
+    // Stack: <spatial_sig> <knot_data> <mldsa_pubkey> OP_OPTX_KNOT
+    // knot_data = <dt_code> || <alpha_K:16B> || <nu_K:16B> || <writhe:4B>
+    OP_OPTX_KNOT = 0xc0,
+    OP_OPTX_KNOT_VERIFY = 0xc1,
+
     OP_INVALIDOPCODE = 0xff,
 };
 
 // Maximum value that an opcode can be
-static const unsigned int MAX_OPCODE = OP_DILITHIUM_PUBKEY;
+static const unsigned int MAX_OPCODE = OP_OPTX_KNOT_VERIFY;
 
 std::string GetOpName(opcodetype opcode);
 

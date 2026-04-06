@@ -1397,6 +1397,99 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 }
                 break;
 
+                // GENSYS OPTX btQ v1.0, BIP-360 witness extension
+                //
+                // Stack: <spatial_sig> <knot_data> <mldsa_pubkey> OP_OPTX_KNOT
+                //
+                // Verification:
+                //   1. Parse knot_data (DT code + alpha_K + nu_K + writhe)
+                //   2. Enforce DoS bounds (crossings, strands, word length)
+                //   3. Verify knot invariants match DT code
+                //   4. Verify spatial signature via knotproof module
+                //   5. (Dilithium sig verified separately by OP_CHECKSIGDILITHIUM)
+                //
+                case OP_OPTX_KNOT:
+                case OP_OPTX_KNOT_VERIFY:
+                {
+                    // Soft-fork safety: stack items are ALWAYS consumed
+                    // (both pre- and post-activation), matching the pattern
+                    // used by OP_CHECKLOCKTIMEVERIFY/OP_CHECKSEQUENCEVERIFY.
+                    // Pre-activation: consume items, push TRUE (no validation).
+                    // Post-activation: consume items, verify knot proof.
+
+                    // Require 3 stack elements
+                    if (stack.size() < 3)
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+
+                    valtype& vchSpatialSig = stacktop(-3);
+                    valtype& vchKnotData   = stacktop(-2);
+                    valtype& vchPubKey     = stacktop(-1);
+
+                    bool fSuccess = true; // Default TRUE for pre-activation
+
+                    if (flags & SCRIPT_VERIFY_OPTX_KNOT) {
+                        // Post-activation: full knot proof verification
+                        fSuccess = false;
+
+                        // Step 1: DoS bounds check on knot data
+                        if (!optx::CheckKnotDataBounds(vchKnotData)) {
+                            fSuccess = false;
+                        }
+                        // Step 2: Size check on spatial signature
+                        else if (vchSpatialSig.size() > MAX_OPTX_SPATIAL_SIG_SIZE || vchSpatialSig.empty()) {
+                            fSuccess = false;
+                        }
+                        else {
+                            // Step 3: Parse knot witness data
+                            optx::KnotWitnessData knot;
+                            if (!knot.FromBytes(vchKnotData)) {
+                                fSuccess = false;
+                            } else {
+                                // Step 4: Verify knot invariants against DT code
+                                if (!optx::TKDF::VerifyInvariants(knot)) {
+                                    fSuccess = false;
+                                } else {
+                                    // Step 5: Verify spatial signature via knotproof
+                                    uint32_t knotflags = knotproof::KNOTPROOF_ALLOW_NONBIOMETRIC |
+                                                         knotproof::KNOTPROOF_CHECK_COMPLEXITY |
+                                                         knotproof::KNOTPROOF_CHECK_CONSISTENCY |
+                                                         knotproof::KNOTPROOF_FULL_SUITE;
+
+                                    uint8_t msg_hash[32] = {0};
+                                    if (execdata.m_tapleaf_hash) {
+                                        std::memcpy(msg_hash, execdata.m_tapleaf_hash->data(), 32);
+                                    }
+
+                                    std::vector<uint8_t> empty_agt;
+                                    fSuccess = knotproof::VerifyKnotProofScript(
+                                        vchSpatialSig,
+                                        msg_hash,
+                                        empty_agt,
+                                        knotflags
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    // else: pre-activation, fSuccess stays TRUE
+
+                    // Always consume stack items (soft-fork invariant)
+                    popstack(stack);
+                    popstack(stack);
+                    popstack(stack);
+
+                    stack.push_back(fSuccess ? vchTrue : vchFalse);
+
+                    if (opcode == OP_OPTX_KNOT_VERIFY)
+                    {
+                        if (fSuccess)
+                            popstack(stack);
+                        else
+                            return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
+                    }
+                }
+                break;
+
                 default:
                     return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
             }

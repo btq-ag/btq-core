@@ -148,6 +148,10 @@ enum : uint32_t {
     // BIP360 P2MR (Pay-to-Merkle-Root) validation
     SCRIPT_VERIFY_P2MR = (1U << 22),
 
+    // OPTX Phase 7: When set, OP_OPTX_KNOT performs full knot invariant verification.
+    // When unset, OP_OPTX_KNOT consumes stack items and pushes TRUE (NOP-expansion).
+    SCRIPT_VERIFY_OPTX_KNOT = (1U << 23),
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER
