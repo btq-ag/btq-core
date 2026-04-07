@@ -57,10 +57,16 @@ make -j$(nproc)
 
 ### Network Information
 
-- **Mainnet**: Port 8332 (RPC), 8334 (P2P)
-- **Testnet**: Port 18332 (RPC), 18334 (P2P)
-- **Signet**: Port 38332 (RPC), 38334 (P2P)
-- **Regtest**: Port 18443 (RPC), 18445 (P2P)
+| Network  | P2P   | RPC   | Onion  |
+|----------|-------|-------|--------|
+| Mainnet  | 9333  | 8332  | 8334   |
+| Testnet  | 19333 | 18332 | 18334  |
+| Signet   | 38333 | 38332 | 38334  |
+| Regtest  | 19444 | 18443 | 18445  |
+
+- **P2P**: Port for peer-to-peer node communication
+- **RPC**: Port for JSON-RPC API access (btq-cli, applications)
+- **Onion**: Target port for incoming Tor connections
 
 ## Contributing
 
