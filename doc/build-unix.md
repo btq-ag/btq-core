@@ -48,7 +48,7 @@ Build requirements:
 
 Now, you can either build from self-compiled [depends](#dependencies) or install the required dependencies:
 
-    sudo apt-get install libevent-dev libboost-dev
+    sudo apt-get install libevent-dev libboost-dev libboost-system-dev libboost-filesystem-dev libboost-thread-dev
 
 SQLite is required for the descriptor wallet:
 
