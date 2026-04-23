@@ -192,7 +192,7 @@ RPCHelpMan getnewdilithiumaddress()
         "You may need to call keypoolrefill first.\n",
         {
             {"label", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "The label name for the address to be linked to. It can also be set to the empty string \"\" to represent the default label. The label does not need to exist, it will be created if there is no label by the given name."},
-            {"address_type", RPCArg::Type::STR, RPCArg::Default{"bech32"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", and \"bech32\"."},
+            {"address_type", RPCArg::Type::STR, RPCArg::Default{"legacy"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", and \"bech32\"."},
         },
         RPCResult{
             RPCResult::Type::STR, "address", "The new dilithium address"
