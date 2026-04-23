@@ -1,0 +1,80 @@
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Lean CI: build btqd and run a small set of address/wallet tests.
+# Designed as a fast merge gate - catches syntax errors (via compile)
+# and wallet/address generation regressions without running the full
+# functional test suite.
+
+name: build-and-address-tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: lean-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build btqd and run address tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPRESS: "1"
+      MAKEJOBS: "-j4"
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libtool autotools-dev automake pkg-config \
+            bsdmainutils ccache python3-zmq \
+            libevent-dev libboost-dev libsqlite3-dev libdb++-dev
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          ./configure \
+            --disable-bench \
+            --disable-fuzz \
+            --disable-fuzz-binary \
+            --without-gui \
+            --with-incompatible-bdb \
+            CC="ccache gcc" \
+            CXX="ccache g++"
+
+      - name: Build (catches all syntax errors)
+        run: make $MAKEJOBS
+
+      - name: Run lean address and wallet tests
+        run: |
+          python3 test/functional/test_runner.py \
+            --jobs=2 \
+            --quiet \
+            --tmpdirprefix="$RUNNER_TEMP" \
+            rpc_validateaddress.py \
+            wallet_address_types.py
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s || true

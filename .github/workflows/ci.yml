@@ -75,8 +75,9 @@ jobs:
     # See: https://github.com/actions/runner-images#available-images.
     runs-on: macos-13  # Use M1 once available https://github.com/github/roadmap/issues/528
 
-    # No need to run on the read-only mirror, unless it is a PR.
-    if: github.repository != 'btq-core/gui' || github.event_name == 'pull_request'
+    # Disabled - see .github/workflows/build-and-address-tests.yml for the
+    # active lean build gate. Re-enable by removing `if: false` below.
+    if: false
 
     timeout-minutes: 120
 
@@ -122,8 +123,9 @@ jobs:
     # See: https://github.com/actions/runner-images#available-images.
     runs-on: windows-2022
 
-    # No need to run on the read-only mirror, unless it is a PR.
-    if: github.repository != 'btq-core/gui' || github.event_name == 'pull_request'
+    # Disabled - see .github/workflows/build-and-address-tests.yml for the
+    # active lean build gate. Re-enable by removing `if: false` below.
+    if: false
 
     env:
       CCACHE_MAXSIZE: '200M'
