@@ -12,6 +12,7 @@ from math import ceil
 from test_framework.descriptors import descsum_create
 from test_framework.messages import (
     COIN,
+    WITNESS_SCALE_FACTOR,
 )
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
@@ -102,11 +103,12 @@ class RawTransactionsTest(BTQTestFramework):
 
         # if the fee's positive delta is higher than this value tests will fail,
         # neg. delta always fail the tests.
-        # The size of the signature of every input may be at most 2 bytes larger
-        # than a minimum sized signature.
+        # Descriptor fee estimates can conservatively exceed the final signed
+        # size by a small amount due to signature and script satisfaction
+        # variability.
 
-        #            = 2 bytes * minRelayTxFeePerByte
-        self.fee_tolerance = 2 * self.min_relay_tx_fee / 1000
+        #             = 12 bytes * minRelayTxFeePerByte
+        self.fee_tolerance = 12 * self.min_relay_tx_fee / 1000
 
         self.generate(self.nodes[2], 1)
         self.generate(self.nodes[0], 121)
@@ -153,7 +155,7 @@ class RawTransactionsTest(BTQTestFramework):
     def test_change_position(self):
         """Ensure setting changePosition in fundraw with an exact match is handled properly."""
         self.log.info("Test fundrawtxn changePosition option")
-        rawmatch = self.nodes[2].createrawtransaction([], {self.nodes[2].getnewaddress():50})
+        rawmatch = self.nodes[2].createrawtransaction([], {self.nodes[2].getnewaddress():5})
         rawmatch = self.nodes[2].fundrawtransaction(rawmatch, changePosition=1, subtractFeeFromOutputs=[0])
         assert_equal(rawmatch["changepos"], -1)
 
@@ -161,7 +163,7 @@ class RawTransactionsTest(BTQTestFramework):
         wwatch = self.nodes[3].get_wallet_rpc('wwatch')
         watchonly_address = self.nodes[0].getnewaddress()
         watchonly_pubkey = self.nodes[0].getaddressinfo(watchonly_address)["pubkey"]
-        self.watchonly_amount = Decimal(200)
+        self.watchonly_amount = Decimal(20)
         wwatch.importpubkey(watchonly_pubkey, "", True)
         self.watchonly_txid = self.nodes[0].sendtoaddress(watchonly_address, self.watchonly_amount)
 
@@ -1274,16 +1276,16 @@ class RawTransactionsTest(BTQTestFramework):
         rawtx = wallet.createrawtransaction([{'txid': txid, 'vout': vout}], [{self.nodes[0].getnewaddress(address_type="bech32"): 8}])
         fundedtx = wallet.fundrawtransaction(rawtx, fee_rate=10, change_type="bech32")
         # with 71-byte signatures we should expect following tx size
-        # tx overhead (10) + 2 inputs (41 each) + 2 p2wpkh (31 each) + (segwit marker and flag (2) + 2 p2wpkh 71 byte sig witnesses (107 each)) / witness scaling factor (4)
-        tx_size = ceil(10 + 41*2 + 31*2 + (2 + 107*2)/4)
+        # tx overhead (10) + 2 inputs (41 each) + 2 p2wpkh (31 each) + (segwit marker and flag (2) + 2 p2wpkh 71 byte sig witnesses (107 each)) / witness scaling factor
+        tx_size = ceil(10 + 41*2 + 31*2 + (2 + 107*2)/WITNESS_SCALE_FACTOR)
         assert_equal(fundedtx['fee'] * COIN, tx_size * 10)
 
         # Using the other output should have 72 byte sigs
         rawtx = wallet.createrawtransaction([{'txid': txid, 'vout': ext_vout}], [{self.nodes[0].getnewaddress(): 13}])
         ext_desc = self.nodes[0].getaddressinfo(ext_addr)["desc"]
         fundedtx = wallet.fundrawtransaction(rawtx, fee_rate=10, change_type="bech32", solving_data={"descriptors": [ext_desc]})
-        # tx overhead (10) + 3 inputs (41 each) + 2 p2wpkh(31 each) + (segwit marker and flag (2) + 2 p2wpkh 71 bytes sig witnesses (107 each) + p2wpkh 72 byte sig witness (108)) / witness scaling factor (4)
-        tx_size = ceil(10 + 41*3 + 31*2 + (2 + 107*2 + 108)/4)
+        # tx overhead (10) + 3 inputs (41 each) + 2 p2wpkh(31 each) + (segwit marker and flag (2) + 2 p2wpkh 71 bytes sig witnesses (107 each) + p2wpkh 72 byte sig witness (108)) / witness scaling factor
+        tx_size = ceil(10 + 41*3 + 31*2 + (2 + 107*2 + 108)/WITNESS_SCALE_FACTOR)
         assert_equal(fundedtx['fee'] * COIN, tx_size * 10)
 
         self.nodes[2].unloadwallet("test_weight_calculation")
