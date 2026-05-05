@@ -1,0 +1,124 @@
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Lean CI: build btqd and run a small set of address/wallet tests.
+# Designed as a fast merge gate - catches syntax errors (via compile)
+# and wallet/address generation regressions without running the full
+# functional test suite.
+
+name: build-and-address-tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: lean-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build btqd and run address tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPRESS: "1"
+      MAKEJOBS: "-j4"
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libtool autotools-dev automake pkg-config \
+            bsdmainutils ccache python3-zmq \
+            libevent-dev libboost-dev libsqlite3-dev libdb++-dev
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          ./configure \
+            --disable-bench \
+            --disable-fuzz \
+            --disable-fuzz-binary \
+            --without-gui \
+            --with-incompatible-bdb \
+            CC="ccache gcc" \
+            CXX="ccache g++"
+
+      - name: Build (catches all syntax errors)
+        run: make $MAKEJOBS
+
+      - name: Smoke test - wallet + address generation (regtest)
+        # Self-contained smoke test, on purpose NOT using the upstream
+        # functional-test framework:
+        #   - starts btqd -regtest -daemon
+        #   - waits for RPC
+        #   - creates a wallet, generates a new address, validateaddress
+        #   - asserts the address validates
+        # This catches the "does wallet generation actually work" question
+        # without being coupled to the fragile Bitcoin-inherited RPC schema
+        # checks (which currently break on BTQ's Dilithium fields).
+        run: |
+          set -euo pipefail
+          DATADIR="$RUNNER_TEMP/btq-regtest"
+          mkdir -p "$DATADIR"
+
+          CLI="src/btq-cli -regtest -datadir=$DATADIR"
+
+          echo "::group::Start btqd (regtest, daemon)"
+          src/btqd -regtest -daemon -datadir="$DATADIR" \
+            -fallbackfee=0.0002 -server=1 -listen=0 -discover=0
+          echo "::endgroup::"
+
+          echo "::group::Wait for RPC"
+          for i in $(seq 1 60); do
+            if $CLI getblockchaininfo >/dev/null 2>&1; then
+              echo "RPC up after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          $CLI getblockchaininfo >/dev/null
+          echo "::endgroup::"
+
+          echo "::group::Create wallet + new address"
+          $CLI createwallet smoke
+          ADDR=$($CLI -rpcwallet=smoke getnewaddress)
+          echo "got address: $ADDR"
+          echo "::endgroup::"
+
+          echo "::group::Validate address"
+          VALID=$($CLI validateaddress "$ADDR" | python3 -c 'import json,sys; print(json.load(sys.stdin)["isvalid"])')
+          echo "isvalid=$VALID"
+          test "$VALID" = "True"
+          echo "::endgroup::"
+
+          echo "::group::Stop btqd"
+          $CLI stop
+          for i in $(seq 1 30); do
+            pgrep -x btqd >/dev/null 2>&1 || { echo "btqd stopped"; break; }
+            sleep 1
+          done
+          echo "::endgroup::"
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s || true
