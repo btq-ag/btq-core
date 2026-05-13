@@ -33,6 +33,7 @@
 #include <qt/utilitydialog.h>
 #include <qt/winshutdownmonitor.h>
 #include <uint256.h>
+#include <util/chaintype.h>
 #include <util/exception.h>
 #include <util/string.h>
 #include <util/threadnames.h>
@@ -546,6 +547,9 @@ int GuiMain(int argc, char* argv[])
             QString::fromStdString("Error parsing command line arguments: %1.").arg(QString::fromStdString(error)));
         return EXIT_FAILURE;
     }
+
+    // GUI defaults to testnet when neither the command line nor config sets a chain.
+    gArgs.SetFallbackChainType(ChainType::BTQTEST);
 
     // Now that the QApplication is setup and we have parsed our parameters, we can set the platform style
     app.setupPlatformStyle();
