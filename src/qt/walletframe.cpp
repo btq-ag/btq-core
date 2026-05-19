@@ -277,6 +277,12 @@ void WalletFrame::usedReceivingAddresses()
         walletView->usedReceivingAddresses();
 }
 
+void WalletFrame::showP2MRVaultDialog()
+{
+    WalletView* view = currentWalletView();
+    if (view) view->showP2MRVaultDialog();
+}
+
 WalletView* WalletFrame::currentWalletView() const
 {
     return qobject_cast<WalletView*>(walletStack->currentWidget());

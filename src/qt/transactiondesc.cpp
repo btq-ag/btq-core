@@ -127,6 +127,44 @@ QString TransactionDesc::toHTML(interfaces::Node& node, interfaces::Wallet& wall
 
     strHTML += "<b>" + tr("Date") + ":</b> " + (nTime ? GUIUtil::dateTimeStr(nTime) : "") + "<br>";
 
+    // BIP360 P2MR annotation: scan inputs and outputs for scripts that match
+    // a wallet-tracked P2MR vault. P2MR outputs are not flagged as IsMine, so
+    // the standard transaction-description flow may otherwise misattribute
+    // the source/destination. This block does not change classification; it
+    // only adds an informational line to the details popup.
+    {
+        std::vector<interfaces::WalletP2MREntry> p2mr_entries = wallet.listP2MR();
+        if (!p2mr_entries.empty()) {
+            QStringList in_matches;
+            for (const auto& vin : wtx.tx->vin) {
+                // We need the prevout script to compare; fetch via getCoins.
+                auto coins = wallet.getCoins({vin.prevout});
+                if (coins.empty()) continue;
+                for (const auto& e : p2mr_entries) {
+                    if (coins.front().txout.scriptPubKey == e.script_pub_key) {
+                        in_matches << QString::fromStdString(e.label.empty() ? e.id : e.label);
+                    }
+                }
+            }
+            QStringList out_matches;
+            for (const auto& vout : wtx.tx->vout) {
+                for (const auto& e : p2mr_entries) {
+                    if (vout.scriptPubKey == e.script_pub_key) {
+                        out_matches << QString::fromStdString(e.label.empty() ? e.id : e.label);
+                    }
+                }
+            }
+            if (!in_matches.isEmpty()) {
+                strHTML += "<b>" + tr("P2MR input") + ":</b> "
+                         + GUIUtil::HtmlEscape(in_matches.join(", ")) + "<br>";
+            }
+            if (!out_matches.isEmpty()) {
+                strHTML += "<b>" + tr("P2MR output") + ":</b> "
+                         + GUIUtil::HtmlEscape(out_matches.join(", ")) + "<br>";
+            }
+        }
+    }
+
     //
     // From
     //

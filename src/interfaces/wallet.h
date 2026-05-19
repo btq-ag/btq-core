@@ -8,9 +8,11 @@
 #include <addresstype.h>
 #include <consensus/amount.h>
 #include <interfaces/chain.h>
+#include <primitives/transaction.h>
 #include <pubkey.h>
 #include <script/script.h>
 #include <support/allocators/secure.h>
+#include <uint256.h>
 #include <util/fs.h>
 #include <util/message.h>
 #include <util/result.h>
@@ -20,6 +22,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -52,6 +55,12 @@ struct WalletTx;
 struct WalletTxOut;
 struct WalletTxStatus;
 struct WalletMigrationResult;
+struct WalletP2MRTreeLeaf;
+struct WalletP2MREntry;
+struct WalletP2MRCreated;
+struct WalletP2MRFunded;
+struct WalletP2MRSpend;
+struct WalletP2MRMempoolAccept;
 
 using WalletOrderForm = std::vector<std::pair<std::string, std::string>>;
 using WalletValueMap = std::map<std::string, std::string>;
@@ -314,6 +323,47 @@ public:
 
     //! Return pointer to internal wallet class, useful for testing.
     virtual wallet::CWallet* wallet() { return nullptr; }
+
+    // --- BIP360 P2MR (Pay-to-Merkle-Root) -----------------------------------
+    // These methods expose the wallet's P2MR vault metadata and spend flow to
+    // the GUI without going through JSON-RPC. They are implemented on top of
+    // the shared logic in src/wallet/p2mr.{h,cpp} and mirror the equivalent
+    // RPC commands (`getnewp2mraddress`, `sendtop2mr`, `listp2mr`,
+    // `getp2mrinfo`, `createp2mrspend`, `signp2mrtransaction`,
+    // `testp2mrtransaction`).
+
+    //! List all wallet-tracked P2MR destinations.
+    virtual std::vector<WalletP2MREntry> listP2MR() = 0;
+
+    //! Look up a single tracked P2MR entry by its wallet-local id.
+    virtual std::optional<WalletP2MREntry> getP2MR(const std::string& id) = 0;
+
+    //! Create and persist a new P2MR destination.
+    virtual util::Result<WalletP2MRCreated> createP2MR(const std::vector<WalletP2MRTreeLeaf>& leaves,
+                                                      const std::string& label) = 0;
+
+    //! Create + persist + fund a P2MR destination atomically.
+    virtual util::Result<WalletP2MRFunded> fundP2MR(const std::vector<WalletP2MRTreeLeaf>& leaves,
+                                                   CAmount amount,
+                                                   const std::string& label,
+                                                   bool subtract_fee_from_amount) = 0;
+
+    //! Build, sign, and dry-run a spend from a tracked P2MR UTXO in one step.
+    //! Does NOT broadcast: caller invokes broadcastP2MRSpend() once the user
+    //! confirms the dry-run result.
+    virtual util::Result<WalletP2MRSpend> prepareP2MRSpend(const std::string& p2mr_id,
+                                                          const CTxDestination& to_dest,
+                                                          CAmount amount,
+                                                          CAmount fee) = 0;
+
+    //! Broadcast a previously signed P2MR transaction (relay=true).
+    virtual util::Result<uint256> broadcastP2MRSpend(const CTransactionRef& tx) = 0;
+
+    //! Confirmed unspent balance summed across all tracked P2MR scripts.
+    virtual CAmount getP2MRBalance(int min_depth = 1) = 0;
+
+    //! Confirmed unspent balance for a single P2MR entry.
+    virtual CAmount getP2MREntryBalance(const std::string& id, int min_depth = 1) = 0;
 };
 
 //! Wallet chain client that in addition to having chain client methods for
@@ -436,6 +486,62 @@ struct WalletMigrationResult
     std::optional<std::string> watchonly_wallet_name;
     std::optional<std::string> solvables_wallet_name;
     fs::path backup_path;
+};
+
+//! One leaf in a BIP360 P2MR script tree (DFS order).
+struct WalletP2MRTreeLeaf
+{
+    uint8_t depth{0};
+    uint8_t leaf_version{0xc0}; // TAPROOT_LEAF_TAPSCRIPT default
+    std::vector<unsigned char> script;
+};
+
+//! Metadata for a wallet-tracked P2MR destination.
+struct WalletP2MREntry
+{
+    std::string id;
+    std::string address;
+    CScript script_pub_key;
+    uint256 merkle_root;
+    int64_t created_at{0};
+    std::string label;
+    std::string state;
+    std::vector<WalletP2MRTreeLeaf> tree;
+    CTxDestination dest;
+};
+
+//! Result of creating a new P2MR destination.
+struct WalletP2MRCreated
+{
+    std::string id;
+    std::string address;
+    CScript script_pub_key;
+    uint256 merkle_root;
+    CTxDestination dest;
+};
+
+//! Result of funding a new P2MR destination.
+struct WalletP2MRFunded
+{
+    WalletP2MRCreated created;
+    uint256 txid;
+    CAmount fee{0};
+};
+
+//! Result of preparing a P2MR spend (built, signed, and dry-run accepted).
+//! The transaction is NOT yet broadcast.
+struct WalletP2MRSpend
+{
+    CTransactionRef tx;
+    std::string p2mr_id;
+    COutPoint input;
+    CAmount input_amount{0};
+    CAmount send_amount{0};
+    CAmount change_amount{0};
+    bool has_change{false};
+    bool sign_complete{false};
+    bool mempool_allowed{false};
+    std::string reject_reason;
 };
 
 //! Return implementation of Wallet interface. This function is defined in

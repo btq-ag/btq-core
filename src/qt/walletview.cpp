@@ -10,6 +10,7 @@
 #include <qt/guiutil.h>
 #include <qt/optionsmodel.h>
 #include <qt/overviewpage.h>
+#include <qt/p2mrvaultdialog.h>
 #include <qt/platformstyle.h>
 #include <qt/receivecoinsdialog.h>
 #include <qt/sendcoinsdialog.h>
@@ -256,6 +257,14 @@ void WalletView::usedReceivingAddresses()
 {
     GUIUtil::bringToFront(usedReceivingAddressesPage);
 }
+
+void WalletView::showP2MRVaultDialog()
+{
+    auto* dlg = new P2MRVaultDialog(platformStyle, this);
+    dlg->setModel(walletModel);
+    GUIUtil::ShowModalDialogAsynchronously(dlg);
+}
+
 
 void WalletView::showProgress(const QString &title, int nProgress)
 {

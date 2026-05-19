@@ -331,6 +331,9 @@ void BTQGUI::createActions()
     usedReceivingAddressesAction = new QAction(tr("&Receiving addresses"), this);
     usedReceivingAddressesAction->setStatusTip(tr("Show the list of used receiving addresses and labels"));
 
+    m_p2mr_vaults_action = new QAction(tr("P2MR &vaults…"), this);
+    m_p2mr_vaults_action->setStatusTip(tr("Manage BIP360 Pay-to-Merkle-Root vaults"));
+
     openAction = new QAction(tr("Open &URI…"), this);
     openAction->setStatusTip(tr("Open a btq: URI"));
 
@@ -391,6 +394,7 @@ void BTQGUI::createActions()
         connect(verifyMessageAction, &QAction::triggered, [this]{ gotoVerifyMessageTab(); });
         connect(usedSendingAddressesAction, &QAction::triggered, walletFrame, &WalletFrame::usedSendingAddresses);
         connect(usedReceivingAddressesAction, &QAction::triggered, walletFrame, &WalletFrame::usedReceivingAddresses);
+        connect(m_p2mr_vaults_action, &QAction::triggered, walletFrame, &WalletFrame::showP2MRVaultDialog);
         connect(openAction, &QAction::triggered, this, &BTQGUI::openClicked);
         connect(m_open_wallet_menu, &QMenu::aboutToShow, [this] {
             m_open_wallet_menu->clear();
@@ -543,6 +547,8 @@ void BTQGUI::createMenuBar()
         window_menu->addSeparator();
         window_menu->addAction(usedSendingAddressesAction);
         window_menu->addAction(usedReceivingAddressesAction);
+        window_menu->addSeparator();
+        window_menu->addAction(m_p2mr_vaults_action);
     }
 
     window_menu->addSeparator();
@@ -799,6 +805,7 @@ void BTQGUI::setWalletActionsEnabled(bool enabled)
     verifyMessageAction->setEnabled(enabled);
     usedSendingAddressesAction->setEnabled(enabled);
     usedReceivingAddressesAction->setEnabled(enabled);
+    if (m_p2mr_vaults_action) m_p2mr_vaults_action->setEnabled(enabled);
     openAction->setEnabled(enabled);
     m_close_wallet_action->setEnabled(enabled);
     m_close_all_wallets_action->setEnabled(enabled);

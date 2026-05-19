@@ -25,6 +25,7 @@ enum class OutputType;
 class AddressTableModel;
 class ClientModel;
 class OptionsModel;
+class P2MRController;
 class PlatformStyle;
 class RecentRequestsTableModel;
 class SendCoinsRecipient;
@@ -80,6 +81,7 @@ public:
     AddressTableModel* getAddressTableModel() const;
     TransactionTableModel* getTransactionTableModel() const;
     RecentRequestsTableModel* getRecentRequestsTableModel() const;
+    P2MRController* getP2MRController() const;
 
     EncryptionStatus getEncryptionStatus() const;
 
@@ -181,6 +183,7 @@ private:
     AddressTableModel* addressTableModel{nullptr};
     TransactionTableModel* transactionTableModel{nullptr};
     RecentRequestsTableModel* recentRequestsTableModel{nullptr};
+    P2MRController* p2mrController{nullptr};
 
     // Cache some values to be able to detect changes
     interfaces::WalletBalances m_cached_balances;

@@ -140,6 +140,7 @@ private:
     QAction* sendCoinsAction = nullptr;
     QAction* usedSendingAddressesAction = nullptr;
     QAction* usedReceivingAddressesAction = nullptr;
+    QAction* m_p2mr_vaults_action = nullptr;
     QAction* signMessageAction = nullptr;
     QAction* verifyMessageAction = nullptr;
     QAction* m_load_psbt_action = nullptr;
