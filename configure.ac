@@ -992,6 +992,27 @@ if test "$use_hardening" != "no"; then
   AX_CHECK_LINK_FLAG([-Wl,-z,separate-code], [HARDENED_LDFLAGS="$HARDENED_LDFLAGS -Wl,-z,separate-code"], [], [$LDFLAG_WERROR])
   AX_CHECK_LINK_FLAG([-fPIE -pie], [PIE_FLAGS="-fPIE"; HARDENED_LDFLAGS="$HARDENED_LDFLAGS -pie"], [], [$CXXFLAG_WERROR])
 
+  dnl Apply the same hardening flags to C compilation units (Dilithium ref impl, FFI wrapper)
+  AC_LANG_PUSH([C])
+  AX_CHECK_COMPILE_FLAG([-Wstack-protector], [HARDENED_CFLAGS="$HARDENED_CFLAGS -Wstack-protector"])
+  AX_CHECK_COMPILE_FLAG([-fstack-protector-all], [HARDENED_CFLAGS="$HARDENED_CFLAGS -fstack-protector-all"])
+  AX_CHECK_COMPILE_FLAG([-fcf-protection=full], [HARDENED_CFLAGS="$HARDENED_CFLAGS -fcf-protection=full"])
+
+  case $host in
+    *mingw*)
+      ;;
+    *)
+      AX_CHECK_COMPILE_FLAG([-fstack-clash-protection], [HARDENED_CFLAGS="$HARDENED_CFLAGS -fstack-clash-protection"])
+      ;;
+  esac
+
+  case $host in
+    *aarch64*)
+      AX_CHECK_COMPILE_FLAG([-mbranch-protection=bti], [HARDENED_CFLAGS="$HARDENED_CFLAGS -mbranch-protection=bti"])
+    ;;
+  esac
+  AC_LANG_POP([C])
+
   case $host in
     *mingw*)
        AC_CHECK_LIB([ssp], [main], [], [AC_MSG_ERROR([libssp missing])])
@@ -1901,6 +1922,7 @@ AC_SUBST(DEBUG_CXXFLAGS)
 AC_SUBST(ERROR_CXXFLAGS)
 AC_SUBST(GPROF_CXXFLAGS)
 AC_SUBST(GPROF_LDFLAGS)
+AC_SUBST(HARDENED_CFLAGS)
 AC_SUBST(HARDENED_CXXFLAGS)
 AC_SUBST(HARDENED_CPPFLAGS)
 AC_SUBST(HARDENED_LDFLAGS)
@@ -2008,7 +2030,7 @@ echo "  target os       = $host_os"
 echo "  build os        = $build_os"
 echo
 echo "  CC              = $CC"
-echo "  CFLAGS          = $PTHREAD_CFLAGS $CFLAGS"
+echo "  CFLAGS          = $HARDENED_CFLAGS $PTHREAD_CFLAGS $CFLAGS"
 echo "  CPPFLAGS        = $DEBUG_CPPFLAGS $HARDENED_CPPFLAGS $CORE_CPPFLAGS $CPPFLAGS"
 echo "  CXX             = $CXX"
 echo "  CXXFLAGS        = $LTO_CXXFLAGS $DEBUG_CXXFLAGS $HARDENED_CXXFLAGS $WARN_CXXFLAGS $NOWARN_CXXFLAGS $ERROR_CXXFLAGS $GPROF_CXXFLAGS $CORE_CXXFLAGS $CXXFLAGS"
