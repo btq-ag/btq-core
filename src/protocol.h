@@ -294,6 +294,10 @@ enum ServiceFlags : uint64_t {
     // NODE_P2P_V2 means the node supports BIP324 transport
     NODE_P2P_V2 = (1 << 11),
 
+    // NODE_BTQ_DILITHIUM indicates a BTQ node that validates Dilithium
+    // signatures and P2MR (BIP360) witness v2 transactions.
+    NODE_BTQ_DILITHIUM = (1 << 26),
+
     // Bits 24-31 are reserved for temporary experiments. Just pick a bit that
     // isn't getting used, or one not being used much, and notify the
     // btq-development mailing list. Remember that service bits are just
