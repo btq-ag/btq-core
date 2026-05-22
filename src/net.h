@@ -63,8 +63,8 @@ static constexpr std::chrono::minutes TIMEOUT_INTERVAL{20};
 static constexpr auto FEELER_INTERVAL = 2min;
 /** Run the extra block-relay-only connection loop once every 5 minutes. **/
 static constexpr auto EXTRA_BLOCK_RELAY_ONLY_PEER_INTERVAL = 5min;
-/** Maximum length of incoming protocol messages (raised to carry ≥64 MB blocks). */
-static const unsigned int MAX_PROTOCOL_MESSAGE_LENGTH = 70 * 1000 * 1000; // 70 MB
+/** Maximum length of incoming protocol messages (block size + overhead). */
+static const unsigned int MAX_PROTOCOL_MESSAGE_LENGTH = 9 * 1000 * 1000; // 9 MB
 /** Maximum length of the user agent string in `version` message */
 static const unsigned int MAX_SUBVERSION_LENGTH = 256;
 /** Maximum number of automatic outgoing nodes over which we'll relay everything (blocks, tx, addrs, etc) */
