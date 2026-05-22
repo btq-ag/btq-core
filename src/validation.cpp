@@ -2131,6 +2131,9 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     const auto it{consensusparams.script_flag_exceptions.find(*Assert(block_index.phashBlock))};
     if (it != consensusparams.script_flag_exceptions.end()) {
         flags = it->second;
+        // Dilithium and P2MR verification must never be disabled by exceptions
+        flags |= SCRIPT_VERIFY_DILITHIUM;
+        flags |= SCRIPT_VERIFY_P2MR;
     }
 
     // Enforce the DERSIG (BIP66) rule
