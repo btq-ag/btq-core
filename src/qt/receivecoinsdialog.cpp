@@ -10,10 +10,17 @@
 #include <qt/addresstablemodel.h>
 #include <qt/guiutil.h>
 #include <qt/optionsmodel.h>
+#include <qt/p2mrvaultdialog.h>
 #include <qt/platformstyle.h>
 #include <qt/receiverequestdialog.h>
 #include <qt/recentrequeststablemodel.h>
 #include <qt/walletmodel.h>
+
+namespace {
+// Sentinel value stored in the address-type combo box for P2MR rows. Chosen
+// to not collide with any valid OutputType integer.
+constexpr int P2MR_SENTINEL = -1001;
+}
 
 #include <QAction>
 #include <QCursor>
@@ -99,6 +106,8 @@ void ReceiveCoinsDialog::setModel(WalletModel *_model)
         if (model->wallet().taprootEnabled()) {
             add_address_type(OutputType::BECH32M, tr("Bech32m (Taproot)"), tr("Bech32m (BIP-350) is an upgrade to Bech32, wallet support is still limited."));
         }
+        ui->addressType->addItem(tr("P2MR (BIP360, advanced)"), P2MR_SENTINEL);
+        ui->addressType->setItemData(ui->addressType->count() - 1, tr("BIP360 Pay-to-Merkle-Root vault, opens the vault manager."), Qt::ToolTipRole);
 
         // Set the button to be enabled or disabled based on whether the wallet can give out new addresses.
         ui->receiveButton->setEnabled(model->wallet().canGetAddresses());
@@ -150,6 +159,18 @@ void ReceiveCoinsDialog::on_receiveButton_clicked()
 
     QString address;
     QString label = ui->reqLabel->text();
+
+    // BIP360 P2MR is not handled by the AddressTableModel; route to the
+    // dedicated vault dialog. The user can pick a template (OP_TRUE for
+    // testing or custom JSON tree) and the wallet stores the metadata.
+    if (ui->addressType->currentData().toInt() == P2MR_SENTINEL) {
+        P2MRVaultDialog* dlg = new P2MRVaultDialog(platformStyle, this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setModel(model);
+        dlg->show();
+        return;
+    }
+
     /* Generate new receiving address */
     const OutputType address_type = (OutputType)ui->addressType->currentData().toInt();
     address = model->getAddressTableModel()->addRow(AddressTableModel::Receive, label, "", address_type);

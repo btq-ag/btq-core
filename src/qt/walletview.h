@@ -104,6 +104,9 @@ public Q_SLOTS:
     /** Show used receiving addresses */
     void usedReceivingAddresses();
 
+    /** Show BIP360 P2MR vault manager */
+    void showP2MRVaultDialog();
+
     /** Show progress dialog e.g. for rescan */
     void showProgress(const QString &title, int nProgress);
 

@@ -347,6 +347,7 @@ BTQ_CORE_H = \
   wallet/feebumper.h \
   wallet/fees.h \
   wallet/load.h \
+  wallet/p2mr.h \
   wallet/receive.h \
   wallet/rpc/util.h \
   wallet/rpc/wallet.h \
@@ -506,6 +507,7 @@ libbtq_wallet_a_SOURCES = \
   wallet/fees.cpp \
   wallet/interfaces.cpp \
   wallet/load.cpp \
+  wallet/p2mr.cpp \
   wallet/receive.cpp \
   wallet/rpc/addresses.cpp \
   wallet/rpc/backup.cpp \

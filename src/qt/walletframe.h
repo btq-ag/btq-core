@@ -97,6 +97,9 @@ public Q_SLOTS:
     void usedSendingAddresses();
     /** Show used receiving addresses */
     void usedReceivingAddresses();
+
+    /** Open BIP360 P2MR vault manager */
+    void showP2MRVaultDialog();
 };
 
 #endif // BTQ_QT_WALLETFRAME_H

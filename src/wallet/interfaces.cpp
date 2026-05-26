@@ -23,6 +23,7 @@
 #include <wallet/fees.h>
 #include <wallet/types.h>
 #include <wallet/load.h>
+#include <wallet/p2mr.h>
 #include <wallet/receive.h>
 #include <wallet/rpc/wallet.h>
 #include <wallet/spend.h>
@@ -556,6 +557,142 @@ public:
         return MakeSignalHandler(m_wallet->NotifyCanGetAddressesChanged.connect(fn));
     }
     CWallet* wallet() override { return m_wallet.get(); }
+
+    // --- BIP360 P2MR --------------------------------------------------------
+    static interfaces::WalletP2MRTreeLeaf ToInterfaceLeaf(const P2MRTreeLeaf& l)
+    {
+        return interfaces::WalletP2MRTreeLeaf{l.depth, l.leaf_version, l.script};
+    }
+    static P2MRTreeLeaf FromInterfaceLeaf(const interfaces::WalletP2MRTreeLeaf& l)
+    {
+        return P2MRTreeLeaf{l.depth, l.leaf_version, l.script};
+    }
+    static interfaces::WalletP2MREntry ToInterfaceEntry(const P2MREntry& e)
+    {
+        interfaces::WalletP2MREntry out;
+        out.id = e.id;
+        out.address = e.address;
+        out.script_pub_key = e.script_pub_key;
+        out.merkle_root = e.merkle_root;
+        out.created_at = e.created_at;
+        out.label = e.label;
+        out.state = e.state;
+        out.dest = e.dest;
+        out.tree.reserve(e.tree.size());
+        for (const auto& l : e.tree) out.tree.push_back(ToInterfaceLeaf(l));
+        return out;
+    }
+    static interfaces::WalletP2MRCreated ToInterfaceCreated(const P2MRCreated& c)
+    {
+        return interfaces::WalletP2MRCreated{c.id, c.address, c.script_pub_key, c.merkle_root, c.dest};
+    }
+    static std::vector<P2MRTreeLeaf> FromInterfaceLeaves(const std::vector<interfaces::WalletP2MRTreeLeaf>& leaves)
+    {
+        std::vector<P2MRTreeLeaf> out;
+        out.reserve(leaves.size());
+        for (const auto& l : leaves) out.push_back(FromInterfaceLeaf(l));
+        return out;
+    }
+
+    std::vector<interfaces::WalletP2MREntry> listP2MR() override
+    {
+        LOCK(m_wallet->cs_wallet);
+        std::vector<interfaces::WalletP2MREntry> out;
+        for (const auto& entry : ListP2MR(*m_wallet)) {
+            out.push_back(ToInterfaceEntry(entry));
+        }
+        return out;
+    }
+    std::optional<interfaces::WalletP2MREntry> getP2MR(const std::string& id) override
+    {
+        LOCK(m_wallet->cs_wallet);
+        auto entry = GetP2MR(*m_wallet, id);
+        if (!entry) return std::nullopt;
+        return ToInterfaceEntry(*entry);
+    }
+    util::Result<interfaces::WalletP2MRCreated> createP2MR(
+        const std::vector<interfaces::WalletP2MRTreeLeaf>& leaves,
+        const std::string& label) override
+    {
+        LOCK(m_wallet->cs_wallet);
+        auto res = CreateP2MR(*m_wallet, FromInterfaceLeaves(leaves), label);
+        if (!res) return util::Error{util::ErrorString(res)};
+        return ToInterfaceCreated(*res);
+    }
+    util::Result<interfaces::WalletP2MRFunded> fundP2MR(
+        const std::vector<interfaces::WalletP2MRTreeLeaf>& leaves,
+        CAmount amount,
+        const std::string& label,
+        bool subtract_fee_from_amount) override
+    {
+        LOCK(m_wallet->cs_wallet);
+        CCoinControl coin_control;
+        auto res = FundP2MR(*m_wallet, FromInterfaceLeaves(leaves), amount, label,
+                            subtract_fee_from_amount, coin_control);
+        if (!res) return util::Error{util::ErrorString(res)};
+        interfaces::WalletP2MRFunded out;
+        out.created = ToInterfaceCreated(res->created);
+        out.txid = res->txid;
+        out.fee = res->fee;
+        return out;
+    }
+    util::Result<interfaces::WalletP2MRSpend> prepareP2MRSpend(
+        const std::string& p2mr_id,
+        const CTxDestination& to_dest,
+        CAmount amount,
+        CAmount fee) override
+    {
+        // Build + sign hold cs_wallet (per the AssertLockHeld contracts in the
+        // shared module). Release the lock BEFORE the mempool dry-run so that
+        // any notifications dispatched from chain().broadcastTransaction (even
+        // with relay=false) can take their own wallet locks without
+        // ordering risk.
+        CMutableTransaction signed_tx;
+        interfaces::WalletP2MRSpend out;
+        {
+            LOCK(m_wallet->cs_wallet);
+            auto unsigned_res = CreateP2MRSpend(*m_wallet, p2mr_id, to_dest, amount, fee);
+            if (!unsigned_res) return util::Error{util::ErrorString(unsigned_res)};
+
+            auto signed_res = SignP2MRTransaction(*m_wallet, unsigned_res->tx, p2mr_id);
+            if (!signed_res) return util::Error{util::ErrorString(signed_res)};
+
+            signed_tx = std::move(signed_res->tx);
+            out.p2mr_id = unsigned_res->p2mr_id;
+            out.input = unsigned_res->input;
+            out.input_amount = unsigned_res->input_amount;
+            out.has_change = unsigned_res->has_change;
+            out.change_amount = unsigned_res->change_amount;
+            out.send_amount = signed_tx.vout.empty() ? 0 : signed_tx.vout[0].nValue;
+            out.sign_complete = signed_res->complete;
+        }
+
+        auto accept = TestP2MRTransaction(*m_wallet, signed_tx);
+        out.tx = MakeTransactionRef(std::move(signed_tx));
+        out.mempool_allowed = accept.allowed;
+        out.reject_reason = accept.reject_reason;
+        return out;
+    }
+    util::Result<uint256> broadcastP2MRSpend(const CTransactionRef& tx) override
+    {
+        std::string err_string;
+        const bool ok = m_wallet->chain().broadcastTransaction(tx, /*max_tx_fee=*/m_wallet->m_default_max_tx_fee,
+                                                               /*relay=*/true, err_string);
+        if (!ok) return util::Error{Untranslated(err_string.empty() ? "broadcast failed" : err_string)};
+        return tx->GetHash();
+    }
+    CAmount getP2MRBalance(int min_depth) override
+    {
+        LOCK(m_wallet->cs_wallet);
+        return GetTrackedP2MRBalance(*m_wallet, min_depth);
+    }
+    CAmount getP2MREntryBalance(const std::string& id, int min_depth) override
+    {
+        LOCK(m_wallet->cs_wallet);
+        auto entry = GetP2MR(*m_wallet, id);
+        if (!entry) return 0;
+        return GetP2MREntryBalance(*m_wallet, *entry, min_depth);
+    }
 
     WalletContext& m_context;
     std::shared_ptr<CWallet> m_wallet;

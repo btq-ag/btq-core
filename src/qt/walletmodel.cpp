@@ -13,6 +13,7 @@
 #include <qt/guiconstants.h>
 #include <qt/guiutil.h>
 #include <qt/optionsmodel.h>
+#include <qt/p2mrcontroller.h>
 #include <qt/paymentserver.h>
 #include <qt/recentrequeststablemodel.h>
 #include <qt/sendcoinsdialog.h>
@@ -52,6 +53,7 @@ WalletModel::WalletModel(std::unique_ptr<interfaces::Wallet> wallet, ClientModel
     addressTableModel = new AddressTableModel(this);
     transactionTableModel = new TransactionTableModel(platformStyle, this);
     recentRequestsTableModel = new RecentRequestsTableModel(this);
+    p2mrController = new P2MRController(this, this);
 
     subscribeToCoreSignals();
 }
@@ -311,6 +313,11 @@ TransactionTableModel* WalletModel::getTransactionTableModel() const
 RecentRequestsTableModel* WalletModel::getRecentRequestsTableModel() const
 {
     return recentRequestsTableModel;
+}
+
+P2MRController* WalletModel::getP2MRController() const
+{
+    return p2mrController;
 }
 
 WalletModel::EncryptionStatus WalletModel::getEncryptionStatus() const
