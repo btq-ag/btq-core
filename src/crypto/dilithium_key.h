@@ -15,10 +15,25 @@
 #include <memory>
 #include <vector>
 
-// Dilithium extended key size: 1 (depth) + 4 (fingerprint) + 4 (child) + 32 (chaincode) + 2560 (private key) = 2601 bytes
-const unsigned int DILITHIUM_EXTKEY_SIZE = 2601;
-// Dilithium extended pubkey size: 1 (depth) + 4 (fingerprint) + 4 (child) + 32 (chaincode) + 1952 (public key) = 1993 bytes  
-const unsigned int DILITHIUM_EXTPUBKEY_SIZE = 1993;
+// Dilithium extended key serialization size.
+//
+// We persist the 32-byte HD seed (not the 2560-byte expanded secret key) plus
+// the BIP32-style header. The expanded keypair is regenerated deterministically
+// from the seed via `btq_dilithium_keypair_from_seed()` on decode. This is the
+// only design that is consistent with Dilithium's algebraic structure: the
+// reference implementation derives (rho, key, t0, s1, s2) from a 32-byte seed
+// via SHAKE256, so the seed - not the packed sk bytes - is the durable parent
+// material for HD derivation.
+//
+// Layout: 1 (depth) + 4 (fingerprint) + 4 (child) + 32 (chaincode) + 32 (seed)
+const unsigned int DILITHIUM_EXTKEY_SIZE = 73;
+
+// Dilithium extended pubkey size: 1 (depth) + 4 (fingerprint) + 4 (child) +
+// 32 (chaincode) + 1312 (Dilithium2 public key) = 1353 bytes.
+//
+// NB: Dilithium2, not Dilithium3, is the BTQ default - the previous 1952-byte
+// constant was wrong and would overflow the encode buffer.
+const unsigned int DILITHIUM_EXTPUBKEY_SIZE = 1353;
 
 // Forward declarations for Dilithium C API
 extern "C" {
@@ -324,13 +339,30 @@ public:
     std::vector<unsigned char> GetAddress() const;
 };
 
-/** Dilithium extended key for HD wallet support */
+/**
+ * Dilithium extended key for HD wallet support.
+ *
+ * Hardened-only by design. Dilithium's lattice-based key structure does not
+ * admit BIP32-style homomorphic ("non-hardened") public key derivation (there
+ * is no analogue of `child_pub = parent_pub + hash*G`). Calling Derive() with
+ * a non-hardened child index therefore returns false.
+ *
+ * Durable state is the 32-byte HD seed plus chaincode. The 2560/1312-byte
+ * Dilithium2 keypair is regenerated deterministically from the seed via
+ * `btq_dilithium_keypair_from_seed()`.
+ */
 class CDilithiumExtKey {
 public:
-    unsigned char nDepth;
-    unsigned char vchFingerprint[4];
-    unsigned int nChild;
+    /** Size, in bytes, of the deterministic seed that drives keypair gen. */
+    static constexpr size_t SEED_SIZE = 32;
+
+    unsigned char nDepth{0};
+    unsigned char vchFingerprint[4]{0, 0, 0, 0};
+    unsigned int nChild{0};
     ChainCode chaincode;
+    /** Deterministic 32-byte seed: zeroed when invalid. */
+    std::array<unsigned char, SEED_SIZE> seed{};
+    /** Expanded keypair, regenerated from `seed`. */
     CDilithiumKey key;
 
     friend bool operator==(const CDilithiumExtKey& a, const CDilithiumExtKey& b)
@@ -339,22 +371,34 @@ public:
             memcmp(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) == 0 &&
             a.nChild == b.nChild &&
             a.chaincode == b.chaincode &&
-            a.key == b.key;
+            a.seed == b.seed;
     }
 
     void Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const;
     void Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE]);
+
+    /**
+     * Derive a child extended key. Only hardened indices are accepted;
+     * `nChild` must have its high bit set (i.e. `nChild >= 0x80000000`).
+     * Returns false for non-hardened indices.
+     */
     [[nodiscard]] bool Derive(CDilithiumExtKey& out, unsigned int nChild) const;
     CDilithiumExtPubKey Neuter() const;
-    void SetSeed(Span<const std::byte> seed);
+    void SetSeed(Span<const std::byte> hd_seed);
 };
 
-/** Dilithium extended public key for HD wallet support */
+/**
+ * Dilithium extended public key.
+ *
+ * Carries the BIP32 metadata plus a Dilithium2 public key (1312 bytes).
+ * `Derive()` always returns false: see CDilithiumExtKey's class comment for
+ * why public-only derivation is not cryptographically feasible for Dilithium.
+ */
 class CDilithiumExtPubKey {
 public:
-    unsigned char nDepth;
-    unsigned char vchFingerprint[4];
-    unsigned int nChild;
+    unsigned char nDepth{0};
+    unsigned char vchFingerprint[4]{0, 0, 0, 0};
+    unsigned int nChild{0};
     ChainCode chaincode;
     CDilithiumPubKey pubkey;
 
@@ -367,8 +411,13 @@ public:
             a.pubkey == b.pubkey;
     }
 
-    void Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const;
-    void Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE]);
+    void Encode(unsigned char code[DILITHIUM_EXTPUBKEY_SIZE]) const;
+    void Decode(const unsigned char code[DILITHIUM_EXTPUBKEY_SIZE]);
+
+    /**
+     * Public-only derivation is not supported for Dilithium. Always returns
+     * false; callers must derive from the private CDilithiumExtKey.
+     */
     [[nodiscard]] bool Derive(CDilithiumExtPubKey& out, unsigned int nChild) const;
 };
 

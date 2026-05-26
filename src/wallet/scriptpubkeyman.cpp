@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <crypto/dilithium_key.h>
+#include <crypto/hmac_sha512.h>
 #include <hash.h>
 #include <key_io.h>
 #include <logging.h>
@@ -11,6 +12,7 @@
 #include <script/script.h>
 #include <script/sign.h>
 #include <script/solver.h>
+#include <support/cleanse.h>
 #include <util/bip32.h>
 #include <util/strencodings.h>
 #include <util/string.h>
@@ -40,18 +42,13 @@ util::Result<CTxDestination> LegacyScriptPubKeyMan::GetNewDestination(const Outp
 
     // Handle Dilithium output types
     if (type == OutputType::DILITHIUM_LEGACY || type == OutputType::DILITHIUM_BECH32) {
-        CDilithiumKey dilithium_key;
-        dilithium_key.MakeNewKey();
-
-        if (!dilithium_key.IsValid()) {
-            return util::Error{_("Error: Failed to generate Dilithium key")};
+        if (!CanGenerateKeys()) {
+            return util::Error{_("Error: Keypool ran out, please call keypoolrefill first")};
         }
-
-        CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
-        CPubKey pubkey(dilithium_pubkey.begin(), dilithium_pubkey.end());
-
-        if (!AddDilithiumKeyPubKey(dilithium_key, pubkey)) {
-            return util::Error{_("Error: Failed to add Dilithium key to wallet")};
+        WalletBatch batch(m_storage.GetDatabase());
+        CDilithiumPubKey dilithium_pubkey = GenerateNewDilithiumKey(batch, m_hd_chain, /*internal=*/false);
+        if (!dilithium_pubkey.IsValid()) {
+            return util::Error{_("Error: Failed to generate Dilithium key")};
         }
 
         CTxDestination dest;
@@ -1099,7 +1096,7 @@ bool LegacyScriptPubKeyMan::HaveDilithiumKey(const CKeyID &address) const
     }
 }
 
-CPubKey LegacyScriptPubKeyMan::GenerateNewDilithiumKey(WalletBatch &batch, CHDChain& hd_chain, bool internal)
+CDilithiumPubKey LegacyScriptPubKeyMan::GenerateNewDilithiumKey(WalletBatch &batch, CHDChain& hd_chain, bool internal)
 {
     assert(!m_storage.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS));
     assert(!m_storage.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET));
@@ -1119,66 +1116,73 @@ CPubKey LegacyScriptPubKeyMan::GenerateNewDilithiumKey(WalletBatch &batch, CHDCh
     }
 
     CDilithiumPubKey dilithium_pubkey = secret.GetPubKey();
-    CPubKey pubkey(dilithium_pubkey.begin(), dilithium_pubkey.end());
     assert(secret.IsValid());
 
-    mapKeyMetadata[pubkey.GetID()] = metadata;
+    const CKeyID key_id = CKeyID(dilithium_pubkey.GetID());
+    mapKeyMetadata[key_id] = metadata;
     UpdateTimeFirstKey(nCreationTime);
 
+    CPubKey pubkey(dilithium_pubkey.begin(), dilithium_pubkey.end());
     if (!AddDilithiumKeyPubKeyWithDB(batch, secret, pubkey)) {
         throw std::runtime_error(std::string(__func__) + ": AddDilithiumKeyPubKey failed");
     }
-    return pubkey;
+    return dilithium_pubkey;
+}
+
+static void DeriveDilithiumExtKey(CDilithiumExtKey& key_in, unsigned int index, CDilithiumExtKey& key_out)
+{
+    if (!key_in.Derive(key_out, index)) {
+        throw std::runtime_error("Could not derive Dilithium extended key");
+    }
 }
 
 void LegacyScriptPubKeyMan::DeriveNewDilithiumChildKey(WalletBatch &batch, CKeyMetadata& metadata, CDilithiumKey& secret, CHDChain& hd_chain, bool internal)
 {
-    // Get the current child index
-    uint32_t child_index = internal ? hd_chain.nInternalChainCounter : hd_chain.nExternalChainCounter;
-    
-    // Generate a unique Dilithium key by ensuring each key has different entropy
-    std::vector<unsigned char> unique_seed;
-    
-    // Include the HD chain seed ID for wallet-specific entropy
-    unique_seed.insert(unique_seed.end(), hd_chain.seed_id.begin(), hd_chain.seed_id.end());
-    
-    // Include the child index to ensure each key is different
-    unique_seed.insert(unique_seed.end(), (unsigned char*)&child_index, (unsigned char*)&child_index + sizeof(child_index));
-    
-    // Include internal/external flag
-    unique_seed.push_back(internal ? 1 : 0);
-    
-    // Include timestamp for additional uniqueness
-    uint64_t timestamp = GetTime();
-    unique_seed.insert(unique_seed.end(), (unsigned char*)&timestamp, (unsigned char*)&timestamp + sizeof(timestamp));
-    
-    // Generate the Dilithium key
-    secret.MakeNewKey();
-    
-    if (!secret.IsValid()) {
-        throw std::runtime_error(std::string(__func__) + ": Failed to generate valid Dilithium key");
+    // Mirror the secp256k1 HD path m/0'/0'/<n>' (or m/0'/1'/<n>') using
+    // CDilithiumExtKey hardened derivation from the wallet seed.
+    CKey seed;
+    CDilithiumExtKey masterKey;
+    CDilithiumExtKey accountKey;
+    CDilithiumExtKey chainChildKey;
+    CDilithiumExtKey childKey;
+
+    if (!GetKey(hd_chain.seed_id, seed)) {
+        throw std::runtime_error(std::string(__func__) + ": seed not found");
     }
-    
-    // Set metadata for the key
-    metadata.nCreateTime = GetTime();
-    metadata.hdKeypath = strprintf("m/0'/%d'/%d'", internal ? 1 : 0, child_index);
-    metadata.key_origin.path.push_back(0 | BIP32_HARDENED_KEY_LIMIT);
-    metadata.key_origin.path.push_back((internal ? 1 : 0) | BIP32_HARDENED_KEY_LIMIT);
-    metadata.key_origin.path.push_back(child_index | BIP32_HARDENED_KEY_LIMIT);
-    std::copy(hd_chain.seed_id.begin(), hd_chain.seed_id.begin() + 4, metadata.key_origin.fingerprint);
-    metadata.has_key_origin = true;
+
+    masterKey.SetSeed(seed);
+
+    DeriveDilithiumExtKey(masterKey, BIP32_HARDENED_KEY_LIMIT, accountKey);
+
+    assert(internal ? m_storage.CanSupportFeature(FEATURE_HD_SPLIT) : true);
+    DeriveDilithiumExtKey(accountKey, BIP32_HARDENED_KEY_LIMIT + (internal ? 1 : 0), chainChildKey);
+
+    do {
+        if (internal) {
+            DeriveDilithiumExtKey(chainChildKey, hd_chain.nInternalChainCounter | BIP32_HARDENED_KEY_LIMIT, childKey);
+            metadata.hdKeypath = "m/0'/1'/" + ToString(hd_chain.nInternalChainCounter) + "'";
+            metadata.key_origin.path.push_back(0 | BIP32_HARDENED_KEY_LIMIT);
+            metadata.key_origin.path.push_back(1 | BIP32_HARDENED_KEY_LIMIT);
+            metadata.key_origin.path.push_back(hd_chain.nInternalChainCounter | BIP32_HARDENED_KEY_LIMIT);
+            hd_chain.nInternalChainCounter++;
+        } else {
+            DeriveDilithiumExtKey(chainChildKey, hd_chain.nExternalChainCounter | BIP32_HARDENED_KEY_LIMIT, childKey);
+            metadata.hdKeypath = "m/0'/0'/" + ToString(hd_chain.nExternalChainCounter) + "'";
+            metadata.key_origin.path.push_back(0 | BIP32_HARDENED_KEY_LIMIT);
+            metadata.key_origin.path.push_back(0 | BIP32_HARDENED_KEY_LIMIT);
+            metadata.key_origin.path.push_back(hd_chain.nExternalChainCounter | BIP32_HARDENED_KEY_LIMIT);
+            hd_chain.nExternalChainCounter++;
+        }
+    } while (HaveDilithiumKey(CKeyID(childKey.key.GetPubKey().GetID())));
+
+    secret = childKey.key;
     metadata.hd_seed_id = hd_chain.seed_id;
-    
-    // Update the HD chain counters
-    if (internal) {
-        hd_chain.nInternalChainCounter++;
-    } else {
-        hd_chain.nExternalChainCounter++;
-    }
-    
-    // Write the updated HD chain to the database
-    if (!batch.WriteHDChain(hd_chain)) {
-        throw std::runtime_error(std::string(__func__) + ": Writing HD chain failed");
+    CKeyID master_id = CKeyID(masterKey.key.GetPubKey().GetID());
+    std::copy(master_id.begin(), master_id.begin() + 4, metadata.key_origin.fingerprint);
+    metadata.has_key_origin = true;
+
+    if (hd_chain.seed_id == m_hd_chain.seed_id && !batch.WriteHDChain(hd_chain)) {
+        throw std::runtime_error(std::string(__func__) + ": writing HD chain model failed");
     }
 }
 
@@ -2346,48 +2350,41 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
             }
 
             CDilithiumKey dilithium_key;
-            uint32_t child_index = m_wallet_descriptor.next_index;
+            const uint32_t child_index = m_wallet_descriptor.next_index;
 
-            // Build unique seed from descriptor ID, child index, type, and timestamp
-            std::vector<unsigned char> unique_seed;
-            uint256 desc_id = GetID();
-            unique_seed.insert(unique_seed.end(), desc_id.begin(), desc_id.end());
-            unique_seed.insert(unique_seed.end(), (unsigned char*)&child_index, (unsigned char*)&child_index + sizeof(child_index));
-            unique_seed.push_back((int)type);
-            uint64_t timestamp = GetTime();
-            unique_seed.insert(unique_seed.end(), (unsigned char*)&timestamp, (unsigned char*)&timestamp + sizeof(timestamp));
+            // Deterministic Dilithium key from descriptor identity + index (no timestamp).
+            static const unsigned char desc_ctx[] = {'D','i','l','i','t','h','i','u','m',' ','d','e','s','c'};
+            CHMAC_SHA512 hmac(desc_ctx, sizeof(desc_ctx));
+            const uint256 desc_id = GetID();
+            hmac.Write(desc_id.begin(), desc_id.size());
+            const uint32_t idx_be = htobe32(child_index);
+            hmac.Write(reinterpret_cast<const unsigned char*>(&idx_be), sizeof(idx_be));
+            const unsigned char type_byte = static_cast<unsigned char>(type);
+            hmac.Write(&type_byte, 1);
+            unsigned char I[64];
+            hmac.Finalize(I);
+            const std::vector<unsigned char> seed(I, I + BTQ_DILITHIUM_SEED_SIZE);
+            memory_cleanse(I, sizeof(I));
 
-            dilithium_key.MakeNewKey();
-
-            // Re-generate if child_index > 0 to ensure different key per index
-            if (child_index > 0) {
-                dilithium_key.MakeNewKey();
-            }
-
-            if (!dilithium_key.IsValid()) {
+            if (!dilithium_key.GenerateFromEntropy(seed)) {
                 return util::Error{_("Error: Failed to generate Dilithium key")};
             }
 
             CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
-            CKeyID keyid = CKeyID(Hash160(Span<const unsigned char>(dilithium_pubkey.data(), dilithium_pubkey.size())));
+            const CKeyID keyid = CKeyID(dilithium_pubkey.GetID());
 
             WalletBatch batch(m_storage.GetDatabase());
 
-            int retry_count = 0;
-            while (HaveDilithiumKey(keyid) && retry_count < 10) {
-                dilithium_key.MakeNewKey();
-                dilithium_pubkey = dilithium_key.GetPubKey();
-                keyid = CKeyID(Hash160(Span<const unsigned char>(dilithium_pubkey.data(), dilithium_pubkey.size())));
-                retry_count++;
-            }
-
-            if (retry_count >= 10) {
+            if (HaveDilithiumKey(keyid)) {
                 return util::Error{_("Error: Failed to generate unique Dilithium key")};
             }
 
             if (!AddDilithiumKeyWithDB(batch, dilithium_key, keyid)) {
                 return util::Error{_("Error: Failed to store Dilithium key")};
             }
+
+            m_wallet_descriptor.next_index++;
+            batch.WriteDescriptor(GetID(), m_wallet_descriptor);
 
             CTxDestination dest;
             if (type == OutputType::DILITHIUM_LEGACY) {
@@ -2890,6 +2887,9 @@ bool DescriptorScriptPubKeyMan::SetupDescriptorGeneration(const CExtKey& master_
     FlatSigningProvider keys;
     std::string error;
     std::unique_ptr<Descriptor> desc = Parse(desc_str, keys, error, false);
+    if (!desc) {
+        throw std::runtime_error(strprintf("%s: invalid descriptor '%s': %s", __func__, desc_str, error));
+    }
     WalletDescriptor w_desc(std::move(desc), creation_time, 0, 0, 0);
     m_wallet_descriptor = w_desc;
 

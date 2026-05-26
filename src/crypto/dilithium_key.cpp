@@ -8,6 +8,7 @@
 #include <crypto/hmac_sha512.h>
 #include <hash.h>
 #include <random.h>
+#include <support/cleanse.h>
 #include <util/strencodings.h>
 
 #include <cassert>
@@ -20,103 +21,69 @@ extern "C" {
 
 // CDilithiumKey implementation
 
+namespace {
+/**
+ * Build (sk, pk) deterministically from a 32-byte seed and store the
+ * concatenation `sk || pk` into `out`. Returns true on success.
+ *
+ * This is the single point of contact with the (now seeded) Dilithium
+ * reference implementation. Both MakeNewKey() and GenerateFromEntropy() route
+ * through this helper so they cannot diverge.
+ */
+bool DilithiumExpandSeedIntoKeydata(const unsigned char seed[BTQ_DILITHIUM_SEED_SIZE],
+                                    unsigned char* out /* SECRET_KEY_SIZE + PUBLIC_KEY_SIZE bytes */)
+{
+    std::array<unsigned char, DilithiumConstants::PUBLIC_KEY_SIZE> pk{};
+    std::array<unsigned char, DilithiumConstants::SECRET_KEY_SIZE> sk{};
+    if (btq_dilithium_keypair_from_seed(pk.data(), sk.data(), seed) != 0) {
+        memory_cleanse(sk.data(), sk.size());
+        return false;
+    }
+    memcpy(out, sk.data(), DilithiumConstants::SECRET_KEY_SIZE);
+    memcpy(out + DilithiumConstants::SECRET_KEY_SIZE, pk.data(), DilithiumConstants::PUBLIC_KEY_SIZE);
+    memory_cleanse(sk.data(), sk.size());
+    return true;
+}
+} // namespace
+
 void CDilithiumKey::MakeNewKey()
 {
-    MakeKeyData();
-
-    std::array<unsigned char, DilithiumConstants::SECRET_KEY_SIZE> entropy;
-
-    // GetStrongRandBytes is limited to 32 bytes; Dilithium needs SECRET_KEY_SIZE bytes
-    constexpr size_t CHUNK_SIZE = 32;
-    constexpr size_t NUM_CHUNKS = DilithiumConstants::SECRET_KEY_SIZE / CHUNK_SIZE;
-
-    for (size_t i = 0; i < NUM_CHUNKS; i++) {
-        try {
-            GetStrongRandBytes(Span<unsigned char>(entropy.data() + i * CHUNK_SIZE, CHUNK_SIZE));
-        } catch (...) {
-            ClearKeyData();
-            return;
-        }
-    }
-
-    size_t remaining_bytes = DilithiumConstants::SECRET_KEY_SIZE % CHUNK_SIZE;
-    if (remaining_bytes > 0) {
-        try {
-            GetStrongRandBytes(Span<unsigned char>(entropy.data() + NUM_CHUNKS * CHUNK_SIZE, remaining_bytes));
-        } catch (...) {
-            ClearKeyData();
-            return;
-        }
-    }
-
-    std::array<unsigned char, DilithiumConstants::PUBLIC_KEY_SIZE> pk;
-
-    int result = btq_dilithium_keypair(pk.data(), entropy.data());
-
-    if (result != 0) {
+    // Sample exactly 32 bytes of strong randomness; the Dilithium reference
+    // implementation internally expands those into (rho, key, rhoprime) via
+    // SHAKE256 - no need to over-collect entropy as the prior code did.
+    std::array<unsigned char, BTQ_DILITHIUM_SEED_SIZE> seed;
+    try {
+        GetStrongRandBytes(Span<unsigned char>(seed.data(), seed.size()));
+    } catch (...) {
         ClearKeyData();
-    } else {
-        memcpy(keydata->data(), entropy.data(), DilithiumConstants::SECRET_KEY_SIZE);
-        memcpy(keydata->data() + DilithiumConstants::SECRET_KEY_SIZE, pk.data(), DilithiumConstants::PUBLIC_KEY_SIZE);
+        return;
     }
+
+    MakeKeyData();
+    if (!DilithiumExpandSeedIntoKeydata(seed.data(), keydata->data())) {
+        ClearKeyData();
+    }
+    memory_cleanse(seed.data(), seed.size());
 }
 
 bool CDilithiumKey::GenerateFromEntropy(const std::vector<unsigned char>& entropy)
 {
-    // Validate entropy size (should be 32 bytes for secure key generation)
-    if (entropy.size() != 32) {
-        return false;
-    }
-    
-    MakeKeyData();
-    
-    // Generate public key buffer
-    std::array<unsigned char, DilithiumConstants::PUBLIC_KEY_SIZE> pk;
-    
-    // Use the provided entropy to seed the key generation
-    // We'll use the entropy as the seed for deterministic key generation
-    std::array<unsigned char, DilithiumConstants::SECRET_KEY_SIZE> seed;
-    
-    // Expand the 32-byte entropy to the required seed size using HKDF
-    // This ensures proper entropy distribution for Dilithium key generation
-    CHMAC_SHA512 hkdf(entropy.data(), entropy.size());
-    hkdf.Write((unsigned char*)"Dilithium-HD-Wallet", 18); // Context string
-    
-    // Generate enough entropy for the full seed size
-    size_t bytes_needed = DilithiumConstants::SECRET_KEY_SIZE;
-    size_t bytes_generated = 0;
-    
-    while (bytes_generated < bytes_needed) {
-        unsigned char expanded[64];
-        hkdf.Finalize(expanded);
-        
-        // Copy as much as we can from this round
-        size_t bytes_to_copy = std::min<size_t>(64, bytes_needed - bytes_generated);
-        memcpy(seed.data() + bytes_generated, expanded, bytes_to_copy);
-        bytes_generated += bytes_to_copy;
-        
-        // If we need more bytes, continue with the next round
-        if (bytes_generated < bytes_needed) {
-            // Reset HMAC for next round
-            hkdf = CHMAC_SHA512(entropy.data(), entropy.size());
-            hkdf.Write((unsigned char*)"Dilithium-HD-Wallet-Round", 26);
-            hkdf.Write((const unsigned char*)&bytes_generated, sizeof(bytes_generated));
-        }
-    }
-    
-    // Generate keypair using the derived seed
-    int result = btq_dilithium_keypair(pk.data(), seed.data());
-    
-    if (result != 0) {
-        // Key generation failed, clear the key
+    // We require exactly 32 bytes: this is the SEEDBYTES the Dilithium ref
+    // impl consumes directly. Previously the code expanded entropy with
+    // HMAC-SHA512 into a 2560-byte buffer and then handed that buffer to
+    // crypto_sign_keypair(), which silently overwrote it with randombytes()
+    // - so HD derivation was effectively a coin flip every call. Fixed by
+    // routing through btq_dilithium_keypair_from_seed().
+    if (entropy.size() != BTQ_DILITHIUM_SEED_SIZE) {
         ClearKeyData();
         return false;
     }
-    
-    // Store the generated key material
-    memcpy(keydata->data(), seed.data(), DilithiumConstants::SECRET_KEY_SIZE);
-    memcpy(keydata->data() + DilithiumConstants::SECRET_KEY_SIZE, pk.data(), DilithiumConstants::PUBLIC_KEY_SIZE);
-    
+
+    MakeKeyData();
+    if (!DilithiumExpandSeedIntoKeydata(entropy.data(), keydata->data())) {
+        ClearKeyData();
+        return false;
+    }
     return true;
 }
 
@@ -256,64 +223,99 @@ bool DilithiumSanityCheck()
 }
 
 // CDilithiumExtKey implementation
+//
+// The persisted state is the 32-byte HD seed + BIP32 chaincode + position.
+// The 2560/1312-byte expanded keypair is regenerated from the seed every time
+// it is needed via `key.GenerateFromEntropy(seed_vec)`. This avoids storing
+// 3872 redundant bytes per node and - critically - keeps the relationship
+// between seed and (sk, pk) deterministic and verifiable.
+
+namespace {
+/** Mask used to test whether a BIP32 child index is hardened. */
+constexpr uint32_t DILITHIUM_HARDENED_BIT = 0x80000000u;
+} // namespace
 
 void CDilithiumExtKey::Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const
 {
     code[0] = nDepth;
-    memcpy(code+1, vchFingerprint, 4);
-    WriteBE32(code+5, nChild);
-    memcpy(code+9, chaincode.begin(), 32);
-    assert(key.size() == DilithiumConstants::SECRET_KEY_SIZE);
-    memcpy(code+41, key.begin(), DilithiumConstants::SECRET_KEY_SIZE);
+    memcpy(code + 1, vchFingerprint, 4);
+    WriteBE32(code + 5, nChild);
+    memcpy(code + 9, chaincode.begin(), 32);
+    memcpy(code + 41, seed.data(), SEED_SIZE);
 }
 
 void CDilithiumExtKey::Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE])
 {
     nDepth = code[0];
-    memcpy(vchFingerprint, code+1, 4);
-    nChild = ReadBE32(code+5);
-    memcpy(chaincode.begin(), code+9, 32);
-    key.Set(code+41, code+41+DilithiumConstants::SECRET_KEY_SIZE);
-    if ((nDepth == 0 && (nChild != 0 || ReadLE32(vchFingerprint) != 0)) || !key.IsValid()) {
+    memcpy(vchFingerprint, code + 1, 4);
+    nChild = ReadBE32(code + 5);
+    memcpy(chaincode.begin(), code + 9, 32);
+    memcpy(seed.data(), code + 41, SEED_SIZE);
+
+    // Master keys MUST have the BIP32 invariants nChild == 0 and
+    // fingerprint == 0; reject anything else as corrupt rather than silently
+    // promoting it to a master key.
+    const bool master_ok = (nDepth != 0) || (nChild == 0 && ReadLE32(vchFingerprint) == 0);
+    if (!master_ok) {
+        // Wipe to a clearly-invalid state.
+        nDepth = 0;
+        memset(vchFingerprint, 0, 4);
+        nChild = 0;
+        chaincode = ChainCode{};
+        seed.fill(0);
+        key = CDilithiumKey();
+        return;
+    }
+
+    // Regenerate the expanded keypair from the seed.
+    std::vector<unsigned char> seed_vec(seed.begin(), seed.end());
+    if (!key.GenerateFromEntropy(seed_vec)) {
         key = CDilithiumKey();
     }
 }
 
-bool CDilithiumExtKey::Derive(CDilithiumExtKey& out, unsigned int nChild) const
+bool CDilithiumExtKey::Derive(CDilithiumExtKey& out, unsigned int child_index) const
 {
     if (nDepth == std::numeric_limits<unsigned char>::max()) return false;
-    out.nDepth = nDepth + 1;
-    uint160 id = key.GetPubKey().GetID();
-    memcpy(out.vchFingerprint, &id, 4);
-    out.nChild = nChild;
-    
-    // Cryptographically secure Dilithium HD wallet key derivation
-    // Based on HMAC-SHA512 entropy derivation for post-quantum cryptography
+    if (!key.IsValid()) return false;
+
+    // Dilithium's lattice structure does not admit homomorphic public-key
+    // derivation, so the only sound mode is fully hardened paths. Refuse
+    // non-hardened indices rather than silently producing a keypair that
+    // cannot be reconstructed from an extended pubkey.
+    if ((child_index & DILITHIUM_HARDENED_BIT) == 0) return false;
+
+    // BIP32-style derivation, adapted for Dilithium:
+    //   I = HMAC-SHA512(key = parent_chaincode,
+    //                   data = 0x00 || parent_seed (32B) || ser32(child_index))
+    //   I_L (32B) -> child seed; I_R (32B) -> child chaincode.
+    //
+    // We use the parent SEED (not the 2560-byte packed sk) as the parent
+    // material: seeds are stable, compact, and the durable source of truth.
     CHMAC_SHA512 hmac(chaincode.begin(), chaincode.size());
-    
-    // Write child index in big-endian format (BIP32 compatibility)
-    uint32_t child_index_be = htobe32(nChild);
-    hmac.Write((unsigned char*)&child_index_be, sizeof(child_index_be));
-    
-    // Write parent key entropy (first 32 bytes of the key)
-    std::vector<unsigned char> parent_entropy(key.begin(), key.begin() + 32);
-    hmac.Write(parent_entropy.data(), parent_entropy.size());
-    
-    unsigned char derived_bytes[64];
-    hmac.Finalize(derived_bytes);
-    
-    // Use the first 32 bytes as the new chaincode
-    memcpy(out.chaincode.begin(), derived_bytes, 32);
-    
-    // Use the last 32 bytes as entropy for Dilithium key generation
-    std::vector<unsigned char> new_entropy(derived_bytes + 32, derived_bytes + 64);
-    
-    // Generate new Dilithium key from derived entropy
-    // This ensures cryptographically secure key derivation
-    if (!out.key.GenerateFromEntropy(new_entropy)) {
+    const unsigned char zero_byte = 0x00;
+    hmac.Write(&zero_byte, 1);
+    hmac.Write(seed.data(), seed.size());
+    uint32_t child_be = htobe32(child_index);
+    hmac.Write(reinterpret_cast<const unsigned char*>(&child_be), sizeof(child_be));
+
+    unsigned char I[64];
+    hmac.Finalize(I);
+
+    // Populate child metadata.
+    out.nDepth = nDepth + 1;
+    uint160 parent_id = key.GetPubKey().GetID();
+    memcpy(out.vchFingerprint, &parent_id, 4);
+    out.nChild = child_index;
+    memcpy(out.seed.data(), I, SEED_SIZE);
+    memcpy(out.chaincode.begin(), I + 32, 32);
+    memory_cleanse(I, sizeof(I));
+
+    // Expand the seed into the full keypair.
+    std::vector<unsigned char> child_seed_vec(out.seed.begin(), out.seed.end());
+    if (!out.key.GenerateFromEntropy(child_seed_vec)) {
         return false;
     }
-    
     return out.key.IsValid();
 }
 
@@ -328,25 +330,30 @@ CDilithiumExtPubKey CDilithiumExtKey::Neuter() const
     return ret;
 }
 
-void CDilithiumExtKey::SetSeed(Span<const std::byte> seed)
+void CDilithiumExtKey::SetSeed(Span<const std::byte> hd_seed)
 {
-    // Use HMAC-SHA512 to derive the master key from seed
-    CHMAC_SHA512 hmac((unsigned char*)"Dilithium seed", 14);
-    hmac.Write(reinterpret_cast<const unsigned char*>(seed.data()), seed.size());
-    
-    unsigned char out_bytes[64];
-    hmac.Finalize(out_bytes);
-    
-    // Use first 32 bytes as chaincode
-    memcpy(chaincode.begin(), out_bytes, 32);
-    
-    // Use last 32 bytes as key material
-    std::vector<unsigned char> key_data(out_bytes + 32, out_bytes + 64);
-    key.Set(key_data.begin(), key_data.end());
-    
+    // Master key derivation: I = HMAC-SHA512("Dilithium seed", hd_seed).
+    //   I_L (32B) -> master Dilithium seed.
+    //   I_R (32B) -> master chaincode.
+    static const unsigned char hashkey[] = {'D','i','l','i','t','h','i','u','m',' ','s','e','e','d'};
+    CHMAC_SHA512 hmac(hashkey, sizeof(hashkey));
+    hmac.Write(reinterpret_cast<const unsigned char*>(hd_seed.data()), hd_seed.size());
+
+    unsigned char I[64];
+    hmac.Finalize(I);
+
+    memcpy(seed.data(), I, SEED_SIZE);
+    memcpy(chaincode.begin(), I + 32, 32);
+    memory_cleanse(I, sizeof(I));
+
     nDepth = 0;
     memset(vchFingerprint, 0, 4);
     nChild = 0;
+
+    std::vector<unsigned char> seed_vec(seed.begin(), seed.end());
+    if (!key.GenerateFromEntropy(seed_vec)) {
+        key = CDilithiumKey();
+    }
 }
 
 // CDilithiumExtPubKey implementation
@@ -354,69 +361,33 @@ void CDilithiumExtKey::SetSeed(Span<const std::byte> seed)
 void CDilithiumExtPubKey::Encode(unsigned char code[DILITHIUM_EXTPUBKEY_SIZE]) const
 {
     code[0] = nDepth;
-    memcpy(code+1, vchFingerprint, 4);
-    WriteBE32(code+5, nChild);
-    memcpy(code+9, chaincode.begin(), 32);
-    assert(pubkey.size() == DilithiumConstants::PUBLIC_KEY_SIZE);
-    memcpy(code+41, pubkey.begin(), DilithiumConstants::PUBLIC_KEY_SIZE);
+    memcpy(code + 1, vchFingerprint, 4);
+    WriteBE32(code + 5, nChild);
+    memcpy(code + 9, chaincode.begin(), 32);
+    static_assert(DilithiumConstants::PUBLIC_KEY_SIZE == 1312,
+                  "extpubkey layout assumes Dilithium2 (1312-byte) pubkey");
+    memcpy(code + 41, pubkey.begin(), DilithiumConstants::PUBLIC_KEY_SIZE);
 }
 
 void CDilithiumExtPubKey::Decode(const unsigned char code[DILITHIUM_EXTPUBKEY_SIZE])
 {
     nDepth = code[0];
-    memcpy(vchFingerprint, code+1, 4);
-    nChild = ReadBE32(code+5);
-    memcpy(chaincode.begin(), code+9, 32);
-    pubkey.Set(code+41, code+41+DilithiumConstants::PUBLIC_KEY_SIZE);
-    if ((nDepth == 0 && (nChild != 0 || ReadLE32(vchFingerprint) != 0)) || !pubkey.IsFullyValid()) {
+    memcpy(vchFingerprint, code + 1, 4);
+    nChild = ReadBE32(code + 5);
+    memcpy(chaincode.begin(), code + 9, 32);
+    pubkey.Set(code + 41, code + 41 + DilithiumConstants::PUBLIC_KEY_SIZE);
+    const bool master_ok = (nDepth != 0) || (nChild == 0 && ReadLE32(vchFingerprint) == 0);
+    if (!master_ok || !pubkey.IsFullyValid()) {
         pubkey = CDilithiumPubKey();
     }
 }
 
-bool CDilithiumExtPubKey::Derive(CDilithiumExtPubKey& out, unsigned int nChild) const
+bool CDilithiumExtPubKey::Derive(CDilithiumExtPubKey& /*out*/, unsigned int /*child_index*/) const
 {
-    if (nDepth == std::numeric_limits<unsigned char>::max()) return false;
-    out.nDepth = nDepth + 1;
-    uint160 id = pubkey.GetID();
-    memcpy(out.vchFingerprint, &id, 4);
-    out.nChild = nChild;
-    
-    // Cryptographically secure Dilithium public key derivation
-    // For public key derivation, we need to derive the corresponding private key
-    // and then compute the public key from it
-    CHMAC_SHA512 hmac(chaincode.begin(), chaincode.size());
-    
-    // Write child index in big-endian format (BIP32 compatibility)
-    uint32_t child_index_be = htobe32(nChild);
-    hmac.Write((unsigned char*)&child_index_be, sizeof(child_index_be));
-    
-    // Write parent public key entropy (first 32 bytes of the public key)
-    std::vector<unsigned char> parent_entropy(pubkey.begin(), pubkey.begin() + 32);
-    hmac.Write(parent_entropy.data(), parent_entropy.size());
-    
-    unsigned char derived_bytes[64];
-    hmac.Finalize(derived_bytes);
-    
-    // Use the first 32 bytes as the new chaincode
-    memcpy(out.chaincode.begin(), derived_bytes, 32);
-    
-    // Use the last 32 bytes as entropy for Dilithium key generation
-    std::vector<unsigned char> new_entropy(derived_bytes + 32, derived_bytes + 64);
-    
-    // Generate new Dilithium key from derived entropy
-    CDilithiumKey derived_key;
-    if (!derived_key.GenerateFromEntropy(new_entropy)) {
-        return false;
-    }
-    
-    // Get the public key from the derived private key
-    CDilithiumPubKey derived_pubkey = derived_key.GetPubKey();
-    if (!derived_pubkey.IsValid()) {
-        return false;
-    }
-    
-    // Set the derived public key
-    out.pubkey = derived_pubkey;
-    
-    return true;
+    // Dilithium's lattice structure has no analogue of secp256k1's group law,
+    // so there is no public-only derivation that preserves the invariant
+    // ExtPubKey.Derive(n).pubkey == ExtKey.Derive(n).GetPubKey(). Refusing
+    // here is the honest behavior - callers that need child pubkeys must
+    // derive from CDilithiumExtKey and call Neuter().
+    return false;
 }

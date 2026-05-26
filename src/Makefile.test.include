@@ -177,6 +177,7 @@ BTQ_TESTS =\
 if ENABLE_WALLET
 BTQ_TESTS += \
   test/dilithium_rpc_tests.cpp \
+  test/dilithium_wallet_tests.cpp \
   wallet/test/feebumper_tests.cpp \
   wallet/test/p2mr_tests.cpp \
   wallet/test/psbt_wallet_tests.cpp \

@@ -18,6 +18,17 @@ int btq_dilithium_keypair(uint8_t *pk, uint8_t *sk)
     return pqcrystals_dilithium2_ref_keypair(pk, sk);
 }
 
+int btq_dilithium_keypair_from_seed(uint8_t *pk, uint8_t *sk, const uint8_t *seed)
+{
+    // Deterministic keypair generation from a 32-byte seed. This is the
+    // primitive that fixes BTQ-AUDIT-019 / issue #53: the upstream reference
+    // implementation's randomized keypair() overwrites its sk buffer with
+    // randombytes(), discarding any caller-supplied entropy. The seeded
+    // variant uses the supplied seed in place of randombytes() so HD wallet
+    // derivation can be deterministic.
+    return pqcrystals_dilithium2_ref_keypair_from_seed(pk, sk, seed);
+}
+
 int btq_dilithium_sign(uint8_t *sig, size_t *siglen,
                        const uint8_t *m, size_t mlen,
                        const uint8_t *ctx, size_t ctxlen,

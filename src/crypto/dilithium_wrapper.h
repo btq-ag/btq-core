@@ -17,13 +17,29 @@ extern "C" {
 #define BTQ_DILITHIUM_SECRET_KEY_SIZE 2560
 #define BTQ_DILITHIUM_SIGNATURE_SIZE 2420
 
+/** Seed size for deterministic key generation (matches Dilithium SEEDBYTES). */
+#define BTQ_DILITHIUM_SEED_SIZE 32
+
 /**
- * Generate a new Dilithium key pair.
+ * Generate a new Dilithium key pair using fresh randomness.
  * @param pk Output buffer for public key (must be BTQ_DILITHIUM_PUBLIC_KEY_SIZE bytes)
  * @param sk Output buffer for secret key (must be BTQ_DILITHIUM_SECRET_KEY_SIZE bytes)
  * @return 0 on success, non-zero on failure
  */
 int btq_dilithium_keypair(uint8_t *pk, uint8_t *sk);
+
+/**
+ * Generate a Dilithium key pair deterministically from a caller-supplied
+ * 32-byte seed. Same seed always produces the same (pk, sk). This is the
+ * building block for HD wallet derivation, where each child-key seed is
+ * derived from the parent via HMAC-SHA512.
+ *
+ * @param pk Output buffer for public key (must be BTQ_DILITHIUM_PUBLIC_KEY_SIZE bytes)
+ * @param sk Output buffer for secret key (must be BTQ_DILITHIUM_SECRET_KEY_SIZE bytes)
+ * @param seed Input seed (must be BTQ_DILITHIUM_SEED_SIZE bytes)
+ * @return 0 on success, non-zero on failure
+ */
+int btq_dilithium_keypair_from_seed(uint8_t *pk, uint8_t *sk, const uint8_t *seed);
 
 /**
  * Create a Dilithium signature.

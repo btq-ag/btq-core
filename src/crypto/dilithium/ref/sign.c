@@ -9,18 +9,29 @@
 #include "fips202.h"
 
 /*************************************************
-* Name:        crypto_sign_keypair
+* Name:        crypto_sign_keypair_from_seed
 *
-* Description: Generates public and private key.
+* Description: Generates public and private key from a caller-supplied
+*              SEEDBYTES-byte seed. This is the deterministic core used by
+*              both the standard randomized `crypto_sign_keypair` and by
+*              external HD-wallet derivation that needs a deterministic
+*              keypair from a 32-byte seed.
 *
-* Arguments:   - uint8_t *pk: pointer to output public key (allocated
-*                             array of CRYPTO_PUBLICKEYBYTES bytes)
-*              - uint8_t *sk: pointer to output private key (allocated
-*                             array of CRYPTO_SECRETKEYBYTES bytes)
+*              The seed plays the same role as the SEEDBYTES of output from
+*              `randombytes()` in the upstream reference implementation:
+*              it is expanded with SHAKE256 (domain-separated by (K, L))
+*              into (rho, rhoprime, key) just like upstream.
+*
+* Arguments:   - uint8_t *pk:        pointer to output public key (allocated
+*                                    array of CRYPTO_PUBLICKEYBYTES bytes)
+*              - uint8_t *sk:        pointer to output private key (allocated
+*                                    array of CRYPTO_SECRETKEYBYTES bytes)
+*              - const uint8_t *seed: pointer to caller-supplied seed
+*                                     (SEEDBYTES bytes)
 *
 * Returns 0 (success)
 **************************************************/
-int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
+int crypto_sign_keypair_from_seed(uint8_t *pk, uint8_t *sk, const uint8_t *seed) {
   uint8_t seedbuf[2*SEEDBYTES + CRHBYTES];
   uint8_t tr[TRBYTES];
   const uint8_t *rho, *rhoprime, *key;
@@ -28,8 +39,8 @@ int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
   polyvecl s1, s1hat;
   polyveck s2, t1, t0;
 
-  /* Get randomness for rho, rhoprime and key */
-  randombytes(seedbuf, SEEDBYTES);
+  /* Use caller-supplied seed instead of randombytes() */
+  for(size_t i = 0; i < SEEDBYTES; i++) seedbuf[i] = seed[i];
   seedbuf[SEEDBYTES+0] = K;
   seedbuf[SEEDBYTES+1] = L;
   shake256(seedbuf, 2*SEEDBYTES + CRHBYTES, seedbuf, SEEDBYTES+2);
@@ -64,6 +75,27 @@ int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
   pack_sk(sk, rho, tr, key, &t0, &s1, &s2);
 
   return 0;
+}
+
+/*************************************************
+* Name:        crypto_sign_keypair
+*
+* Description: Generates public and private key using fresh randomness from
+*              `randombytes()`. Implemented as a thin wrapper around
+*              `crypto_sign_keypair_from_seed` so the deterministic and
+*              randomized code paths cannot diverge.
+*
+* Arguments:   - uint8_t *pk: pointer to output public key (allocated
+*                             array of CRYPTO_PUBLICKEYBYTES bytes)
+*              - uint8_t *sk: pointer to output private key (allocated
+*                             array of CRYPTO_SECRETKEYBYTES bytes)
+*
+* Returns 0 (success)
+**************************************************/
+int crypto_sign_keypair(uint8_t *pk, uint8_t *sk) {
+  uint8_t seed[SEEDBYTES];
+  randombytes(seed, SEEDBYTES);
+  return crypto_sign_keypair_from_seed(pk, sk, seed);
 }
 
 /*************************************************
