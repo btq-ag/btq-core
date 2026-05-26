@@ -3594,6 +3594,11 @@ void CWallet::SetupDescriptorScriptPubKeyMans(const CExtKey& master_key)
 
     for (bool internal : {false, true}) {
         for (OutputType t : OUTPUT_TYPES) {
+            // Dilithium descriptor wallets generate Dilithium keys on demand in
+            // DescriptorScriptPubKeyMan::GetNewDestination; they reuse the LEGACY/BECH32 spk managers.
+            if (t == OutputType::DILITHIUM_LEGACY || t == OutputType::DILITHIUM_BECH32) {
+                continue;
+            }
             auto spk_manager = std::unique_ptr<DescriptorScriptPubKeyMan>(new DescriptorScriptPubKeyMan(*this, m_keypool_size));
             if (IsCrypted()) {
                 if (IsLocked()) {

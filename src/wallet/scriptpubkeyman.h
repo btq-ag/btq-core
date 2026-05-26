@@ -456,7 +456,7 @@ public:
     bool GetDilithiumKey(const CKeyID &address, CDilithiumKey& keyOut) const;
     bool HaveDilithiumKey(const CKeyID &address) const;
     //! Generate a new Dilithium key using HD derivation
-    CPubKey GenerateNewDilithiumKey(WalletBatch& batch, CHDChain& hd_chain, bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
+    CDilithiumPubKey GenerateNewDilithiumKey(WalletBatch& batch, CHDChain& hd_chain, bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
     //! Derive a new Dilithium child key using HD derivation
     void DeriveNewDilithiumChildKey(WalletBatch &batch, CKeyMetadata& metadata, CDilithiumKey& secret, CHDChain& hd_chain, bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
     void UpdateTimeFirstKey(int64_t nCreateTime) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);

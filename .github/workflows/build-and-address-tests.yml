@@ -66,6 +66,9 @@ jobs:
       - name: Build (catches all syntax errors)
         run: make $MAKEJOBS
 
+      - name: Unit tests (make check)
+        run: make check
+
       - name: Smoke test - wallet + address generation (regtest)
         # Self-contained smoke test, on purpose NOT using the upstream
         # functional-test framework:

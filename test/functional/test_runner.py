@@ -99,6 +99,7 @@ BASE_SCRIPTS = [
     'feature_fee_estimation.py',
     'feature_taproot.py',
     'feature_dilithium_sigops.py',
+    'wallet_dilithium_hd_restore.py',
     'feature_p2mr.py',
     'feature_p2mr_rpc.py --descriptors',
     'feature_block.py',

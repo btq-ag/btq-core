@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <crypto/dilithium_key.h>
+#include <crypto/hmac_sha512.h>
 #include <key_io.h>
 #include <wallet/crypter.h>
 
@@ -11,9 +12,14 @@
 #include <util/strencodings.h>
 
 #include <array>
+#include <cstring>
 #include <vector>
 
 #include <boost/test/unit_test.hpp>
+
+extern "C" {
+#include <crypto/dilithium_wrapper.h>
+}
 
 using wallet::CKeyingMaterial;
 using wallet::EncryptDilithiumSecret;
@@ -28,6 +34,39 @@ constexpr uint32_t HARDENED = 0x80000000u;
 std::vector<unsigned char> MakeSeed(unsigned char fill)
 {
     return std::vector<unsigned char>(BTQ_DILITHIUM_SEED_SIZE, fill);
+}
+
+/** Recompute the BIP32 I_L / I_R split for SetSeed outside the implementation. */
+void ComputeSetSeedSplit(Span<const std::byte> hd_seed,
+                         std::array<unsigned char, CDilithiumExtKey::SEED_SIZE>& out_seed,
+                         ChainCode& out_chaincode)
+{
+    static const unsigned char hashkey[] = {'D','i','l','i','t','h','i','u','m',' ','s','e','e','d'};
+    CHMAC_SHA512 hmac(hashkey, sizeof(hashkey));
+    hmac.Write(reinterpret_cast<const unsigned char*>(hd_seed.data()), hd_seed.size());
+    unsigned char I[64];
+    hmac.Finalize(I);
+    memcpy(out_seed.data(), I, CDilithiumExtKey::SEED_SIZE);
+    memcpy(out_chaincode.begin(), I + CDilithiumExtKey::SEED_SIZE, CDilithiumExtKey::SEED_SIZE);
+}
+
+/** Recompute the BIP32 I_L / I_R split for Derive outside the implementation. */
+void ComputeDeriveSplit(const CDilithiumExtKey& parent,
+                        uint32_t child_index,
+                        std::array<unsigned char, CDilithiumExtKey::SEED_SIZE>& out_seed,
+                        ChainCode& out_chaincode)
+{
+    CHMAC_SHA512 hmac(parent.chaincode.begin(), parent.chaincode.size());
+    const unsigned char zero_byte = 0x00;
+    hmac.Write(&zero_byte, 1);
+    hmac.Write(parent.seed.data(), parent.seed.size());
+    const uint32_t child_be = htobe32(child_index);
+    hmac.Write(reinterpret_cast<const unsigned char*>(&child_be), sizeof(child_be));
+    unsigned char I[64];
+    hmac.Finalize(I);
+    // BIP32: I_L -> key material (seed), I_R -> chaincode.
+    memcpy(out_seed.data(), I, CDilithiumExtKey::SEED_SIZE);
+    memcpy(out_chaincode.begin(), I + CDilithiumExtKey::SEED_SIZE, CDilithiumExtKey::SEED_SIZE);
 }
 } // namespace
 
@@ -122,12 +161,97 @@ BOOST_AUTO_TEST_CASE(dilithium_generate_from_entropy_is_deterministic)
     BOOST_REQUIRE(c.GenerateFromEntropy(MakeSeed(0x43)));
     BOOST_CHECK(c != a);
 
-    // Wrong-size entropy is rejected.
+    // Wrong-size entropy is rejected on a never-before-used key.
     CDilithiumKey d;
     BOOST_CHECK(!d.GenerateFromEntropy(std::vector<unsigned char>(31, 0)));
     BOOST_CHECK(!d.IsValid());
     BOOST_CHECK(!d.GenerateFromEntropy(std::vector<unsigned char>(33, 0)));
     BOOST_CHECK(!d.IsValid());
+}
+
+// PR #54 review: wrong-size entropy must clear a previously valid key rather
+// than leaving stale signing material behind.
+BOOST_AUTO_TEST_CASE(dilithium_generate_from_entropy_clears_stale_key)
+{
+    CDilithiumKey key;
+    const auto good_seed = MakeSeed(0x42);
+    BOOST_REQUIRE(key.GenerateFromEntropy(good_seed));
+    BOOST_REQUIRE(key.IsValid());
+    const CDilithiumKey good_key = key;
+
+    BOOST_CHECK(!key.GenerateFromEntropy(std::vector<unsigned char>(31, 0)));
+    BOOST_CHECK(!key.IsValid());
+
+    BOOST_CHECK(!key.GenerateFromEntropy(std::vector<unsigned char>(33, 0)));
+    BOOST_CHECK(!key.IsValid());
+
+    // Object must remain usable after a rejected call.
+    BOOST_REQUIRE(key.GenerateFromEntropy(good_seed));
+    BOOST_CHECK(key == good_key);
+}
+
+// PR #54 review: GenerateFromEntropy must route the 32-byte seed directly to
+// btq_dilithium_keypair_from_seed (pre-fix it expanded via HMAC then called
+// keypair() which overwrote the buffer with randombytes()).
+BOOST_AUTO_TEST_CASE(dilithium_generate_from_entropy_matches_keypair_from_seed)
+{
+    const auto seed = MakeSeed(0x5a);
+
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.GenerateFromEntropy(seed));
+
+    std::array<unsigned char, DilithiumConstants::PUBLIC_KEY_SIZE> pk{};
+    std::array<unsigned char, DilithiumConstants::SECRET_KEY_SIZE> sk{};
+    BOOST_REQUIRE_EQUAL(btq_dilithium_keypair_from_seed(pk.data(), sk.data(), seed.data()), 0);
+
+    BOOST_CHECK(key.GetPubKey() == CDilithiumPubKey(pk.data(), pk.data() + pk.size()));
+}
+
+// PR #54 review: Derive() had I_L/I_R swapped relative to SetSeed and BIP32.
+// Self-consistency tests would not catch this; compare against an independent
+// HMAC recomputation that assigns I_L -> seed and I_R -> chaincode.
+BOOST_AUTO_TEST_CASE(dilithium_extkey_bip32_il_ir_split)
+{
+    const auto raw_seed = std::vector<std::byte>(32, std::byte{0x99});
+    const Span<const std::byte> seed_span(raw_seed.data(), raw_seed.size());
+
+    CDilithiumExtKey master;
+    master.SetSeed(seed_span);
+
+    std::array<unsigned char, CDilithiumExtKey::SEED_SIZE> expected_seed{};
+    ChainCode expected_chaincode;
+    ComputeSetSeedSplit(seed_span, expected_seed, expected_chaincode);
+    BOOST_CHECK_EQUAL_COLLECTIONS(master.seed.begin(), master.seed.end(),
+                                  expected_seed.begin(), expected_seed.end());
+    BOOST_CHECK(master.chaincode == expected_chaincode);
+
+    const uint32_t child_index = HARDENED | 42;
+    CDilithiumExtKey child;
+    BOOST_REQUIRE(master.Derive(child, child_index));
+
+    ComputeDeriveSplit(master, child_index, expected_seed, expected_chaincode);
+    BOOST_CHECK_EQUAL_COLLECTIONS(child.seed.begin(), child.seed.end(),
+                                  expected_seed.begin(), expected_seed.end());
+    BOOST_CHECK(child.chaincode == expected_chaincode);
+}
+
+// PR #54 review: WIF decode used max_ret_len=34 and silently truncated the
+// 3872-byte Dilithium secret. Verify the full packed key round-trips.
+BOOST_AUTO_TEST_CASE(dilithium_wif_full_key_roundtrip)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    BOOST_CHECK_EQUAL(CDilithiumKey::GetKeySize(),
+                      DilithiumConstants::SECRET_KEY_SIZE + DilithiumConstants::PUBLIC_KEY_SIZE);
+
+    const std::string wif = EncodeDilithiumSecret(key);
+    BOOST_CHECK(!wif.empty());
+
+    const CDilithiumKey decoded = DecodeDilithiumSecret(wif);
+    BOOST_REQUIRE(decoded.IsValid());
+    BOOST_CHECK(decoded == key);
+    BOOST_CHECK_EQUAL(decoded.GetPrivKey().size(), CDilithiumKey::GetKeySize());
 }
 
 // BTQ-AUDIT-017 / issue #53 (2,3): SetSeed must produce a valid master key
@@ -292,6 +416,9 @@ BOOST_AUTO_TEST_CASE(dilithium_hd_path_sign_and_verify)
         k2 = next;
     }
     BOOST_CHECK(k == k2);
+
+    // Neuter() must expose the same pubkey as the derived private key.
+    BOOST_CHECK(k.Neuter().pubkey == k.key.GetPubKey());
 
     // Sign with the derived key, verify with its pubkey.
     uint256 msg = uint256::ONE;

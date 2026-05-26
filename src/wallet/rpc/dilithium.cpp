@@ -4,8 +4,11 @@
 
 #include <rpc/dilithium.h>
 
+#include <outputtype.h>
 #include <wallet/rpc/util.h>
+#include <wallet/scriptpubkeyman.h>
 #include <wallet/wallet.h>
+#include <wallet/walletdb.h>
 #include <crypto/dilithium_key.h>
 #include <key_io.h>
 #include <script/script.h>
@@ -226,68 +229,53 @@ RPCHelpMan getnewdilithiumaddress()
                 output_type = *parsed;
             }
 
-            CDilithiumKey dilithium_key;
-            dilithium_key.MakeNewKey();
-
-            if (!dilithium_key.IsValid()) {
-                throw JSONRPCError(RPC_WALLET_ERROR, "Failed to generate Dilithium key");
-            }
-
-            CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
-            if (!dilithium_pubkey.IsValid()) {
-                throw JSONRPCError(RPC_WALLET_ERROR, "Failed to get Dilithium public key");
-            }
-
             std::string address;
-            switch (output_type) {
-                case OutputType::LEGACY: {
-                    DilithiumPKHash dilithium_dest(dilithium_pubkey.GetID());
-                    address = EncodeDestination(dilithium_dest);
-                    break;
-                }
-                case OutputType::P2SH_SEGWIT: {
-                    DilithiumPKHash dilithium_dest(dilithium_pubkey.GetID());
-                    DilithiumScriptHash script_hash(GetScriptForDestination(dilithium_dest));
-                    address = EncodeDestination(script_hash);
-                    break;
-                }
-                case OutputType::BECH32: {
-                    DilithiumWitnessV0KeyHash witness_dest(dilithium_pubkey);
-                    address = EncodeDestination(witness_dest);
-                    break;
-                }
-                default:
-                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unsupported address type for Dilithium");
-            }
-
-            if (wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
-                bool stored = false;
-                auto spk_mans = wallet->GetAllScriptPubKeyMans();
-                for (auto& spk_man : spk_mans) {
-                    DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
-                    if (desc_spk_man) {
-                        CPubKey dummy_pubkey;
-                        if (desc_spk_man->AddDilithiumKeyPubKey(dilithium_key, dummy_pubkey)) {
-                            stored = true;
-                            break;
-                        }
-                    }
-                }
-                if (!stored) {
-                    throw JSONRPCError(RPC_WALLET_ERROR, "Failed to store Dilithium key in descriptor wallet");
-                }
-            } else {
+            if (output_type == OutputType::P2SH_SEGWIT) {
                 LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
                 if (!spk_man) {
                     throw JSONRPCError(RPC_WALLET_ERROR, "Legacy wallet not available");
                 }
-                if (!spk_man->AddDilithiumKeyPubKey(dilithium_key, CPubKey())) {
-                    throw JSONRPCError(RPC_WALLET_ERROR, "Failed to store Dilithium key in legacy wallet");
+                LOCK2(wallet->cs_wallet, spk_man->cs_KeyStore);
+                if (!spk_man->CanGenerateKeys()) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Error: Keypool ran out, please call keypoolrefill first");
                 }
-            }
-
-            if (!label.empty()) {
-                wallet->SetAddressBook(DecodeDestination(address), label, AddressPurpose::RECEIVE);
+                WalletBatch batch(wallet->GetDatabase());
+                CHDChain hd_chain = spk_man->GetHDChain();
+                const CDilithiumPubKey dilithium_pubkey = spk_man->GenerateNewDilithiumKey(batch, hd_chain, /*internal=*/false);
+                if (!dilithium_pubkey.IsValid()) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Failed to generate Dilithium key");
+                }
+                const DilithiumPKHash dilithium_dest(dilithium_pubkey.GetID());
+                const DilithiumScriptHash script_hash(GetScriptForDestination(dilithium_dest));
+                address = EncodeDestination(script_hash);
+                if (!label.empty()) {
+                    wallet->SetAddressBook(DecodeDestination(address), label, AddressPurpose::RECEIVE);
+                }
+            } else {
+                const OutputType dil_type = (output_type == OutputType::BECH32)
+                    ? OutputType::DILITHIUM_BECH32
+                    : OutputType::DILITHIUM_LEGACY;
+                util::Result<CTxDestination> dest = util::Error{Untranslated("")};
+                if (wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+                    // Descriptor wallets register spk managers under classical output types.
+                    const OutputType spkm_type = (output_type == OutputType::BECH32)
+                        ? OutputType::BECH32
+                        : OutputType::LEGACY;
+                    ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(spkm_type, /*internal=*/false);
+                    if (!spk_man) {
+                        throw JSONRPCError(RPC_WALLET_ERROR, "No active ScriptPubKeyMan for Dilithium address generation");
+                    }
+                    dest = spk_man->GetNewDestination(dil_type);
+                    if (dest && !label.empty()) {
+                        wallet->SetAddressBook(*dest, label, AddressPurpose::RECEIVE);
+                    }
+                } else {
+                    dest = wallet->GetNewDestination(dil_type, label);
+                }
+                if (!dest) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(dest).original);
+                }
+                address = EncodeDestination(*dest);
             }
 
             return address;

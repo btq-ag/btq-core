@@ -8,6 +8,7 @@
 #include <crypto/hmac_sha512.h>
 #include <hash.h>
 #include <random.h>
+#include <support/cleanse.h>
 #include <util/strencodings.h>
 
 #include <cassert>
@@ -35,10 +36,12 @@ bool DilithiumExpandSeedIntoKeydata(const unsigned char seed[BTQ_DILITHIUM_SEED_
     std::array<unsigned char, DilithiumConstants::PUBLIC_KEY_SIZE> pk{};
     std::array<unsigned char, DilithiumConstants::SECRET_KEY_SIZE> sk{};
     if (btq_dilithium_keypair_from_seed(pk.data(), sk.data(), seed) != 0) {
+        memory_cleanse(sk.data(), sk.size());
         return false;
     }
     memcpy(out, sk.data(), DilithiumConstants::SECRET_KEY_SIZE);
     memcpy(out + DilithiumConstants::SECRET_KEY_SIZE, pk.data(), DilithiumConstants::PUBLIC_KEY_SIZE);
+    memory_cleanse(sk.data(), sk.size());
     return true;
 }
 } // namespace
@@ -60,6 +63,7 @@ void CDilithiumKey::MakeNewKey()
     if (!DilithiumExpandSeedIntoKeydata(seed.data(), keydata->data())) {
         ClearKeyData();
     }
+    memory_cleanse(seed.data(), seed.size());
 }
 
 bool CDilithiumKey::GenerateFromEntropy(const std::vector<unsigned char>& entropy)
@@ -71,6 +75,7 @@ bool CDilithiumKey::GenerateFromEntropy(const std::vector<unsigned char>& entrop
     // - so HD derivation was effectively a coin flip every call. Fixed by
     // routing through btq_dilithium_keypair_from_seed().
     if (entropy.size() != BTQ_DILITHIUM_SEED_SIZE) {
+        ClearKeyData();
         return false;
     }
 
@@ -302,8 +307,9 @@ bool CDilithiumExtKey::Derive(CDilithiumExtKey& out, unsigned int child_index) c
     uint160 parent_id = key.GetPubKey().GetID();
     memcpy(out.vchFingerprint, &parent_id, 4);
     out.nChild = child_index;
-    memcpy(out.chaincode.begin(), I, 32);
-    memcpy(out.seed.data(), I + 32, SEED_SIZE);
+    memcpy(out.seed.data(), I, SEED_SIZE);
+    memcpy(out.chaincode.begin(), I + 32, 32);
+    memory_cleanse(I, sizeof(I));
 
     // Expand the seed into the full keypair.
     std::vector<unsigned char> child_seed_vec(out.seed.begin(), out.seed.end());
@@ -338,6 +344,7 @@ void CDilithiumExtKey::SetSeed(Span<const std::byte> hd_seed)
 
     memcpy(seed.data(), I, SEED_SIZE);
     memcpy(chaincode.begin(), I + 32, 32);
+    memory_cleanse(I, sizeof(I));
 
     nDepth = 0;
     memset(vchFingerprint, 0, 4);
