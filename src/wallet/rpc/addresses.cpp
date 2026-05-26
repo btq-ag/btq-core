@@ -537,6 +537,7 @@ RPCHelpMan getaddressinfo()
                             "and relation to the wallet (ismine, iswatchonly)."},
                         }},
                         {RPCResult::Type::BOOL, "iscompressed", /*optional=*/true, "If the pubkey is compressed."},
+                        {RPCResult::Type::BOOL, "isdilithium", "If the address is a Dilithium address."},
                         {RPCResult::Type::NUM_TIME, "timestamp", /*optional=*/true, "The creation time of the key, if available, expressed in " + UNIX_EPOCH_TIME + "."},
                         {RPCResult::Type::STR, "hdkeypath", /*optional=*/true, "The HD keypath, if the key is HD and available."},
                         {RPCResult::Type::STR_HEX, "hdseedid", /*optional=*/true, "The Hash160 of the HD seed."},
