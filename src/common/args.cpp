@@ -548,6 +548,12 @@ void ArgsManager::ForceSetArg(const std::string& strArg, const std::string& strV
     m_settings.forced_settings[SettingName(strArg)] = strValue;
 }
 
+void ArgsManager::SetFallbackChainType(ChainType chain)
+{
+    LOCK(cs_args);
+    m_fallback_chain_type = chain;
+}
+
 void ArgsManager::AddCommand(const std::string& cmd, const std::string& help)
 {
     Assert(cmd.find('=') == std::string::npos);
@@ -761,7 +767,8 @@ std::variant<ChainType, std::string> ArgsManager::GetChainArg() const
     if (fBtqRegTest) return ChainType::BTQREGTEST;
     if (fBtqSigNet) return ChainType::BTQSIGNET;
     if (fBtqTest) return ChainType::BTQTEST;
-    return ChainType::BTQMAIN;
+    LOCK(cs_args);
+    return m_fallback_chain_type;
 }
 
 bool ArgsManager::UseDefaultSection(const std::string& arg) const

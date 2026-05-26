@@ -141,6 +141,7 @@ protected:
     mutable fs::path m_cached_blocks_path GUARDED_BY(cs_args);
     mutable fs::path m_cached_datadir_path GUARDED_BY(cs_args);
     mutable fs::path m_cached_network_datadir_path GUARDED_BY(cs_args);
+    ChainType m_fallback_chain_type GUARDED_BY(cs_args){ChainType::BTQMAIN};
 
     [[nodiscard]] bool ReadConfigStream(std::istream& stream, const std::string& filepath, std::string& error, bool ignore_invalid_keys = false);
 
@@ -326,17 +327,22 @@ protected:
 
     /**
      * Returns the appropriate chain type from the program arguments.
-     * @return ChainType::BTQMAIN by default; raises runtime error if an invalid
-     * combination, or unknown chain is given.
+     * If no explicit chain (-chain/-testnet/-signet/-regtest) appears in merged
+     * settings, the configured fallback applies (normally mainnet; btq-qt sets test).
+     * @raises std::runtime_error on invalid combinations or unknown -chain=value.
      */
     ChainType GetChainType() const;
 
     /**
      * Returns the appropriate chain type string from the program arguments.
-     * @return ChainType::BTQMAIN string by default; raises runtime error if an
-     * invalid combination is given.
      */
     std::string GetChainTypeString() const;
+
+    /**
+     * Chain when no -chain/-testnet/-signet/-regtest is set anywhere in merged settings.
+     * Command line and config override this (unlike SoftSetArg/ForceSetArg).
+     */
+    void SetFallbackChainType(ChainType chain);
 
     /**
      * Add argument
