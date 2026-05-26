@@ -531,6 +531,48 @@ bool LoadCryptedKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, st
     return true;
 }
 
+bool LoadCryptedDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr)
+{
+    LOCK(pwallet->cs_wallet);
+    try {
+        CKeyID keyID;
+        ssKey >> keyID;
+
+        std::vector<unsigned char> vchCryptedSecret;
+        ssValue >> vchCryptedSecret;
+
+        bool checksum_valid = false;
+        if (!ssValue.eof()) {
+            uint256 checksum;
+            ssValue >> checksum;
+            if (!(checksum_valid = Hash(vchCryptedSecret) == checksum)) {
+                strErr = "Error reading wallet database: Encrypted Dilithium key corrupt";
+                return false;
+            }
+        }
+
+        for (auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
+            if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+                if (desc_spk_man->LoadCryptedDilithiumKey(keyID, vchCryptedSecret, checksum_valid)) {
+                    return true;
+                }
+            }
+            if (auto* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
+                if (legacy_spk_man->LoadCryptedDilithiumKey(keyID, vchCryptedSecret, checksum_valid)) {
+                    return true;
+                }
+            }
+        }
+        strErr = "Error reading wallet database: no ScriptPubKeyMan accepted encrypted Dilithium key";
+        return false;
+    } catch (const std::exception& e) {
+        if (strErr.empty()) {
+            strErr = e.what();
+        }
+        return false;
+    }
+}
+
 bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr)
 {
     LOCK(pwallet->cs_wallet);
@@ -761,6 +803,12 @@ static DBErrors LoadLegacyWalletRecords(CWallet* pwallet, DatabaseBatch& batch, 
         return LoadDilithiumKey(pwallet, key, value, err) ? DBErrors::LOAD_OK : DBErrors::CORRUPT;
     });
     result = std::max(result, dilithium_key_res.m_result);
+
+    LoadResult dilithium_ckey_res = LoadRecords(pwallet, batch, DBKeys::DILITHIUM_CRYPTED_KEY,
+        [] (CWallet* pwallet, DataStream& key, CDataStream& value, std::string& err) {
+        return LoadCryptedDilithiumKey(pwallet, key, value, err) ? DBErrors::LOAD_OK : DBErrors::CORRUPT;
+    });
+    result = std::max(result, dilithium_ckey_res.m_result);
 
     // Load scripts
     LoadResult script_res = LoadRecords(pwallet, batch, DBKeys::CSCRIPT,
@@ -1386,6 +1434,12 @@ DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
             return LoadDilithiumKey(pwallet, key, value, err) ? DBErrors::LOAD_OK : DBErrors::CORRUPT;
         });
         result = std::max(result, dilithium_key_res.m_result);
+
+        LoadResult dilithium_ckey_res = LoadRecords(pwallet, *m_batch, DBKeys::DILITHIUM_CRYPTED_KEY,
+            [] (CWallet* pwallet, DataStream& key, CDataStream& value, std::string& err) {
+            return LoadCryptedDilithiumKey(pwallet, key, value, err) ? DBErrors::LOAD_OK : DBErrors::CORRUPT;
+        });
+        result = std::max(result, dilithium_ckey_res.m_result);
     } catch (...) {
         // Exceptions that can be ignored or treated as non-critical are handled by the individual loading functions.
         // Any uncaught exceptions will be caught here and treated as critical.

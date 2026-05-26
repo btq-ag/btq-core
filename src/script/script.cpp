@@ -170,16 +170,22 @@ unsigned int CScript::GetSigOpCount(bool fAccurate) const
         opcodetype opcode;
         if (!GetOp(pc, opcode))
             break;
-        if (opcode == OP_CHECKSIG || opcode == OP_CHECKSIGVERIFY ||
-            opcode == OP_CHECKSIGDILITHIUM || opcode == OP_CHECKSIGDILITHIUMVERIFY)
+        if (opcode == OP_CHECKSIG || opcode == OP_CHECKSIGVERIFY)
             n++;
-        else if (opcode == OP_CHECKMULTISIG || opcode == OP_CHECKMULTISIGVERIFY ||
-                 opcode == OP_CHECKMULTISIGDILITHIUM || opcode == OP_CHECKMULTISIGDILITHIUMVERIFY)
+        else if (opcode == OP_CHECKSIGDILITHIUM || opcode == OP_CHECKSIGDILITHIUMVERIFY)
+            n += DILITHIUM_SIGOP_COST;
+        else if (opcode == OP_CHECKMULTISIG || opcode == OP_CHECKMULTISIGVERIFY)
         {
             if (fAccurate && lastOpcode >= OP_1 && lastOpcode <= OP_16)
                 n += DecodeOP_N(lastOpcode);
             else
                 n += MAX_PUBKEYS_PER_MULTISIG;
+        }
+        else if (opcode == OP_CHECKMULTISIGDILITHIUM || opcode == OP_CHECKMULTISIGDILITHIUMVERIFY)
+        {
+            unsigned int keys = (fAccurate && lastOpcode >= OP_1 && lastOpcode <= OP_16)
+                ? DecodeOP_N(lastOpcode) : MAX_PUBKEYS_PER_MULTISIG;
+            n += keys * DILITHIUM_SIGOP_COST;
         }
         lastOpcode = opcode;
     }

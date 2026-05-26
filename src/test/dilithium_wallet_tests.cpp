@@ -99,11 +99,9 @@ BOOST_AUTO_TEST_CASE(dilithium_key_encryption)
         master_key[i] = i;
     }
 
-    // We use a no-op CPubKey identity for the binding because the higher-level
-    // DecryptDilithiumKey() wrapper recomputes its IV as `vchPubKey.GetHash()`;
-    // the direct Encrypt/Decrypt path then must use the same IV to round-trip.
-    CPubKey associated_pubkey;
-    const uint256 iv = associated_pubkey.GetHash();
+    // Production path encrypts with uint256(keyID) as IV; decrypt must match.
+    const CKeyID key_id = CKeyID(key.GetPubKey().GetID());
+    const uint256 iv{uint256(key_id)};
 
     std::vector<unsigned char> encrypted_secret;
     CKeyingMaterial secret(key.begin(), key.end());
@@ -117,7 +115,7 @@ BOOST_AUTO_TEST_CASE(dilithium_key_encryption)
     BOOST_CHECK(std::equal(secret.begin(), secret.end(), decrypted_secret.begin()));
 
     CDilithiumKey decrypted_key;
-    BOOST_CHECK(DecryptDilithiumKey(master_key, encrypted_secret, associated_pubkey, decrypted_key));
+    BOOST_CHECK(DecryptDilithiumKey(master_key, encrypted_secret, key_id, decrypted_key));
     BOOST_CHECK(decrypted_key.IsValid());
     BOOST_CHECK(decrypted_key == key);
 }

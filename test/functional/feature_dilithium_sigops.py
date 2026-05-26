@@ -73,7 +73,7 @@ from test_framework.wallet import MiniWallet
 TAPROOT_LEAF_MASK = 0xfe
 TAPROOT_LEAF_TAPSCRIPT = 0xc0
 MAX_BLOCK_SIGOPS_COST = 80000
-WITNESS_SCALE_FACTOR = 4
+WITNESS_SCALE_FACTOR = 16
 
 
 # ============================================================================

@@ -8,6 +8,7 @@
 #include <serialize.h>
 #include <support/allocators/secure.h>
 #include <script/signingprovider.h>
+#include <key.h>
 
 
 namespace wallet {
@@ -110,7 +111,7 @@ bool DecryptKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned ch
 // Dilithium key encryption/decryption functions
 bool EncryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vchPlaintext, const uint256& nIV, std::vector<unsigned char> &vchCiphertext);
 bool DecryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCiphertext, const uint256& nIV, CKeyingMaterial& vchPlaintext);
-bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CPubKey& vchPubKey, CDilithiumKey& key);
+bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyID& keyid, CDilithiumKey& key);
 } // namespace wallet
 
 #endif // BTQ_WALLET_CRYPTER_H

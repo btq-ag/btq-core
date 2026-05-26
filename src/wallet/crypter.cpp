@@ -160,10 +160,10 @@ bool DecryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const std::vector
     return cKeyCrypter.Decrypt(vchCiphertext, vchPlaintext);
 }
 
-bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CPubKey& vchPubKey, CDilithiumKey& key)
+bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyID& keyid, CDilithiumKey& key)
 {
     CKeyingMaterial vchSecret;
-    if(!DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, vchPubKey.GetHash(), vchSecret))
+    if(!DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, uint256(keyid), vchSecret))
         return false;
 
     // Dilithium keys are much larger than ECDSA keys

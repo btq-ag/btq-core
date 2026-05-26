@@ -132,6 +132,8 @@ struct Params {
 
     /** LWMA difficulty adjustment activation height (hard fork) */
     int nLWMAHeight{std::numeric_limits<int>::max()};
+    /** Height at which Dilithium script opcodes become consensus-mandatory */
+    int nDilithiumHeight{1};
     static constexpr int LWMA_WINDOW = 45;
     std::chrono::seconds PowTargetSpacing() const
     {

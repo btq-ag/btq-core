@@ -1038,25 +1038,23 @@ bool LegacyScriptPubKeyMan::AddCryptedDilithiumKey(const CPubKey &vchPubKey,
 bool LegacyScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& secret, const CPubKey &pubkey)
 {
     LOCK(cs_KeyStore);
-    if (!m_storage.HasEncryptionKeys()) {
-        // For now, we'll store Dilithium keys in a separate map
-        // TODO: Integrate with FillableSigningProvider
-        return true;
+    if (m_storage.HasEncryptionKeys()) {
+        return false;
     }
-    return false;
+    const CKeyID keyID = CKeyID(secret.GetPubKey().GetID());
+    mapDilithiumKeys[keyID] = secret;
+    return true;
 }
 
-bool LegacyScriptPubKeyMan::LoadCryptedDilithiumKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret, bool checksum_valid)
+bool LegacyScriptPubKeyMan::LoadCryptedDilithiumKey(const CKeyID &keyID, const std::vector<unsigned char> &vchCryptedSecret, bool checksum_valid)
 {
-    // Set fDecryptionThoroughlyChecked to false when the checksum is invalid
     if (!checksum_valid) {
         fDecryptionThoroughlyChecked = false;
     }
 
     {
         LOCK(cs_KeyStore);
-        mapCryptedDilithiumKeys[vchPubKey.GetID()] = make_pair(vchPubKey, vchCryptedSecret);
-        mapKeyMetadata[vchPubKey.GetID()] = CKeyMetadata(GetTime());
+        mapCryptedDilithiumKeys[keyID] = make_pair(CPubKey(), vchCryptedSecret);
     }
     return true;
 }
@@ -1077,9 +1075,8 @@ bool LegacyScriptPubKeyMan::GetDilithiumKey(const CKeyID &address, CDilithiumKey
     CryptedDilithiumKeyMap::const_iterator mi = mapCryptedDilithiumKeys.find(address);
     if (mi != mapCryptedDilithiumKeys.end())
     {
-        const CPubKey &vchPubKey = (*mi).second.first;
         const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
-        return DecryptDilithiumKey(m_storage.GetEncryptionKey(), vchCryptedSecret, vchPubKey, keyOut);
+        return DecryptDilithiumKey(m_storage.GetEncryptionKey(), vchCryptedSecret, address, keyOut);
     }
     return false;
 }
@@ -2776,9 +2773,8 @@ bool DescriptorScriptPubKeyMan::GetDilithiumKey(const CKeyID& keyid, CDilithiumK
     auto mi = m_map_crypted_dilithium_keys.find(keyid);
     if (mi != m_map_crypted_dilithium_keys.end()) {
         if (m_storage.HasEncryptionKeys()) {
-            const CPubKey& pubkey = mi->second.first;
             const std::vector<unsigned char>& crypted_secret = mi->second.second;
-            return DecryptDilithiumKey(m_storage.GetEncryptionKey(), crypted_secret, pubkey, key);
+            return DecryptDilithiumKey(m_storage.GetEncryptionKey(), crypted_secret, keyid, key);
         }
     }
 
@@ -2817,6 +2813,16 @@ bool DescriptorScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& key, const
     CDilithiumPubKey dilithium_pubkey = key.GetPubKey();
     CKeyID keyID = CKeyID(static_cast<uint160>(dilithium_pubkey.GetID()));
     m_map_dilithium_keys[keyID] = key;
+    return true;
+}
+
+bool DescriptorScriptPubKeyMan::LoadCryptedDilithiumKey(const CKeyID& keyid, const std::vector<unsigned char>& vchCryptedSecret, bool checksum_valid)
+{
+    LOCK(cs_desc_man);
+    if (!checksum_valid) {
+        m_decryption_thoroughly_checked = false;
+    }
+    m_map_crypted_dilithium_keys[keyid] = std::make_pair(CPubKey(), vchCryptedSecret);
     return true;
 }
 

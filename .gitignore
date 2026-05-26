@@ -151,3 +151,15 @@ dist/
 
 /ci/scratch/
 release/
+
+# Secrets — never commit (BTQ-AUDIT-2026-018)
+id_ed25519*
+*.pem
+*.key
+*.priv
+private.pem
+secrets/
+build-native-linux/
+build-static-linux/
+build-win64/
+build-linux/
