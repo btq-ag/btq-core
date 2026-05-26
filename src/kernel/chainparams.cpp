@@ -87,10 +87,11 @@ public:
         // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.nLWMAHeight = 300000;
+        consensus.nDilithiumHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 18144; // 90% of 20160
@@ -179,10 +180,11 @@ public:
         
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.nLWMAHeight = 300000;
+        consensus.nDilithiumHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
@@ -210,12 +212,12 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        const char* pszTimestamp = "BTQ genesis remine: quantum-safe launch baseline, 26/Feb/2026";
+        const char* pszTimestamp = "BTQ testnet genesis block 20260526";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771804800, 3, 0x207fffff, 1, 5 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771977600, 3, 0x207fffff, 1, 5 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x5a6c309a7e9bb2fa314e63630520ca3c598c86a91dd2c6737e160cfadfc50f38"));
-        assert(genesis.hashMerkleRoot == uint256S("0xec88310bd306cf5f9554cc257db16b81147e4bd0efda75f11b38467a5d918db1"));
+        assert(consensus.hashGenesisBlock == uint256S("0xb82c2238f94b4c89c1d29af05ca1004ab8eaf35e313790b634aa663cb734b7f0"));
+        assert(genesis.hashMerkleRoot == uint256S("0xcd6a53f536b1f8f9442397d1d4f3db492d88bc4280f4c172eb5b1d9e1b6152e5"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -265,7 +267,10 @@ public:
         vSeeds.clear();
 
         if (!options.challenge) {
-            bin = ParseHex("512103[YOUR_BTQ_SIGNET_PUBKEY]210359[YOUR_BTQ_SIGNET_PUBKEY2]52ae");
+            bin = ParseHex("522103ad5e0edad18cb1f0fc0d28a3d4f1f3e445640337489abb10404f2d1e086be430210359ef5021964fe22d6f8e05b2463c9540ce96883fe3b278760f048f5189f2e6c452ae");
+            if (bin.empty()) {
+                throw std::runtime_error("Default signet challenge is invalid");
+            }
             
             vSeeds.emplace_back("signet-seed1.btq.com");
             vSeeds.emplace_back("signet-seed2.btq.com");
@@ -320,7 +325,7 @@ public:
         consensus.nMinerConfirmationWindow = 20160;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        
+        consensus.nDilithiumHeight = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -354,7 +359,7 @@ public:
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
+        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,196);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
         base58Prefixes[DILITHIUM_PUBKEY_ADDRESS] = std::vector<unsigned char>(1,112);
@@ -395,6 +400,8 @@ public:
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
+        consensus.nLWMAHeight = 300000;
+        consensus.nDilithiumHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains

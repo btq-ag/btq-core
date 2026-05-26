@@ -2189,7 +2189,11 @@ static RPCHelpMan scantxoutset()
             FlatSigningProvider provider;
             auto scripts = EvalDescriptorStringOrObject(scanobject, provider);
             for (CScript& script : scripts) {
-                std::string inferred = InferDescriptor(script, provider)->ToString();
+                const std::unique_ptr<Descriptor> inferred_desc = InferDescriptor(script, provider);
+                if (!inferred_desc) {
+                    throw JSONRPCError(RPC_MISC_ERROR, strprintf("Could not infer descriptor for script '%s'", HexStr(script)));
+                }
+                std::string inferred = inferred_desc->ToString();
                 needles.emplace(script);
                 descriptors.emplace(std::move(script), std::move(inferred));
             }

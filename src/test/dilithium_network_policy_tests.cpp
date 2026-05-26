@@ -82,8 +82,8 @@ BOOST_AUTO_TEST_CASE(dilithium_script_verification_flags)
 {
     // Test that Dilithium verification flags are properly set
     
-    // Check that Dilithium verification flag is in mandatory flags
-    BOOST_CHECK(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
+    // Dilithium is height-gated in consensus, not unconditionally mandatory.
+    BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM));
     
     // Check that Dilithium verification flag is in standard flags
     BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);

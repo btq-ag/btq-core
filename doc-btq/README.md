@@ -7,15 +7,19 @@ BTQ is a post-quantum POW cryptocurrency designed for the post-quantum era. It m
 ### Key Features
 
 - **Post-Quantum Ready**: Integrated support for Dilithium, Falcon, and SPHINCS+ signature algorithms
-- **Enhanced Capacity**: 64 MiB block size limit, 32 MiB soft cap, and normalized weight calculations
+- **Enhanced Capacity**: 8 MB max block weight (`MAX_BLOCK_WEIGHT`), 15 KB max script elements for Dilithium signatures
 - **Bitcoin Compatibility**: Maintains Bitcoin's UTXO model, scripting system, and economic incentives
-- **Quantum-Resistant Infrastructure**: PPK (Post-Quantum Key) infrastructure for future signature algorithm integration
+- **Quantum-Resistant Infrastructure**: Dilithium (ML-DSA) signing with hardened-only HD wallet derivation
 
 ### Roadmap Phases
 
-- **Phase 1** (v0.1.0): Consensus parameter adjustments, block size increases, weight normalization
-- **Phase 2** (v1.1.0): Dilithium integration into PPK infrastructure (no consensus activation)
-- **Phase 3** (Future): Consensus activation of post-quantum signatures
+- **Phase 1** (v0.1.0): Consensus parameter adjustments, weight normalization (`WITNESS_SCALE_FACTOR=16`)
+- **Phase 2** (v1.1.0): Dilithium wallet + script primitives (hardened HD paths; no xpub/non-hardened derivation)
+- **Phase 3** (current): Dilithium opcodes consensus-active from `nDilithiumHeight` (default height 1 on all networks)
+
+### Dilithium HD limitations
+
+Dilithium keys use **hardened-only** BIP32-style derivation (`m/44'/…'/account'/change'/index'`). Non-hardened / watch-only xpub address discovery is not supported without a Raccoon-G-style construction.
 
 ## Getting Started
 

@@ -321,6 +321,7 @@ void MaybeCompactWalletDB(WalletContext& context);
 bool LoadKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
 bool LoadCryptedKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
 bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
+bool LoadCryptedDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
 bool LoadEncryptionKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
 bool LoadHDChain(CWallet* pwallet, DataStream& ssValue, std::string& strErr);
 } // namespace wallet

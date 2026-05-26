@@ -2115,8 +2115,10 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
         flags |= SCRIPT_VERIFY_TAPROOT;
     }
     
-    // BTQ: Enable Dilithium signature validation
-    flags |= SCRIPT_VERIFY_DILITHIUM;
+    // BTQ: Enable Dilithium signature validation after activation height
+    if (block_index.nHeight >= consensusparams.nDilithiumHeight) {
+        flags |= SCRIPT_VERIFY_DILITHIUM;
+    }
 
     // BTQ: Enable BIP360 P2MR (Pay-to-Merkle-Root) validation
     flags |= SCRIPT_VERIFY_P2MR;

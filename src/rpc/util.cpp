@@ -1322,6 +1322,24 @@ std::pair<int64_t, int64_t> ParseDescriptorRange(const UniValue& value)
     return {low, high};
 }
 
+std::optional<CScript> ScriptFromRawDescriptor(const std::string& desc_str)
+{
+    std::string body = desc_str;
+    const auto checksum_pos = body.find('#');
+    if (checksum_pos != std::string::npos) {
+        body.resize(checksum_pos);
+    }
+    if (body.size() <= 5 || body.compare(0, 4, "raw(") != 0 || body.back() != ')') {
+        return std::nullopt;
+    }
+    const std::string hex{body.data() + 4, body.size() - 5};
+    if (!IsHex(hex)) {
+        return std::nullopt;
+    }
+    const std::vector<unsigned char> bytes = ParseHex(hex);
+    return CScript(bytes.begin(), bytes.end());
+}
+
 std::vector<CScript> EvalDescriptorStringOrObject(const UniValue& scanobject, FlatSigningProvider& provider, const bool expand_priv)
 {
     std::string desc_str;
@@ -1349,12 +1367,17 @@ std::vector<CScript> EvalDescriptorStringOrObject(const UniValue& scanobject, Fl
         range.first = 0;
         range.second = 0;
     }
+    if (const std::optional<CScript> raw_script = ScriptFromRawDescriptor(desc_str)) {
+        return {*raw_script};
+    }
     std::vector<CScript> ret;
     for (int i = range.first; i <= range.second; ++i) {
         std::vector<CScript> scripts;
-        if (!desc->Expand(i, provider, scripts, provider)) {
+        FlatSigningProvider expand_out;
+        if (!desc->Expand(i, provider, scripts, expand_out)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Cannot derive script without private keys: '%s'", desc_str));
         }
+        provider.Merge(std::move(expand_out));
         if (expand_priv) {
             desc->ExpandPrivate(/*pos=*/i, provider, /*out=*/provider);
         }

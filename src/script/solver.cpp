@@ -137,15 +137,6 @@ static bool MatchPayToDilithiumPubkeyHash(const CScript& script, valtype& pubkey
     return false;
 }
 
-static bool MatchPayToDilithiumScriptHash(const CScript& script, valtype& scripthash)
-{
-    if (script.size() == 23 && script[0] == OP_HASH160 && script[1] == 20 && script[22] == OP_EQUAL) {
-        scripthash = valtype(script.begin() + 2, script.begin() + 22);
-        return scripthash.size() == 20;
-    }
-    return false;
-}
-
 static bool MatchDilithiumMultisig(const CScript& script, int& required_sigs, std::vector<valtype>& pubkeys)
 {
     opcodetype opcode;
@@ -205,13 +196,7 @@ std::optional<std::pair<int, std::vector<Span<const unsigned char>>>> MatchMulti
 TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned char>>& vSolutionsRet)
 {
     vSolutionsRet.clear();
-
-    // Check for Dilithium P2SH first (same format as regular P2SH)
-    std::vector<unsigned char> data;
-    if (MatchPayToDilithiumScriptHash(scriptPubKey, data)) {
-        vSolutionsRet.push_back(std::move(data));
-        return TxoutType::DILITHIUM_SCRIPTHASH;
-    }
+    valtype data;
 
     // Shortcut for pay-to-script-hash, which are more constrained than the other types:
     // it is always OP_HASH160 20 [20 byte hash] OP_EQUAL

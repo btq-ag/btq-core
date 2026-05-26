@@ -165,6 +165,10 @@ static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& me
 
 static bool getScriptFromDescriptor(const std::string& descriptor, CScript& script, std::string& error)
 {
+    if (const std::optional<CScript> raw_script = ScriptFromRawDescriptor(descriptor)) {
+        script = *raw_script;
+        return true;
+    }
     FlatSigningProvider key_provider;
     const auto desc = Parse(descriptor, key_provider, error, /* require_checksum = */ false);
     if (desc) {

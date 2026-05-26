@@ -35,7 +35,16 @@ bool CDilithiumPubKey::IsValid() const
 
 bool CDilithiumPubKey::IsFullyValid() const
 {
-    return IsValid();
+    if (!IsValid()) {
+        return false;
+    }
+    // Reject pubkeys whose rho prefix is all-zero (malformed / cheap DoS bait).
+    for (size_t i = 0; i < 32; ++i) {
+        if (vch[i] != 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool CDilithiumPubKey::Verify(const uint256& hash, const std::vector<unsigned char>& vchSig,

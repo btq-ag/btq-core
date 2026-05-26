@@ -451,7 +451,7 @@ public:
     //! Adds an encrypted Dilithium key to the store, and saves it to disk.
     bool AddCryptedDilithiumKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
     //! Adds an encrypted Dilithium key to the store, without saving it to disk (used by LoadWallet)
-    bool LoadCryptedDilithiumKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret, bool checksum_valid);
+    bool LoadCryptedDilithiumKey(const CKeyID &keyID, const std::vector<unsigned char> &vchCryptedSecret, bool checksum_valid);
     //! Get a Dilithium key from the store
     bool GetDilithiumKey(const CKeyID &address, CDilithiumKey& keyOut) const;
     bool HaveDilithiumKey(const CKeyID &address) const;
@@ -647,6 +647,7 @@ public:
     // Dilithium key management
     bool AddDilithiumKeyPubKey(const CDilithiumKey& key, const CPubKey& pubkey);
     bool LoadDilithiumKey(const CDilithiumKey& key, const CPubKey& pubkey);
+    bool LoadCryptedDilithiumKey(const CKeyID& keyid, const std::vector<unsigned char>& vchCryptedSecret, bool checksum_valid);
     bool GetDilithiumKey(const CKeyID& keyid, CDilithiumKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool HaveDilithiumKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
