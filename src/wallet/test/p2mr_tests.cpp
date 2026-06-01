@@ -2,9 +2,13 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <test/util/setup_common.h>
 #include <univalue.h>
 #include <util/strencodings.h>
 #include <wallet/p2mr.h>
+#include <wallet/test/util.h>
+#include <wallet/wallet.h>
+#include <wallet/walletdb.h>
 
 #include <boost/test/unit_test.hpp>
 
@@ -20,6 +24,20 @@ static UniValue MakeOpTrueTreeJSON()
     UniValue tree(UniValue::VARR);
     tree.push_back(leaf);
     return tree;
+}
+
+static std::vector<P2MRTreeLeaf> MakeOpTrueTree()
+{
+    auto parsed = ParseP2MRTreeChecked(MakeOpTrueTreeJSON());
+    BOOST_REQUIRE(parsed);
+    return *parsed;
+}
+
+static std::unique_ptr<CWallet> MakeP2MRTestWallet(interfaces::Chain& chain)
+{
+    auto wallet = std::make_unique<CWallet>(&chain, "", CreateMockableWalletDatabase());
+    wallet->LoadWallet();
+    return wallet;
 }
 
 // Round-trips the OP_TRUE template through ParseP2MRTreeChecked,
@@ -96,10 +114,41 @@ BOOST_AUTO_TEST_CASE(reject_invalid_hex_script)
     BOOST_CHECK(!parsed);
 }
 
+BOOST_AUTO_TEST_CASE(reject_leaf_version_with_control_parity_bit)
+{
+    UniValue leaf(UniValue::VOBJ);
+    leaf.pushKV("depth", 0);
+    leaf.pushKV("leaf_version", 193); // 0xc1: control-block parity bit is not part of the leaf version
+    leaf.pushKV("script", "51");
+    UniValue tree(UniValue::VARR);
+    tree.push_back(leaf);
+
+    auto parsed = ParseP2MRTreeChecked(tree);
+    BOOST_CHECK(!parsed);
+
+    std::vector<P2MRTreeLeaf> leaves{{0, 193, {0x51}}};
+    auto built = BuildP2MRTreeChecked(leaves);
+    BOOST_CHECK(!built);
+}
+
 BOOST_AUTO_TEST_CASE(build_rejects_empty_leaves_vector)
 {
     std::vector<P2MRTreeLeaf> empty;
     auto built = BuildP2MRTreeChecked(empty);
+    BOOST_CHECK(!built);
+}
+
+BOOST_AUTO_TEST_CASE(build_rejects_out_of_range_depth)
+{
+    std::vector<P2MRTreeLeaf> leaves{{129, 192, {0x51}}};
+    auto built = BuildP2MRTreeChecked(leaves);
+    BOOST_CHECK(!built);
+}
+
+BOOST_AUTO_TEST_CASE(build_rejects_incomplete_tree_without_asserting)
+{
+    std::vector<P2MRTreeLeaf> leaves{{1, 192, {0x51}}};
+    auto built = BuildP2MRTreeChecked(leaves);
     BOOST_CHECK(!built);
 }
 
@@ -128,6 +177,67 @@ BOOST_AUTO_TEST_CASE(reject_typeerror_on_script_int)
     tree.push_back(leaf);
     auto parsed = ParseP2MRTreeChecked(tree);
     BOOST_CHECK(!parsed);
+}
+
+BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const auto leaves = MakeOpTrueTree();
+
+    auto first = CreateP2MR(*wallet, leaves, "first");
+    BOOST_REQUIRE(first);
+    auto second = CreateP2MR(*wallet, leaves, "second");
+    BOOST_REQUIRE(second);
+
+    BOOST_CHECK_EQUAL(second->id, first->id);
+    BOOST_CHECK_EQUAL(second->address, first->address);
+    BOOST_CHECK_EQUAL(HexStr(second->script_pub_key), HexStr(first->script_pub_key));
+    BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+}
+
+BOOST_FIXTURE_TEST_CASE(tracked_balance_deduplicates_legacy_duplicate_metadata, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const auto leaves = MakeOpTrueTree();
+
+    auto created = CreateP2MR(*wallet, leaves, "original");
+    BOOST_REQUIRE(created);
+
+    UniValue duplicate_meta(UniValue::VOBJ);
+    duplicate_meta.pushKV("id", "legacy-duplicate");
+    duplicate_meta.pushKV("address", created->address);
+    duplicate_meta.pushKV("scriptPubKey", HexStr(created->script_pub_key));
+    duplicate_meta.pushKV("merkle_root", HexStr(created->merkle_root));
+    duplicate_meta.pushKV("created_at", int64_t{1});
+    duplicate_meta.pushKV("label", "duplicate");
+    duplicate_meta.pushKV("state", "created");
+    duplicate_meta.pushKV("tree", P2MRTreeToUniValue(leaves));
+
+    WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+    BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, created->dest, "legacy-duplicate", duplicate_meta.write()));
+    BOOST_REQUIRE_EQUAL(ListP2MR(*wallet).size(), 2U);
+
+    const CAmount amount{5 * COIN};
+    CMutableTransaction tx;
+    tx.nLockTime = 1;
+    tx.vout.emplace_back(amount, created->script_pub_key);
+    const uint256 txid = tx.GetHash();
+    auto inserted = wallet->mapWallet.emplace(std::piecewise_construct,
+        std::forward_as_tuple(txid),
+        std::forward_as_tuple(MakeTransactionRef(std::move(tx)), TxStateInactive{}));
+    BOOST_REQUIRE(inserted.second);
+
+    auto original_entry = GetP2MR(*wallet, created->id);
+    BOOST_REQUIRE(original_entry);
+    BOOST_CHECK_EQUAL(GetP2MREntryBalance(*wallet, *original_entry, /*min_depth=*/0), amount);
+
+    auto duplicate_entry = GetP2MR(*wallet, "legacy-duplicate");
+    BOOST_REQUIRE(duplicate_entry);
+    BOOST_CHECK_EQUAL(GetP2MREntryBalance(*wallet, *duplicate_entry, /*min_depth=*/0), amount);
+
+    BOOST_CHECK_EQUAL(GetTrackedP2MRBalance(*wallet, /*min_depth=*/0), amount);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

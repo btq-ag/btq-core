@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <chainparams.h>
+#include <chain.h>
 #include <pow.h>
 #include <test/util/setup_common.h>
 

@@ -33,6 +33,7 @@ from test_framework.messages import (
     CTxIn,
     CTxInWitness,
     CTxOut,
+    WITNESS_SCALE_FACTOR,
 )
 from test_framework.script import (
     CScript,
@@ -114,12 +115,13 @@ class MiniWallet:
         returns the tx
         """
         tx.vout.append(CTxOut(nValue=0, scriptPubKey=CScript([OP_RETURN, b'a'])))
-        dummy_vbytes = (target_weight - tx.get_weight() + 3) // 4
+        dummy_vbytes = (target_weight - tx.get_weight() + WITNESS_SCALE_FACTOR - 1) // WITNESS_SCALE_FACTOR
         tx.vout[-1].scriptPubKey = CScript([OP_RETURN, b'a' * dummy_vbytes])
         # Lower bound should always be off by at most 3
         assert_greater_than_or_equal(tx.get_weight(), target_weight)
-        # Higher bound should always be off by at most 3 + 12 weight (for encoding the length)
-        assert_greater_than_or_equal(target_weight + 15, tx.get_weight())
+        # Higher bound should always be off by at most one script byte plus
+        # three script length encoding bytes.
+        assert_greater_than_or_equal(target_weight + 4 * WITNESS_SCALE_FACTOR - 1, tx.get_weight())
 
     def get_balance(self):
         return sum(u['value'] for u in self._utxos)
@@ -352,8 +354,10 @@ class MiniWallet:
         assert fee_rate >= 0
         assert fee >= 0
         # calculate fee
-        if self._mode in (MiniWalletMode.RAW_OP_TRUE, MiniWalletMode.ADDRESS_OP_TRUE):
+        if self._mode == MiniWalletMode.RAW_OP_TRUE:
             vsize = Decimal(104)  # anyone-can-spend
+        elif self._mode == MiniWalletMode.ADDRESS_OP_TRUE:
+            vsize = Decimal(97)  # P2TR anyone-can-spend with BTQ witness scale factor
         elif self._mode == MiniWalletMode.RAW_P2PK:
             vsize = Decimal(168)  # P2PK (73 bytes scriptSig + 35 bytes scriptPubKey + 60 bytes other)
         else:
