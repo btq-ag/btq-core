@@ -35,6 +35,8 @@ std::string DeploymentName(Consensus::BuriedDeployment dep)
         return "segwit";
     case Consensus::DEPLOYMENT_LWMA:
         return "lwma";
+    case Consensus::DEPLOYMENT_DILITHIUM:
+        return "dilithium";
     } // no default case, so the compiler can warn about missing cases
     return "";
 }
@@ -53,6 +55,8 @@ std::optional<Consensus::BuriedDeployment> GetBuriedDeployment(const std::string
         return Consensus::BuriedDeployment::DEPLOYMENT_CSV;
     } else if (name == "lwma") {
         return Consensus::BuriedDeployment::DEPLOYMENT_LWMA;
+    } else if (name == "dilithium") {
+        return Consensus::BuriedDeployment::DEPLOYMENT_DILITHIUM;
     }
     return std::nullopt;
 }

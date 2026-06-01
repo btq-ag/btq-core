@@ -1919,6 +1919,13 @@ std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptCo
     if (txntype == TxoutType::WITNESS_V0_KEYHASH && (ctx == ParseScriptContext::TOP || ctx == ParseScriptContext::P2SH)) {
         uint160 hash(data[0]);
         CKeyID keyid(hash);
+        // Witness v0 keyhash scripts are identical for ECDSA and Dilithium; prefer Dilithium when we have the key.
+        DilithiumPKHash dilithium_hash;
+        std::memcpy(dilithium_hash.begin(), hash.begin(), 20);
+        CDilithiumPubKey dilithium_pubkey;
+        if (provider.GetDilithiumPubKey(dilithium_hash, dilithium_pubkey)) {
+            return std::make_unique<AddressDescriptor>(DilithiumWitnessV0KeyHash(dilithium_hash));
+        }
         CPubKey pubkey;
         if (provider.GetPubKey(keyid, pubkey)) {
             if (auto pubkey_provider = InferPubkey(pubkey, ParseScriptContext::P2WPKH, provider)) {

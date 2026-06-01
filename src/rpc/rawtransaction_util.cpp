@@ -316,6 +316,6 @@ void SignTransactionResultToJSON(CMutableTransaction& mtx, bool complete, const 
         if (result.exists("errors")) {
             vErrors.push_backV(result["errors"].getValues());
         }
-        result.pushKV("errors", vErrors);
     }
+    result.pushKV("errors", vErrors);
 }

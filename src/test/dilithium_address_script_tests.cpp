@@ -206,7 +206,8 @@ BOOST_AUTO_TEST_CASE(dilithium_script_solving)
     
     solutions.clear();
     type = Solver(p2sh_script, solutions);
-    BOOST_CHECK(type == TxoutType::DILITHIUM_SCRIPTHASH);
+    // P2SH outputs are indistinguishable from standard P2SH at scriptPubKey level.
+    BOOST_CHECK(type == TxoutType::SCRIPTHASH);
     BOOST_CHECK(solutions.size() == 1);
     BOOST_CHECK(solutions[0].size() == 20);
     BOOST_CHECK(std::equal(solutions[0].begin(), solutions[0].end(), script_hash.begin()));
@@ -273,8 +274,9 @@ BOOST_AUTO_TEST_CASE(dilithium_destination_extraction)
     dest = CTxDestination{};
     has_address = ExtractDestination(p2sh_script, dest);
     BOOST_CHECK(has_address);
-    BOOST_CHECK(std::holds_alternative<DilithiumScriptHash>(dest));
-    BOOST_CHECK(std::get<DilithiumScriptHash>(dest) == script_hash);
+    // P2SH outputs are indistinguishable from standard P2SH at scriptPubKey level.
+    BOOST_CHECK(std::holds_alternative<ScriptHash>(dest));
+    BOOST_CHECK(std::get<ScriptHash>(dest) == ScriptHash(script_hash));
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_output_types)
