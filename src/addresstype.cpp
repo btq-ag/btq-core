@@ -245,8 +245,8 @@ public:
     bool operator()(const DilithiumPubKeyDestination& dest) const { return false; }
     bool operator()(const DilithiumPKHash& dest) const { return true; }
     bool operator()(const DilithiumScriptHash& dest) const { return true; }
-    bool operator()(const DilithiumWitnessV0KeyHash& dest) const { return true; }
-    bool operator()(const DilithiumWitnessV0ScriptHash& dest) const { return true; }
+    bool operator()(const DilithiumWitnessV0KeyHash& dest) const { return false; }
+    bool operator()(const DilithiumWitnessV0ScriptHash& dest) const { return false; }
 };
 } // namespace
 

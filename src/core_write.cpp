@@ -9,6 +9,7 @@
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <key_io.h>
+#include <policy/policy.h>
 #include <script/descriptor.h>
 #include <script/script.h>
 #include <script/solver.h>
@@ -178,7 +179,7 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
     // so cast to unsigned before giving it to the user.
     entry.pushKV("version", static_cast<int64_t>(static_cast<uint32_t>(tx.nVersion)));
     entry.pushKV("size", (int)::GetSerializeSize(tx, PROTOCOL_VERSION));
-    entry.pushKV("vsize", GetTransactionWeight(tx));
+    entry.pushKV("vsize", GetVirtualTransactionSize(tx));
     entry.pushKV("weight", GetTransactionWeight(tx));
     entry.pushKV("locktime", (int64_t)tx.nLockTime);
 

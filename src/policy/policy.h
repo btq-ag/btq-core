@@ -8,6 +8,7 @@
 
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
+#include <consensus/consensus.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/solver.h>
@@ -43,13 +44,16 @@ static constexpr bool DEFAULT_PERMIT_BAREMULTISIG{true};
 /** The maximum number of witness stack items in a standard P2WSH script */
 static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEMS{100};
 /** The maximum size in bytes of each witness stack item in a standard P2WSH script */
-static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEM_SIZE{65536};
+static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEM_SIZE{MAX_SCRIPT_ELEMENT_SIZE};
 /** The maximum size in bytes of each witness stack item in a standard BIP 342 script (Taproot, leaf version 0xc0) */
-static constexpr unsigned int MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE{65536};
+static constexpr unsigned int MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE{MAX_SCRIPT_ELEMENT_SIZE};
 /** The maximum size in bytes of a standard witnessScript */
 static constexpr unsigned int MAX_STANDARD_P2WSH_SCRIPT_SIZE{65536};
 /** The maximum size of a standard ScriptSig */
-static constexpr unsigned int MAX_STANDARD_SCRIPTSIG_SIZE{65536};
+static constexpr unsigned int MAX_STANDARD_SCRIPTSIG_SIZE{MAX_SCRIPT_ELEMENT_SIZE};
+static_assert(MAX_STANDARD_P2WSH_STACK_ITEM_SIZE <= MAX_SCRIPT_ELEMENT_SIZE);
+static_assert(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE <= MAX_SCRIPT_ELEMENT_SIZE);
+static_assert(MAX_STANDARD_SCRIPTSIG_SIZE * WITNESS_SCALE_FACTOR < MAX_STANDARD_TX_WEIGHT);
 /** Min feerate for defining dust.
  * Changing the dust limit changes which transactions are
  * standard and should be done with care and ideally rarely. It makes sense to
@@ -114,6 +118,7 @@ static constexpr unsigned int STANDARD_SCRIPT_VERIFY_FLAGS{MANDATORY_SCRIPT_VERI
                                                              SCRIPT_VERIFY_LOW_S |
                                                              SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM |
                                                              SCRIPT_VERIFY_WITNESS_PUBKEYTYPE |
+                                                             SCRIPT_VERIFY_DILITHIUM |
                                                              SCRIPT_VERIFY_CONST_SCRIPTCODE |
                                                              SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION |
                                                              SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS |

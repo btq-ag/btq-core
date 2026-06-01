@@ -2682,6 +2682,11 @@ void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
             if (mapKeyBirth.count(keyid) == 0)
                 mapKeyFirstBlock[keyid] = &max_confirm;
         }
+        for (const CKeyID& keyid : spk_man->GetDilithiumKeyIDs()) {
+            if (mapKeyBirth.count(keyid) == 0) {
+                mapKeyFirstBlock[keyid] = &max_confirm;
+            }
+        }
 
         // if there are no such keys, we're done
         if (mapKeyFirstBlock.empty())

@@ -109,6 +109,7 @@ bool DecryptSecret(const CKeyingMaterial& vMasterKey, const std::vector<unsigned
 bool DecryptKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CPubKey& vchPubKey, CKey& key);
 
 // Dilithium key encryption/decryption functions
+uint256 DeriveDilithiumKeyIV(const CKeyID& keyid);
 bool EncryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vchPlaintext, const uint256& nIV, std::vector<unsigned char> &vchCiphertext);
 bool DecryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCiphertext, const uint256& nIV, CKeyingMaterial& vchPlaintext);
 bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyID& keyid, CDilithiumKey& key);

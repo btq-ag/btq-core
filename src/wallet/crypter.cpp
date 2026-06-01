@@ -7,8 +7,10 @@
 #include <common/system.h>
 #include <crypto/aes.h>
 #include <crypto/sha512.h>
+#include <hash.h>
 // #include <crypto/dilithium_key.h> // Temporarily disabled
 
+#include <algorithm>
 #include <vector>
 
 namespace wallet {
@@ -140,6 +142,38 @@ bool DecryptKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned ch
 }
 
 // Dilithium key encryption/decryption functions
+uint256 DeriveDilithiumKeyIV(const CKeyID& keyid)
+{
+    return Hash(Span{keyid});
+}
+
+static uint256 DeriveLegacyDilithiumKeyIV(const CKeyID& keyid)
+{
+    uint256 iv;
+    std::copy(keyid.begin(), keyid.end(), iv.begin());
+    return iv;
+}
+
+static bool SetDilithiumKeyFromSecret(const CKeyingMaterial& secret, const CKeyID& keyid, CDilithiumKey& key)
+{
+    if (secret.size() != CDilithiumKey::GetKeySize()) {
+        return false;
+    }
+
+    CDilithiumKey candidate;
+    candidate.Set(secret.begin(), secret.end());
+    if (!candidate.IsValid() || CKeyID(candidate.GetPubKey().GetID()) != keyid) {
+        return false;
+    }
+    std::vector<unsigned char> signature;
+    if (!candidate.Sign(uint256::ONE, signature) || !candidate.GetPubKey().Verify(uint256::ONE, signature)) {
+        return false;
+    }
+
+    key = candidate;
+    return true;
+}
+
 bool EncryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vchPlaintext, const uint256& nIV, std::vector<unsigned char> &vchCiphertext)
 {
     CCrypter cKeyCrypter;
@@ -163,14 +197,13 @@ bool DecryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const std::vector
 bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyID& keyid, CDilithiumKey& key)
 {
     CKeyingMaterial vchSecret;
-    if(!DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, uint256(keyid), vchSecret))
-        return false;
+    if (DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, DeriveDilithiumKeyIV(keyid), vchSecret) &&
+        SetDilithiumKeyFromSecret(vchSecret, keyid, key)) {
+        return true;
+    }
 
-    // Dilithium keys are much larger than ECDSA keys
-    if (vchSecret.size() != CDilithiumKey::GetKeySize())
-        return false;
-
-    key.Set(vchSecret.begin(), vchSecret.end());
-    return key.IsValid();
+    vchSecret.clear();
+    return DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, DeriveLegacyDilithiumKeyIV(keyid), vchSecret) &&
+           SetDilithiumKeyFromSecret(vchSecret, keyid, key);
 }
 } // namespace wallet

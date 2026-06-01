@@ -95,12 +95,7 @@ util::Result<CTxDestination> DilithiumWalletManager::GetNewDilithiumAddress(Outp
             return util::Error{_("Error: Failed to store Dilithium key")};
         }
     } else if (type == OutputType::DILITHIUM_BECH32) {
-        dest = DilithiumWitnessV0KeyHash(dilithium_pubkey);
-        // Store using legacy key ID for compatibility
-        DilithiumLegacyKeyID legacy_id(dilithium_pubkey);
-        if (!AddDilithiumKeyLegacy(dilithium_key, legacy_id)) {
-            return util::Error{_("Error: Failed to store Dilithium key")};
-        }
+        return util::Error{_("Error: dilithium-bech32 is disabled because witness v0 keyhash programs are indistinguishable from ECDSA P2WPKH and are not spendable with Dilithium keys")};
     } else {
         return util::Error{_("Error: Unsupported Dilithium output type")};
     }

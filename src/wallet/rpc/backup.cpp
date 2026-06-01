@@ -82,6 +82,18 @@ static bool GetWalletAddressesForKey(const LegacyScriptPubKeyMan* spk_man, const
     return fLabelFound;
 }
 
+static bool GetWalletAddressForDilithiumKey(const CWallet& wallet, const CKeyID& keyid, std::string& strAddr, std::string& strLabel) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    const CTxDestination dest{DilithiumPKHash(keyid)};
+    strAddr = EncodeDestination(dest);
+    const auto* address_book_entry = wallet.FindAddressBookEntry(dest);
+    if (!address_book_entry) {
+        return false;
+    }
+    strLabel = EncodeDumpString(address_book_entry->GetLabel());
+    return true;
+}
+
 static const int64_t TIMESTAMP_MIN = 0;
 
 static void RescanWallet(CWallet& wallet, const WalletRescanReserver& reserver, int64_t time_begin = TIMESTAMP_MIN, bool update = true)
@@ -196,7 +208,7 @@ RPCHelpMan importprivkey()
         if (is_dilithium) {
             CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
             pubkey = CPubKey(dilithium_pubkey.begin(), dilithium_pubkey.end());
-            vchAddress = pubkey.GetID();
+            vchAddress = CKeyID(dilithium_pubkey.GetID());
         } else {
             pubkey = key.GetPubKey();
             CHECK_NONFATAL(key.VerifyPubKey(pubkey));
@@ -208,9 +220,16 @@ RPCHelpMan importprivkey()
             // We don't know which corresponding address will be used;
             // label all new addresses, and label existing addresses if a
             // label was passed.
-            for (const auto& dest : GetAllDestinationsForKey(pubkey)) {
+            if (is_dilithium) {
+                const CTxDestination dest{DilithiumPKHash(vchAddress)};
                 if (!request.params[1].isNull() || !pwallet->FindAddressBookEntry(dest)) {
                     pwallet->SetAddressBook(dest, strLabel, AddressPurpose::RECEIVE);
+                }
+            } else {
+                for (const auto& dest : GetAllDestinationsForKey(pubkey)) {
+                    if (!request.params[1].isNull() || !pwallet->FindAddressBookEntry(dest)) {
+                        pwallet->SetAddressBook(dest, strLabel, AddressPurpose::RECEIVE);
+                    }
                 }
             }
 
@@ -227,7 +246,7 @@ RPCHelpMan importprivkey()
             }
 
             // Add the wpkh script for this key if possible
-            if (pubkey.IsCompressed()) {
+            if (!is_dilithium && pubkey.IsCompressed()) {
                 pwallet->ImportScripts({GetScriptForDestination(WitnessV0KeyHash(vchAddress))}, /*timestamp=*/0);
             }
         }
@@ -572,6 +591,7 @@ RPCHelpMan importwallet()
         // we don't want for this progress bar showing the import progress. uiInterface.ShowProgress does not have a cancel button.
         pwallet->chain().showProgress(strprintf("%s " + _("Importing…").translated, pwallet->GetDisplayName()), 0, false); // show progress dialog in GUI
         std::vector<std::tuple<CKey, int64_t, bool, std::string>> keys;
+        std::vector<std::tuple<CDilithiumKey, int64_t, bool, std::string>> dilithium_keys;
         std::vector<std::pair<CScript, int64_t>> scripts;
         while (file.good()) {
             pwallet->chain().showProgress("", std::max(1, std::min(50, (int)(((double)file.tellg() / (double)nFilesize) * 100))), false);
@@ -602,6 +622,24 @@ RPCHelpMan importwallet()
                 }
                 nTimeBegin = std::min(nTimeBegin, nTime);
                 keys.emplace_back(key, nTime, fLabel, strLabel);
+            } else if (CDilithiumKey dilithium_key = DecodeDilithiumSecret(vstr[0]); dilithium_key.IsValid()) {
+                int64_t nTime = ParseISO8601DateTime(vstr[1]);
+                std::string strLabel;
+                bool fLabel = true;
+                for (unsigned int nStr = 2; nStr < vstr.size(); nStr++) {
+                    if (vstr[nStr].front() == '#')
+                        break;
+                    if (vstr[nStr] == "change=1")
+                        fLabel = false;
+                    if (vstr[nStr] == "reserve=1")
+                        fLabel = false;
+                    if (vstr[nStr].substr(0,6) == "label=") {
+                        strLabel = DecodeDumpString(vstr[nStr].substr(6));
+                        fLabel = true;
+                    }
+                }
+                nTimeBegin = std::min(nTimeBegin, nTime);
+                dilithium_keys.emplace_back(dilithium_key, nTime, fLabel, strLabel);
             } else if(IsHex(vstr[0])) {
                 std::vector<unsigned char> vData(ParseHex(vstr[0]));
                 CScript script = CScript(vData.begin(), vData.end());
@@ -613,11 +651,11 @@ RPCHelpMan importwallet()
         file.close();
         EnsureBlockDataFromTime(*pwallet, nTimeBegin);
         // We now know whether we are importing private keys, so we can error if private keys are disabled
-        if (keys.size() > 0 && pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+        if ((!keys.empty() || !dilithium_keys.empty()) && pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
             pwallet->chain().showProgress("", 100, false); // hide progress dialog in GUI
             throw JSONRPCError(RPC_WALLET_ERROR, "Importing wallets is disabled when private keys are disabled");
         }
-        double total = (double)(keys.size() + scripts.size());
+        double total = (double)(keys.size() + dilithium_keys.size() + scripts.size());
         double progress = 0;
         for (const auto& key_tuple : keys) {
             pwallet->chain().showProgress("", std::max(50, std::min(75, (int)((progress / total) * 100) + 50)), false);
@@ -640,6 +678,34 @@ RPCHelpMan importwallet()
 
             if (has_label)
                 pwallet->SetAddressBook(PKHash(keyid), label, AddressPurpose::RECEIVE);
+            progress++;
+        }
+        LegacyScriptPubKeyMan* spk_man = pwallet->GetLegacyScriptPubKeyMan();
+        for (const auto& key_tuple : dilithium_keys) {
+            pwallet->chain().showProgress("", std::max(50, std::min(75, (int)((progress / total) * 100) + 50)), false);
+            const CDilithiumKey& key = std::get<0>(key_tuple);
+            int64_t time = std::get<1>(key_tuple);
+            bool has_label = std::get<2>(key_tuple);
+            std::string label = std::get<3>(key_tuple);
+
+            const CDilithiumPubKey pubkey = key.GetPubKey();
+            const CKeyID keyid{pubkey.GetID()};
+
+            pwallet->WalletLogPrintf("Importing %s...\n", EncodeDestination(DilithiumPKHash(keyid)));
+
+            {
+                LOCK(spk_man->cs_KeyStore);
+                spk_man->mapKeyMetadata[keyid].nCreateTime = time;
+            }
+            if (!spk_man->AddDilithiumKeyPubKey(key, CPubKey(pubkey.begin(), pubkey.end()))) {
+                pwallet->WalletLogPrintf("Error importing Dilithium key for %s\n", EncodeDestination(DilithiumPKHash(keyid)));
+                fGood = false;
+                continue;
+            }
+
+            if (has_label) {
+                pwallet->SetAddressBook(DilithiumPKHash(keyid), label, AddressPurpose::RECEIVE);
+            }
             progress++;
         }
         for (const auto& script_pair : scripts) {
@@ -846,6 +912,19 @@ RPCHelpMan dumpwallet()
                 file << "change=1";
             }
             file << strprintf(" # addr=%s%s\n", strAddr, (metadata.has_key_origin ? " hdkeypath="+WriteHDKeypath(metadata.key_origin.path, /*apostrophe=*/true) : ""));
+        } else if (CDilithiumKey dilithium_key; spk_man.GetDilithiumKey(keyid, dilithium_key)) {
+            CKeyMetadata metadata;
+            const auto it{spk_man.mapKeyMetadata.find(keyid)};
+            if (it != spk_man.mapKeyMetadata.end()) metadata = it->second;
+            file << strprintf("%s %s ", EncodeDilithiumSecret(dilithium_key), strTime);
+            if (GetWalletAddressForDilithiumKey(wallet, keyid, strAddr, strLabel)) {
+                file << strprintf("label=%s", strLabel);
+            } else if (metadata.hdKeypath == "s") {
+                file << "inactivehdseed=1";
+            } else {
+                file << "change=1";
+            }
+            file << strprintf(" # addr=%s%s\n", strAddr, (metadata.has_key_origin ? " hdkeypath="+WriteHDKeypath(metadata.key_origin.path, /*apostrophe=*/true) : ""));
         }
     }
     file << "\n";
@@ -965,6 +1044,7 @@ static std::string RecurseImportData(const CScript& script, ImportData& import_d
     case TxoutType::NONSTANDARD:
     case TxoutType::WITNESS_UNKNOWN:
     case TxoutType::WITNESS_V1_TAPROOT:
+    case TxoutType::WITNESS_V2_P2MR:
         return "unrecognized script";
     } // no default case, so the compiler can warn about missing cases
     NONFATAL_UNREACHABLE();

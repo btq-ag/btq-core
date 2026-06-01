@@ -72,6 +72,20 @@ class P2MRRPCTest(BTQTestFramework):
         tx = wallet.gettransaction(txid, True)
         assert tx["confirmations"] > 0
 
+        self.log.info("Do not mark a single-leaf P2MR script complete without required witness data")
+        needs_stack_tree = [{
+            "depth": 0,
+            "leaf_version": LEAF_VERSION_TAPSCRIPT,
+            "script": "7551",  # OP_DROP OP_TRUE
+        }]
+        needs_stack = wallet.sendtop2mr(needs_stack_tree, Decimal("0.1"), "rpc-p2mr-needs-stack")
+        self.generate(node, 1)
+        needs_stack_spend = wallet.createp2mrspend(needs_stack["p2mr_id"], destination, Decimal("0.05"))
+        incomplete = wallet.signp2mrtransaction(needs_stack_spend["hex"], needs_stack["p2mr_id"])
+        assert_equal(incomplete["complete"], False)
+        rejected = wallet.testp2mrtransaction(incomplete["hex"])
+        assert_equal(rejected[0]["allowed"], False)
+
 
 if __name__ == "__main__":
     P2MRRPCTest().main()

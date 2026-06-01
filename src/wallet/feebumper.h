@@ -6,8 +6,10 @@
 #define BTQ_WALLET_FEEBUMPER_H
 
 #include <consensus/consensus.h>
-#include <script/interpreter.h>
+#include <crypto/dilithium_key.h>
 #include <primitives/transaction.h>
+#include <pubkey.h>
+#include <script/interpreter.h>
 
 class uint256;
 enum class FeeEstimateMode;
@@ -75,31 +77,31 @@ Result CommitTransaction(CWallet& wallet,
 struct SignatureWeights
 {
 private:
-    int m_sigs_count{0};
+    int64_t m_max_sigs_weight{0};
     int64_t m_sigs_weight{0};
 
 public:
-    void AddSigWeight(const size_t weight, const SigVersion sigversion)
+    void AddSigWeight(const size_t weight, const SigVersion sigversion, const size_t max_weight = CPubKey::SIGNATURE_SIZE)
     {
+        int64_t scale{0};
         switch (sigversion) {
         case SigVersion::BASE:
-            m_sigs_weight += weight * WITNESS_SCALE_FACTOR;
-            m_sigs_count += 1 * WITNESS_SCALE_FACTOR;
+            scale = WITNESS_SCALE_FACTOR;
             break;
         case SigVersion::WITNESS_V0:
-            m_sigs_weight += weight;
-            m_sigs_count++;
-            break;
         case SigVersion::TAPROOT:
         case SigVersion::TAPSCRIPT:
-            assert(false);
+        case SigVersion::P2MR_TAPSCRIPT:
+            scale = 1;
+            break;
         }
+        m_sigs_weight += weight * scale;
+        m_max_sigs_weight += max_weight * scale;
     }
 
     int64_t GetWeightDiffToMax() const
     {
-        // Note: the witness scaling factor is already accounted for because the count is multiplied by it.
-        return (/* max signature size=*/ 72 * m_sigs_count) - m_sigs_weight;
+        return m_max_sigs_weight - m_sigs_weight;
     }
 };
 
@@ -115,6 +117,24 @@ public:
     {
         if (m_checker.CheckECDSASignature(sig, pubkey, script, sigversion)) {
             m_weights.AddSigWeight(sig.size(), sigversion);
+            return true;
+        }
+        return false;
+    }
+
+    bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override
+    {
+        if (m_checker.CheckSchnorrSignature(sig, pubkey, sigversion, execdata, serror)) {
+            m_weights.AddSigWeight(sig.size(), sigversion, /* max_weight=*/65);
+            return true;
+        }
+        return false;
+    }
+
+    bool CheckDilithiumSignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& pubkey, const CScript& script, SigVersion sigversion) const override
+    {
+        if (m_checker.CheckDilithiumSignature(sig, pubkey, script, sigversion)) {
+            m_weights.AddSigWeight(sig.size(), sigversion, DilithiumConstants::SIGNATURE_SIZE + 1);
             return true;
         }
         return false;

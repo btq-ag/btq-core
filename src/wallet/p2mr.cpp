@@ -7,6 +7,7 @@
 #include <core_io.h>
 #include <interfaces/chain.h>
 #include <key_io.h>
+#include <policy/policy.h>
 #include <rpc/protocol.h>
 #include <rpc/request.h>
 #include <rpc/util.h>
@@ -453,10 +454,8 @@ util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
             continue;
         }
 
-        // Fallback: if the builder produced exactly one tapscript leaf with control
-        // block, finalize directly. This mirrors the previous RPC behavior so the
-        // OP_TRUE template (and any single-leaf script) signs cleanly without a
-        // SignatureChecker round-trip.
+        // Fallback for no-argument scripts such as OP_TRUE. Only report completion
+        // after verifying the assembled witness against the actual transaction.
         bool fallback_ok = false;
         if (!solutions.empty() && solutions[0].size() == WitnessV2P2MR::SIZE) {
             const WitnessV2P2MR p2mr_output{solutions[0]};
@@ -469,7 +468,18 @@ util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
                     out.tx.vin[i].scriptWitness.stack.clear();
                     out.tx.vin[i].scriptWitness.stack.emplace_back(script.begin(), script.end());
                     out.tx.vin[i].scriptWitness.stack.push_back(*control_blocks.begin());
-                    fallback_ok = true;
+                    std::vector<CTxOut> spent_outputs;
+                    spent_outputs.reserve(out.tx.vin.size());
+                    for (const CTxIn& txin : out.tx.vin) {
+                        const auto coin_it = coins.find(txin.prevout);
+                        spent_outputs.push_back(coin_it != coins.end() && !coin_it->second.IsSpent() ? coin_it->second.out : CTxOut{});
+                    }
+                    PrecomputedTransactionData txdata;
+                    txdata.Init(out.tx, std::move(spent_outputs), /*force=*/true);
+                    const CTransaction tx_const{out.tx};
+                    TransactionSignatureChecker checker(&tx_const, i, it->second.out.nValue, txdata, MissingDataBehavior::FAIL);
+                    fallback_ok = VerifyScript(out.tx.vin[i].scriptSig, it->second.out.scriptPubKey, &out.tx.vin[i].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker);
+                    if (!fallback_ok) out.tx.vin[i].scriptWitness.stack.clear();
                 }
             }
         }

@@ -13,6 +13,7 @@ from test_framework.blocktools import (
     create_tx_with_script,
     get_legacy_sigopcount_block,
     MAX_BLOCK_SIGOPS,
+    MAX_FUTURE_BLOCK_TIME,
 )
 from test_framework.messages import (
     CBlock,
@@ -23,6 +24,7 @@ from test_framework.messages import (
     CTxOut,
     MAX_BLOCK_WEIGHT,
     SEQUENCE_FINAL,
+    WITNESS_SCALE_FACTOR,
     uint256_from_compact,
     uint256_from_str,
 )
@@ -55,6 +57,9 @@ from test_framework.util import (
 )
 from test_framework.wallet_util import generate_keypair
 from data import invalid_txs
+
+
+BLOCK_FILL_TX_OVERHEAD_BYTES = 69
 
 
 #  Use this class for tests that require behavior other than normal p2p behavior.
@@ -321,7 +326,7 @@ class FullBlockTest(BTQTestFramework):
         self.move_tip(15)
         b23 = self.next_block(23, spend=out[6])
         tx = CTransaction()
-        script_length = (MAX_BLOCK_WEIGHT - b23.get_weight() - 276) // 4
+        script_length = (MAX_BLOCK_WEIGHT - b23.get_weight()) // WITNESS_SCALE_FACTOR - BLOCK_FILL_TX_OVERHEAD_BYTES
         script_output = CScript([b'\x00' * script_length])
         tx.vout.append(CTxOut(0, script_output))
         tx.vin.append(CTxIn(COutPoint(b23.vtx[1].sha256, 0)))
@@ -331,14 +336,14 @@ class FullBlockTest(BTQTestFramework):
         self.send_blocks([b23], True)
         self.save_spendable_output()
 
-        self.log.info("Reject a block of weight MAX_BLOCK_WEIGHT + 4")
+        self.log.info("Reject a block of weight MAX_BLOCK_WEIGHT + WITNESS_SCALE_FACTOR")
         self.move_tip(15)
         b24 = self.next_block(24, spend=out[6])
-        script_length = (MAX_BLOCK_WEIGHT - b24.get_weight() - 276) // 4
+        script_length = (MAX_BLOCK_WEIGHT - b24.get_weight()) // WITNESS_SCALE_FACTOR - BLOCK_FILL_TX_OVERHEAD_BYTES
         script_output = CScript([b'\x00' * (script_length + 1)])
         tx.vout = [CTxOut(0, script_output)]
         b24 = self.update_block(24, [tx])
-        assert_equal(b24.get_weight(), MAX_BLOCK_WEIGHT + 1 * 4)
+        assert_equal(b24.get_weight(), MAX_BLOCK_WEIGHT + WITNESS_SCALE_FACTOR)
         self.send_blocks([b24], success=False, reject_reason='bad-blk-length', reconnect=True)
 
         b25 = self.next_block(25, spend=out[7])
@@ -641,10 +646,10 @@ class FullBlockTest(BTQTestFramework):
             b47.rehash()
         self.send_blocks([b47], False, force_send=True, reject_reason='high-hash', reconnect=True)
 
-        self.log.info("Reject a block with a timestamp >2 hours in the future")
+        self.log.info("Reject a block with a timestamp too far in the future")
         self.move_tip(44)
         b48 = self.next_block(48)
-        b48.nTime = int(time.time()) + 60 * 60 * 3
+        b48.nTime = int(time.time()) + MAX_FUTURE_BLOCK_TIME + 1
         # Header timestamp has changed. Re-solve the block.
         b48.solve()
         self.send_blocks([b48], False, force_send=True, reject_reason='time-too-new')
@@ -701,14 +706,14 @@ class FullBlockTest(BTQTestFramework):
         self.send_blocks([b55], True)
         self.save_spendable_output()
 
-        # The block which was previously rejected because of being "too far(3 hours)" must be accepted 2 hours later.
-        # The new block is only 1 hour into future now and we must reorg onto to the new longer chain.
+        # The block which was previously rejected for being too far in the future
+        # must be accepted once mocktime advances inside BTQ's future-time window.
         # The new bestblock b48p is invalidated manually.
         #  -> b31 (8) -> b33 (9) -> b35 (10) -> b39 (11) -> b42 (12) -> b43 (13) -> b53 (14) -> b55 (15)
         #                                                                                   \-> b54 (15)
         #                                                                        -> b44 (14)\-> b48 () -> b48p ()
         self.log.info("Accept a previously rejected future block at a later time")
-        node.setmocktime(int(time.time()) + 2*60*60)
+        node.setmocktime(b48.nTime)
         self.move_tip(48)
         self.block_heights[b48.sha256] = self.block_heights[b44.sha256] + 1 # b48 is a parent of b44
         b48p = self.next_block("48p")
@@ -919,12 +924,14 @@ class FullBlockTest(BTQTestFramework):
         tx = CTransaction()
 
         # use canonical serialization to calculate size
-        script_length = (MAX_BLOCK_WEIGHT - 4 * len(b64a.normal_serialize()) - 276) // 4
+        script_length = (
+            MAX_BLOCK_WEIGHT - WITNESS_SCALE_FACTOR * len(b64a.normal_serialize())
+        ) // WITNESS_SCALE_FACTOR - BLOCK_FILL_TX_OVERHEAD_BYTES
         script_output = CScript([b'\x00' * script_length])
         tx.vout.append(CTxOut(0, script_output))
         tx.vin.append(CTxIn(COutPoint(b64a.vtx[1].sha256, 0)))
         b64a = self.update_block("64a", [tx])
-        assert_equal(b64a.get_weight(), MAX_BLOCK_WEIGHT + 8 * 4)
+        assert_equal(b64a.get_weight(), MAX_BLOCK_WEIGHT + 8 * WITNESS_SCALE_FACTOR)
         self.send_blocks([b64a], success=False, reject_reason='non-canonical ReadCompactSize()')
 
         # btqd doesn't disconnect us for sending a bloated block, but if we subsequently
@@ -1159,18 +1166,18 @@ class FullBlockTest(BTQTestFramework):
         self.log.info("Test transaction resurrection during a re-org")
         self.move_tip(76)
         self.next_block(77)
-        tx77 = self.create_and_sign_transaction(out[24], 10 * COIN)
+        tx77 = self.create_and_sign_transaction(out[24], 4 * COIN)
         b77 = self.update_block(77, [tx77])
         self.send_blocks([b77], True)
         self.save_spendable_output()
 
         self.next_block(78)
-        tx78 = self.create_tx(tx77, 0, 9 * COIN)
+        tx78 = self.create_tx(tx77, 0, 3 * COIN)
         b78 = self.update_block(78, [tx78])
         self.send_blocks([b78], True)
 
         self.next_block(79)
-        tx79 = self.create_tx(tx78, 0, 8 * COIN)
+        tx79 = self.create_tx(tx78, 0, 2 * COIN)
         b79 = self.update_block(79, [tx79])
         self.send_blocks([b79], True)
 
@@ -1272,7 +1279,7 @@ class FullBlockTest(BTQTestFramework):
         for i in range(89, LARGE_REORG_SIZE + 89):
             b = self.next_block(i, spend)
             tx = CTransaction()
-            script_length = (MAX_BLOCK_WEIGHT - b.get_weight() - 276) // 4
+            script_length = (MAX_BLOCK_WEIGHT - b.get_weight()) // WITNESS_SCALE_FACTOR - BLOCK_FILL_TX_OVERHEAD_BYTES
             script_output = CScript([b'\x00' * script_length])
             tx.vout.append(CTxOut(0, script_output))
             tx.vin.append(CTxIn(COutPoint(b.vtx[1].sha256, 0)))
@@ -1282,6 +1289,7 @@ class FullBlockTest(BTQTestFramework):
             self.save_spendable_output()
             spend = self.get_spendable_output()
 
+        node.setmocktime(blocks[-1].nTime)
         self.send_blocks(blocks, True, timeout=2440)
         chain1_tip = i
 
@@ -1290,17 +1298,21 @@ class FullBlockTest(BTQTestFramework):
         blocks2 = []
         for i in range(89, LARGE_REORG_SIZE + 89):
             blocks2.append(self.next_block("alt" + str(i)))
+        node.setmocktime(blocks2[-1].nTime)
         self.send_blocks(blocks2, False, force_send=False)
 
         # extend alt chain to trigger re-org
         block = self.next_block("alt" + str(chain1_tip + 1))
+        node.setmocktime(block.nTime)
         self.send_blocks([block], True, timeout=2440)
 
         # ... and re-org back to the first chain
         self.move_tip(chain1_tip)
         block = self.next_block(chain1_tip + 1)
+        node.setmocktime(max(block.nTime, blocks2[-1].nTime))
         self.send_blocks([block], False, force_send=True)
         block = self.next_block(chain1_tip + 2)
+        node.setmocktime(max(block.nTime, blocks2[-1].nTime))
         self.send_blocks([block], True, timeout=2440)
 
         self.log.info("Reject a block with an invalid block header version")
@@ -1314,6 +1326,7 @@ class FullBlockTest(BTQTestFramework):
         b_cb34.hashMerkleRoot = b_cb34.calc_merkle_root()
         b_cb34.solve()
         self.send_blocks([b_cb34], success=False, reject_reason='bad-cb-height', reconnect=True)
+        node.setmocktime(0)
 
     # Helper methods
     ################

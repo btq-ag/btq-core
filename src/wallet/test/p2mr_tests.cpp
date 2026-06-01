@@ -3,8 +3,17 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <test/util/setup_common.h>
+#include <addresstype.h>
+#include <key.h>
+#include <policy/policy.h>
+#include <primitives/transaction.h>
+#include <script/interpreter.h>
+#include <script/script.h>
+#include <script/sign.h>
+#include <script/signingprovider.h>
 #include <univalue.h>
 #include <util/strencodings.h>
+#include <util/vector.h>
 #include <wallet/p2mr.h>
 #include <wallet/test/util.h>
 #include <wallet/wallet.h>
@@ -238,6 +247,59 @@ BOOST_FIXTURE_TEST_CASE(tracked_balance_deduplicates_legacy_duplicate_metadata, 
     BOOST_CHECK_EQUAL(GetP2MREntryBalance(*wallet, *duplicate_entry, /*min_depth=*/0), amount);
 
     BOOST_CHECK_EQUAL(GetTrackedP2MRBalance(*wallet, /*min_depth=*/0), amount);
+}
+
+BOOST_FIXTURE_TEST_CASE(produce_signature_preserves_p2mr_witness_stack, BasicTestingSetup)
+{
+    CKey key;
+    key.MakeNewKey(/*fCompressedIn=*/true);
+    const CPubKey pubkey = key.GetPubKey();
+    const XOnlyPubKey xonly_pubkey{pubkey};
+
+    const CScript leaf_script = CScript() << ToByteVector(xonly_pubkey) << OP_CHECKSIG;
+    const std::vector<unsigned char> leaf_bytes{leaf_script.begin(), leaf_script.end()};
+
+    P2MRBuilder builder;
+    builder.Add(/*depth=*/0, leaf_bytes, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+    BOOST_REQUIRE(builder.IsValid());
+    BOOST_REQUIRE(builder.IsComplete());
+
+    const WitnessV2P2MR output = builder.GetOutput();
+    const CScript script_pubkey = GetScriptForDestination(output);
+    const CAmount amount = COIN;
+
+    FlatSigningProvider provider;
+    provider.keys.emplace(pubkey.GetID(), key);
+    provider.pubkeys.emplace(pubkey.GetID(), pubkey);
+    provider.p2mr_trees.emplace(output, builder);
+
+    CMutableTransaction tx_to;
+    tx_to.nVersion = 2;
+    tx_to.vin.emplace_back(COutPoint(uint256::ONE, 0));
+    tx_to.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.emplace_back(amount, script_pubkey);
+    PrecomputedTransactionData txdata;
+    txdata.Init(tx_to, std::move(spent_outputs), /*force=*/true);
+
+    SignatureData sigdata;
+    MutableTransactionSignatureCreator creator(tx_to, /*input_idx=*/0, amount, &txdata, SIGHASH_DEFAULT);
+    BOOST_REQUIRE(ProduceSignature(provider, creator, script_pubkey, sigdata));
+    BOOST_CHECK(sigdata.complete);
+    BOOST_CHECK(sigdata.witness);
+    BOOST_REQUIRE_EQUAL(sigdata.scriptWitness.stack.size(), 3U);
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[0].size(), 64U);
+    BOOST_CHECK_EQUAL(HexStr(sigdata.scriptWitness.stack[1]), HexStr(leaf_script));
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[2].size(), P2MR_CONTROL_BASE_SIZE);
+
+    UpdateInput(tx_to.vin[0], sigdata);
+    const CTransaction signed_tx{tx_to};
+    TransactionSignatureChecker checker(&signed_tx, /*nInIn=*/0, amount, txdata, MissingDataBehavior::FAIL);
+    ScriptError serror{SCRIPT_ERR_OK};
+    BOOST_CHECK_MESSAGE(
+        VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
+        ScriptErrorString(serror));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

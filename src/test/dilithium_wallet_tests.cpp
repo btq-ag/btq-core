@@ -11,6 +11,7 @@
 #include <uint256.h>
 #include <util/strencodings.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <vector>
@@ -22,6 +23,7 @@ extern "C" {
 }
 
 using wallet::CKeyingMaterial;
+using wallet::DeriveDilithiumKeyIV;
 using wallet::EncryptDilithiumSecret;
 using wallet::DecryptDilithiumSecret;
 using wallet::DecryptDilithiumKey;
@@ -99,9 +101,9 @@ BOOST_AUTO_TEST_CASE(dilithium_key_encryption)
         master_key[i] = i;
     }
 
-    // Production path encrypts with uint256(keyID) as IV; decrypt must match.
+    // Production path derives a 32-byte IV from the 20-byte key id; decrypt must match.
     const CKeyID key_id = CKeyID(key.GetPubKey().GetID());
-    const uint256 iv{uint256(key_id)};
+    const uint256 iv{DeriveDilithiumKeyIV(key_id)};
 
     std::vector<unsigned char> encrypted_secret;
     CKeyingMaterial secret(key.begin(), key.end());
@@ -117,6 +119,30 @@ BOOST_AUTO_TEST_CASE(dilithium_key_encryption)
     CDilithiumKey decrypted_key;
     BOOST_CHECK(DecryptDilithiumKey(master_key, encrypted_secret, key_id, decrypted_key));
     BOOST_CHECK(decrypted_key.IsValid());
+    BOOST_CHECK(decrypted_key == key);
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_key_decryption_accepts_legacy_keyid_iv)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+
+    CKeyingMaterial master_key(32, 0);
+    for (int i = 0; i < 32; i++) {
+        master_key[i] = 0xff - i;
+    }
+
+    const CKeyID key_id = CKeyID(key.GetPubKey().GetID());
+    uint256 legacy_iv;
+    std::copy(key_id.begin(), key_id.end(), legacy_iv.begin());
+
+    std::vector<unsigned char> encrypted_secret;
+    CKeyingMaterial secret(key.begin(), key.end());
+    BOOST_REQUIRE(EncryptDilithiumSecret(master_key, secret, legacy_iv, encrypted_secret));
+
+    CDilithiumKey decrypted_key;
+    BOOST_CHECK(DecryptDilithiumKey(master_key, encrypted_secret, key_id, decrypted_key));
     BOOST_CHECK(decrypted_key == key);
 }
 

@@ -7,7 +7,7 @@
 from decimal import Decimal
 
 from test_framework.test_framework import BTQTestFramework
-from test_framework.util import assert_equal
+from test_framework.util import assert_equal, assert_raises_rpc_error
 
 
 class WalletDilithiumSendTest(BTQTestFramework):
@@ -31,8 +31,24 @@ class WalletDilithiumSendTest(BTQTestFramework):
         node.createwallet(wallet_name="repro", descriptors=True)
         repro = node.get_wallet_rpc("repro")
 
-        self.log.info("Fund repro wallet with confirmed Dilithium and bech32m UTXOs")
+        self.log.info("Descriptor Dilithium keys remain usable after wallet encryption")
         dilithium_address = repro.getnewdilithiumaddress()
+        msg = "descriptor encrypted dilithium signing"
+        sig = repro.signmessagewithdilithium(dilithium_address, msg)
+        assert repro.verifydilithiumsignature(msg, dilithium_address, sig)
+        repro.encryptwallet("pass")
+        assert_raises_rpc_error(
+            -13,
+            "Please enter the wallet passphrase with walletpassphrase first",
+            repro.signmessagewithdilithium,
+            dilithium_address,
+            msg,
+        )
+        repro.walletpassphrase("pass", 100000)
+        sig = repro.signmessagewithdilithium(dilithium_address, msg)
+        assert repro.verifydilithiumsignature(msg, dilithium_address, sig)
+
+        self.log.info("Fund repro wallet with confirmed Dilithium and bech32m UTXOs")
         taproot_address = repro.getnewaddress(address_type="bech32m")
         funding.sendtoaddress(dilithium_address, Decimal("10"))
         funding.sendtoaddress(taproot_address, Decimal("10"))

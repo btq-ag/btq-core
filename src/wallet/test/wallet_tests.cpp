@@ -32,10 +32,13 @@
 #include <boost/test/unit_test.hpp>
 #include <univalue.h>
 
+#include <fstream>
+
 using node::MAX_BLOCKFILE_SIZE;
 
 namespace wallet {
 RPCHelpMan importmulti();
+RPCHelpMan importprivkey();
 RPCHelpMan dumpwallet();
 RPCHelpMan importwallet();
 
@@ -328,6 +331,124 @@ BOOST_FIXTURE_TEST_CASE(importwallet_rescan, TestChain100Setup)
             BOOST_CHECK_EQUAL(found, expected);
         }
     }
+}
+
+BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, WalletTestingSetup)
+{
+    const int64_t key_time = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip()->GetBlockTimeMax());
+    const fs::path backup_file_path = m_args.GetDataDirNet() / "dilithium-wallet.backup";
+    const std::string backup_file = fs::PathToString(backup_file_path);
+
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    const CDilithiumPubKey pubkey = key.GetPubKey();
+    const CKeyID keyid{pubkey.GetID()};
+    const CTxDestination destination{DilithiumPKHash(keyid)};
+
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        auto spk_man = wallet->GetOrCreateLegacyScriptPubKeyMan();
+        {
+            LOCK2(wallet->cs_wallet, spk_man->cs_KeyStore);
+            spk_man->mapKeyMetadata[keyid].nCreateTime = key_time;
+            BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(key, CPubKey(pubkey.begin(), pubkey.end())));
+            BOOST_REQUIRE(wallet->SetAddressBook(destination, "dilithium backup", AddressPurpose::RECEIVE));
+            AddWallet(context, wallet);
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+        }
+
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+
+        wallet::dumpwallet().HandleRequest(request);
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+    }
+
+    {
+        std::ifstream dump_file{backup_file_path};
+        BOOST_REQUIRE(dump_file.is_open());
+        const std::string dump_contents{std::istreambuf_iterator<char>{dump_file}, std::istreambuf_iterator<char>{}};
+        BOOST_CHECK(dump_contents.find(EncodeDilithiumSecret(key)) != std::string::npos);
+        BOOST_CHECK(dump_contents.find("label=dilithium") != std::string::npos);
+        BOOST_CHECK(dump_contents.find(EncodeDestination(destination)) != std::string::npos);
+    }
+
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->SetupLegacyScriptPubKeyMan();
+
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+        AddWallet(context, wallet);
+        {
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            LOCK(wallet->cs_wallet);
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+        }
+
+        wallet::importwallet().HandleRequest(request);
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+
+        CDilithiumKey recovered;
+        LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+        BOOST_REQUIRE(spk_man);
+        BOOST_REQUIRE(spk_man->GetDilithiumKey(keyid, recovered));
+        BOOST_CHECK(recovered == key);
+        const auto* address_book_entry = wallet->FindAddressBookEntry(destination);
+        BOOST_REQUIRE(address_book_entry);
+        BOOST_CHECK_EQUAL(address_book_entry->GetLabel(), "dilithium backup");
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(importprivkey_stores_dilithium_key_by_dilithium_id, WalletTestingSetup)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    const CDilithiumPubKey pubkey = key.GetPubKey();
+    const CKeyID keyid{pubkey.GetID()};
+    const CTxDestination destination{DilithiumPKHash(keyid)};
+
+    WalletContext context;
+    context.args = &m_args;
+    const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet->SetupLegacyScriptPubKeyMan();
+    AddWallet(context, wallet);
+
+    JSONRPCRequest request;
+    request.context = &context;
+    request.params.setArray();
+    request.params.push_back(EncodeDilithiumSecret(key));
+    request.params.push_back("direct dilithium import");
+    request.params.push_back(false);
+    wallet::importprivkey().HandleRequest(request);
+
+    CDilithiumKey recovered;
+    LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+    BOOST_REQUIRE(spk_man);
+    BOOST_REQUIRE(spk_man->GetDilithiumKey(keyid, recovered));
+    BOOST_CHECK(recovered == key);
+
+    std::string label;
+    {
+        LOCK(wallet->cs_wallet);
+        const auto* address_book_entry = wallet->FindAddressBookEntry(destination);
+        BOOST_REQUIRE(address_book_entry);
+        label = address_book_entry->GetLabel();
+    }
+    BOOST_CHECK_EQUAL(label, "direct dilithium import");
+
+    RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
 }
 
 // Check that GetImmatureCredit() returns a newly calculated value instead of

@@ -112,7 +112,7 @@ bool static IsValidDilithiumPubKey(const valtype &vchPubKey) {
  */
 static bool EvalChecksigDilithium(const valtype& sig, const valtype& pubkey, CScript::const_iterator pbegincodehash, CScript::const_iterator pend, ScriptExecutionData& execdata, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptError* serror, bool& success)
 {
-    if (!sig.empty() && sig.size() != BTQ_DILITHIUM_SIGNATURE_SIZE) {
+    if (!sig.empty() && sig.size() != BTQ_DILITHIUM_SIGNATURE_SIZE + 1) {
         return set_error(serror, SCRIPT_ERR_SIG_DER);
     }
 

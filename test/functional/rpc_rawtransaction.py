@@ -90,6 +90,7 @@ class RawTransactionsTest(BTQTestFramework):
         self.sendrawtransaction_tests()
         self.sendrawtransaction_testmempoolaccept_tests()
         self.decoderawtransaction_tests()
+        self.decodescript_p2mr_tests()
         self.transaction_version_number_tests()
         if self.is_specified_wallet_compiled() and not self.options.descriptors:
             self.import_deterministic_coinbase_privkeys()
@@ -360,7 +361,7 @@ class RawTransactionsTest(BTQTestFramework):
         tx_val = 0.001
         tx.vout = [CTxOut(int(Decimal(tx_val) * COIN), CScript([OP_FALSE] * 10001))]
         tx_hex = tx.serialize().hex()
-        assert_raises_rpc_error(-25, max_burn_exceeded, self.nodes[2].sendrawtransaction, tx_hex)
+        assert_raises_rpc_error(-26, "scriptpubkey", self.nodes[2].sendrawtransaction, tx_hex)
 
         # Test that script containing invalid opcode gets rejected by sendrawtransaction
         tx = self.wallet.create_self_transfer()['tx']
@@ -450,6 +451,14 @@ class RawTransactionsTest(BTQTestFramework):
         assert_raises_rpc_error(-22, 'TX decode failed', self.nodes[0].decoderawtransaction, encrawtx, False)  # fails to decode as non-witness transaction
         assert_equal(decrawtx, decrawtx_wit)  # the witness interpretation should be chosen
         assert_equal(decrawtx['vin'][0]['coinbase'], coinbase)
+
+    def decodescript_p2mr_tests(self):
+        self.log.info("Test decodescript does not offer legacy wrappers for P2MR witness programs")
+        decoded = self.nodes[0].decodescript("5220" + "11" * 32)
+        assert_equal(decoded["type"], "witness_v2_p2mr")
+        assert "address" in decoded
+        assert "p2sh" not in decoded
+        assert "segwit" not in decoded
 
     def transaction_version_number_tests(self):
         self.log.info("Test transaction version numbers")
