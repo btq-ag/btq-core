@@ -72,6 +72,21 @@ BOOST_AUTO_TEST_CASE(dilithium_signing_and_verification)
     }
 }
 
+BOOST_AUTO_TEST_CASE(dilithium_signatures_are_deterministic)
+{
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    BOOST_REQUIRE(key.IsValid());
+
+    const uint256 hash = uint256::ONE;
+    std::vector<unsigned char> sig_a;
+    std::vector<unsigned char> sig_b;
+    BOOST_REQUIRE(key.Sign(hash, sig_a));
+    BOOST_REQUIRE(key.Sign(hash, sig_b));
+    BOOST_CHECK(sig_a == sig_b);
+    BOOST_CHECK(!sig_a.empty());
+}
+
 BOOST_AUTO_TEST_CASE(dilithium_message_signing)
 {
     CDilithiumKey key;

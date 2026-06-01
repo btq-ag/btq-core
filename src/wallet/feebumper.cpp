@@ -7,6 +7,7 @@
 #include <interfaces/chain.h>
 #include <policy/fees.h>
 #include <policy/policy.h>
+#include <script/interpreter.h>
 #include <util/moneystr.h>
 #include <util/rbf.h>
 #include <util/translation.h>
@@ -229,7 +230,10 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
             SignatureWeights weights;
             TransactionSignatureChecker tx_checker(wtx.tx.get(), i, coin.out.nValue, txdata, MissingDataBehavior::FAIL);
             SignatureWeightChecker size_checker(weights, tx_checker);
-            VerifyScript(txin.scriptSig, coin.out.scriptPubKey, &txin.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, size_checker);
+            // Dilithium is consensus-active from height 1 on all networks; include the
+            // flag so P2DWPKH external inputs get accurate max witness weight estimates.
+            const unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DILITHIUM;
+            VerifyScript(txin.scriptSig, coin.out.scriptPubKey, &txin.scriptWitness, script_verify_flags, size_checker);
             // Add the difference between max and current to input_weight so that it represents the largest the input could be
             input_weight += weights.GetWeightDiffToMax();
             new_coin_control.SetInputWeight(txin.prevout, input_weight);

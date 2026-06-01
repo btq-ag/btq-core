@@ -398,6 +398,8 @@ RPCHelpMan signmessagewithdilithium()
 
             LOCK(wallet->cs_wallet);
 
+            EnsureWalletIsUnlocked(*wallet);
+
             std::string strAddress = request.params[0].get_str();
             std::string strMessage = request.params[1].get_str();
 

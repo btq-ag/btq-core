@@ -1032,7 +1032,12 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
     const CTransaction& tx = *ws.m_ptx;
     TxValidationState& state = ws.m_state;
 
-    constexpr unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if (const CBlockIndex* tip = m_active_chainstate.m_chain.Tip()) {
+        if (DeploymentActiveAt(*tip, m_active_chainstate.m_chainman, Consensus::DEPLOYMENT_DILITHIUM)) {
+            scriptVerifyFlags |= SCRIPT_VERIFY_DILITHIUM;
+        }
+    }
 
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
@@ -2116,7 +2121,7 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     }
     
     // BTQ: Enable Dilithium signature validation after activation height
-    if (block_index.nHeight >= consensusparams.nDilithiumHeight) {
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DILITHIUM)) {
         flags |= SCRIPT_VERIFY_DILITHIUM;
     }
 

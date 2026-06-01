@@ -12,6 +12,14 @@
 #include <vector>
 
 namespace wallet {
+uint256 KeyIDToIV(const CKeyID& id)
+{
+    uint256 iv;
+    iv.SetNull();
+    memcpy(iv.begin(), id.begin(), id.size());
+    return iv;
+}
+
 int CCrypter::BytesToKeySHA512AES(const std::vector<unsigned char>& chSalt, const SecureString& strKeyData, int count, unsigned char *key,unsigned char *iv) const
 {
     // This mimics the behavior of openssl's EVP_BytesToKey with an aes256cbc
@@ -163,7 +171,7 @@ bool DecryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const std::vector
 bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyID& keyid, CDilithiumKey& key)
 {
     CKeyingMaterial vchSecret;
-    if(!DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, uint256(keyid), vchSecret))
+    if(!DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, KeyIDToIV(keyid), vchSecret))
         return false;
 
     // Dilithium keys are much larger than ECDSA keys
@@ -171,6 +179,9 @@ bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<un
         return false;
 
     key.Set(vchSecret.begin(), vchSecret.end());
-    return key.IsValid();
+    if (!key.IsValid()) {
+        return false;
+    }
+    return CKeyID(key.GetPubKey().GetID()) == keyid;
 }
 } // namespace wallet

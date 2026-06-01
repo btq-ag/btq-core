@@ -3499,7 +3499,9 @@ std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& scri
 {
     for (const auto& spk_man_pair : m_spk_managers) {
         if (spk_man_pair.second->CanProvide(script, sigdata)) {
-            return spk_man_pair.second->GetSolvingProvider(script);
+            if (auto provider = spk_man_pair.second->GetSolvingProvider(script)) {
+                return provider;
+            }
         }
     }
     return nullptr;
