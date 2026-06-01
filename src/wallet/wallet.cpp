@@ -1726,7 +1726,9 @@ bool CWallet::ImportScripts(const std::set<CScript> scripts, int64_t timestamp)
         return false;
     }
     LOCK(spk_man->cs_KeyStore);
-    return spk_man->ImportScripts(scripts, timestamp);
+    const bool result{spk_man->ImportScripts(scripts, timestamp)};
+    if (result) m_ismine_cache.clear();
+    return result;
 }
 
 bool CWallet::ImportPrivKeys(const std::map<CKeyID, CKey>& privkey_map, const int64_t timestamp)
@@ -1736,7 +1738,9 @@ bool CWallet::ImportPrivKeys(const std::map<CKeyID, CKey>& privkey_map, const in
         return false;
     }
     LOCK(spk_man->cs_KeyStore);
-    return spk_man->ImportPrivKeys(privkey_map, timestamp);
+    const bool result{spk_man->ImportPrivKeys(privkey_map, timestamp)};
+    if (result) m_ismine_cache.clear();
+    return result;
 }
 
 bool CWallet::ImportPubKeys(const std::vector<CKeyID>& ordered_pubkeys, const std::map<CKeyID, CPubKey>& pubkey_map, const std::map<CKeyID, std::pair<CPubKey, KeyOriginInfo>>& key_origins, const bool add_keypool, const bool internal, const int64_t timestamp)
@@ -1746,7 +1750,9 @@ bool CWallet::ImportPubKeys(const std::vector<CKeyID>& ordered_pubkeys, const st
         return false;
     }
     LOCK(spk_man->cs_KeyStore);
-    return spk_man->ImportPubKeys(ordered_pubkeys, pubkey_map, key_origins, add_keypool, internal, timestamp);
+    const bool result{spk_man->ImportPubKeys(ordered_pubkeys, pubkey_map, key_origins, add_keypool, internal, timestamp)};
+    if (result) m_ismine_cache.clear();
+    return result;
 }
 
 bool CWallet::ImportScriptPubKeys(const std::string& label, const std::set<CScript>& script_pub_keys, const bool have_solving_data, const bool apply_label, const int64_t timestamp)
@@ -1759,6 +1765,7 @@ bool CWallet::ImportScriptPubKeys(const std::string& label, const std::set<CScri
     if (!spk_man->ImportScriptPubKeys(script_pub_keys, have_solving_data, timestamp)) {
         return false;
     }
+    m_ismine_cache.clear();
     if (apply_label) {
         WalletBatch batch(GetDatabase());
         for (const CScript& script : script_pub_keys) {

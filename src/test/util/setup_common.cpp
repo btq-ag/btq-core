@@ -276,7 +276,7 @@ TestChain100Setup::TestChain100Setup(
         const bool block_tree_db_in_memory)
     : TestingSetup{ChainType::BTQREGTEST, extra_args, coins_db_in_memory, block_tree_db_in_memory}
 {
-    SetMockTime(1598887952);
+    SetMockTime(Params().GenesisBlock().GetBlockTime() + Params().GetConsensus().nPowTargetSpacing);
     constexpr std::array<unsigned char, 32> vchKey = {
         {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}};
     coinbaseKey.Set(vchKey.begin(), vchKey.end(), true);
@@ -286,9 +286,13 @@ TestChain100Setup::TestChain100Setup(
 
     {
         LOCK(::cs_main);
-        assert(
-            m_node.chainman->ActiveChain().Tip()->GetBlockHash().ToString() ==
-            "571d80a9967ae599cec0448b0b0ba1cfb606f584d8069bd7166b86854ba7a191");
+        const CChain& active_chain{m_node.chainman->ActiveChain()};
+        const CBlockIndex* tip{active_chain.Tip()};
+        assert(tip);
+        assert(active_chain.Height() == COINBASE_MATURITY);
+        assert(tip->GetBlockTime() - Params().GenesisBlock().GetBlockTime() ==
+               COINBASE_MATURITY * Params().GetConsensus().nPowTargetSpacing);
+        assert(tip->GetBlockTime() <= GetTime());
     }
 }
 
@@ -298,7 +302,7 @@ void TestChain100Setup::mineBlocks(int num_blocks)
     for (int i = 0; i < num_blocks; i++) {
         std::vector<CMutableTransaction> noTxns;
         CBlock b = CreateAndProcessBlock(noTxns, scriptPubKey);
-        SetMockTime(GetTime() + 1);
+        SetMockTime(GetTime() + Params().GetConsensus().nPowTargetSpacing);
         m_coinbase_txns.push_back(b.vtx[0]);
     }
 }

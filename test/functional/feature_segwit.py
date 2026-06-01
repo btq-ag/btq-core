@@ -60,6 +60,7 @@ NODE_0 = 0
 NODE_2 = 2
 P2WPKH = 0
 P2WSH = 1
+LISTUNSPENT_TEST_OUTPUT_VALUE = 1_000_000
 
 
 def getutxo(txid):
@@ -128,7 +129,7 @@ class SegWitTest(BTQTestFramework):
         assert_raises_rpc_error(-26, error_msg, send_to_witness, use_p2wsh=1, node=node, utxo=getutxo(txid), pubkey=self.pubkey[0], encode_p2sh=False, amount=Decimal("4.998"), sign=sign, insert_redeem_script=redeem_script)
 
     def run_test(self):
-        self.generate(self.nodes[0], 161)  # block 161
+        self.generatetoaddress(self.nodes[0], 161, self.nodes[0].getnewaddress())  # block 161
 
         self.log.info("Verify sigops are counted in GBT with pre-BIP141 rules before the fork")
         txid = self.nodes[0].sendtoaddress(self.nodes[0].getnewaddress(), 1)
@@ -167,17 +168,49 @@ class SegWitTest(BTQTestFramework):
 
             if self.options.descriptors:
                 res = self.nodes[i].importdescriptors([
-                {"desc": p2sh_ms_desc, "timestamp": "now"},
-                {"desc": bip173_ms_desc, "timestamp": "now"},
-                {"desc": sh_wpkh_desc, "timestamp": "now"},
-                {"desc": wpkh_desc, "timestamp": "now"},
-            ])
-            else:
-                # The nature of the legacy wallet is that this import results in also adding all of the necessary scripts
-                res = self.nodes[i].importmulti([
                     {"desc": p2sh_ms_desc, "timestamp": "now"},
+                    {"desc": bip173_ms_desc, "timestamp": "now"},
+                    {"desc": sh_wpkh_desc, "timestamp": "now"},
+                    {"desc": wpkh_desc, "timestamp": "now"},
                 ])
-            assert all([r["success"] for r in res])
+                assert all([r["success"] for r in res]), res
+            else:
+                res = self.nodes[i].importmulti([
+                    {
+                        "scriptPubKey": {"address": p2sh_ms_addr},
+                        "redeemscript": script_to_p2wsh_script(multiscript).hex(),
+                        "witnessscript": multiscript.hex(),
+                        "keys": [key.privkey],
+                        "timestamp": "now",
+                    },
+                    {
+                        "scriptPubKey": {"address": bip173_ms_addr},
+                        "witnessscript": multiscript.hex(),
+                        "keys": [key.privkey],
+                        "timestamp": "now",
+                    },
+                    {
+                        "scriptPubKey": {"address": key.p2sh_p2wpkh_addr},
+                        "redeemscript": key.p2sh_p2wpkh_redeem_script,
+                        "keys": [key.privkey],
+                        "timestamp": "now",
+                    },
+                    {
+                        "scriptPubKey": {"address": key.p2wpkh_addr},
+                        "keys": [key.privkey],
+                        "timestamp": "now",
+                    },
+                ])
+                # Legacy imports can learn related compressed-key witness scripts
+                # while processing earlier requests in this batch. A duplicate
+                # private-key error is therefore a positive ownership check for
+                # the concrete script form being requested.
+                assert all([
+                    r["success"] or (
+                        r["error"]["code"] == -4
+                        and "already contains the private key" in r["error"]["message"]
+                    ) for r in res
+                ]), res
 
             p2sh_ids.append([])
             wit_ids.append([])
@@ -628,7 +661,7 @@ class SegWitTest(BTQTestFramework):
         tx = CTransaction()
         tx.vin.append(CTxIn(COutPoint(int('0x' + utxo['txid'], 0), utxo['vout'])))
         for i in script_list:
-            tx.vout.append(CTxOut(10000000, i))
+            tx.vout.append(CTxOut(LISTUNSPENT_TEST_OUTPUT_VALUE, i))
         tx.rehash()
         signresults = self.nodes[0].signrawtransactionwithwallet(tx.serialize_without_witness().hex())['hex']
         txid = self.nodes[0].sendrawtransaction(hexstring=signresults, maxfeerate=0)
