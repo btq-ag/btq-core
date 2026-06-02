@@ -50,14 +50,18 @@ class WalletDilithiumSendTest(BTQTestFramework):
 
         self.log.info("Fund repro wallet with confirmed Dilithium and bech32m UTXOs")
         taproot_address = repro.getnewaddress(address_type="bech32m")
+        # A second Dilithium UTXO so sendmany can be exercised independently.
+        dilithium_address2 = repro.getnewdilithiumaddress()
         funding.sendtoaddress(dilithium_address, Decimal("10"))
+        funding.sendtoaddress(dilithium_address2, Decimal("10"))
         funding.sendtoaddress(taproot_address, Decimal("10"))
         self.generate(node, 1)
 
         utxos = repro.listunspent()
-        assert_equal(len(utxos), 2)
+        assert_equal(len(utxos), 3)
 
         dilithium_utxo = next(utxo for utxo in utxos if utxo["address"] == dilithium_address)
+        dilithium_utxo2 = next(utxo for utxo in utxos if utxo["address"] == dilithium_address2)
         taproot_utxo = next(utxo for utxo in utxos if utxo["address"] == taproot_address)
 
         raw = repro.createrawtransaction(
@@ -68,12 +72,47 @@ class WalletDilithiumSendTest(BTQTestFramework):
         assert funded["hex"]
         assert funded["fee"] > 0
 
-        self.log.info("sendtoaddress must return success while spending the Dilithium UTXO")
-        repro.lockunspent(False, [{"txid": taproot_utxo["txid"], "vout": taproot_utxo["vout"]}])
+        self.log.info("sendtoaddress must return a valid, broadcastable tx spending the Dilithium UTXO")
+        # Lock every other input so coin selection is forced to spend the Dilithium UTXO,
+        # exercising the OP_CHECKSIGDILITHIUM signing path (regression for issue #41).
+        repro.lockunspent(False, [
+            {"txid": taproot_utxo["txid"], "vout": taproot_utxo["vout"]},
+            {"txid": dilithium_utxo2["txid"], "vout": dilithium_utxo2["vout"]},
+        ])
         destination = repro.getnewaddress()
         txid = repro.sendtoaddress(destination, Decimal("0.01"))
         assert txid
         assert txid in node.getrawmempool()
+
+        # The Dilithium UTXO must actually be the input that was spent.
+        spent_outpoints = {(vin["txid"], vin["vout"]) for vin in node.getrawtransaction(txid, True)["vin"]}
+        assert (dilithium_utxo["txid"], dilithium_utxo["vout"]) in spent_outpoints
+
+        # Crux of issue #41: the RPC reported success AND the tx is consensus-valid.
+        # Mining it proves the Dilithium signature verifies, not merely that it relayed.
+        self.generate(node, 1)
+        assert_equal(repro.gettransaction(txid)["confirmations"], 1)
+        unspent_after = {(u["txid"], u["vout"]) for u in repro.listunspent(0)}
+        assert (dilithium_utxo["txid"], dilithium_utxo["vout"]) not in unspent_after
+
+        self.log.info("sendmany must also spend a Dilithium UTXO and broadcast a valid tx")
+        repro.lockunspent(True)
+        # Leave only the second Dilithium UTXO spendable.
+        others = [
+            {"txid": u["txid"], "vout": u["vout"]}
+            for u in repro.listunspent(0)
+            if (u["txid"], u["vout"]) != (dilithium_utxo2["txid"], dilithium_utxo2["vout"])
+        ]
+        repro.lockunspent(False, others)
+        many_txid = repro.sendmany("", {
+            repro.getnewaddress(): Decimal("0.2"),
+            repro.getnewdilithiumaddress(): Decimal("0.3"),
+        })
+        assert many_txid in node.getrawmempool()
+        many_spent = {(vin["txid"], vin["vout"]) for vin in node.getrawtransaction(many_txid, True)["vin"]}
+        assert (dilithium_utxo2["txid"], dilithium_utxo2["vout"]) in many_spent
+        self.generate(node, 1)
+        assert_equal(repro.gettransaction(many_txid)["confirmations"], 1)
 
 
 if __name__ == "__main__":
