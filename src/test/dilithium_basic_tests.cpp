@@ -179,6 +179,45 @@ BOOST_AUTO_TEST_CASE(dilithium_script_signature_with_sighash_byte)
     check_produced_signature(p2pkh_script, 2);
 }
 
+BOOST_AUTO_TEST_CASE(dilithium_signature_data_merge_preserves_partial_state)
+{
+    CDilithiumKey first_key;
+    first_key.MakeNewKey();
+    const CDilithiumPubKey first_pubkey = first_key.GetPubKey();
+    const DilithiumPKHash first_keyid{first_pubkey};
+
+    CDilithiumKey second_key;
+    second_key.MakeNewKey();
+    const CDilithiumPubKey second_pubkey = second_key.GetPubKey();
+    const DilithiumPKHash second_keyid{second_pubkey};
+
+    std::vector<unsigned char> first_sig;
+    BOOST_REQUIRE(first_key.Sign(uint256::ONE, first_sig));
+    first_sig.push_back(SIGHASH_ALL);
+
+    std::vector<unsigned char> second_sig;
+    BOOST_REQUIRE(second_key.Sign(uint256::ONE, second_sig));
+    second_sig.push_back(SIGHASH_ALL);
+
+    SignatureData base;
+    base.dilithium_signatures.emplace(first_keyid, std::make_pair(first_pubkey, first_sig));
+
+    SignatureData incoming;
+    incoming.dilithium_signatures.emplace(second_keyid, std::make_pair(second_pubkey, second_sig));
+    incoming.missing_dilithium_pubkeys.push_back(first_keyid);
+    incoming.missing_dilithium_sigs.push_back(second_keyid);
+
+    base.MergeSignatureData(std::move(incoming));
+
+    BOOST_REQUIRE_EQUAL(base.dilithium_signatures.size(), 2);
+    BOOST_CHECK_EQUAL(base.dilithium_signatures.at(first_keyid).second.size(), BTQ_DILITHIUM_SIGNATURE_SIZE + 1);
+    BOOST_CHECK_EQUAL(base.dilithium_signatures.at(second_keyid).second.size(), BTQ_DILITHIUM_SIGNATURE_SIZE + 1);
+    BOOST_REQUIRE_EQUAL(base.missing_dilithium_pubkeys.size(), 1);
+    BOOST_CHECK(base.missing_dilithium_pubkeys.front() == first_keyid);
+    BOOST_REQUIRE_EQUAL(base.missing_dilithium_sigs.size(), 1);
+    BOOST_CHECK(base.missing_dilithium_sigs.front() == second_keyid);
+}
+
 BOOST_AUTO_TEST_CASE(ecdsa_oversized_signature_rejected_under_standard_flags)
 {
     CKey key;

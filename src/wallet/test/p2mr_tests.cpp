@@ -5,6 +5,7 @@
 #include <test/util/setup_common.h>
 #include <addresstype.h>
 #include <key.h>
+#include <key_io.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
@@ -203,6 +204,46 @@ BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSet
     BOOST_CHECK_EQUAL(second->address, first->address);
     BOOST_CHECK_EQUAL(HexStr(second->script_pub_key), HexStr(first->script_pub_key));
     BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+}
+
+BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const auto leaves = MakeOpTrueTree();
+
+    auto builder = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(builder);
+    const CScript tracked_script = GetScriptForDestination(builder->GetOutput());
+
+    BOOST_CHECK_EQUAL(wallet->IsMine(tracked_script), ISMINE_NO);
+
+    auto created = CreateP2MR(*wallet, leaves, "tracked");
+    BOOST_REQUIRE(created);
+    BOOST_CHECK_EQUAL(HexStr(created->script_pub_key), HexStr(tracked_script));
+    BOOST_CHECK_EQUAL(wallet->IsMine(created->script_pub_key), ISMINE_SPENDABLE);
+
+    P2MRBuilder corrupt_builder;
+    corrupt_builder.Add(/*depth=*/0, std::vector<unsigned char>{static_cast<unsigned char>(OP_0)}, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+    BOOST_REQUIRE(corrupt_builder.IsValid());
+    const CTxDestination corrupt_dest = corrupt_builder.GetOutput();
+    const CScript corrupt_script = GetScriptForDestination(corrupt_dest);
+
+    BOOST_REQUIRE(wallet->SetAddressBook(corrupt_dest, "corrupt", AddressPurpose::RECEIVE));
+    UniValue corrupt_meta(UniValue::VOBJ);
+    corrupt_meta.pushKV("id", "corrupt");
+    corrupt_meta.pushKV("address", EncodeDestination(corrupt_dest));
+    corrupt_meta.pushKV("scriptPubKey", HexStr(corrupt_script));
+    corrupt_meta.pushKV("merkle_root", "");
+    corrupt_meta.pushKV("created_at", int64_t{1});
+    corrupt_meta.pushKV("label", "corrupt");
+    corrupt_meta.pushKV("state", "created");
+    UniValue empty_tree(UniValue::VARR);
+    corrupt_meta.pushKV("tree", empty_tree);
+
+    WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+    BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, corrupt_dest, "corrupt", corrupt_meta.write()));
+    BOOST_CHECK_EQUAL(wallet->IsMine(corrupt_script), ISMINE_NO);
 }
 
 BOOST_FIXTURE_TEST_CASE(tracked_balance_deduplicates_legacy_duplicate_metadata, BasicTestingSetup)

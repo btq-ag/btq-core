@@ -854,6 +854,29 @@ void SignatureData::MergeSignatureData(SignatureData sigdata)
     tr_spenddata.Merge(std::move(sigdata.tr_spenddata));
     p2mr_spenddata.Merge(std::move(sigdata.p2mr_spenddata));
     signatures.insert(std::make_move_iterator(sigdata.signatures.begin()), std::make_move_iterator(sigdata.signatures.end()));
+    misc_pubkeys.insert(std::make_move_iterator(sigdata.misc_pubkeys.begin()), std::make_move_iterator(sigdata.misc_pubkeys.end()));
+    dilithium_signatures.insert(std::make_move_iterator(sigdata.dilithium_signatures.begin()), std::make_move_iterator(sigdata.dilithium_signatures.end()));
+    dilithium_misc_pubkeys.insert(std::make_move_iterator(sigdata.dilithium_misc_pubkeys.begin()), std::make_move_iterator(sigdata.dilithium_misc_pubkeys.end()));
+    if (taproot_key_path_sig.empty() && !sigdata.taproot_key_path_sig.empty()) {
+        taproot_key_path_sig = std::move(sigdata.taproot_key_path_sig);
+    }
+    taproot_script_sigs.insert(std::make_move_iterator(sigdata.taproot_script_sigs.begin()), std::make_move_iterator(sigdata.taproot_script_sigs.end()));
+    taproot_misc_pubkeys.insert(std::make_move_iterator(sigdata.taproot_misc_pubkeys.begin()), std::make_move_iterator(sigdata.taproot_misc_pubkeys.end()));
+    tap_pubkeys.insert(std::make_move_iterator(sigdata.tap_pubkeys.begin()), std::make_move_iterator(sigdata.tap_pubkeys.end()));
+    missing_pubkeys.insert(missing_pubkeys.end(), std::make_move_iterator(sigdata.missing_pubkeys.begin()), std::make_move_iterator(sigdata.missing_pubkeys.end()));
+    missing_sigs.insert(missing_sigs.end(), std::make_move_iterator(sigdata.missing_sigs.begin()), std::make_move_iterator(sigdata.missing_sigs.end()));
+    missing_dilithium_pubkeys.insert(missing_dilithium_pubkeys.end(), std::make_move_iterator(sigdata.missing_dilithium_pubkeys.begin()), std::make_move_iterator(sigdata.missing_dilithium_pubkeys.end()));
+    missing_dilithium_sigs.insert(missing_dilithium_sigs.end(), std::make_move_iterator(sigdata.missing_dilithium_sigs.begin()), std::make_move_iterator(sigdata.missing_dilithium_sigs.end()));
+    if (missing_redeem_script.IsNull() && !sigdata.missing_redeem_script.IsNull()) {
+        missing_redeem_script = sigdata.missing_redeem_script;
+    }
+    if (missing_witness_script.IsNull() && !sigdata.missing_witness_script.IsNull()) {
+        missing_witness_script = sigdata.missing_witness_script;
+    }
+    sha256_preimages.insert(std::make_move_iterator(sigdata.sha256_preimages.begin()), std::make_move_iterator(sigdata.sha256_preimages.end()));
+    hash256_preimages.insert(std::make_move_iterator(sigdata.hash256_preimages.begin()), std::make_move_iterator(sigdata.hash256_preimages.end()));
+    ripemd160_preimages.insert(std::make_move_iterator(sigdata.ripemd160_preimages.begin()), std::make_move_iterator(sigdata.ripemd160_preimages.end()));
+    hash160_preimages.insert(std::make_move_iterator(sigdata.hash160_preimages.begin()), std::make_move_iterator(sigdata.hash160_preimages.end()));
 }
 
 bool SignSignature(const SigningProvider &provider, const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn, const CAmount& amount, int nHashType, SignatureData& sig_data)

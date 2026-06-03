@@ -57,10 +57,16 @@ int btq_dilithium_verify(const uint8_t *sig, size_t siglen,
 
 int btq_dilithium_sk_to_pk(uint8_t *pk, const uint8_t *sk)
 {
-    // Extract public key from secret key
-    // In Dilithium, the secret key contains the public key at the beginning
-    // For Dilithium2: sk = (rho, K, tr, s1, s2, t0) and pk = (rho, K, tr)
-    // The public key is the first 1312 bytes of the secret key
-    memcpy(pk, sk, pqcrystals_dilithium2_ref_PUBLICKEYBYTES);
-    return 0;
+    (void)sk;
+
+    if (pk != NULL) {
+        memset(pk, 0, pqcrystals_dilithium2_ref_PUBLICKEYBYTES);
+    }
+
+    // The packed Dilithium2 secret key does not contain the packed public key.
+    // It stores rho, key, tr, s1, s2, and t0; the public key stores rho and
+    // t1. Returning success here would hand callers bytes that cannot verify
+    // signatures. BTQ key storage keeps sk || pk, so callers should use the
+    // stored public key or the public key returned by key generation.
+    return -1;
 }

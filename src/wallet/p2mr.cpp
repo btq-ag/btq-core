@@ -250,7 +250,8 @@ bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script)
 {
     AssertLockHeld(wallet.cs_wallet);
     for (const auto& entry : ListP2MR(wallet)) {
-        if (entry.script_pub_key == script) return true;
+        if (entry.script_pub_key != script) continue;
+        if (BuildP2MRTreeChecked(entry.tree)) return true;
     }
     return false;
 }

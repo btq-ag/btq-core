@@ -3,10 +3,14 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <crypto/dilithium_key.h>
+#include <crypto/dilithium_wrapper.h>
 
 #include <test/util/setup_common.h>
 #include <uint256.h>
 #include <util/strencodings.h>
+
+#include <algorithm>
+#include <array>
 
 #include <boost/test/unit_test.hpp>
 
@@ -36,6 +40,25 @@ BOOST_AUTO_TEST_CASE(dilithium_pubkey_derivation)
     
     // Verify the private key corresponds to the public key
     BOOST_CHECK(key.VerifyPubKey(pubkey));
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_raw_secret_key_to_public_key_fails_closed)
+{
+    std::array<uint8_t, BTQ_DILITHIUM_PUBLIC_KEY_SIZE> pk{};
+    std::array<uint8_t, BTQ_DILITHIUM_SECRET_KEY_SIZE> sk{};
+    BOOST_REQUIRE_EQUAL(btq_dilithium_keypair(pk.data(), sk.data()), 0);
+
+    std::array<uint8_t, BTQ_DILITHIUM_PUBLIC_KEY_SIZE> derived_pk;
+    derived_pk.fill(0xaa);
+    BOOST_CHECK(btq_dilithium_sk_to_pk(derived_pk.data(), sk.data()) != 0);
+    BOOST_CHECK(std::all_of(derived_pk.begin(), derived_pk.end(), [](uint8_t byte) { return byte == 0; }));
+
+    const std::array<uint8_t, 3> msg{{0x42, 0x54, 0x51}};
+    std::array<uint8_t, BTQ_DILITHIUM_SIGNATURE_SIZE> sig{};
+    size_t siglen{0};
+    BOOST_REQUIRE_EQUAL(btq_dilithium_sign(sig.data(), &siglen, msg.data(), msg.size(), nullptr, 0, sk.data()), 0);
+    BOOST_CHECK_EQUAL(btq_dilithium_verify(sig.data(), siglen, msg.data(), msg.size(), nullptr, 0, pk.data()), 0);
+    BOOST_CHECK(btq_dilithium_verify(sig.data(), siglen, msg.data(), msg.size(), nullptr, 0, derived_pk.data()) != 0);
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_signing_and_verification)
