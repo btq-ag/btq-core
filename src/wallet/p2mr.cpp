@@ -5,6 +5,7 @@
 #include <wallet/p2mr.h>
 
 #include <core_io.h>
+#include <crypto/dilithium_key.h>
 #include <interfaces/chain.h>
 #include <key_io.h>
 #include <policy/policy.h>
@@ -15,11 +16,13 @@
 #include <script/script.h>
 #include <script/sign.h>
 #include <script/solver.h>
+#include <span.h>
 #include <univalue.h>
 #include <util/strencodings.h>
 #include <util/time.h>
 #include <util/translation.h>
 #include <wallet/coincontrol.h>
+#include <wallet/scriptpubkeyman.h>
 #include <wallet/spend.h>
 #include <wallet/wallet.h>
 #include <wallet/walletdb.h>
@@ -80,6 +83,54 @@ bool SameP2MRTree(const std::vector<P2MRTreeLeaf>& a, const std::vector<P2MRTree
         if (a[i].script != b[i].script) return false;
     }
     return true;
+}
+
+void AddDilithiumKeyIDFromHash(Span<const unsigned char> bytes, std::set<CKeyID>& out)
+{
+    if (bytes.size() != uint160::size()) return;
+    CKeyID keyid;
+    std::copy(bytes.begin(), bytes.end(), keyid.begin());
+    out.insert(keyid);
+}
+
+void AddDilithiumKeyIDFromPubKey(const CDilithiumPubKey& pubkey, std::set<CKeyID>& out)
+{
+    if (!pubkey.IsValid()) return;
+    const uint160 id = pubkey.GetID();
+    CKeyID keyid;
+    std::copy(id.begin(), id.end(), keyid.begin());
+    out.insert(keyid);
+}
+
+std::set<CKeyID> GetP2MRDilithiumKeyIDs(const std::vector<P2MRTreeLeaf>& leaves)
+{
+    std::set<CKeyID> key_ids;
+    for (const P2MRTreeLeaf& leaf : leaves) {
+        CScript script{leaf.script.begin(), leaf.script.end()};
+        std::vector<std::vector<unsigned char>> solutions;
+        const TxoutType which_type = Solver(script, solutions);
+        switch (which_type) {
+        case TxoutType::DILITHIUM_PUBKEY: {
+            if (solutions.empty()) break;
+            const CDilithiumPubKey pubkey{solutions[0]};
+            AddDilithiumKeyIDFromPubKey(pubkey, key_ids);
+            break;
+        }
+        case TxoutType::DILITHIUM_PUBKEYHASH:
+        case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
+            if (!solutions.empty()) AddDilithiumKeyIDFromHash(solutions[0], key_ids);
+            break;
+        case TxoutType::DILITHIUM_MULTISIG:
+            for (size_t i = 1; i + 1 < solutions.size(); ++i) {
+                const CDilithiumPubKey pubkey{solutions[i]};
+                AddDilithiumKeyIDFromPubKey(pubkey, key_ids);
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    return key_ids;
 }
 
 P2MREntry MetadataToEntry(const CTxDestination& dest, const UniValue& meta, const std::string& fallback_id)
@@ -234,12 +285,33 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::o
 {
     AssertLockHeld(wallet.cs_wallet);
     FlatSigningProvider provider;
+    std::set<CKeyID> dilithium_key_ids;
     for (const auto& entry : ListP2MR(wallet)) {
         if (only_id && entry.id != *only_id) continue;
         if (!std::holds_alternative<WitnessV2P2MR>(entry.dest)) continue;
         auto builder_res = BuildP2MRTreeChecked(entry.tree);
         if (!builder_res) continue;
         provider.p2mr_trees[std::get<WitnessV2P2MR>(entry.dest)] = std::move(*builder_res);
+        const auto entry_key_ids = GetP2MRDilithiumKeyIDs(entry.tree);
+        dilithium_key_ids.insert(entry_key_ids.begin(), entry_key_ids.end());
+    }
+
+    for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
+        for (const CKeyID& keyid : dilithium_key_ids) {
+            CDilithiumKey key;
+            if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+                LOCK(desc_spk_man->cs_desc_man);
+                if (!desc_spk_man->GetDilithiumKey(keyid, key)) continue;
+            } else if (auto legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
+                if (!legacy_spk_man->GetDilithiumKey(keyid, key)) continue;
+            } else {
+                continue;
+            }
+            const CDilithiumPubKey pubkey = key.GetPubKey();
+            const DilithiumPKHash provider_keyid(pubkey);
+            provider.dilithium_pubkeys.emplace(provider_keyid, pubkey);
+            provider.dilithium_keys.emplace(provider_keyid, std::move(key));
+        }
     }
     return provider;
 }
@@ -442,6 +514,15 @@ util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
     std::map<int, bilingual_str> ignored_errors;
     wallet.SignTransaction(out.tx, coins, SIGHASH_DEFAULT, ignored_errors);
 
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.reserve(out.tx.vin.size());
+    for (const CTxIn& txin : out.tx.vin) {
+        const auto coin_it = coins.find(txin.prevout);
+        spent_outputs.push_back(coin_it != coins.end() && !coin_it->second.IsSpent() ? coin_it->second.out : CTxOut{});
+    }
+    PrecomputedTransactionData txdata;
+    txdata.Init(out.tx, std::move(spent_outputs), /*force=*/true);
+
     bool complete = true;
     for (unsigned int i = 0; i < out.tx.vin.size(); ++i) {
         auto it = coins.find(out.tx.vin[i].prevout);
@@ -450,8 +531,9 @@ util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
         if (Solver(it->second.out.scriptPubKey, solutions) != TxoutType::WITNESS_V2_P2MR) continue;
 
         SignatureData sigdata = DataFromTransaction(out.tx, i, it->second.out);
-        if (SignSignature(p2mr_provider, it->second.out.scriptPubKey, out.tx, i,
-                          it->second.out.nValue, SIGHASH_DEFAULT, sigdata)) {
+        MutableTransactionSignatureCreator creator(out.tx, i, it->second.out.nValue, &txdata, SIGHASH_DEFAULT);
+        if (ProduceSignature(p2mr_provider, creator, it->second.out.scriptPubKey, sigdata)) {
+            UpdateInput(out.tx.vin[i], sigdata);
             continue;
         }
 
@@ -469,14 +551,6 @@ util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
                     out.tx.vin[i].scriptWitness.stack.clear();
                     out.tx.vin[i].scriptWitness.stack.emplace_back(script.begin(), script.end());
                     out.tx.vin[i].scriptWitness.stack.push_back(*control_blocks.begin());
-                    std::vector<CTxOut> spent_outputs;
-                    spent_outputs.reserve(out.tx.vin.size());
-                    for (const CTxIn& txin : out.tx.vin) {
-                        const auto coin_it = coins.find(txin.prevout);
-                        spent_outputs.push_back(coin_it != coins.end() && !coin_it->second.IsSpent() ? coin_it->second.out : CTxOut{});
-                    }
-                    PrecomputedTransactionData txdata;
-                    txdata.Init(out.tx, std::move(spent_outputs), /*force=*/true);
                     const CTransaction tx_const{out.tx};
                     TransactionSignatureChecker checker(&tx_const, i, it->second.out.nValue, txdata, MissingDataBehavior::FAIL);
                     fallback_ok = VerifyScript(out.tx.vin[i].scriptSig, it->second.out.scriptPubKey, &out.tx.vin[i].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker);

@@ -17,6 +17,10 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
     assert(pindexLast != nullptr);
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
 
+    if (params.fPowNoRetargeting) {
+        return pindexLast->nBits;
+    }
+
     // After LWMA hard fork: per-block difficulty adjustment
     if (pindexLast->nHeight + 1 >= params.nLWMAHeight) {
         return LwmaGetNextWorkRequired(pindexLast, pblock, params);
@@ -83,9 +87,7 @@ unsigned int LwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlock
 
         arith_uint256 target;
         target.SetCompact(block->nBits);
-        // Divide early to prevent overflow in the final multiplication.
-        // Precision loss is negligible for targets > ~2^22.
-        sumTarget += target / arith_uint256(static_cast<uint64_t>(k) * static_cast<uint64_t>(N));
+        sumTarget += target;
 
         previousTimestamp = thisTimestamp;
     }
@@ -94,7 +96,19 @@ unsigned int LwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlock
         weightedSolvetimes = 1;
     }
 
-    arith_uint256 nextTarget = sumTarget * static_cast<uint32_t>(weightedSolvetimes);
+    const arith_uint256 averageTarget = sumTarget / N;
+    const arith_uint256 k_uint{static_cast<uint64_t>(k)};
+    const uint32_t weighted_solvetimes_u32{static_cast<uint32_t>(weightedSolvetimes)};
+    const arith_uint256 quotient = averageTarget / k_uint;
+    const arith_uint256 remainder = averageTarget - quotient * static_cast<uint32_t>(k);
+
+    arith_uint256 nextTarget;
+    if (quotient > powLimit / weighted_solvetimes_u32) {
+        nextTarget = powLimit;
+    } else {
+        nextTarget = quotient * weighted_solvetimes_u32;
+        nextTarget += (remainder * weighted_solvetimes_u32) / k_uint;
+    }
 
     if (nextTarget > powLimit) {
         nextTarget = powLimit;

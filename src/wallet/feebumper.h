@@ -131,9 +131,9 @@ public:
         return false;
     }
 
-    bool CheckDilithiumSignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& pubkey, const CScript& script, SigVersion sigversion) const override
+    bool CheckDilithiumSignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& pubkey, const CScript& script, SigVersion sigversion, ScriptExecutionData* execdata = nullptr) const override
     {
-        if (m_checker.CheckDilithiumSignature(sig, pubkey, script, sigversion)) {
+        if (m_checker.CheckDilithiumSignature(sig, pubkey, script, sigversion, execdata)) {
             m_weights.AddSigWeight(sig.size(), sigversion, DilithiumConstants::SIGNATURE_SIZE + 1);
             return true;
         }

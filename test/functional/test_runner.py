@@ -102,6 +102,7 @@ BASE_SCRIPTS = [
     'wallet_dilithium_hd_restore.py',
     'feature_p2mr.py',
     'feature_p2mr_rpc.py --descriptors',
+    'feature_lwma_activation.py',
     'feature_block.py',
     'btq_regtest_mining.py',
     'btq_chain_identity.py',

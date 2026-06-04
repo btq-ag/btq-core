@@ -173,6 +173,31 @@ BOOST_AUTO_TEST_CASE(dilithium_serialization)
     BOOST_CHECK(pubkey1 == pubkey2);
 }
 
+BOOST_AUTO_TEST_CASE(dilithium_load_and_set_reject_mismatched_stored_pubkey)
+{
+    CDilithiumKey key1;
+    key1.MakeNewKey();
+    BOOST_REQUIRE(key1.IsValid());
+
+    CDilithiumKey key2;
+    key2.MakeNewKey();
+    BOOST_REQUIRE(key2.IsValid());
+    BOOST_REQUIRE(key1.GetPubKey() != key2.GetPubKey());
+
+    std::vector<unsigned char> malformed = key1.Serialize();
+    BOOST_REQUIRE_EQUAL(malformed.size(), CDilithiumKey::GetKeySize());
+    const CDilithiumPubKey wrong_pubkey = key2.GetPubKey();
+    std::copy(wrong_pubkey.begin(), wrong_pubkey.end(), malformed.begin() + DilithiumConstants::SECRET_KEY_SIZE);
+
+    CDilithiumKey loaded;
+    BOOST_CHECK(!loaded.Load(Span<const unsigned char>(malformed)));
+    BOOST_CHECK(!loaded.IsValid());
+
+    CDilithiumKey set_key;
+    set_key.Set(malformed.begin(), malformed.end());
+    BOOST_CHECK(!set_key.IsValid());
+}
+
 BOOST_AUTO_TEST_CASE(dilithium_pubkey_operations)
 {
     CDilithiumKey key;

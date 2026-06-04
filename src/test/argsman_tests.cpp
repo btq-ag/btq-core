@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <chainparamsbase.h>
 #include <common/args.h>
 #include <sync.h>
 #include <test/util/logging.h>
@@ -45,6 +46,16 @@ BOOST_AUTO_TEST_CASE(util_datadir)
     args.ForceSetArg("-datadir", fs::PathToString(dd_norm) + "/.//");
     args.ClearPathCache();
     BOOST_CHECK_EQUAL(dd_norm, args.GetDataDirBase());
+}
+
+BOOST_AUTO_TEST_CASE(testactivationheight_help_lists_lwma)
+{
+    ArgsManager args;
+    SetupChainParamsBaseOptions(args);
+    args.ForceSetArg("-help-debug", "1");
+    const std::string help = args.GetHelpMessage();
+    BOOST_CHECK(help.find("-testactivationheight=name@height") != std::string::npos);
+    BOOST_CHECK(help.find("lwma") != std::string::npos);
 }
 
 struct TestArgsManager : public ArgsManager

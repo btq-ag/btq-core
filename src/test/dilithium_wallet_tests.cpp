@@ -358,6 +358,31 @@ BOOST_AUTO_TEST_CASE(dilithium_extkey_encode_decode_roundtrip)
     BOOST_CHECK(decoded.key.GetPubKey() == master.key.GetPubKey());
 }
 
+BOOST_AUTO_TEST_CASE(dilithium_extkey_decode_rejects_non_hardened_child_metadata)
+{
+    CDilithiumExtKey master;
+    const auto raw_seed = std::vector<std::byte>(32, std::byte{0x78});
+    master.SetSeed(Span<const std::byte>(raw_seed.data(), raw_seed.size()));
+
+    CDilithiumExtKey child;
+    BOOST_REQUIRE(master.Derive(child, HARDENED | 7));
+    BOOST_REQUIRE(child.key.IsValid());
+
+    std::array<unsigned char, DILITHIUM_EXTKEY_SIZE> buf{};
+    child.Encode(buf.data());
+    buf[5] = 0;
+    buf[6] = 0;
+    buf[7] = 0;
+    buf[8] = 7;
+
+    CDilithiumExtKey decoded;
+    decoded.Decode(buf.data());
+    BOOST_CHECK(!decoded.key.IsValid());
+    BOOST_CHECK_EQUAL(decoded.nDepth, 0);
+    BOOST_CHECK_EQUAL(decoded.nChild, 0u);
+    BOOST_CHECK(decoded.chaincode == ChainCode{});
+}
+
 // CDilithiumExtPubKey Encode/Decode previously over-stated the pubkey size
 // (1952 instead of 1312); make sure the Dilithium2 layout round-trips.
 BOOST_AUTO_TEST_CASE(dilithium_extpubkey_encode_decode_roundtrip)
@@ -378,6 +403,32 @@ BOOST_AUTO_TEST_CASE(dilithium_extpubkey_encode_decode_roundtrip)
 
     BOOST_CHECK(decoded == neutered);
     BOOST_CHECK(decoded.pubkey == master.key.GetPubKey());
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_extpubkey_decode_rejects_non_hardened_child_metadata)
+{
+    CDilithiumExtKey master;
+    const auto raw_seed = std::vector<std::byte>(32, std::byte{0x56});
+    master.SetSeed(Span<const std::byte>(raw_seed.data(), raw_seed.size()));
+
+    CDilithiumExtKey child;
+    BOOST_REQUIRE(master.Derive(child, HARDENED | 9));
+    const CDilithiumExtPubKey neutered = child.Neuter();
+    BOOST_REQUIRE(neutered.pubkey.IsValid());
+
+    std::array<unsigned char, DILITHIUM_EXTPUBKEY_SIZE> buf{};
+    neutered.Encode(buf.data());
+    buf[5] = 0;
+    buf[6] = 0;
+    buf[7] = 0;
+    buf[8] = 9;
+
+    CDilithiumExtPubKey decoded;
+    decoded.Decode(buf.data());
+    BOOST_CHECK(!decoded.pubkey.IsValid());
+    BOOST_CHECK_EQUAL(decoded.nDepth, 0);
+    BOOST_CHECK_EQUAL(decoded.nChild, 0u);
+    BOOST_CHECK(decoded.chaincode == ChainCode{});
 }
 
 // Public-only derivation cannot work for Dilithium (no group law); the

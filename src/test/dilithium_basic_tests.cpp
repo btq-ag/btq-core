@@ -218,6 +218,44 @@ BOOST_AUTO_TEST_CASE(dilithium_signature_data_merge_preserves_partial_state)
     BOOST_CHECK(base.missing_dilithium_sigs.front() == second_keyid);
 }
 
+BOOST_AUTO_TEST_CASE(dilithium_checksig_nullfail_rejects_nonempty_invalid_signature)
+{
+    CDilithiumKey dilithium_key;
+    dilithium_key.MakeNewKey();
+    const CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
+
+    CMutableTransaction spending_tx;
+    spending_tx.nVersion = 1;
+    spending_tx.vin.resize(1);
+    spending_tx.vin[0].prevout = COutPoint{uint256::ONE, 0};
+    spending_tx.vout.emplace_back(1, CScript() << OP_TRUE);
+
+    std::vector<unsigned char> invalid_signature(BTQ_DILITHIUM_SIGNATURE_SIZE + 1, 0);
+    invalid_signature.back() = SIGHASH_ALL;
+
+    spending_tx.vin[0].scriptSig = CScript() << invalid_signature;
+    const CTransaction ctx{spending_tx};
+    const CScript script_pubkey = CScript() << ToByteVector(dilithium_pubkey) << OP_CHECKSIGDILITHIUM << OP_NOT;
+
+    auto verify = [&](unsigned int flags, ScriptError& error) {
+        error = SCRIPT_ERR_OK;
+        return VerifyScript(
+            ctx.vin[0].scriptSig,
+            script_pubkey,
+            nullptr,
+            flags,
+            TransactionSignatureChecker(&ctx, 0, /*amount=*/1, MissingDataBehavior::ASSERT_FAIL),
+            &error);
+    };
+
+    ScriptError error{SCRIPT_ERR_OK};
+    BOOST_CHECK(verify(STANDARD_SCRIPT_VERIFY_FLAGS & ~SCRIPT_VERIFY_NULLFAIL, error));
+    BOOST_CHECK_EQUAL(error, SCRIPT_ERR_OK);
+
+    BOOST_CHECK(!verify(STANDARD_SCRIPT_VERIFY_FLAGS, error));
+    BOOST_CHECK_EQUAL(error, SCRIPT_ERR_SIG_NULLFAIL);
+}
+
 BOOST_AUTO_TEST_CASE(ecdsa_oversized_signature_rejected_under_standard_flags)
 {
     CKey key;

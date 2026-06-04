@@ -4,6 +4,7 @@
 
 #include <test/util/setup_common.h>
 #include <addresstype.h>
+#include <crypto/dilithium_key.h>
 #include <key.h>
 #include <key_io.h>
 #include <policy/policy.h>
@@ -16,6 +17,7 @@
 #include <util/strencodings.h>
 #include <util/vector.h>
 #include <wallet/p2mr.h>
+#include <wallet/scriptpubkeyman.h>
 #include <wallet/test/util.h>
 #include <wallet/wallet.h>
 #include <wallet/walletdb.h>
@@ -340,6 +342,275 @@ BOOST_FIXTURE_TEST_CASE(produce_signature_preserves_p2mr_witness_stack, BasicTes
     ScriptError serror{SCRIPT_ERR_OK};
     BOOST_CHECK_MESSAGE(
         VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
+        ScriptErrorString(serror));
+}
+
+BOOST_FIXTURE_TEST_CASE(produce_signature_signs_dilithium_p2mr_leaf, BasicTestingSetup)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    const CDilithiumPubKey pubkey = key.GetPubKey();
+    BOOST_REQUIRE(pubkey.IsValid());
+
+    const CScript leaf_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
+    const std::vector<unsigned char> leaf_bytes{leaf_script.begin(), leaf_script.end()};
+
+    P2MRBuilder builder;
+    builder.Add(/*depth=*/0, leaf_bytes, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+    BOOST_REQUIRE(builder.IsValid());
+    BOOST_REQUIRE(builder.IsComplete());
+
+    const WitnessV2P2MR output = builder.GetOutput();
+    const CScript script_pubkey = GetScriptForDestination(output);
+    const CAmount amount = COIN;
+
+    FlatSigningProvider provider;
+    provider.dilithium_pubkeys.emplace(DilithiumPKHash(pubkey), pubkey);
+    provider.dilithium_keys.emplace(DilithiumPKHash(pubkey), key);
+    provider.p2mr_trees.emplace(output, builder);
+
+    CMutableTransaction tx_to;
+    tx_to.nVersion = 2;
+    tx_to.vin.emplace_back(COutPoint(uint256::ONE, 0));
+    tx_to.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.emplace_back(amount, script_pubkey);
+    PrecomputedTransactionData txdata;
+    txdata.Init(tx_to, std::move(spent_outputs), /*force=*/true);
+
+    SignatureData sigdata;
+    MutableTransactionSignatureCreator creator(tx_to, /*input_idx=*/0, amount, &txdata, SIGHASH_ALL);
+    BOOST_REQUIRE(ProduceSignature(provider, creator, script_pubkey, sigdata));
+    BOOST_CHECK(sigdata.complete);
+    BOOST_CHECK(sigdata.witness);
+    BOOST_REQUIRE_EQUAL(sigdata.scriptWitness.stack.size(), 3U);
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[0].size(), DilithiumConstants::SIGNATURE_SIZE + 1);
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[0].back(), SIGHASH_ALL);
+    BOOST_CHECK_EQUAL(HexStr(sigdata.scriptWitness.stack[1]), HexStr(leaf_script));
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[2].size(), P2MR_CONTROL_BASE_SIZE);
+
+    UpdateInput(tx_to.vin[0], sigdata);
+    const CTransaction signed_tx{tx_to};
+    TransactionSignatureChecker checker(&signed_tx, /*nInIn=*/0, amount, txdata, MissingDataBehavior::FAIL);
+    ScriptError serror{SCRIPT_ERR_OK};
+    BOOST_CHECK_MESSAGE(
+        VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
+        ScriptErrorString(serror));
+
+    std::vector<CTxOut> auto_spent_outputs;
+    auto_spent_outputs.emplace_back(amount, script_pubkey);
+    PrecomputedTransactionData auto_txdata;
+    auto_txdata.Init(signed_tx, std::move(auto_spent_outputs), /*force=*/false);
+    TransactionSignatureChecker auto_checker(&signed_tx, /*nInIn=*/0, amount, auto_txdata, MissingDataBehavior::FAIL);
+    serror = SCRIPT_ERR_OK;
+    BOOST_CHECK_MESSAGE(
+        VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, auto_checker, &serror),
+        ScriptErrorString(serror));
+
+    std::vector<CTxOut> wrong_amount_outputs;
+    wrong_amount_outputs.emplace_back(amount + 1, script_pubkey);
+    PrecomputedTransactionData wrong_amount_txdata;
+    wrong_amount_txdata.Init(signed_tx, std::move(wrong_amount_outputs), /*force=*/false);
+    TransactionSignatureChecker wrong_amount_checker(&signed_tx, /*nInIn=*/0, amount + 1, wrong_amount_txdata, MissingDataBehavior::FAIL);
+    serror = SCRIPT_ERR_OK;
+    BOOST_CHECK(!VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, wrong_amount_checker, &serror));
+
+    CScriptWitness mutated_witness = tx_to.vin[0].scriptWitness;
+    BOOST_REQUIRE(!mutated_witness.stack[0].empty());
+    mutated_witness.stack[0][0] ^= 0x01;
+    serror = SCRIPT_ERR_OK;
+    BOOST_CHECK(!VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &mutated_witness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror));
+
+    mutated_witness = tx_to.vin[0].scriptWitness;
+    BOOST_REQUIRE(!mutated_witness.stack[1].empty());
+    mutated_witness.stack[1][mutated_witness.stack[1].size() - 1] = OP_TRUE;
+    serror = SCRIPT_ERR_OK;
+    BOOST_CHECK(!VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &mutated_witness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror));
+}
+
+BOOST_FIXTURE_TEST_CASE(produce_signature_signs_dilithium_p2mr_pubkeyhash_leaf, BasicTestingSetup)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    const CDilithiumPubKey pubkey = key.GetPubKey();
+    BOOST_REQUIRE(pubkey.IsValid());
+    const DilithiumPKHash keyhash(pubkey);
+
+    const CScript leaf_script = CScript() << OP_DUP << OP_HASH160 << ToByteVector(keyhash) << OP_EQUALVERIFY << OP_CHECKSIGDILITHIUM;
+    const std::vector<unsigned char> leaf_bytes{leaf_script.begin(), leaf_script.end()};
+
+    P2MRBuilder builder;
+    builder.Add(/*depth=*/0, leaf_bytes, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+    BOOST_REQUIRE(builder.IsValid());
+    BOOST_REQUIRE(builder.IsComplete());
+
+    const WitnessV2P2MR output = builder.GetOutput();
+    const CScript script_pubkey = GetScriptForDestination(output);
+    const CAmount amount = COIN;
+
+    FlatSigningProvider provider;
+    provider.dilithium_pubkeys.emplace(keyhash, pubkey);
+    provider.dilithium_keys.emplace(keyhash, key);
+    provider.p2mr_trees.emplace(output, builder);
+
+    CMutableTransaction tx_to;
+    tx_to.nVersion = 2;
+    tx_to.vin.emplace_back(COutPoint(uint256::ONE, 0));
+    tx_to.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.emplace_back(amount, script_pubkey);
+    PrecomputedTransactionData txdata;
+    txdata.Init(tx_to, std::move(spent_outputs), /*force=*/true);
+
+    SignatureData sigdata;
+    MutableTransactionSignatureCreator creator(tx_to, /*input_idx=*/0, amount, &txdata, SIGHASH_ALL);
+    BOOST_REQUIRE(ProduceSignature(provider, creator, script_pubkey, sigdata));
+    BOOST_REQUIRE_EQUAL(sigdata.scriptWitness.stack.size(), 4U);
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[0].size(), DilithiumConstants::SIGNATURE_SIZE + 1);
+    BOOST_CHECK_EQUAL(HexStr(sigdata.scriptWitness.stack[1]), HexStr(pubkey));
+    BOOST_CHECK_EQUAL(HexStr(sigdata.scriptWitness.stack[2]), HexStr(leaf_script));
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[3].size(), P2MR_CONTROL_BASE_SIZE);
+
+    UpdateInput(tx_to.vin[0], sigdata);
+    const CTransaction signed_tx{tx_to};
+    TransactionSignatureChecker checker(&signed_tx, /*nInIn=*/0, amount, txdata, MissingDataBehavior::FAIL);
+    ScriptError serror{SCRIPT_ERR_OK};
+    BOOST_CHECK_MESSAGE(
+        VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
+        ScriptErrorString(serror));
+}
+
+BOOST_FIXTURE_TEST_CASE(p2mr_dilithium_checksig_nullfail_rejects_nonempty_invalid_signature, BasicTestingSetup)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    const CDilithiumPubKey pubkey = key.GetPubKey();
+    BOOST_REQUIRE(pubkey.IsValid());
+
+    const CScript leaf_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM << OP_NOT;
+    const std::vector<unsigned char> leaf_bytes{leaf_script.begin(), leaf_script.end()};
+
+    P2MRBuilder builder;
+    builder.Add(/*depth=*/0, leaf_bytes, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+    BOOST_REQUIRE(builder.IsValid());
+    BOOST_REQUIRE(builder.IsComplete());
+
+    const WitnessV2P2MR output = builder.GetOutput();
+    const CScript script_pubkey = GetScriptForDestination(output);
+    const CAmount amount = COIN;
+
+    P2MRSpendData spenddata = builder.GetSpendData();
+    BOOST_REQUIRE_EQUAL(spenddata.scripts.size(), 1U);
+    const auto& [script_key, control_blocks] = *spenddata.scripts.begin();
+    BOOST_REQUIRE_EQUAL(HexStr(script_key.first), HexStr(leaf_script));
+    BOOST_REQUIRE(!control_blocks.empty());
+
+    CMutableTransaction tx_to;
+    tx_to.nVersion = 2;
+    tx_to.vin.emplace_back(COutPoint(uint256::ONE, 0));
+    tx_to.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+
+    std::vector<unsigned char> invalid_signature(DilithiumConstants::SIGNATURE_SIZE + 1, 0);
+    invalid_signature.back() = SIGHASH_ALL;
+    tx_to.vin[0].scriptWitness.stack.push_back(std::move(invalid_signature));
+    tx_to.vin[0].scriptWitness.stack.emplace_back(leaf_script.begin(), leaf_script.end());
+    tx_to.vin[0].scriptWitness.stack.push_back(*control_blocks.begin());
+
+    const CTransaction signed_tx{tx_to};
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.emplace_back(amount, script_pubkey);
+    PrecomputedTransactionData txdata;
+    txdata.Init(signed_tx, std::move(spent_outputs), /*force=*/true);
+
+    TransactionSignatureChecker checker(&signed_tx, /*nInIn=*/0, amount, txdata, MissingDataBehavior::FAIL);
+    ScriptError serror{SCRIPT_ERR_OK};
+    BOOST_CHECK_MESSAGE(
+        VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS & ~SCRIPT_VERIFY_NULLFAIL, checker, &serror),
+        ScriptErrorString(serror));
+    BOOST_CHECK_EQUAL(serror, SCRIPT_ERR_OK);
+
+    serror = SCRIPT_ERR_OK;
+    BOOST_CHECK(!VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror));
+    BOOST_CHECK_EQUAL(serror, SCRIPT_ERR_SIG_NULLFAIL);
+}
+
+BOOST_FIXTURE_TEST_CASE(build_signing_provider_exports_descriptor_dilithium_p2mr_leaf, BasicTestingSetup)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    DescriptorScriptPubKeyMan* keyman{nullptr};
+    {
+        LOCK(wallet.cs_wallet);
+        wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+        wallet.SetupDescriptorScriptPubKeyMans();
+        keyman = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+    }
+    BOOST_REQUIRE(keyman);
+
+    const util::Result<CTxDestination> dest = keyman->GetNewDestination(OutputType::DILITHIUM_LEGACY);
+    BOOST_REQUIRE(dest);
+    BOOST_REQUIRE(std::holds_alternative<DilithiumPKHash>(*dest));
+    const DilithiumPKHash keyhash = std::get<DilithiumPKHash>(*dest);
+    const CScript leaf_script = GetScriptForDestination(*dest);
+
+    std::vector<std::vector<unsigned char>> solutions;
+    BOOST_REQUIRE(Solver(leaf_script, solutions) == TxoutType::DILITHIUM_PUBKEYHASH);
+    BOOST_REQUIRE_EQUAL(solutions.size(), 1U);
+    BOOST_CHECK_EQUAL(HexStr(solutions[0]), HexStr(keyhash));
+
+    const std::vector<P2MRTreeLeaf> leaves{{/*depth=*/0, TAPROOT_LEAF_TAPSCRIPT, {leaf_script.begin(), leaf_script.end()}}};
+
+    P2MRCreated created;
+    FlatSigningProvider provider;
+    {
+        LOCK(wallet.cs_wallet);
+        auto created_res = CreateP2MR(wallet, leaves, "descriptor-dilithium");
+        BOOST_REQUIRE(created_res);
+        created = std::move(*created_res);
+        provider = BuildP2MRSigningProvider(wallet, created.id);
+    }
+
+    CDilithiumPubKey provider_pubkey;
+    CDilithiumKey provider_key;
+    BOOST_REQUIRE(provider.GetDilithiumPubKey(keyhash, provider_pubkey));
+    BOOST_REQUIRE(provider.GetDilithiumKeyByHash(keyhash, provider_key));
+    BOOST_CHECK(provider_pubkey == provider_key.GetPubKey());
+
+    P2MRSpendData spenddata;
+    BOOST_REQUIRE(provider.GetP2MRSpendData(std::get<WitnessV2P2MR>(created.dest), spenddata));
+    BOOST_REQUIRE_EQUAL(spenddata.scripts.size(), 1U);
+
+    constexpr CAmount amount{COIN};
+    CMutableTransaction tx_to;
+    tx_to.nVersion = 2;
+    tx_to.vin.emplace_back(COutPoint(uint256::ONE, 0));
+    tx_to.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.emplace_back(amount, created.script_pub_key);
+    PrecomputedTransactionData txdata;
+    txdata.Init(tx_to, std::move(spent_outputs), /*force=*/true);
+
+    SignatureData sigdata = DataFromTransaction(tx_to, /*nIn=*/0, CTxOut(amount, created.script_pub_key));
+    MutableTransactionSignatureCreator creator(tx_to, /*input_idx=*/0, amount, &txdata, SIGHASH_DEFAULT);
+    BOOST_REQUIRE(ProduceSignature(provider, creator, created.script_pub_key, sigdata));
+    BOOST_REQUIRE(sigdata.complete);
+    BOOST_REQUIRE_EQUAL(sigdata.scriptWitness.stack.size(), 4U);
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[0].size(), DilithiumConstants::SIGNATURE_SIZE + 1);
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[0].back(), SIGHASH_ALL);
+    BOOST_CHECK_EQUAL(HexStr(sigdata.scriptWitness.stack[1]), HexStr(provider_pubkey));
+    BOOST_CHECK_EQUAL(HexStr(sigdata.scriptWitness.stack[2]), HexStr(leaf_script));
+
+    UpdateInput(tx_to.vin[0], sigdata);
+    const CTransaction signed_tx{tx_to};
+    TransactionSignatureChecker checker(&signed_tx, /*nInIn=*/0, amount, txdata, MissingDataBehavior::FAIL);
+    ScriptError serror{SCRIPT_ERR_OK};
+    BOOST_CHECK_MESSAGE(
+        VerifyScript(tx_to.vin[0].scriptSig, created.script_pub_key, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
         ScriptErrorString(serror));
 }
 

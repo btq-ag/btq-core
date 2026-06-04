@@ -72,6 +72,28 @@ class P2MRRPCTest(BTQTestFramework):
         tx = wallet.gettransaction(txid, True)
         assert tx["confirmations"] > 0
 
+        self.log.info("Create, sign, broadcast, and mine a P2MR spend with a Dilithium leaf")
+        dilithium_address = wallet.getnewdilithiumaddress()
+        dilithium_info = wallet.getaddressinfo(dilithium_address)
+        assert dilithium_info["solvable"]
+        assert dilithium_info["scriptPubKey"].endswith("bb"), dilithium_info
+        dilithium_tree = [{
+            "depth": 0,
+            "leaf_version": LEAF_VERSION_TAPSCRIPT,
+            "script": dilithium_info["scriptPubKey"],
+        }]
+        dilithium_funded = wallet.sendtop2mr(dilithium_tree, Decimal("0.2"), "rpc-p2mr-dilithium")
+        self.generate(node, 1)
+        dilithium_spend = wallet.createp2mrspend(dilithium_funded["p2mr_id"], destination, Decimal("0.1"))
+        dilithium_signed = wallet.signp2mrtransaction(dilithium_spend["hex"], dilithium_funded["p2mr_id"])
+        assert dilithium_signed["complete"], dilithium_signed
+        dilithium_accept = wallet.testp2mrtransaction(dilithium_signed["hex"])
+        assert dilithium_accept[0]["allowed"], dilithium_accept[0].get("reject-reason", "")
+        dilithium_txid = wallet.sendrawtransaction(dilithium_signed["hex"])
+        self.generate(node, 1)
+        dilithium_tx = wallet.gettransaction(dilithium_txid, True)
+        assert dilithium_tx["confirmations"] > 0
+
         self.log.info("Do not mark a single-leaf P2MR script complete without required witness data")
         needs_stack_tree = [{
             "depth": 0,

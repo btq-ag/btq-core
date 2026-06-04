@@ -1,8 +1,8 @@
 # BTQ Mainnet Component Audit Matrix
 
-Date: 2026-06-03
+Date: 2026-06-04
 Branch: `fix/p2mr-metadata-idempotent`
-Status: Stage 0 audit tranche complete, mainnet readiness not achieved.
+Status: Stage 1 component audit tranche in progress, mainnet readiness not achieved.
 
 This is the working matrix for the staged pre-mainnet audit. It is intentionally
 not a sign-off document. A component is not considered mainnet-ready until its
@@ -52,28 +52,47 @@ respectively before being closed. Passing a smoke test is not enough.
 Stage 0 does not close the mainnet audit. It only removes several blockers that
 would have invalidated later evidence.
 
+## Stage 1 Evidence Completed In This Tranche
+
+| Area | Change | Evidence |
+|---|---|---|
+| P2MR Dilithium script-path signing | Added P2MR Dilithium sighash support, OP_2/P2MR BIP341-style precompute detection, script-path Dilithium wallet signing provider export, and RPC signing coverage. | `p2mr_tests/*`, `feature_p2mr_rpc.py --descriptors`, and `wallet_bip360_send_paths.py --descriptors` passed. |
+| P2MR Dilithium mutation coverage | Added real P2MR Dilithium pubkey and pubkeyhash leaf spends, wrong-amount, mutated-signature, mutated-script, and descriptor-wallet provider tests. | `p2mr_tests` passed. |
+| Dilithium key material invariants | `CDilithiumKey::Load()` and `Set()` now reject `sk||pk` blobs whose stored pubkey cannot verify a signature from the secret key. | `dilithium_key_tests/dilithium_load_and_set_reject_mismatched_stored_pubkey` and full Dilithium focused tranche passed. |
+| Dilithium HD metadata invariants | Extended key decode now rejects non-hardened child metadata, matching hardened-only Dilithium derivation semantics. | `dilithium_wallet_tests/dilithium_extkey_decode_rejects_non_hardened_child_metadata` and `dilithium_extpubkey_decode_rejects_non_hardened_child_metadata` passed. |
+| LWMA retarget and activation | LWMA now honors `fPowNoRetargeting`, avoids low-target zero underflow, documents `lwma` in `-testactivationheight`, and advertises `!lwma` in GBT for the next active block. | `pow_lwma_tests`, `pow_tests`, `argsman_tests/testactivationheight_help_lists_lwma`, and `feature_lwma_activation.py` passed. |
+| Dilithium NULLFAIL | `OP_CHECKSIGDILITHIUM` now rejects failed non-empty signatures under `SCRIPT_VERIFY_NULLFAIL`, including P2MR script-path execution. | `dilithium_basic_tests/dilithium_checksig_nullfail_rejects_nonempty_invalid_signature` and `p2mr_tests/p2mr_dilithium_checksig_nullfail_rejects_nonempty_invalid_signature` passed. |
+
+Validation boundary: `src/test/test_btq --run_test=script_tests --log_level=test_suite`
+still fails with 73 stale-vector/harness failures. Observed buckets are
+uncompressed P2WPKH expectations, Dilithium opcode reservation expectations,
+BTQ 15,000-byte push / 100,000-byte script limit drift from Bitcoin vectors,
+and missing newer script-error names in `script_tests.cpp`. These failures are
+not closed by this tranche and must be repaired before any broad script-suite
+green claim is made.
+
 ## Component Matrix
 
 | ID | Component | State model / FSM | Existing coverage observed | Required gaps to close | Required level |
 |---|---|---|---|---|---|
 | C01 | Chainparams and network identity | Network selection, genesis, message magic, ports, HRPs, base58 prefixes, chainwork and assumevalid policy | `chainparams_genesis_tests`, `pow_tests`, `btq_chain_identity.py` smoke coverage | Exact assertions for all networks, distinct genesis/header corpus, nonzero mainnet launch policy or explicit accepted risk | V2/V5 |
 | C02 | PoW legacy retarget | Height and timespan transitions before LWMA | Generic `pow_tests` | Boundary vectors, malformed `nBits`, alternate-timespan clamps, regression against Bitcoin-derived paths | V3 |
-| C03 | LWMA retarget | Activation height, 45-block window, solvetime clamp, `PermittedDifficultyTransition` | `pow_lwma_tests` is shallow | Unit vectors, functional activation with `-testactivationheight=lwma@N`, wrong-block rejection, reorg over activation | V3/V4 |
+| C03 | LWMA retarget | Activation height, 45-block window, solvetime clamp, `PermittedDifficultyTransition` | Stage 1 adds low-target preservation, no-retarget, help, and GBT activation coverage | Wrong-block rejection, reorg over activation, headers-sync boundary vectors, independent LWMA oracle | V3/V4 |
 | C04 | Consensus activation flags | Height-driven script flags for Dilithium and always-on P2MR | Dilithium/P2MR unit and functional smoke | Pre/post Dilithium-height block tests, P2MR mandatory/standard split, libconsensus exposure parity | V3 |
 | C05 | Block validation and ConnectBlock | Header, tx, witness, script, sigops, undo, chainstate mutation | Generic validation/unit tests | Blocks with valid and invalid Dilithium/P2MR spends, max-weight blocks, undo/reorg with PQ witnesses, prune/reindex | V4 |
 | C06 | Transaction checks and UTXO | Noncontextual tx rules, coin view state, duplicate spends, witness serialization | `transaction_tests`, `txvalidation_tests`, `coins_tests` | Large witness serialization, PQ spend undo, P2MR tx mutation tests, weight/vsize cross-checks | V3 |
-| C07 | Script interpreter base/witness | `EvalScript`, witness program dispatch, NULLFAIL, encoding, stack/resource limits | `script_tests`, `script_standard_tests`, `dilithium_basic_tests` | Full FSM table for BASE/WITNESS_V0/TAPSCRIPT/P2MR, malformed Dilithium pubkeys, large stack items | V3 |
+| C07 | Script interpreter base/witness | `EvalScript`, witness program dispatch, NULLFAIL, encoding, stack/resource limits | Stage 1 adds Dilithium single-sig NULLFAIL coverage; broad `script_tests` still fails stale BTQ vector/harness buckets | Repair stale `script_tests`, full FSM table for BASE/WITNESS_V0/TAPSCRIPT/P2MR, malformed Dilithium pubkeys, large stack items | V3 |
 | C08 | P2MR consensus path | Witness v2 root, control block, leaf execution, omitted nodes, no key path | `feature_p2mr.py`, wallet P2MR unit tests | Deterministic C++ control-path FSM, malformed control sizes, annex, parity, unknown leaf versions, cross-domain mutations | V3 |
-| C09 | Real P2MR Dilithium script spends | Dilithium signature creation/checking inside P2MR leaf | Current tests prove opcode reachability and wallet P2MR send path, not a real valid Dilithium leaf spend | Valid spend mined, bad sig/pubkey/script/control/amount mutations fail, same script rejected under Taproot | V3/V4 |
+| C09 | Real P2MR Dilithium script spends | Dilithium signature creation/checking inside P2MR leaf | Stage 1 adds real C++ P2MR Dilithium pubkey/pubkeyhash signing and RPC mined spend coverage | Broaden mined mutation matrix, invalid control paths, annex/codeseparator binding, same script rejected under Taproot | V3/V4 |
 | C10 | Dilithium C wrapper | Keygen, seeded keygen, sign, verify, fail-closed unsupported helpers | `dilithium_key_tests`, new `sk_to_pk` regression | NIST/known-answer vectors, malformed/null input policy, deterministic seed vectors | V3 |
-| C11 | `CDilithiumKey` and `CDilithiumPubKey` | Invalid, generated, loaded, serialized, mismatched `sk||pk`, signing | `dilithium_key_tests`, `dilithium_wallet_tests` | Reject or quarantine random full-size blobs, mismatched `sk||pk`, `IsValid` vs `IsFullyValid` consistency | V3 |
-| C12 | Dilithium HD/ext keys | Seed, derive hardened, encode/decode, depth/fingerprint state | `dilithium_wallet_tests`, `scriptpubkeyman_tests` | Max-depth, invalid master metadata, decode mutation, reload and restored-signing tests | V3 |
+| C11 | `CDilithiumKey` and `CDilithiumPubKey` | Invalid, generated, loaded, serialized, mismatched `sk||pk`, signing | Stage 1 rejects mismatched `sk||pk`; focused Dilithium key/wallet suites pass | Random full-size blob quarantine, `IsValid` vs `IsFullyValid` consistency, KAT/differential verification | V3 |
+| C12 | Dilithium HD/ext keys | Seed, derive hardened, encode/decode, depth/fingerprint state | Stage 1 rejects non-hardened child metadata during extkey/extpubkey decode | Max-depth, invalid master metadata, broader decode mutation, reload and restored-signing tests | V3 |
 | C13 | Classical ECDSA/Schnorr compatibility | Legacy, segwit, taproot, existing Bitcoin signing FSMs | Upstream-derived unit and functional tests | Prove BTQ changes did not weaken DER/STRICTENC, Taproot, PSBT, or descriptor signing | V2/V3 |
 | C14 | Sighash and domain separation | BASE/WITNESS_V0/TAPSCRIPT/P2MR hashing and signature family split | `sighash_tests`, Dilithium sighash-byte test, mixed-mode tests | P2MR Dilithium mutation matrix for leaf script, control path, prevout, amount, annex, codeseparator | V3 |
 | C15 | Sigops and resource accounting | Legacy/witness/P2MR sigop counts, Dilithium cost, validation weight | `sigopcount_tests`, `feature_dilithium_sigops.py`, constants lint | Interpreter debit equals script counting, P2MR witness-v2 accounting, max-cost block and mempool tests | V4 |
 | C16 | Policy and standardness | Standard flags, dust, max standard tx weight, scriptsig/witness limits | Generic policy tests, `dilithium_network_policy_tests` | P2MR+Dilithium mempool acceptance/rejection matrix, dust economics for PQ spends, package policy | V3 |
 | C17 | Mempool accept/RBF/packages | Accept states, ancestor/descendant, package validation, replacement | `mempool_tests`, `rbf_tests`, `txpackage_tests` | PQ/P2MR package tests, large witness packages, RBF fee delta and witness malleability behavior | V3/V4 |
-| C18 | Mining and GBT | Template assembly, block limits, rules array, inclusion policy | `miner_tests`, `miniminer_tests`, `btq_regtest_mining.py` | Valid P2MR Dilithium tx in template and mined block, LWMA GBT rule boundary, near-8MW stress | V4 |
+| C18 | Mining and GBT | Template assembly, block limits, rules array, inclusion policy | Stage 1 adds LWMA GBT rule boundary; existing mining smoke remains | Valid P2MR Dilithium tx in template and mined block, near-8MW stress, package inclusion policy | V4 |
 | C19 | P2P headers/block relay | Handshake, network magic, headers sync, DoS header tree, invalid blocks | Generic P2P tests | Replace stale Bitcoin header corpus, BTQ genesis/minchainwork tests, invalid LWMA/P2MR block relay tests | V3/V4 |
 | C20 | Compact blocks and block filters | Short IDs, prefilled txs, filter/index state | Generic `blockencodings_tests`, `blockfilter_index_tests` | Blocks containing large PQ witnesses and P2MR outputs through compact relay and filters | V2/V3 |
 | C21 | RPC raw transaction/script | Decode, create, sign, submit, validate address, descriptor info | Generic RPC tests plus P2MR/Dilithium RPC smoke | P2MR address fields, raw Dilithium signing, invalid scripts, named-arg shape regressions | V2 |
@@ -90,7 +109,7 @@ would have invalidated later evidence.
 | C32 | Fuzzing | Script, tx, policy, deserialization, P2P fuzz targets | Existing upstream fuzz targets | Dedicated Dilithium wrapper/pubkey, P2MR witness, signing-provider, wallet metadata fuzz targets | V3 |
 | C33 | Bench/performance | Validation, crypto, mempool, block assembly cost | Generic benches | Dilithium verify throughput, all-PQ block validation, P2MR control path cost, target SLOs | V4 |
 | C34 | Build, CI, release hygiene | Autotools, CI matrix, lint, secrets, reproducibility | Existing lint/CI files, new registration lint | Full Linux/macOS/Windows matrix, ASan/UBSan/TSan, Guix/reproducible evidence, secret scanning | V5 |
-| C35 | Init/config/args | Args parsing, activation overrides, wallet/node init | `argsman_tests`, init tests | `-testactivationheight=lwma@N` help/config coverage, invalid activation args, chain-specific defaults | V2 |
+| C35 | Init/config/args | Args parsing, activation overrides, wallet/node init | Stage 1 adds `-testactivationheight=lwma@N` help and functional parse/use coverage | Invalid LWMA activation args, chain-specific defaults, restart/reindex activation override tests | V2 |
 | C36 | Ancillary networking | Tor/I2P, DNS seeds, peer eviction, addrman | Generic upstream tests | BTQ chain identity in peer tests, launch seed policy, P2P magic and stale peer corpus checks | V2 |
 | C37 | UI/Qt/external signer | Wallet UI, coin control, external signer integration | Qt tests if enabled, external signer generic tests | PQ/P2MR address display, fee estimates, unsupported signing paths clearly rejected | V2 |
 
@@ -138,9 +157,10 @@ would have invalidated later evidence.
 The branch is still no-go for mainnet until at least these are resolved with
 evidence:
 
-- Real valid P2MR Dilithium spend through mempool, mining, block validation,
-  and mutation failure tests.
-- LWMA activation and difficulty transition functional coverage.
+- P2MR Dilithium mined-spend coverage exists, but the full mined mutation
+  matrix, invalid-control matrix, and reorg/reindex coverage remain open.
+- Broad `script_tests` is not green; stale BTQ vector/harness buckets must be
+  repaired before script coverage can be treated as comprehensive.
 - Revalidation of prior chainparams findings: mainnet chainwork/assumevalid,
   genesis/network identity, signet/testnet/regtest separation.
 - Dilithium KATs and malformed key/pubkey/load tests.

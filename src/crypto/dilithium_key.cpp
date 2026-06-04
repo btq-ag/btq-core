@@ -150,6 +150,18 @@ bool CDilithiumKey::VerifyPubKey(const CDilithiumPubKey& pubkey) const
     return our_pubkey == pubkey;
 }
 
+bool CDilithiumKey::KeyDataSelfChecks() const
+{
+    if (!IsValid()) return false;
+
+    const CDilithiumPubKey pubkey = GetPubKey();
+    if (!pubkey.IsValid() || !pubkey.IsFullyValid()) return false;
+
+    std::vector<unsigned char> signature;
+    if (!Sign(uint256::ONE, signature)) return false;
+    return pubkey.Verify(uint256::ONE, signature);
+}
+
 bool CDilithiumKey::Load(Span<const unsigned char> privkey)
 {
     if (privkey.size() != GetKeySize()) {
@@ -159,6 +171,10 @@ bool CDilithiumKey::Load(Span<const unsigned char> privkey)
     
     MakeKeyData();
     memcpy(keydata->data(), privkey.data(), privkey.size());
+    if (!KeyDataSelfChecks()) {
+        ClearKeyData();
+        return false;
+    }
     return true;
 }
 
@@ -256,7 +272,8 @@ void CDilithiumExtKey::Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE])
     // fingerprint == 0; reject anything else as corrupt rather than silently
     // promoting it to a master key.
     const bool master_ok = (nDepth != 0) || (nChild == 0 && ReadLE32(vchFingerprint) == 0);
-    if (!master_ok) {
+    const bool child_metadata_ok = (nDepth == 0) || ((nChild & DILITHIUM_HARDENED_BIT) != 0);
+    if (!master_ok || !child_metadata_ok) {
         // Wipe to a clearly-invalid state.
         nDepth = 0;
         memset(vchFingerprint, 0, 4);
@@ -377,7 +394,12 @@ void CDilithiumExtPubKey::Decode(const unsigned char code[DILITHIUM_EXTPUBKEY_SI
     memcpy(chaincode.begin(), code + 9, 32);
     pubkey.Set(code + 41, code + 41 + DilithiumConstants::PUBLIC_KEY_SIZE);
     const bool master_ok = (nDepth != 0) || (nChild == 0 && ReadLE32(vchFingerprint) == 0);
-    if (!master_ok || !pubkey.IsFullyValid()) {
+    const bool child_metadata_ok = (nDepth == 0) || ((nChild & DILITHIUM_HARDENED_BIT) != 0);
+    if (!master_ok || !child_metadata_ok || !pubkey.IsFullyValid()) {
+        nDepth = 0;
+        memset(vchFingerprint, 0, 4);
+        nChild = 0;
+        chaincode = ChainCode{};
         pubkey = CDilithiumPubKey();
     }
 }
