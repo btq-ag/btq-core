@@ -9,6 +9,8 @@
 #include <outputtype.h>
 #include <key_io.h>
 #include <script/descriptor.h>
+#include <rpc/util.h>
+#include <univalue.h>
 #include <test/util/setup_common.h>
 #include <wallet/test/util.h>
 
@@ -149,6 +151,18 @@ BOOST_AUTO_TEST_CASE(dilithium_signature_sizes)
     // Test public key size
     BOOST_CHECK_EQUAL(DilithiumConstants::PUBLIC_KEY_SIZE, DilithiumConstants::PUBLIC_KEY_SIZE);
     BOOST_CHECK(DilithiumConstants::PUBLIC_KEY_SIZE > 1000); // Dilithium public keys are much larger than ECDSA
+}
+
+BOOST_AUTO_TEST_CASE(raw_descriptor_eval_for_scantxoutset)
+{
+    FlatSigningProvider provider;
+    UniValue scanobject{UniValue::VSTR};
+    scanobject.setStr("raw(76a91411b366edfc0a8b66feebae5c2e25a7b6a5d1cf3188ac)#fm24fxxy");
+    const auto scripts = EvalDescriptorStringOrObject(scanobject, provider);
+    BOOST_REQUIRE_EQUAL(scripts.size(), 1U);
+    const auto inferred = InferDescriptor(scripts[0], provider);
+    BOOST_REQUIRE(inferred);
+    (void)inferred->ToString();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

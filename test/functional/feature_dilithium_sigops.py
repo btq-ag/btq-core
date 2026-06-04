@@ -397,7 +397,11 @@ class DilithiumSigopsTest(BTQTestFramework):
                 leaf_script, witness_stack,
                 label=f'leaf_{test_id}',
             )
-            assert not result, f'{opcode_name} should be rejected in tapscript!'
+            assert not result['allowed'], f'{opcode_name} should be rejected in tapscript!'
+            assert self._is_script_rejection(result), (
+                f'{opcode_name}: expected script rejection, got {result!r}'
+            )
+            print(info(f"reject-reason: {result.get('reject-reason', '')[:80]}"))
             print(passed(f'{opcode_name} correctly rejected'))
 
         # --- 3f: Control test - OP_TRUE must still work ---
@@ -407,7 +411,7 @@ class DilithiumSigopsTest(BTQTestFramework):
             CScript([OP_TRUE]), [],
             label='leaf_true',
         )
-        assert result, 'OP_TRUE tapscript should succeed!'
+        assert result['allowed'], f'OP_TRUE tapscript should succeed: {result!r}'
         print(passed('Tapscript execution works correctly'))
 
     # ====================================================================
@@ -417,7 +421,7 @@ class DilithiumSigopsTest(BTQTestFramework):
     def _tapscript_spend_test(self, node, wallet, xonly_pubkey, leaf_script, witness_stack, label):
         """Fund a P2TR output with the given leaf script, then try to spend it.
 
-        Returns True if the spend was accepted to the mempool, False otherwise.
+        Returns testmempoolaccept result dict for the spend.
         """
         try:
             # Build the taproot output
@@ -431,7 +435,7 @@ class DilithiumSigopsTest(BTQTestFramework):
             )
             funding_txid = fund_info['txid']
             funding_vout = fund_info['sent_vout']
-            self.generate(node, 1)
+            self.generate(wallet, 1)
 
             # Build spending transaction - output to a standard P2TR (anyone-can-spend)
             # so we don't trigger maxburnamount policy rejection
@@ -459,17 +463,25 @@ class DilithiumSigopsTest(BTQTestFramework):
             spend_tx.wit.vtxinwit = [wit]
             spend_tx.rehash()
 
-            # Try to submit
-            node.sendrawtransaction(spend_tx.serialize().hex())
-            return True
+            return node.testmempoolaccept([spend_tx.serialize().hex()])[0]
 
         except Exception as e:
             err = str(e)
-            if 'dilithium' in err.lower() or 'Script failed' in err or 'non-mandatory' in err.lower():
-                print(info(f'Rejected as expected: {err[:80]}'))
-            else:
-                print(info(f'Rejected (other): {err[:80]}'))
+            print(info(f'Rejected (exception): {err[:120]}'))
+            return {'allowed': False, 'reject-reason': err}
+
+    @staticmethod
+    def _is_script_rejection(result):
+        if result.get('allowed'):
             return False
+        reason = result.get('reject-reason', '')
+        return (
+            'Script failed' in reason
+            or 'dilithium' in reason.lower()
+            or 'tapscript' in reason.lower()
+            or 'reserved for soft-fork' in reason
+            or 'non-mandatory' in reason.lower()
+        )
 
 
 if __name__ == '__main__':

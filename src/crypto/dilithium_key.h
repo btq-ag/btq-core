@@ -151,7 +151,8 @@ public:
     bool IsValid() const { return !!keydata; }
 
     //! Generate a new private key using a cryptographic PRNG.
-    void MakeNewKey();
+    //! @return false if RNG failed (key is cleared and invalid).
+    bool MakeNewKey();
 
     /**
      * Generate a new private key from provided entropy.

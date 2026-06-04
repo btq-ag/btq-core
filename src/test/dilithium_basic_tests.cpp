@@ -17,8 +17,8 @@ BOOST_FIXTURE_TEST_SUITE(dilithium_basic_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(dilithium_script_verification_flags)
 {
-    // Dilithium verification is gated by nDilithiumHeight in GetBlockScriptFlags,
-    // not MANDATORY_SCRIPT_VERIFY_FLAGS (allows future soft-fork activation).
+    // Dilithium verification is height-gated for blocks, but standard relay
+    // policy verifies it once active.
     BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM));
     BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
 }

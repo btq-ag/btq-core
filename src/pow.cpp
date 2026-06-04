@@ -71,7 +71,8 @@ unsigned int LwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlock
         return powLimit.GetCompact();
     }
 
-    arith_uint256 sumTarget;
+    arith_uint256 targetQuotientSum;
+    arith_uint256 targetRemainderSum;
     int64_t weightedSolvetimes = 0;
     int64_t previousTimestamp = pindexLast->GetAncestor(height - N)->GetBlockTime();
 
@@ -87,7 +88,9 @@ unsigned int LwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlock
 
         arith_uint256 target;
         target.SetCompact(block->nBits);
-        sumTarget += target;
+        const arith_uint256 targetQuotient = target / N;
+        targetQuotientSum += targetQuotient;
+        targetRemainderSum += target - targetQuotient * static_cast<uint32_t>(N);
 
         previousTimestamp = thisTimestamp;
     }
@@ -96,7 +99,7 @@ unsigned int LwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlock
         weightedSolvetimes = 1;
     }
 
-    const arith_uint256 averageTarget = sumTarget / N;
+    const arith_uint256 averageTarget = targetQuotientSum + targetRemainderSum / N;
     const arith_uint256 k_uint{static_cast<uint64_t>(k)};
     const uint32_t weighted_solvetimes_u32{static_cast<uint32_t>(weightedSolvetimes)};
     const arith_uint256 quotient = averageTarget / k_uint;

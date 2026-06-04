@@ -94,6 +94,7 @@ static ScriptErrorDesc script_errors[]={
     {SCRIPT_ERR_WITNESS_PUBKEYTYPE, "WITNESS_PUBKEYTYPE"},
     {SCRIPT_ERR_OP_CODESEPARATOR, "OP_CODESEPARATOR"},
     {SCRIPT_ERR_SIG_FINDANDDELETE, "SIG_FINDANDDELETE"},
+    {SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE, "DISCOURAGE_UPGRADABLE_PUBKEYTYPE"},
 };
 
 static std::string FormatScriptError(ScriptError_t err)
@@ -1295,6 +1296,17 @@ BOOST_AUTO_TEST_CASE(script_standard_push)
         BOOST_CHECK_MESSAGE(VerifyScript(script, CScript() << OP_1, nullptr, SCRIPT_VERIFY_MINIMALDATA, BaseSignatureChecker(), &err), "Length " << i << " push is not minimal data.");
         BOOST_CHECK_MESSAGE(err == SCRIPT_ERR_OK, ScriptErrorString(err));
     }
+}
+
+BOOST_AUTO_TEST_CASE(script_max_size)
+{
+    ScriptError err;
+    CScript script;
+    for (int i = 0; i <= MAX_SCRIPT_SIZE; ++i) {
+        script << OP_1;
+    }
+    BOOST_CHECK(!VerifyScript(CScript() << OP_1, script, nullptr, 0, BaseSignatureChecker(), &err));
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_SCRIPT_SIZE);
 }
 
 BOOST_AUTO_TEST_CASE(script_IsPushOnly_on_invalid_scripts)

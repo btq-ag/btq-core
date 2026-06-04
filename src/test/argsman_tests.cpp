@@ -56,6 +56,7 @@ BOOST_AUTO_TEST_CASE(testactivationheight_help_lists_lwma)
     const std::string help = args.GetHelpMessage();
     BOOST_CHECK(help.find("-testactivationheight=name@height") != std::string::npos);
     BOOST_CHECK(help.find("lwma") != std::string::npos);
+    BOOST_CHECK(help.find("dilithium") != std::string::npos);
 }
 
 struct TestArgsManager : public ArgsManager

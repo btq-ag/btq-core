@@ -14,6 +14,14 @@
 #include <vector>
 
 namespace wallet {
+uint256 KeyIDToIV(const CKeyID& id)
+{
+    uint256 iv;
+    iv.SetNull();
+    memcpy(iv.begin(), id.begin(), id.size());
+    return iv;
+}
+
 int CCrypter::BytesToKeySHA512AES(const std::vector<unsigned char>& chSalt, const SecureString& strKeyData, int count, unsigned char *key,unsigned char *iv) const
 {
     // This mimics the behavior of openssl's EVP_BytesToKey with an aes256cbc
@@ -147,13 +155,6 @@ uint256 DeriveDilithiumKeyIV(const CKeyID& keyid)
     return Hash(Span{keyid});
 }
 
-static uint256 DeriveLegacyDilithiumKeyIV(const CKeyID& keyid)
-{
-    uint256 iv;
-    std::copy(keyid.begin(), keyid.end(), iv.begin());
-    return iv;
-}
-
 static bool SetDilithiumKeyFromSecret(const CKeyingMaterial& secret, const CKeyID& keyid, CDilithiumKey& key)
 {
     if (secret.size() != CDilithiumKey::GetKeySize()) {
@@ -172,6 +173,17 @@ static bool SetDilithiumKeyFromSecret(const CKeyingMaterial& secret, const CKeyI
 
     key = candidate;
     return true;
+}
+
+static bool TryDecryptDilithiumKeyWithIV(const CKeyingMaterial& vMasterKey,
+                                         const std::vector<unsigned char>& vchCryptedSecret,
+                                         const CKeyID& keyid,
+                                         const uint256& iv,
+                                         CDilithiumKey& key)
+{
+    CKeyingMaterial vchSecret;
+    return DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, iv, vchSecret) &&
+           SetDilithiumKeyFromSecret(vchSecret, keyid, key);
 }
 
 bool EncryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vchPlaintext, const uint256& nIV, std::vector<unsigned char> &vchCiphertext)
@@ -196,14 +208,10 @@ bool DecryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const std::vector
 
 bool DecryptDilithiumKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyID& keyid, CDilithiumKey& key)
 {
-    CKeyingMaterial vchSecret;
-    if (DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, DeriveDilithiumKeyIV(keyid), vchSecret) &&
-        SetDilithiumKeyFromSecret(vchSecret, keyid, key)) {
+    if (TryDecryptDilithiumKeyWithIV(vMasterKey, vchCryptedSecret, keyid, KeyIDToIV(keyid), key)) {
         return true;
     }
 
-    vchSecret.clear();
-    return DecryptDilithiumSecret(vMasterKey, vchCryptedSecret, DeriveLegacyDilithiumKeyIV(keyid), vchSecret) &&
-           SetDilithiumKeyFromSecret(vchSecret, keyid, key);
+    return TryDecryptDilithiumKeyWithIV(vMasterKey, vchCryptedSecret, keyid, DeriveDilithiumKeyIV(keyid), key);
 }
 } // namespace wallet

@@ -2,22 +2,45 @@
 # Copyright (c) 2026 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""End-to-end wallet send paths for BIP360/P2MR destinations."""
+"""End-to-end checks for sendmany/sendrawtransaction after BIP-360 changes.
+
+This test validates four transaction paths on regtest:
+1) wallet sendmany to multiple recipients
+2) raw transaction built/signed by wallet and submitted via sendrawtransaction
+3) BIP-360 P2MR script-path spend submitted via sendrawtransaction
+4) wallet-tracked P2MR metadata funding/spend/idempotency paths
+"""
 
 from decimal import Decimal
 
-from test_framework.script import LEAF_VERSION_TAPSCRIPT
+from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.messages import (
+    COutPoint,
+    CTransaction,
+    CTxIn,
+    CTxInWitness,
+    CTxOut,
+    SEQUENCE_FINAL,
+)
+from test_framework.script import (
+    CScript,
+    LEAF_VERSION_TAPSCRIPT,
+    OP_TRUE,
+    p2mr_construct,
+)
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import assert_equal
+from test_framework.wallet import MiniWallet
 
 
-class WalletBIP360SendPathsTest(BTQTestFramework):
+class WalletBip360SendPathsTest(BTQTestFramework):
     def add_options(self, parser):
-        self.add_wallet_options(parser, descriptors=True, legacy=False)
+        self.add_wallet_options(parser)
 
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
+        # Keep policy permissive for custom script-path spend checks.
         self.extra_args = [["-acceptnonstdtxn=1"]]
 
     def skip_test_if_missing_module(self):
@@ -25,50 +48,96 @@ class WalletBIP360SendPathsTest(BTQTestFramework):
 
     def run_test(self):
         node = self.nodes[0]
+        wallet = node.get_wallet_rpc(self.default_wallet_name)
+        miniwallet = MiniWallet(node)
 
-        node.createwallet(wallet_name="sender", descriptors=True)
-        sender = node.get_wallet_rpc("sender")
-        self.generatetoaddress(node, 110, sender.getnewaddress())
+        self.log.info("Funding RPC wallet and MiniWallet")
+        self.generatetoaddress(node, COINBASE_MATURITY + 5, wallet.getnewaddress())
+        self.generate(miniwallet, COINBASE_MATURITY + 5)
 
-        node.createwallet(wallet_name="receiver", descriptors=True)
-        receiver = node.get_wallet_rpc("receiver")
+        self.log.info("1/4: sendmany should succeed and confirm")
+        recipients = {
+            node.getnewaddress(): Decimal("1.00000000"),
+            node.getnewaddress(): Decimal("1.25000000"),
+        }
+        sendmany_txid = wallet.sendmany("", recipients, 1, "bip360-sendmany-e2e")
+        assert sendmany_txid in node.getrawmempool()
+        self.generate(node, 1)
+        assert_equal(wallet.gettransaction(sendmany_txid)["confirmations"], 1)
 
+        self.log.info("2/4: createrawtransaction + signrawtransactionwithwallet + sendrawtransaction should succeed")
+        utxo = wallet.listunspent(1, 9999999)[0]
+        fee = Decimal("0.00010000")
+        amount = Decimal(str(utxo["amount"])) - fee
+        raw_tx = node.createrawtransaction(
+            [{"txid": utxo["txid"], "vout": utxo["vout"]}],
+            {node.getnewaddress(): amount},
+        )
+        signed = node.signrawtransactionwithwallet(raw_tx)
+        assert_equal(signed["complete"], True)
+        raw_send_txid = node.sendrawtransaction(signed["hex"])
+        assert raw_send_txid in node.getrawmempool()
+        self.generate(node, 1)
+        assert_equal(wallet.gettransaction(raw_send_txid)["confirmations"], 1)
+
+        self.log.info("3/4: BIP-360 P2MR script-path spend via sendrawtransaction should succeed")
+        p2mr = p2mr_construct([("leaf", CScript([OP_TRUE]))])
+        funded = miniwallet.send_to(from_node=node, scriptPubKey=p2mr.scriptPubKey, amount=50_000)
+        self.generate(node, 1)
+
+        tx = CTransaction()
+        tx.nVersion = 2
+        tx.vin = [CTxIn(COutPoint(int(funded["txid"], 16), funded["sent_vout"]), b"", SEQUENCE_FINAL)]
+        tx.vout = [CTxOut(40_000, p2mr.scriptPubKey)]
+
+        leaf = p2mr.leaves["leaf"]
+        control_block = bytes([leaf.version | 1]) + leaf.merklebranch
+        witness = CTxInWitness()
+        witness.scriptWitness.stack = [bytes(leaf.script), control_block]
+        tx.wit.vtxinwit = [witness]
+        tx.rehash()
+
+        p2mr_spend_txid = node.sendrawtransaction(tx.serialize().hex())
+        assert p2mr_spend_txid in node.getrawmempool()
+        self.generate(node, 1)
+        block_hash = node.getbestblockhash()
+        block = node.getblock(block_hash)
+        assert p2mr_spend_txid in block["tx"]
+
+        self.log.info("4/4: wallet-tracked P2MR metadata can fund, spend, and deduplicate")
+        receiver = node.get_wallet_rpc(node.createwallet(wallet_name="p2mr_receiver", descriptors=True)["name"])
         tree = [{
             "depth": 0,
             "leaf_version": LEAF_VERSION_TAPSCRIPT,
-            "script": "51",  # OP_TRUE
+            "script": "51",
         }]
 
-        self.log.info("Receiver creates wallet-tracked P2MR metadata")
         created = receiver.getnewp2mraddress(tree, "plain-wallet-send")
         assert created["address"].startswith("qcrt1z")
         assert created["scriptPubKey"].startswith("5220")
         assert_equal(receiver.getp2mrinfo(created["p2mr_id"])["address"], created["address"])
 
-        self.log.info("Plain sendtoaddress can fund a wallet-tracked P2MR address")
-        txid = sender.sendtoaddress(created["address"], Decimal("1.0"))
-        assert txid in node.getrawmempool()
+        wallet_send_txid = wallet.sendtoaddress(created["address"], Decimal("1.0"))
+        assert wallet_send_txid in node.getrawmempool()
         self.generate(node, 1)
 
-        spendable = receiver.createp2mrspend(created["p2mr_id"], sender.getnewaddress(), Decimal("0.5"))
+        spendable = receiver.createp2mrspend(created["p2mr_id"], wallet.getnewaddress(), Decimal("0.5"))
         assert_equal(spendable["p2mr_id"], created["p2mr_id"])
         assert spendable["input_txid"]
 
-        self.log.info("Wallet metadata signs and broadcasts the P2MR spend")
-        signed = receiver.signp2mrtransaction(spendable["hex"], created["p2mr_id"])
-        assert signed["complete"]
-        accepted = receiver.testp2mrtransaction(signed["hex"])
+        p2mr_signed = receiver.signp2mrtransaction(spendable["hex"], created["p2mr_id"])
+        assert p2mr_signed["complete"]
+        accepted = receiver.testp2mrtransaction(p2mr_signed["hex"])
         assert_equal(accepted[0]["allowed"], True)
-        spent_txid = receiver.sendrawtransaction(signed["hex"])
+        spent_txid = receiver.sendrawtransaction(p2mr_signed["hex"])
         self.generate(node, 1)
         assert_equal(receiver.gettransaction(spent_txid, True)["confirmations"], 1)
 
-        self.log.info("sendtop2mr convenience path remains idempotent for an identical tree")
-        funded = sender.sendtop2mr(tree, Decimal("0.25"), "sender-owned-p2mr")
-        duplicate = sender.getnewp2mraddress(tree, "sender-owned-p2mr-duplicate")
-        assert_equal(funded["address"], duplicate["address"])
-        assert_equal(funded["p2mr_id"], duplicate["p2mr_id"])
+        funded_p2mr = wallet.sendtop2mr(tree, Decimal("0.25"), "sender-owned-p2mr")
+        duplicate = wallet.getnewp2mraddress(tree, "sender-owned-p2mr-duplicate")
+        assert_equal(funded_p2mr["address"], duplicate["address"])
+        assert_equal(funded_p2mr["p2mr_id"], duplicate["p2mr_id"])
 
 
 if __name__ == "__main__":
-    WalletBIP360SendPathsTest().main()
+    WalletBip360SendPathsTest().main()
