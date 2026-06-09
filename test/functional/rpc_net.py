@@ -28,6 +28,10 @@ from test_framework.util import (
 from test_framework.wallet import MiniWallet
 
 
+MAX_RPC_BODY_SIZE = 0x02000000
+RPC_HEX_MESSAGE_OVERHEAD = 1024
+
+
 def assert_net_servicesnames(servicesflag, servicenames):
     """Utility that checks if all flags are correctly decoded in
     `getpeerinfo` and `getnetworkinfo`.
@@ -364,10 +368,13 @@ class NetTest(BTQTestFramework):
         self.log.debug("Test that empty msg is allowed")
         node.sendmsgtopeer(peer_id=0, msg_type="addr", msg="FF")
 
-        self.log.debug("Test that oversized messages are allowed, but get us disconnected")
-        zero_byte_string = b'\x00' * 4000001
-        node.sendmsgtopeer(peer_id=0, msg_type="addr", msg=zero_byte_string.hex())
-        self.wait_until(lambda: len(self.nodes[0].getpeerinfo()) == 0, timeout=10)
+        if 2 * (test_framework.messages.MAX_PROTOCOL_MESSAGE_LENGTH + 1) + RPC_HEX_MESSAGE_OVERHEAD < MAX_RPC_BODY_SIZE:
+            self.log.debug("Test that oversized messages are allowed, but get us disconnected")
+            zero_byte_string = b'\x00' * (test_framework.messages.MAX_PROTOCOL_MESSAGE_LENGTH + 1)
+            node.sendmsgtopeer(peer_id=0, msg_type="addr", msg=zero_byte_string.hex())
+            self.wait_until(lambda: len(self.nodes[0].getpeerinfo()) == 0, timeout=10)
+        else:
+            self.log.debug("Skip oversized sendmsgtopeer disconnect test because the hex RPC body would exceed the RPC transport limit")
 
     def test_getaddrmaninfo(self):
         self.log.info("Test getaddrmaninfo")

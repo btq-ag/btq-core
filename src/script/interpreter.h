@@ -344,6 +344,11 @@ public:
         return m_checker.CheckSchnorrSignature(sig, pubkey, sigversion, execdata, serror);
     }
 
+    bool CheckDilithiumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override
+    {
+        return m_checker.CheckDilithiumSignature(scriptSig, vchPubKey, scriptCode, sigversion);
+    }
+
     bool CheckLockTime(const CScriptNum& nLockTime) const override
     {
         return m_checker.CheckLockTime(nLockTime);

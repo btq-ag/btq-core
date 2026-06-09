@@ -29,6 +29,7 @@
 #include <util/string.h>
 #include <validation.h>
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <string>
@@ -557,6 +558,28 @@ BOOST_AUTO_TEST_CASE(test_big_witness_transaction)
     scriptcheckqueue.StopWorkerThreads();
 }
 
+BOOST_AUTO_TEST_CASE(tx_to_univ_reports_virtual_size_not_weight)
+{
+    CMutableTransaction mtx;
+    mtx.nVersion = 2;
+    uint256 prev_hash;
+    prev_hash.SetHex("01");
+    mtx.vin.emplace_back(COutPoint{prev_hash, 0}, CScript{}, 0);
+    mtx.vin[0].scriptWitness.stack.emplace_back(100, 0x42);
+    mtx.vout.emplace_back(1000, CScript{} << OP_TRUE);
+
+    const CTransaction tx{mtx};
+    const int64_t weight = GetTransactionWeight(tx);
+    const int64_t vsize = GetVirtualTransactionSize(tx);
+    BOOST_REQUIRE_NE(weight, vsize);
+
+    UniValue entry{UniValue::VOBJ};
+    TxToUniv(tx, /*block_hash=*/uint256{}, entry, /*include_hex=*/false);
+
+    BOOST_CHECK_EQUAL(entry.find_value("weight").getInt<int64_t>(), weight);
+    BOOST_CHECK_EQUAL(entry.find_value("vsize").getInt<int64_t>(), vsize);
+}
+
 SignatureData CombineSignatures(const CMutableTransaction& input1, const CMutableTransaction& input2, const CTransactionRef tx)
 {
     SignatureData sigdata;
@@ -865,15 +888,16 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
     t.vout[1].scriptPubKey = CScript() << OP_RETURN;
     CheckIsNotStandard(t, "multi-op-return");
 
-    // Check large scriptSig (non-standard if size is >1650 bytes)
+    // Check large scriptSig (non-standard if size is > MAX_STANDARD_SCRIPTSIG_SIZE)
     t.vout.resize(1);
     t.vout[0].nValue = MAX_MONEY;
     t.vout[0].scriptPubKey = GetScriptForDestination(PKHash(key.GetPubKey()));
-    // OP_PUSHDATA2 with len (3 bytes) + data (1647 bytes) = 1650 bytes
-    t.vin[0].scriptSig = CScript() << std::vector<unsigned char>(1647, 0); // 1650
+    t.vin[0].scriptSig.clear();
+    t.vin[0].scriptSig.resize(MAX_STANDARD_SCRIPTSIG_SIZE);
+    std::fill(t.vin[0].scriptSig.begin(), t.vin[0].scriptSig.end(), OP_0);
     CheckIsStandard(t);
 
-    t.vin[0].scriptSig = CScript() << std::vector<unsigned char>(1648, 0); // 1651
+    t.vin[0].scriptSig.push_back(OP_0);
     CheckIsNotStandard(t, "scriptsig-size");
 
     // Check scriptSig format (non-standard if there are any other ops than just PUSHs)
@@ -911,19 +935,19 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
 
     // Check tx-size (non-standard if transaction weight is > MAX_STANDARD_TX_WEIGHT)
     t.vin.clear();
-    t.vin.resize(2438); // size per input (empty scriptSig): 41 bytes
-    t.vout[0].scriptPubKey = CScript() << OP_RETURN << std::vector<unsigned char>(19, 0); // output size: 30 bytes
-    // tx header:                12 bytes =>     48 vbytes
-    // 2438 inputs: 2438*41 = 99958 bytes => 399832 vbytes
-    //    1 output:              30 bytes =>    120 vbytes
-    //                      ===============================
-    //                                total: 400000 vbytes
-    BOOST_CHECK_EQUAL(GetTransactionWeight(CTransaction(t)), 400000);
+    t.vin.resize(609); // size per input (empty scriptSig): 41 bytes
+    t.vout[0].scriptPubKey = CScript() << OP_RETURN << std::vector<unsigned char>(8, 0); // scriptPubKey size: 10 bytes
+    // tx header:          20 bytes
+    // 609 inputs: 609*41 = 24969 bytes
+    // 1 output script:    11 bytes
+    //                    =================
+    //                      25000 bytes * WITNESS_SCALE_FACTOR = MAX_STANDARD_TX_WEIGHT
+    BOOST_CHECK_EQUAL(GetTransactionWeight(CTransaction(t)), MAX_STANDARD_TX_WEIGHT);
     CheckIsStandard(t);
 
-    // increase output size by one byte, so we end up with 400004 vbytes
-    t.vout[0].scriptPubKey = CScript() << OP_RETURN << std::vector<unsigned char>(20, 0); // output size: 31 bytes
-    BOOST_CHECK_EQUAL(GetTransactionWeight(CTransaction(t)), 400004);
+    // Increase output size by one byte, so we exceed MAX_STANDARD_TX_WEIGHT.
+    t.vout[0].scriptPubKey = CScript() << OP_RETURN << std::vector<unsigned char>(9, 0); // scriptPubKey size: 11 bytes
+    BOOST_CHECK_EQUAL(GetTransactionWeight(CTransaction(t)), MAX_STANDARD_TX_WEIGHT + WITNESS_SCALE_FACTOR);
     CheckIsNotStandard(t, "tx-size");
 
     // Check bare multisig (standard if policy flag g_bare_multi is set)
@@ -937,64 +961,86 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
     CheckIsNotStandard(t, "bare-multisig");
     g_bare_multi = DEFAULT_PERMIT_BAREMULTISIG;
 
+    const auto CheckDustBoundary = [&](const CScript& script_pub_key, const CAmount expected_threshold) {
+        t.vout[0].scriptPubKey = script_pub_key;
+        const CAmount dust_threshold{GetDustThreshold(t.vout[0], g_dust)};
+        BOOST_CHECK_EQUAL(dust_threshold, expected_threshold);
+        t.vout[0].nValue = dust_threshold;
+        CheckIsStandard(t);
+        t.vout[0].nValue = dust_threshold - 1;
+        CheckIsNotStandard(t, "dust");
+    };
+
     // Check compressed P2PK outputs dust threshold (must have leading 02 or 03)
-    t.vout[0].scriptPubKey = CScript() << std::vector<unsigned char>(33, 0x02) << OP_CHECKSIG;
-    t.vout[0].nValue = 576;
-    CheckIsStandard(t);
-    t.vout[0].nValue = 575;
-    CheckIsNotStandard(t, "dust");
+    CheckDustBoundary(CScript() << std::vector<unsigned char>(33, 0x02) << OP_CHECKSIG, 576);
 
     // Check uncompressed P2PK outputs dust threshold (must have leading 04/06/07)
-    t.vout[0].scriptPubKey = CScript() << std::vector<unsigned char>(65, 0x04) << OP_CHECKSIG;
-    t.vout[0].nValue = 672;
-    CheckIsStandard(t);
-    t.vout[0].nValue = 671;
-    CheckIsNotStandard(t, "dust");
+    CheckDustBoundary(CScript() << std::vector<unsigned char>(65, 0x04) << OP_CHECKSIG, 672);
 
     // Check P2PKH outputs dust threshold
-    t.vout[0].scriptPubKey = CScript() << OP_DUP << OP_HASH160 << std::vector<unsigned char>(20, 0) << OP_EQUALVERIFY << OP_CHECKSIG;
-    t.vout[0].nValue = 546;
-    CheckIsStandard(t);
-    t.vout[0].nValue = 545;
-    CheckIsNotStandard(t, "dust");
+    CheckDustBoundary(CScript() << OP_DUP << OP_HASH160 << std::vector<unsigned char>(20, 0) << OP_EQUALVERIFY << OP_CHECKSIG, 546);
 
     // Check P2SH outputs dust threshold
-    t.vout[0].scriptPubKey = CScript() << OP_HASH160 << std::vector<unsigned char>(20, 0) << OP_EQUAL;
-    t.vout[0].nValue = 540;
-    CheckIsStandard(t);
-    t.vout[0].nValue = 539;
-    CheckIsNotStandard(t, "dust");
+    CheckDustBoundary(CScript() << OP_HASH160 << std::vector<unsigned char>(20, 0) << OP_EQUAL, 540);
 
     // Check P2WPKH outputs dust threshold
-    t.vout[0].scriptPubKey = CScript() << OP_0 << std::vector<unsigned char>(20, 0);
-    t.vout[0].nValue = 294;
-    CheckIsStandard(t);
-    t.vout[0].nValue = 293;
-    CheckIsNotStandard(t, "dust");
+    CheckDustBoundary(CScript() << OP_0 << std::vector<unsigned char>(20, 0), 234);
 
     // Check P2WSH outputs dust threshold
-    t.vout[0].scriptPubKey = CScript() << OP_0 << std::vector<unsigned char>(32, 0);
-    t.vout[0].nValue = 330;
-    CheckIsStandard(t);
-    t.vout[0].nValue = 329;
-    CheckIsNotStandard(t, "dust");
+    CheckDustBoundary(CScript() << OP_0 << std::vector<unsigned char>(32, 0), 270);
 
     // Check P2TR outputs dust threshold (Invalid xonly key ok!)
-    t.vout[0].scriptPubKey = CScript() << OP_1 << std::vector<unsigned char>(32, 0);
-    t.vout[0].nValue = 330;
-    CheckIsStandard(t);
-    t.vout[0].nValue = 329;
-    CheckIsNotStandard(t, "dust");
+    CheckDustBoundary(CScript() << OP_1 << std::vector<unsigned char>(32, 0), 270);
 
     // Check future Witness Program versions dust threshold (non-32-byte pushes are undefined for version 1)
     for (int op = OP_1; op <= OP_16; op += 1) {
-        t.vout[0].scriptPubKey = CScript() << (opcodetype)op << std::vector<unsigned char>(2, 0);
-        t.vout[0].nValue = 240;
-        CheckIsStandard(t);
-
-        t.vout[0].nValue = 239;
-        CheckIsNotStandard(t, "dust");
+        CheckDustBoundary(CScript() << (opcodetype)op << std::vector<unsigned char>(2, 0), 180);
     }
+}
+
+BOOST_AUTO_TEST_CASE(test_IsWitnessStandard_stack_item_size_limits)
+{
+    CCoinsView coins_dummy;
+    CCoinsViewCache coins(&coins_dummy);
+    uint32_t prevout_index{0};
+
+    const auto check_witness_standard = [&](const CScript& prev_script, const CScriptWitness& witness) {
+        const COutPoint outpoint{uint256::ONE, prevout_index++};
+        coins.AddCoin(outpoint, Coin{CTxOut{1, prev_script}, 1, /*coinbase=*/false}, /*possible_overwrite=*/false);
+
+        CMutableTransaction tx;
+        tx.vin.emplace_back(outpoint);
+        tx.vin[0].scriptWitness = witness;
+        tx.vout.emplace_back(1, CScript() << OP_TRUE);
+        return IsWitnessStandard(CTransaction{tx}, coins);
+    };
+
+    const auto p2wsh_witness = [](size_t item_size) {
+        CScriptWitness witness;
+        const CScript witness_script{CScript() << OP_TRUE};
+        witness.stack.emplace_back(item_size, 0);
+        witness.stack.emplace_back(witness_script.begin(), witness_script.end());
+        return witness;
+    };
+    const CScript p2wsh_script = GetScriptForDestination(WitnessV0ScriptHash{CScript() << OP_TRUE});
+    BOOST_CHECK(check_witness_standard(p2wsh_script, p2wsh_witness(MAX_STANDARD_P2WSH_STACK_ITEM_SIZE)));
+    BOOST_CHECK(!check_witness_standard(p2wsh_script, p2wsh_witness(MAX_STANDARD_P2WSH_STACK_ITEM_SIZE + 1)));
+
+    const auto tapscript_witness = [](size_t item_size) {
+        CScriptWitness witness;
+        const CScript script{CScript() << OP_TRUE};
+        witness.stack.emplace_back(item_size, 0);
+        witness.stack.emplace_back(script.begin(), script.end());
+        witness.stack.push_back({TAPROOT_LEAF_TAPSCRIPT});
+        return witness;
+    };
+    const CScript taproot_script = CScript() << OP_1 << std::vector<unsigned char>(WITNESS_V1_TAPROOT_SIZE, 0);
+    BOOST_CHECK(check_witness_standard(taproot_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE)));
+    BOOST_CHECK(!check_witness_standard(taproot_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE + 1)));
+
+    const CScript p2mr_script = CScript() << OP_2 << std::vector<unsigned char>(WITNESS_V2_P2MR_SIZE, 0);
+    BOOST_CHECK(check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE)));
+    BOOST_CHECK(!check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE + 1)));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

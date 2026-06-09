@@ -28,9 +28,27 @@ const std::string EXAMPLE_ADDRESS[2] = {"bc1q09vm5lfy0j5reeulh4x5752q25uqqvz34hu
 std::string GetAllOutputTypes()
 {
     std::vector<std::string> ret;
-    using U = std::underlying_type<TxoutType>::type;
-    for (U i = (U)TxoutType::NONSTANDARD; i <= (U)TxoutType::WITNESS_UNKNOWN; ++i) {
-        ret.emplace_back(GetTxnOutputType(static_cast<TxoutType>(i)));
+    const std::vector<TxoutType> output_types{
+        TxoutType::NONSTANDARD,
+        TxoutType::PUBKEY,
+        TxoutType::PUBKEYHASH,
+        TxoutType::SCRIPTHASH,
+        TxoutType::MULTISIG,
+        TxoutType::NULL_DATA,
+        TxoutType::WITNESS_V0_SCRIPTHASH,
+        TxoutType::WITNESS_V0_KEYHASH,
+        TxoutType::WITNESS_V1_TAPROOT,
+        TxoutType::WITNESS_V2_P2MR,
+        TxoutType::WITNESS_UNKNOWN,
+        TxoutType::DILITHIUM_PUBKEY,
+        TxoutType::DILITHIUM_PUBKEYHASH,
+        TxoutType::DILITHIUM_SCRIPTHASH,
+        TxoutType::DILITHIUM_MULTISIG,
+        TxoutType::DILITHIUM_WITNESS_V0_KEYHASH,
+        TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH,
+    };
+    for (const auto output_type : output_types) {
+        ret.emplace_back(GetTxnOutputType(output_type));
     }
     return Join(ret, ", ");
 }

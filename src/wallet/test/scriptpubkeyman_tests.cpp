@@ -131,6 +131,102 @@ BOOST_AUTO_TEST_CASE(dilithium_getnewdestination_uses_hd_seed)
     BOOST_CHECK(std::get<DilithiumPKHash>(*dest) == DilithiumPKHash(child0.key.GetPubKey().GetID()));
 }
 
+BOOST_AUTO_TEST_CASE(dilithium_bech32_generation_disabled)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
+
+    util::Result<CTxDestination> dest = keyman.GetNewDestination(OutputType::DILITHIUM_BECH32);
+    BOOST_CHECK(!dest);
+}
+
+BOOST_AUTO_TEST_CASE(get_affected_keys_includes_dilithium_pubkeys)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    const CDilithiumPubKey pubkey = key.GetPubKey();
+    const DilithiumPKHash key_hash{pubkey};
+    const CKeyID key_id{static_cast<uint160>(key_hash)};
+
+    FlatSigningProvider provider;
+    provider.dilithium_pubkeys[key_hash] = pubkey;
+
+    const std::vector<CKeyID> affected_keys = GetAffectedKeys(GetScriptForDestination(key_hash), provider);
+    BOOST_REQUIRE_EQUAL(affected_keys.size(), 1);
+    BOOST_CHECK(affected_keys[0] == key_id);
+}
+
+BOOST_AUTO_TEST_CASE(legacy_encrypt_migrates_dilithium_keys)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
+
+    CKeyID key_id;
+    CDilithiumKey before_encrypt;
+    {
+        LOCK(keyman.cs_KeyStore);
+        BOOST_REQUIRE(keyman.SetupGeneration(true));
+
+        WalletBatch batch(wallet.GetDatabase());
+        CHDChain hd_chain = keyman.GetHDChain();
+        const CDilithiumPubKey pubkey = keyman.GenerateNewDilithiumKey(batch, hd_chain, /*internal=*/false);
+        key_id = CKeyID(pubkey.GetID());
+        BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, before_encrypt));
+    }
+
+    BOOST_REQUIRE(wallet.EncryptWallet("encrypt"));
+    BOOST_CHECK(wallet.IsCrypted());
+    BOOST_CHECK(wallet.IsLocked());
+    BOOST_CHECK(keyman.HaveDilithiumKey(key_id));
+
+    BOOST_REQUIRE(wallet.Unlock("encrypt"));
+    CDilithiumKey after_encrypt;
+    BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, after_encrypt));
+    BOOST_CHECK(after_encrypt == before_encrypt);
+}
+
+BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    DescriptorScriptPubKeyMan* keyman{nullptr};
+    {
+        LOCK(wallet.cs_wallet);
+        wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+        wallet.SetupDescriptorScriptPubKeyMans();
+        keyman = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+    }
+    BOOST_REQUIRE(keyman);
+
+    const util::Result<CTxDestination> dest = keyman->GetNewDestination(OutputType::DILITHIUM_LEGACY);
+    BOOST_REQUIRE(dest);
+    BOOST_REQUIRE(std::holds_alternative<DilithiumPKHash>(*dest));
+    const CKeyID key_id{static_cast<uint160>(std::get<DilithiumPKHash>(*dest))};
+
+    CDilithiumKey before_encrypt;
+    {
+        LOCK(keyman->cs_desc_man);
+        BOOST_REQUIRE(keyman->GetDilithiumKey(key_id, before_encrypt));
+    }
+
+    BOOST_REQUIRE(wallet.EncryptWallet("encrypt"));
+    BOOST_CHECK(wallet.IsCrypted());
+    BOOST_CHECK(wallet.IsLocked());
+    {
+        LOCK(keyman->cs_desc_man);
+        CDilithiumKey locked_key;
+        BOOST_CHECK(keyman->HaveDilithiumKey(key_id));
+        BOOST_CHECK(!keyman->GetDilithiumKey(key_id, locked_key));
+    }
+
+    BOOST_REQUIRE(wallet.Unlock("encrypt"));
+    CDilithiumKey after_encrypt;
+    {
+        LOCK(keyman->cs_desc_man);
+        BOOST_REQUIRE(keyman->GetDilithiumKey(key_id, after_encrypt));
+    }
+    BOOST_CHECK(after_encrypt == before_encrypt);
+}
+
 // BTQ-AUDIT-001/009: encryptwallet must migrate plaintext Dilithium keys to crypted map.
 BOOST_AUTO_TEST_CASE(dilithium_encrypt_wallet_roundtrip)
 {

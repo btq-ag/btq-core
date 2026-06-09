@@ -82,6 +82,14 @@ UniValue RPCTestingSetup::CallRPC(std::string args)
 
 BOOST_FIXTURE_TEST_SUITE(rpc_tests, RPCTestingSetup)
 
+BOOST_AUTO_TEST_CASE(rpc_all_output_types_includes_btq_types)
+{
+    const std::string types = GetAllOutputTypes();
+    BOOST_CHECK_NE(types.find("witness_v2_p2mr"), std::string::npos);
+    BOOST_CHECK_NE(types.find("dilithium_pubkeyhash"), std::string::npos);
+    BOOST_CHECK_NE(types.find("dilithium_witness_v0_keyhash"), std::string::npos);
+}
+
 BOOST_AUTO_TEST_CASE(rpc_namedparams)
 {
     const std::vector<std::pair<std::string, bool>> arg_names{{"arg1", false}, {"arg2", false}, {"arg3", false}, {"arg4", false}, {"arg5", false}};

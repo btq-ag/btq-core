@@ -28,6 +28,7 @@ from .ripemd160 import ripemd160
 
 MAX_SCRIPT_ELEMENT_SIZE = 15000  # BTQ consensus cap (see src/script/script.h)
 MAX_PUBKEYS_PER_MULTI_A = 999
+DILITHIUM_SIGOP_COST = 50
 LOCKTIME_THRESHOLD = 500000000
 ANNEX_TAG = 0x50
 
@@ -601,11 +602,18 @@ class CScript(bytes):
         for (opcode, data, sop_idx) in self.raw_iter():
             if opcode in (OP_CHECKSIG, OP_CHECKSIGVERIFY):
                 n += 1
+            elif opcode in (OP_CHECKSIGDILITHIUM, OP_CHECKSIGDILITHIUMVERIFY):
+                n += DILITHIUM_SIGOP_COST
             elif opcode in (OP_CHECKMULTISIG, OP_CHECKMULTISIGVERIFY):
                 if fAccurate and (OP_1 <= lastOpcode <= OP_16):
-                    n += opcode.decode_op_n()
+                    n += lastOpcode - OP_1 + 1
                 else:
                     n += 20
+            elif opcode in (OP_CHECKMULTISIGDILITHIUM, OP_CHECKMULTISIGDILITHIUMVERIFY):
+                if fAccurate and (OP_1 <= lastOpcode <= OP_16):
+                    n += (lastOpcode - OP_1 + 1) * DILITHIUM_SIGOP_COST
+                else:
+                    n += 20 * DILITHIUM_SIGOP_COST
             lastOpcode = opcode
         return n
 

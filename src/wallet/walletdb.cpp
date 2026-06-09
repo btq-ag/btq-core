@@ -905,6 +905,38 @@ static DBErrors LoadLegacyWalletRecords(CWallet* pwallet, DatabaseBatch& batch, 
     });
     result = std::max(result, keymeta_res.m_result);
 
+    LoadResult dilithium_keymeta_res = LoadRecords(pwallet, batch, DBKeys::DILITHIUM_KEYMETA,
+        [] (CWallet* pwallet, DataStream& key, CDataStream& value, std::string& strErr) {
+        CKeyID key_id;
+        DataStream key_id_stream{key};
+        try {
+            key_id_stream >> key_id;
+            if (!key_id_stream.empty()) {
+                throw std::ios_base::failure{"trailing data after Dilithium key id"};
+            }
+        } catch (const std::exception&) {
+            try {
+                DataStream pubkey_stream{key};
+                CPubKey pubkey;
+                pubkey_stream >> pubkey;
+                if (!pubkey_stream.empty()) {
+                    strErr = "Error reading wallet database: dilithiumkeymeta key has trailing data";
+                    return DBErrors::NONCRITICAL_ERROR;
+                }
+                key_id = pubkey.GetID();
+            } catch (const std::exception& e) {
+                strErr = strprintf("Error reading wallet database: failed to parse dilithiumkeymeta key: %s", e.what());
+                return DBErrors::NONCRITICAL_ERROR;
+            }
+        }
+
+        CKeyMetadata key_meta;
+        value >> key_meta;
+        pwallet->GetOrCreateLegacyScriptPubKeyMan()->LoadKeyMetadata(key_id, key_meta);
+        return DBErrors::LOAD_OK;
+    });
+    result = std::max(result, dilithium_keymeta_res.m_result);
+
     // Set inactive chains
     if (!hd_chains.empty()) {
         LegacyScriptPubKeyMan* legacy_spkm = pwallet->GetLegacyScriptPubKeyMan();

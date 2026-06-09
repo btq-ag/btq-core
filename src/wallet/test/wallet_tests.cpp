@@ -32,10 +32,13 @@
 #include <boost/test/unit_test.hpp>
 #include <univalue.h>
 
+#include <fstream>
+
 using node::MAX_BLOCKFILE_SIZE;
 
 namespace wallet {
 RPCHelpMan importmulti();
+RPCHelpMan importprivkey();
 RPCHelpMan dumpwallet();
 RPCHelpMan importwallet();
 
@@ -45,6 +48,11 @@ static_assert(DEFAULT_TRANSACTION_MINFEE >= DEFAULT_MIN_RELAY_TX_FEE, "wallet mi
 static_assert(WALLET_INCREMENTAL_RELAY_FEE >= DEFAULT_INCREMENTAL_RELAY_FEE, "wallet incremental fee is smaller than default incremental relay fee");
 
 BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
+
+static CAmount TestBlockSubsidy()
+{
+    return GetBlockSubsidy(/*nHeight=*/1, Params().GetConsensus());
+}
 
 static CMutableTransaction TestSimpleSpend(const CTransaction& from, uint32_t index, const CKey& key, const CScript& pubkey)
 {
@@ -126,7 +134,7 @@ BOOST_FIXTURE_TEST_CASE(scan_for_wallet_transactions, TestChain100Setup)
         BOOST_CHECK(result.last_failed_block.IsNull());
         BOOST_CHECK_EQUAL(result.last_scanned_block, newTip->GetBlockHash());
         BOOST_CHECK_EQUAL(*result.last_scanned_height, newTip->nHeight);
-        BOOST_CHECK_EQUAL(GetBalance(wallet).m_mine_immature, 100 * COIN);
+        BOOST_CHECK_EQUAL(GetBalance(wallet).m_mine_immature, 2 * TestBlockSubsidy());
 
         {
             CBlockLocator locator;
@@ -162,7 +170,7 @@ BOOST_FIXTURE_TEST_CASE(scan_for_wallet_transactions, TestChain100Setup)
         BOOST_CHECK_EQUAL(result.last_failed_block, oldTip->GetBlockHash());
         BOOST_CHECK_EQUAL(result.last_scanned_block, newTip->GetBlockHash());
         BOOST_CHECK_EQUAL(*result.last_scanned_height, newTip->nHeight);
-        BOOST_CHECK_EQUAL(GetBalance(wallet).m_mine_immature, 50 * COIN);
+        BOOST_CHECK_EQUAL(GetBalance(wallet).m_mine_immature, TestBlockSubsidy());
     }
 
     // Prune the remaining block file.
@@ -330,6 +338,124 @@ BOOST_FIXTURE_TEST_CASE(importwallet_rescan, TestChain100Setup)
     }
 }
 
+BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, WalletTestingSetup)
+{
+    const int64_t key_time = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip()->GetBlockTimeMax());
+    const fs::path backup_file_path = m_args.GetDataDirNet() / "dilithium-wallet.backup";
+    const std::string backup_file = fs::PathToString(backup_file_path);
+
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    const CDilithiumPubKey pubkey = key.GetPubKey();
+    const CKeyID keyid{pubkey.GetID()};
+    const CTxDestination destination{DilithiumPKHash(keyid)};
+
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        auto spk_man = wallet->GetOrCreateLegacyScriptPubKeyMan();
+        {
+            LOCK2(wallet->cs_wallet, spk_man->cs_KeyStore);
+            spk_man->mapKeyMetadata[keyid].nCreateTime = key_time;
+            BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(key, CPubKey(pubkey.begin(), pubkey.end())));
+            BOOST_REQUIRE(wallet->SetAddressBook(destination, "dilithium backup", AddressPurpose::RECEIVE));
+            AddWallet(context, wallet);
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+        }
+
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+
+        wallet::dumpwallet().HandleRequest(request);
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+    }
+
+    {
+        std::ifstream dump_file{backup_file_path};
+        BOOST_REQUIRE(dump_file.is_open());
+        const std::string dump_contents{std::istreambuf_iterator<char>{dump_file}, std::istreambuf_iterator<char>{}};
+        BOOST_CHECK(dump_contents.find(EncodeDilithiumSecret(key)) != std::string::npos);
+        BOOST_CHECK(dump_contents.find("label=dilithium") != std::string::npos);
+        BOOST_CHECK(dump_contents.find(EncodeDestination(destination)) != std::string::npos);
+    }
+
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->SetupLegacyScriptPubKeyMan();
+
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+        AddWallet(context, wallet);
+        {
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            LOCK(wallet->cs_wallet);
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+        }
+
+        wallet::importwallet().HandleRequest(request);
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+
+        CDilithiumKey recovered;
+        LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+        BOOST_REQUIRE(spk_man);
+        BOOST_REQUIRE(spk_man->GetDilithiumKey(keyid, recovered));
+        BOOST_CHECK(recovered == key);
+        const auto* address_book_entry = wallet->FindAddressBookEntry(destination);
+        BOOST_REQUIRE(address_book_entry);
+        BOOST_CHECK_EQUAL(address_book_entry->GetLabel(), "dilithium backup");
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(importprivkey_stores_dilithium_key_by_dilithium_id, WalletTestingSetup)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    const CDilithiumPubKey pubkey = key.GetPubKey();
+    const CKeyID keyid{pubkey.GetID()};
+    const CTxDestination destination{DilithiumPKHash(keyid)};
+
+    WalletContext context;
+    context.args = &m_args;
+    const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet->SetupLegacyScriptPubKeyMan();
+    AddWallet(context, wallet);
+
+    JSONRPCRequest request;
+    request.context = &context;
+    request.params.setArray();
+    request.params.push_back(EncodeDilithiumSecret(key));
+    request.params.push_back("direct dilithium import");
+    request.params.push_back(false);
+    wallet::importprivkey().HandleRequest(request);
+
+    CDilithiumKey recovered;
+    LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+    BOOST_REQUIRE(spk_man);
+    BOOST_REQUIRE(spk_man->GetDilithiumKey(keyid, recovered));
+    BOOST_CHECK(recovered == key);
+
+    std::string label;
+    {
+        LOCK(wallet->cs_wallet);
+        const auto* address_book_entry = wallet->FindAddressBookEntry(destination);
+        BOOST_REQUIRE(address_book_entry);
+        label = address_book_entry->GetLabel();
+    }
+    BOOST_CHECK_EQUAL(label, "direct dilithium import");
+
+    RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+}
+
 // Check that GetImmatureCredit() returns a newly calculated value instead of
 // the cached value after a MarkDirty() call.
 //
@@ -356,7 +482,7 @@ BOOST_FIXTURE_TEST_CASE(coin_mark_dirty_immature_credit, TestChain100Setup)
     // credit amount is calculated.
     wtx.MarkDirty();
     AddKey(wallet, coinbaseKey);
-    BOOST_CHECK_EQUAL(CachedTxGetImmatureCredit(wallet, wtx, ISMINE_SPENDABLE), 50*COIN);
+    BOOST_CHECK_EQUAL(CachedTxGetImmatureCredit(wallet, wtx, ISMINE_SPENDABLE), TestBlockSubsidy());
 }
 
 static int64_t AddTx(ChainstateManager& chainman, CWallet& wallet, uint32_t lockTime, int64_t mockTime, int64_t blockTime)
@@ -599,7 +725,7 @@ BOOST_FIXTURE_TEST_CASE(ListCoinsTest, ListCoinsTestingSetup)
     BOOST_CHECK_EQUAL(list.begin()->second.size(), 1U);
 
     // Check initial balance from one mature coinbase transaction.
-    BOOST_CHECK_EQUAL(50 * COIN, WITH_LOCK(wallet->cs_wallet, return AvailableCoins(*wallet).GetTotalAmount()));
+    BOOST_CHECK_EQUAL(TestBlockSubsidy(), WITH_LOCK(wallet->cs_wallet, return AvailableCoins(*wallet).GetTotalAmount()));
 
     // Add a transaction creating a change address, and confirm ListCoins still
     // returns the coin associated with the change address underneath the
@@ -675,6 +801,7 @@ BOOST_FIXTURE_TEST_CASE(BasicOutputTypesTest, ListCoinsTest)
 
     for (const auto& out_type : OUTPUT_TYPES) {
         if (out_type == OutputType::UNKNOWN) continue;
+        if (out_type == OutputType::DILITHIUM_LEGACY || out_type == OutputType::DILITHIUM_BECH32) continue;
         expected_coins_sizes[out_type] = 2U;
         TestCoinsResult(*this, out_type, 1 * COIN, expected_coins_sizes);
     }
