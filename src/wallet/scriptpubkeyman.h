@@ -650,6 +650,8 @@ public:
     bool LoadCryptedDilithiumKey(const CKeyID& keyid, const std::vector<unsigned char>& vchCryptedSecret, bool checksum_valid);
     bool GetDilithiumKey(const CKeyID& keyid, CDilithiumKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool HaveDilithiumKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    bool HaveKeyByXOnly(const XOnlyPubKey& pubkey) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    bool GetKeyByXOnly(const XOnlyPubKey& pubkey, CKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
     bool CheckDecryptionKey(const CKeyingMaterial& master_key, bool accept_no_keys = false) override;
     bool Encrypt(const CKeyingMaterial& master_key, WalletBatch* batch) override;

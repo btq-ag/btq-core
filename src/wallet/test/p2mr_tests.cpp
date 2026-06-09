@@ -16,6 +16,7 @@
 #include <univalue.h>
 #include <util/strencodings.h>
 #include <util/vector.h>
+#include <validation.h>
 #include <wallet/p2mr.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/test/util.h>
@@ -43,6 +44,12 @@ static std::vector<P2MRTreeLeaf> MakeOpTrueTree()
     auto parsed = ParseP2MRTreeChecked(MakeOpTrueTreeJSON());
     BOOST_REQUIRE(parsed);
     return *parsed;
+}
+
+static std::vector<P2MRTreeLeaf> MakeXOnlyChecksigTree(const XOnlyPubKey& pubkey)
+{
+    const CScript leaf_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
+    return {{/*depth=*/0, TAPROOT_LEAF_TAPSCRIPT, {leaf_script.begin(), leaf_script.end()}}};
 }
 
 static std::unique_ptr<CWallet> MakeP2MRTestWallet(interfaces::Chain& chain)
@@ -248,6 +255,27 @@ BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTest
     BOOST_CHECK_EQUAL(wallet->IsMine(corrupt_script), ISMINE_NO);
 }
 
+BOOST_FIXTURE_TEST_CASE(wallet_is_mine_tracks_unowned_p2mr_metadata_as_watchonly, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+
+    CKey external_key;
+    external_key.MakeNewKey(/*fCompressedIn=*/true);
+    const auto leaves = MakeXOnlyChecksigTree(XOnlyPubKey{external_key.GetPubKey()});
+
+    LOCK(wallet->cs_wallet);
+    auto created = CreateP2MR(*wallet, leaves, "external");
+    BOOST_REQUIRE(created);
+
+    BOOST_CHECK(IsTrackedP2MRScript(*wallet, created->script_pub_key));
+    BOOST_CHECK_EQUAL(wallet->IsMine(created->script_pub_key), ISMINE_WATCH_ONLY);
+
+    CKey recipient_key;
+    recipient_key.MakeNewKey(/*fCompressedIn=*/true);
+    const auto spend = CreateP2MRSpend(*wallet, created->id, PKHash(recipient_key.GetPubKey()), CENT, 1000);
+    BOOST_CHECK(!spend);
+}
+
 BOOST_FIXTURE_TEST_CASE(tracked_balance_deduplicates_legacy_duplicate_metadata, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);
@@ -290,6 +318,44 @@ BOOST_FIXTURE_TEST_CASE(tracked_balance_deduplicates_legacy_duplicate_metadata, 
     BOOST_CHECK_EQUAL(GetP2MREntryBalance(*wallet, *duplicate_entry, /*min_depth=*/0), amount);
 
     BOOST_CHECK_EQUAL(GetTrackedP2MRBalance(*wallet, /*min_depth=*/0), amount);
+}
+
+BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_aggregates_inputs_and_reports_effective_fee, TestChain100Setup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const auto leaves = MakeOpTrueTree();
+
+    auto created = CreateP2MR(*wallet, leaves, "aggregate");
+    BOOST_REQUIRE(created);
+
+    const CBlockIndex* tip = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip());
+    BOOST_REQUIRE(tip);
+    wallet->SetLastBlockProcessed(tip->nHeight, tip->GetBlockHash());
+    auto add_confirmed_utxo = [&](CAmount amount, uint32_t lock_time) {
+        CMutableTransaction tx;
+        tx.nVersion = 2;
+        tx.nLockTime = lock_time;
+        tx.vout.emplace_back(amount, created->script_pub_key);
+        const auto added = wallet->AddToWallet(
+            MakeTransactionRef(std::move(tx)),
+            TxStateConfirmed{tip->GetBlockHash(), tip->nHeight, /*index=*/0});
+        BOOST_REQUIRE(added);
+    };
+    add_confirmed_utxo(20 * CENT, 1);
+    add_confirmed_utxo(30 * CENT + 1100, 2);
+
+    CKey recipient_key;
+    recipient_key.MakeNewKey(/*fCompressedIn=*/true);
+    auto spend = CreateP2MRSpend(*wallet, created->id, PKHash(recipient_key.GetPubKey()), 50 * CENT, 1000);
+    BOOST_REQUIRE(spend);
+
+    BOOST_CHECK_EQUAL(spend->inputs.size(), 2U);
+    BOOST_CHECK_EQUAL(spend->tx.vin.size(), 2U);
+    BOOST_CHECK_EQUAL(spend->input_amount, 50 * CENT + 1100);
+    BOOST_CHECK_EQUAL(spend->effective_fee, 1100);
+    BOOST_CHECK(!spend->has_change);
+    BOOST_REQUIRE_EQUAL(spend->tx.vout.size(), 1U);
 }
 
 BOOST_FIXTURE_TEST_CASE(produce_signature_preserves_p2mr_witness_stack, BasicTestingSetup)
@@ -604,6 +670,75 @@ BOOST_FIXTURE_TEST_CASE(build_signing_provider_exports_descriptor_dilithium_p2mr
     BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[0].back(), SIGHASH_ALL);
     BOOST_CHECK_EQUAL(HexStr(sigdata.scriptWitness.stack[1]), HexStr(provider_pubkey));
     BOOST_CHECK_EQUAL(HexStr(sigdata.scriptWitness.stack[2]), HexStr(leaf_script));
+
+    UpdateInput(tx_to.vin[0], sigdata);
+    const CTransaction signed_tx{tx_to};
+    TransactionSignatureChecker checker(&signed_tx, /*nInIn=*/0, amount, txdata, MissingDataBehavior::FAIL);
+    ScriptError serror{SCRIPT_ERR_OK};
+    BOOST_CHECK_MESSAGE(
+        VerifyScript(tx_to.vin[0].scriptSig, created.script_pub_key, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
+        ScriptErrorString(serror));
+}
+
+BOOST_FIXTURE_TEST_CASE(build_signing_provider_exports_descriptor_xonly_p2mr_leaf, BasicTestingSetup)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    DescriptorScriptPubKeyMan* keyman{nullptr};
+    {
+        LOCK(wallet.cs_wallet);
+        wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+        wallet.SetupDescriptorScriptPubKeyMans();
+        keyman = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+    }
+    BOOST_REQUIRE(keyman);
+
+    const util::Result<CTxDestination> dest = keyman->GetNewDestination(OutputType::LEGACY);
+    BOOST_REQUIRE(dest);
+    BOOST_REQUIRE(std::holds_alternative<PKHash>(*dest));
+    const PKHash keyhash = std::get<PKHash>(*dest);
+    const CScript script_pub_key = GetScriptForDestination(*dest);
+    std::unique_ptr<SigningProvider> solving_provider = keyman->GetSolvingProvider(script_pub_key);
+    BOOST_REQUIRE(solving_provider);
+    CPubKey pubkey;
+    BOOST_REQUIRE(solving_provider->GetPubKey(ToKeyID(keyhash), pubkey));
+    const XOnlyPubKey xonly_pubkey{pubkey};
+
+    const std::vector<P2MRTreeLeaf> leaves = MakeXOnlyChecksigTree(xonly_pubkey);
+    const CScript leaf_script{leaves[0].script.begin(), leaves[0].script.end()};
+
+    P2MRCreated created;
+    FlatSigningProvider provider;
+    {
+        LOCK(wallet.cs_wallet);
+        auto created_res = CreateP2MR(wallet, leaves, "descriptor-xonly");
+        BOOST_REQUIRE(created_res);
+        created = std::move(*created_res);
+        BOOST_CHECK_EQUAL(wallet.IsMine(created.script_pub_key), ISMINE_SPENDABLE);
+        provider = BuildP2MRSigningProvider(wallet, created.id);
+    }
+
+    CKey provider_key;
+    BOOST_REQUIRE(provider.GetKeyByXOnly(xonly_pubkey, provider_key));
+    BOOST_CHECK(XOnlyPubKey{provider_key.GetPubKey()} == xonly_pubkey);
+
+    constexpr CAmount amount{COIN};
+    CMutableTransaction tx_to;
+    tx_to.nVersion = 2;
+    tx_to.vin.emplace_back(COutPoint(uint256::ONE, 0));
+    tx_to.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.emplace_back(amount, created.script_pub_key);
+    PrecomputedTransactionData txdata;
+    txdata.Init(tx_to, std::move(spent_outputs), /*force=*/true);
+
+    SignatureData sigdata = DataFromTransaction(tx_to, /*nIn=*/0, CTxOut(amount, created.script_pub_key));
+    MutableTransactionSignatureCreator creator(tx_to, /*input_idx=*/0, amount, &txdata, SIGHASH_DEFAULT);
+    BOOST_REQUIRE(ProduceSignature(provider, creator, created.script_pub_key, sigdata));
+    BOOST_REQUIRE(sigdata.complete);
+    BOOST_REQUIRE_EQUAL(sigdata.scriptWitness.stack.size(), 3U);
+    BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[0].size(), 64U);
+    BOOST_CHECK_EQUAL(HexStr(sigdata.scriptWitness.stack[1]), HexStr(leaf_script));
 
     UpdateInput(tx_to.vin[0], sigdata);
     const CTransaction signed_tx{tx_to};

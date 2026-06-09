@@ -2713,6 +2713,57 @@ std::map<CKeyID, CKey> DescriptorScriptPubKeyMan::GetKeys() const
     return m_map_keys;
 }
 
+bool DescriptorScriptPubKeyMan::HaveKeyByXOnly(const XOnlyPubKey& pubkey) const
+{
+    AssertLockHeld(cs_desc_man);
+    for (const CKeyID& keyid : pubkey.GetKeyIDs()) {
+        if (m_map_keys.count(keyid) > 0) return true;
+        if (m_map_crypted_keys.count(keyid) > 0) return true;
+    }
+
+    if (m_map_keys.empty() && m_map_crypted_keys.empty()) return false;
+    unsigned char full_key[CPubKey::COMPRESSED_SIZE];
+    std::copy(pubkey.begin(), pubkey.end(), full_key + 1);
+    for (const unsigned char prefix : {uint8_t{0x02}, uint8_t{0x03}}) {
+        full_key[0] = prefix;
+        const CPubKey candidate{full_key};
+        if (candidate.IsValid() && m_map_pubkeys.count(candidate) > 0) return true;
+    }
+    return false;
+}
+
+bool DescriptorScriptPubKeyMan::GetKeyByXOnly(const XOnlyPubKey& pubkey, CKey& key) const
+{
+    AssertLockHeld(cs_desc_man);
+    for (const CKeyID& keyid : pubkey.GetKeyIDs()) {
+        auto plain = m_map_keys.find(keyid);
+        if (plain != m_map_keys.end()) {
+            key = plain->second;
+            return true;
+        }
+
+        auto crypted = m_map_crypted_keys.find(keyid);
+        if (crypted == m_map_crypted_keys.end()) continue;
+        if (!m_storage.HasEncryptionKeys() || m_storage.IsLocked()) continue;
+        const CPubKey& pubkey_in_wallet = crypted->second.first;
+        const std::vector<unsigned char>& crypted_secret = crypted->second.second;
+        if (DecryptKey(m_storage.GetEncryptionKey(), crypted_secret, pubkey_in_wallet, key)) {
+            return true;
+        }
+    }
+
+    unsigned char full_key[CPubKey::COMPRESSED_SIZE];
+    std::copy(pubkey.begin(), pubkey.end(), full_key + 1);
+    for (const unsigned char prefix : {uint8_t{0x02}, uint8_t{0x03}}) {
+        full_key[0] = prefix;
+        const CPubKey candidate{full_key};
+        if (!candidate.IsValid()) continue;
+        std::unique_ptr<FlatSigningProvider> provider = GetSigningProvider(candidate);
+        if (provider && provider->GetKeyByXOnly(pubkey, key)) return true;
+    }
+    return false;
+}
+
 std::map<DilithiumPKHash, CDilithiumKey> DescriptorScriptPubKeyMan::GetDilithiumKeys() const
 {
     AssertLockHeld(cs_desc_man);

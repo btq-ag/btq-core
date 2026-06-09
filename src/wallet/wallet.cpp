@@ -1592,8 +1592,8 @@ isminetype CWallet::IsMine(const CScript& script) const
         result = std::max(result, spk_man_pair.second->IsMine(script));
         if (result == ISMINE_SPENDABLE) break;
     }
-    if (result == ISMINE_NO && IsTrackedP2MRScript(*this, script)) {
-        result = ISMINE_SPENDABLE;
+    if (result == ISMINE_NO) {
+        result = GetTrackedP2MRScriptIsMine(*this, script);
     }
 
     m_ismine_cache[script] = result;

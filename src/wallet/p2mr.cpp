@@ -7,6 +7,7 @@
 #include <core_io.h>
 #include <crypto/dilithium_key.h>
 #include <interfaces/chain.h>
+#include <key.h>
 #include <key_io.h>
 #include <policy/policy.h>
 #include <rpc/protocol.h>
@@ -35,6 +36,11 @@ namespace wallet {
 namespace {
 constexpr const char* P2MR_STATE_CREATED{"created"};
 constexpr CAmount DEFAULT_P2MR_DUST_THRESHOLD{546};
+
+struct P2MRKeyRequirements {
+    std::set<CKeyID> dilithium_key_ids;
+    std::set<XOnlyPubKey> xonly_pubkeys;
+};
 
 std::string NewP2MRId()
 {
@@ -131,6 +137,153 @@ std::set<CKeyID> GetP2MRDilithiumKeyIDs(const std::vector<P2MRTreeLeaf>& leaves)
         }
     }
     return key_ids;
+}
+
+void AddXOnlyKeyIfValid(Span<const unsigned char> bytes, std::set<XOnlyPubKey>& out)
+{
+    if (bytes.size() != XOnlyPubKey::size()) return;
+    const XOnlyPubKey pubkey{bytes};
+    if (pubkey.IsFullyValid()) out.insert(pubkey);
+}
+
+void AddP2MRXOnlyKeys(const CScript& script, std::set<XOnlyPubKey>& out)
+{
+    if (script.size() == 34 && script[0] == XOnlyPubKey::size() && script[33] == OP_CHECKSIG) {
+        AddXOnlyKeyIfValid(Span<const unsigned char>{script.data() + 1, XOnlyPubKey::size()}, out);
+    }
+
+    const auto multi_a = MatchMultiA(script);
+    if (!multi_a) return;
+    for (Span<const unsigned char> keyspan : multi_a->second) {
+        AddXOnlyKeyIfValid(keyspan, out);
+    }
+}
+
+P2MRKeyRequirements GetP2MRKeyRequirements(const std::vector<P2MRTreeLeaf>& leaves)
+{
+    P2MRKeyRequirements out;
+    out.dilithium_key_ids = GetP2MRDilithiumKeyIDs(leaves);
+    for (const P2MRTreeLeaf& leaf : leaves) {
+        if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT) continue;
+        AddP2MRXOnlyKeys(CScript{leaf.script.begin(), leaf.script.end()}, out.xonly_pubkeys);
+    }
+    return out;
+}
+
+bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid)
+{
+    for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
+        if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+            LOCK(desc_spk_man->cs_desc_man);
+            if (desc_spk_man->HaveDilithiumKey(keyid)) return true;
+        } else if (auto legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
+            if (legacy_spk_man->HaveDilithiumKey(keyid)) return true;
+        }
+    }
+    return false;
+}
+
+bool WalletHaveXOnlyKey(const CWallet& wallet, const XOnlyPubKey& pubkey)
+{
+    for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
+        if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+            LOCK(desc_spk_man->cs_desc_man);
+            if (desc_spk_man->HaveKeyByXOnly(pubkey)) return true;
+        } else if (auto legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
+            for (const CKeyID& keyid : pubkey.GetKeyIDs()) {
+                if (legacy_spk_man->HaveKey(keyid)) return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool IsOpTrueLeaf(const P2MRTreeLeaf& leaf)
+{
+    return leaf.leaf_version == TAPROOT_LEAF_TAPSCRIPT &&
+           leaf.script.size() == 1 &&
+           leaf.script[0] == OP_TRUE;
+}
+
+bool IsDilithiumLeafSpendable(const CWallet& wallet, const CScript& script)
+{
+    std::vector<std::vector<unsigned char>> solutions;
+    const TxoutType which_type = Solver(script, solutions);
+    switch (which_type) {
+    case TxoutType::DILITHIUM_PUBKEY: {
+        if (solutions.empty()) return false;
+        const CDilithiumPubKey pubkey{solutions[0]};
+        if (!pubkey.IsValid()) return false;
+        CKeyID keyid;
+        const uint160 id = pubkey.GetID();
+        std::copy(id.begin(), id.end(), keyid.begin());
+        return WalletHaveDilithiumKey(wallet, keyid);
+    }
+    case TxoutType::DILITHIUM_PUBKEYHASH:
+    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH: {
+        if (solutions.empty() || solutions[0].size() != uint160::size()) return false;
+        CKeyID keyid;
+        std::copy(solutions[0].begin(), solutions[0].end(), keyid.begin());
+        return WalletHaveDilithiumKey(wallet, keyid);
+    }
+    case TxoutType::DILITHIUM_MULTISIG: {
+        if (solutions.size() < 3 || solutions.front().empty()) return false;
+        const int required = solutions.front()[0];
+        int available = 0;
+        for (size_t i = 1; i + 1 < solutions.size(); ++i) {
+            const CDilithiumPubKey pubkey{solutions[i]};
+            if (!pubkey.IsValid()) continue;
+            CKeyID keyid;
+            const uint160 id = pubkey.GetID();
+            std::copy(id.begin(), id.end(), keyid.begin());
+            if (WalletHaveDilithiumKey(wallet, keyid) && ++available >= required) return true;
+        }
+        return false;
+    }
+    default:
+        return false;
+    }
+}
+
+bool IsXOnlyLeafSpendable(const CWallet& wallet, const CScript& script)
+{
+    if (script.size() == 34 && script[0] == XOnlyPubKey::size() && script[33] == OP_CHECKSIG) {
+        const XOnlyPubKey pubkey{Span<const unsigned char>{script.data() + 1, XOnlyPubKey::size()}};
+        return pubkey.IsFullyValid() && WalletHaveXOnlyKey(wallet, pubkey);
+    }
+
+    const auto multi_a = MatchMultiA(script);
+    if (!multi_a) return false;
+    const int required = multi_a->first;
+    int available = 0;
+    for (Span<const unsigned char> keyspan : multi_a->second) {
+        const XOnlyPubKey pubkey{keyspan};
+        if (pubkey.IsFullyValid() && WalletHaveXOnlyKey(wallet, pubkey) && ++available >= required) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsP2MRLeafSpendable(const CWallet& wallet, const P2MRTreeLeaf& leaf)
+{
+    if (IsOpTrueLeaf(leaf)) return true;
+    if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT) return false;
+    const CScript script{leaf.script.begin(), leaf.script.end()};
+    return IsXOnlyLeafSpendable(wallet, script) || IsDilithiumLeafSpendable(wallet, script);
+}
+
+bool IsP2MREntryValid(const P2MREntry& entry)
+{
+    return std::holds_alternative<WitnessV2P2MR>(entry.dest) && BuildP2MRTreeChecked(entry.tree).has_value();
+}
+
+bool IsP2MREntrySpendable(const CWallet& wallet, const P2MREntry& entry)
+{
+    if (!IsP2MREntryValid(entry)) return false;
+    return std::any_of(entry.tree.begin(), entry.tree.end(), [&](const P2MRTreeLeaf& leaf) {
+        return IsP2MRLeafSpendable(wallet, leaf);
+    });
 }
 
 P2MREntry MetadataToEntry(const CTxDestination& dest, const UniValue& meta, const std::string& fallback_id)
@@ -285,19 +438,36 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::o
 {
     AssertLockHeld(wallet.cs_wallet);
     FlatSigningProvider provider;
-    std::set<CKeyID> dilithium_key_ids;
+    P2MRKeyRequirements requirements;
     for (const auto& entry : ListP2MR(wallet)) {
         if (only_id && entry.id != *only_id) continue;
         if (!std::holds_alternative<WitnessV2P2MR>(entry.dest)) continue;
         auto builder_res = BuildP2MRTreeChecked(entry.tree);
         if (!builder_res) continue;
         provider.p2mr_trees[std::get<WitnessV2P2MR>(entry.dest)] = std::move(*builder_res);
-        const auto entry_key_ids = GetP2MRDilithiumKeyIDs(entry.tree);
-        dilithium_key_ids.insert(entry_key_ids.begin(), entry_key_ids.end());
+        const auto entry_requirements = GetP2MRKeyRequirements(entry.tree);
+        requirements.dilithium_key_ids.insert(entry_requirements.dilithium_key_ids.begin(), entry_requirements.dilithium_key_ids.end());
+        requirements.xonly_pubkeys.insert(entry_requirements.xonly_pubkeys.begin(), entry_requirements.xonly_pubkeys.end());
     }
 
     for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
-        for (const CKeyID& keyid : dilithium_key_ids) {
+        for (const XOnlyPubKey& xonly_pubkey : requirements.xonly_pubkeys) {
+            CKey key;
+            if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+                LOCK(desc_spk_man->cs_desc_man);
+                if (!desc_spk_man->GetKeyByXOnly(xonly_pubkey, key)) continue;
+            } else if (auto legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
+                if (!legacy_spk_man->GetKeyByXOnly(xonly_pubkey, key)) continue;
+            } else {
+                continue;
+            }
+            const CPubKey pubkey = key.GetPubKey();
+            const CKeyID keyid = pubkey.GetID();
+            provider.pubkeys.emplace(keyid, pubkey);
+            provider.keys.emplace(keyid, std::move(key));
+        }
+
+        for (const CKeyID& keyid : requirements.dilithium_key_ids) {
             CDilithiumKey key;
             if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
                 LOCK(desc_spk_man->cs_desc_man);
@@ -323,9 +493,20 @@ bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script)
     AssertLockHeld(wallet.cs_wallet);
     for (const auto& entry : ListP2MR(wallet)) {
         if (entry.script_pub_key != script) continue;
-        if (BuildP2MRTreeChecked(entry.tree)) return true;
+        if (IsP2MREntryValid(entry)) return true;
     }
     return false;
+}
+
+isminetype GetTrackedP2MRScriptIsMine(const CWallet& wallet, const CScript& script)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    for (const auto& entry : ListP2MR(wallet)) {
+        if (entry.script_pub_key != script) continue;
+        if (!IsP2MREntryValid(entry)) continue;
+        return IsP2MREntrySpendable(wallet, entry) ? ISMINE_SPENDABLE : ISMINE_WATCH_ONLY;
+    }
+    return ISMINE_NO;
 }
 
 static CAmount SumUnspentForScript(const CWallet& wallet, const CScript& script, int min_depth)
@@ -457,7 +638,12 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     if (!entry) return util::Error{Untranslated("unknown p2mr_id")};
 
     const CScript& target_spk = entry->script_pub_key;
-    std::optional<COutPoint> selected;
+    if (!MoneyRange(send_amount) || !MoneyRange(fee) || send_amount > MAX_MONEY - fee) {
+        return util::Error{Untranslated("amount out of range")};
+    }
+    const CAmount target_amount = send_amount + fee;
+
+    std::vector<std::pair<COutPoint, CAmount>> selected;
     CAmount input_amount{0};
     for (const auto& [txid, wtx] : wallet.mapWallet) {
         if (!wtx.tx) continue;
@@ -467,19 +653,24 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
             if (txout.scriptPubKey != target_spk) continue;
             const COutPoint outpoint{txid, n};
             if (wallet.IsSpent(outpoint)) continue;
-            selected = outpoint;
-            input_amount = txout.nValue;
-            break;
+            selected.emplace_back(outpoint, txout.nValue);
+            input_amount += txout.nValue;
+            if (input_amount >= target_amount) break;
         }
-        if (selected) break;
+        if (input_amount >= target_amount) break;
     }
-    if (!selected) return util::Error{Untranslated("no spendable P2MR UTXO found")};
+    if (selected.empty()) return util::Error{Untranslated("no spendable P2MR UTXO found")};
 
-    const CAmount change = input_amount - send_amount - fee;
+    const CAmount change = input_amount - target_amount;
     if (change < 0) return util::Error{Untranslated("insufficient P2MR UTXO amount")};
 
     P2MRSpendUnsigned out;
-    out.tx.vin.emplace_back(*selected);
+    out.input = selected.front().first;
+    out.inputs.reserve(selected.size());
+    for (const auto& selected_input : selected) {
+        out.tx.vin.emplace_back(selected_input.first);
+        out.inputs.push_back(selected_input.first);
+    }
     out.tx.vout.emplace_back(send_amount, GetScriptForDestination(to_dest));
 
     if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
@@ -491,8 +682,8 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     }
 
     out.p2mr_id = p2mr_id;
-    out.input = *selected;
     out.input_amount = input_amount;
+    out.effective_fee = input_amount - send_amount - out.change_amount;
     return out;
 }
 

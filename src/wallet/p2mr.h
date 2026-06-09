@@ -12,6 +12,7 @@
 #include <script/signingprovider.h>
 #include <uint256.h>
 #include <util/result.h>
+#include <wallet/types.h>
 
 #include <cstdint>
 #include <optional>
@@ -72,7 +73,9 @@ struct P2MRSpendUnsigned {
     CMutableTransaction tx;
     std::string p2mr_id;
     COutPoint input;
+    std::vector<COutPoint> inputs;
     CAmount input_amount{0};
+    CAmount effective_fee{0};
     CAmount change_amount{0};
     bool has_change{false};
 };
@@ -155,6 +158,9 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet,
 
 /** Return true if the script matches any wallet-tracked P2MR scriptPubKey. */
 bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script);
+
+/** Return spendable/watch-only ownership for a wallet-tracked P2MR scriptPubKey. */
+isminetype GetTrackedP2MRScriptIsMine(const CWallet& wallet, const CScript& script);
 
 /** Sum the values of confirmed unspent outputs whose script matches a tracked P2MR. */
 CAmount GetTrackedP2MRBalance(const CWallet& wallet, int min_depth = 1);

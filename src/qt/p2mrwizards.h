@@ -27,8 +27,8 @@ class QCheckBox;
 QT_END_NAMESPACE
 
 /**
- * Dialog to create a new P2MR vault. Offers the OP_TRUE template by default
- * with a clear warning, or a custom JSON tree for advanced users.
+ * Dialog to create a new P2MR vault. Production chains require a custom JSON
+ * tree; regtest also exposes an OP_TRUE template for feature testing.
  *
  * On success the controller has already persisted the new entry; the dialog
  * exposes the resulting address through createdAddress() / createdId().
@@ -44,6 +44,7 @@ public:
 
     /** Whether to also fund the new vault from the wallet's main balance. */
     void setOfferFunding(bool offer);
+    void setInitialLabel(const QString& label);
 
     QString createdAddress() const { return m_created_address; }
     QString createdId() const { return m_created_id; }

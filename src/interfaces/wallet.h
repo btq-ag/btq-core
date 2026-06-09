@@ -537,6 +537,7 @@ struct WalletP2MRSpend
     COutPoint input;
     CAmount input_amount{0};
     CAmount send_amount{0};
+    CAmount effective_fee{0};
     CAmount change_amount{0};
     bool has_change{false};
     bool sign_complete{false};

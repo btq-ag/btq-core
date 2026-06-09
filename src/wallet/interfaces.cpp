@@ -661,6 +661,7 @@ public:
             out.p2mr_id = unsigned_res->p2mr_id;
             out.input = unsigned_res->input;
             out.input_amount = unsigned_res->input_amount;
+            out.effective_fee = unsigned_res->effective_fee;
             out.has_change = unsigned_res->has_change;
             out.change_amount = unsigned_res->change_amount;
             out.send_amount = signed_tx.vout.empty() ? 0 : signed_tx.vout[0].nValue;

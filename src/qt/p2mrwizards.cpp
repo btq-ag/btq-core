@@ -4,12 +4,16 @@
 
 #include <qt/p2mrwizards.h>
 
+#include <chainparams.h>
 #include <qt/btqamountfield.h>
 #include <qt/btqunits.h>
 #include <qt/optionsmodel.h>
 #include <qt/platformstyle.h>
 #include <qt/walletmodel.h>
+#include <script/interpreter.h>
 #include <util/strencodings.h>
+
+#include <cmath>
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -79,14 +83,43 @@ bool ParseLeavesFromJson(const QString& text,
             error = QObject::tr("Leaf %1 must contain depth, leaf_version, and script").arg(i);
             return false;
         }
-        const int depth = o["depth"].toInt();
-        const int leaf_version = o["leaf_version"].toInt();
+        auto read_integer = [&](const char* key, int min, int max, int& out_value) {
+            const QJsonValue value = o.value(QString::fromUtf8(key));
+            if (!value.isDouble()) {
+                error = QObject::tr("Leaf %1 %2 must be an integer").arg(i).arg(QString::fromUtf8(key));
+                return false;
+            }
+            const double number = value.toDouble();
+            if (!std::isfinite(number) || std::floor(number) != number) {
+                error = QObject::tr("Leaf %1 %2 must be an integer").arg(i).arg(QString::fromUtf8(key));
+                return false;
+            }
+            if (number < min || number > max) {
+                error = QObject::tr("Leaf %1 %2 out of range").arg(i).arg(QString::fromUtf8(key));
+                return false;
+            }
+            out_value = static_cast<int>(number);
+            return true;
+        };
+
+        int depth;
+        int leaf_version;
+        if (!read_integer("depth", 0, 128, depth)) return false;
+        if (!read_integer("leaf_version", 0, 255, leaf_version)) return false;
         if (depth < 0 || depth > 128) {
             error = QObject::tr("Leaf %1 depth out of range").arg(i);
             return false;
         }
         if (leaf_version < 0 || leaf_version > 255) {
             error = QObject::tr("Leaf %1 leaf_version out of range").arg(i);
+            return false;
+        }
+        if ((leaf_version & ~TAPROOT_LEAF_MASK) != 0) {
+            error = QObject::tr("Leaf %1 leaf_version parity bit must be unset").arg(i);
+            return false;
+        }
+        if (!o["script"].isString()) {
+            error = QObject::tr("Leaf %1 script must be a hex string").arg(i);
             return false;
         }
         const QString script_hex = o["script"].toString();
@@ -114,6 +147,11 @@ QString DefaultOpTrueJson()
     obj["script"] = "51";      // OP_TRUE
     arr.append(obj);
     return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented));
+}
+
+bool AllowOpTrueTemplate()
+{
+    return Params().MineBlocksOnDemand();
 }
 
 QString FormatAmount(const WalletModel* model, CAmount amount)
@@ -147,8 +185,10 @@ void P2MRNewVaultDialog::buildLayout()
     auto* form = new QFormLayout();
 
     m_template_combo = new QComboBox(this);
-    m_template_combo->addItem(tr("OP_TRUE leaf (testing only)"), int(P2MRController::TreeTemplate::OpTrue));
     m_template_combo->addItem(tr("Custom JSON tree"), int(P2MRController::TreeTemplate::Custom));
+    if (AllowOpTrueTemplate()) {
+        m_template_combo->addItem(tr("OP_TRUE leaf (regtest only)"), int(P2MRController::TreeTemplate::OpTrue));
+    }
     form->addRow(tr("Template:"), m_template_combo);
 
     m_label_edit = new QLineEdit(this);
@@ -165,8 +205,7 @@ void P2MRNewVaultDialog::buildLayout()
 
     m_custom_tree_edit = new QPlainTextEdit(this);
     m_custom_tree_edit->setPlaceholderText(tr("Paste a JSON array of leaves in DFS order"));
-    m_custom_tree_edit->setPlainText(DefaultOpTrueJson());
-    m_custom_tree_edit->setVisible(false);
+    m_custom_tree_edit->setVisible(true);
     layout->addWidget(m_custom_tree_edit);
 
     m_fund_checkbox = new QCheckBox(tr("Fund now from main balance"), this);
@@ -196,11 +235,28 @@ void P2MRNewVaultDialog::setOfferFunding(bool offer)
     m_amount_field->setVisible(offer);
 }
 
+void P2MRNewVaultDialog::setInitialLabel(const QString& label)
+{
+    m_label_edit->setText(label);
+}
+
 void P2MRNewVaultDialog::onTemplateChanged(int index)
 {
     const auto tpl = static_cast<P2MRController::TreeTemplate>(m_template_combo->itemData(index).toInt());
     m_custom_tree_edit->setVisible(tpl == P2MRController::TreeTemplate::Custom);
     m_warning_label->setVisible(tpl == P2MRController::TreeTemplate::OpTrue);
+    if (tpl == P2MRController::TreeTemplate::OpTrue) {
+        m_custom_tree_edit->setPlainText(DefaultOpTrueJson());
+        m_fund_checkbox->setChecked(false);
+        m_fund_checkbox->setEnabled(false);
+        m_amount_field->setEnabled(false);
+    } else {
+        if (m_custom_tree_edit->toPlainText() == DefaultOpTrueJson()) {
+            m_custom_tree_edit->clear();
+        }
+        m_fund_checkbox->setEnabled(true);
+        m_amount_field->setEnabled(m_fund_checkbox->isChecked());
+    }
     adjustSize();
 }
 
@@ -233,6 +289,11 @@ void P2MRNewVaultDialog::accept()
     }
 
     const QString label = m_label_edit->text();
+    const auto tpl = static_cast<P2MRController::TreeTemplate>(m_template_combo->currentData().toInt());
+    if (tpl == P2MRController::TreeTemplate::OpTrue && m_fund_checkbox->isChecked()) {
+        QMessageBox::warning(this, windowTitle(), tr("The OP_TRUE testing template cannot be funded from the GUI."));
+        return;
+    }
     if (m_fund_checkbox->isVisible() && m_fund_checkbox->isChecked()) {
         const CAmount amount = m_amount_field->value();
         if (amount <= 0) {
@@ -373,6 +434,7 @@ void P2MRSpendDialog::onPrepare()
     } else {
         preview += tr("No change (dust threshold)") + "\n";
     }
+    preview += tr("Effective fee: %1").arg(FormatAmount(m_wallet_model, prepared.spend.effective_fee)) + "\n";
     preview += tr("Sign complete: %1").arg(prepared.spend.sign_complete ? tr("yes") : tr("no")) + "\n";
     preview += tr("Mempool accept: %1").arg(prepared.spend.mempool_allowed ? tr("yes") : tr("no"));
     m_preview_label->setText(preview);

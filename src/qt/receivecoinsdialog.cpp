@@ -10,7 +10,7 @@
 #include <qt/addresstablemodel.h>
 #include <qt/guiutil.h>
 #include <qt/optionsmodel.h>
-#include <qt/p2mrvaultdialog.h>
+#include <qt/p2mrwizards.h>
 #include <qt/platformstyle.h>
 #include <qt/receiverequestdialog.h>
 #include <qt/recentrequeststablemodel.h>
@@ -161,12 +161,19 @@ void ReceiveCoinsDialog::on_receiveButton_clicked()
     QString label = ui->reqLabel->text();
 
     // BIP360 P2MR is not handled by the AddressTableModel; route to the
-    // dedicated vault dialog. The user can pick a template (OP_TRUE for
-    // testing or custom JSON tree) and the wallet stores the metadata.
+    // dedicated vault creation dialog and avoid silently converting normal
+    // BIP21 request fields into unrelated vault metadata.
     if (ui->addressType->currentData().toInt() == P2MR_SENTINEL) {
-        P2MRVaultDialog* dlg = new P2MRVaultDialog(platformStyle, this);
+        if (ui->reqAmount->value() > 0 || !ui->reqMessage->text().isEmpty()) {
+            QMessageBox::warning(this, windowTitle(),
+                tr("P2MR vault creation does not support payment request amounts or messages. Clear those fields before creating a P2MR vault."));
+            return;
+        }
+        P2MRNewVaultDialog* dlg = new P2MRNewVaultDialog(model->getP2MRController(), platformStyle, this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
-        dlg->setModel(model);
+        dlg->setOfferFunding(false);
+        dlg->setInitialLabel(label);
+        connect(dlg, &QDialog::accepted, this, &ReceiveCoinsDialog::clear);
         dlg->show();
         return;
     }
