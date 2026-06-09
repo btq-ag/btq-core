@@ -27,6 +27,7 @@ using wallet::DeriveDilithiumKeyIV;
 using wallet::EncryptDilithiumSecret;
 using wallet::DecryptDilithiumSecret;
 using wallet::DecryptDilithiumKey;
+using wallet::KeyIDToIV;
 
 BOOST_FIXTURE_TEST_SUITE(dilithium_wallet_tests, BasicTestingSetup)
 
@@ -144,6 +145,44 @@ BOOST_AUTO_TEST_CASE(dilithium_key_decryption_accepts_legacy_keyid_iv)
     CDilithiumKey decrypted_key;
     BOOST_CHECK(DecryptDilithiumKey(master_key, encrypted_secret, key_id, decrypted_key));
     BOOST_CHECK(decrypted_key == key);
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_key_encryption_wrong_iv_fails)
+{
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+
+    CKeyingMaterial master_key(32, 0);
+    for (int i = 0; i < 32; i++) {
+        master_key[i] = static_cast<unsigned char>(i);
+    }
+
+    const CKeyID key_id = CKeyID(key.GetPubKey().GetID());
+    const uint256 iv = KeyIDToIV(key_id);
+
+    std::vector<unsigned char> encrypted_secret;
+    CKeyingMaterial secret(key.begin(), key.end());
+    BOOST_REQUIRE(EncryptDilithiumSecret(master_key, secret, iv, encrypted_secret));
+
+    CDilithiumKey decrypted_key;
+    CKeyID wrong_id = key_id;
+    wrong_id.begin()[0] ^= 0x01;
+    BOOST_CHECK(!DecryptDilithiumKey(master_key, encrypted_secret, wrong_id, decrypted_key));
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_signatures_are_deterministic)
+{
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    BOOST_REQUIRE(key.IsValid());
+
+    const uint256 hash = uint256::ONE;
+    std::vector<unsigned char> sig_a;
+    std::vector<unsigned char> sig_b;
+    BOOST_REQUIRE(key.Sign(hash, sig_a));
+    BOOST_REQUIRE(key.Sign(hash, sig_b));
+    BOOST_CHECK_EQUAL(sig_a.size(), sig_b.size());
+    BOOST_CHECK(sig_a == sig_b);
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_key_storage)

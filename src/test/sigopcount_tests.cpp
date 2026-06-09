@@ -6,6 +6,7 @@
 #include <coins.h>
 #include <consensus/consensus.h>
 #include <consensus/tx_verify.h>
+#include <crypto/dilithium_key.h>
 #include <key.h>
 #include <pubkey.h>
 #include <script/interpreter.h>
@@ -64,6 +65,31 @@ BOOST_AUTO_TEST_CASE(GetSigOpCount)
     CScript scriptSig2;
     scriptSig2 << OP_1 << ToByteVector(dummy) << ToByteVector(dummy) << Serialize(s2);
     BOOST_CHECK_EQUAL(p2sh.GetSigOpCount(scriptSig2), 3U);
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_sigop_weighting)
+{
+    // BTQ-AUDIT-019: Dilithium opcodes must cost more than ECDSA in GetSigOpCount.
+    CScript dilithium_p2pk;
+    CDilithiumKey dilithium_key;
+    BOOST_REQUIRE(dilithium_key.MakeNewKey());
+    dilithium_p2pk << ToByteVector(dilithium_key.GetPubKey()) << OP_CHECKSIGDILITHIUM;
+    BOOST_CHECK_EQUAL(dilithium_p2pk.GetSigOpCount(true), DILITHIUM_SIGOP_COST);
+
+    CScript dilithium_multisig;
+    dilithium_multisig << OP_2 << ToByteVector(dilithium_key.GetPubKey())
+                       << ToByteVector(dilithium_key.GetPubKey()) << OP_2
+                       << OP_CHECKMULTISIGDILITHIUM;
+    BOOST_CHECK_EQUAL(dilithium_multisig.GetSigOpCount(true), 2U * DILITHIUM_SIGOP_COST);
+
+    // P2SH-wrapped Dilithium: GetSigOpCount(scriptSig) must recurse into the
+    // redeem script and weight the hidden OP_CHECKSIGDILITHIUM accordingly.
+    const CScript& dilithium_redeem = dilithium_p2pk;
+    const CScript p2sh = CScript() << OP_HASH160 << ToByteVector(CScriptID(dilithium_redeem)) << OP_EQUAL;
+    const CScript p2sh_scriptsig = CScript() << Serialize(dilithium_redeem);
+    BOOST_CHECK_EQUAL(p2sh.GetSigOpCount(p2sh_scriptsig), DILITHIUM_SIGOP_COST);
+    // The P2SH scriptPubKey on its own hides the redeem script, so it must report 0.
+    BOOST_CHECK_EQUAL(p2sh.GetSigOpCount(true), 0U);
 }
 
 /**
@@ -161,7 +187,7 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
         CScript scriptSig = CScript();
         CScriptWitness scriptWitness;
         scriptWitness.stack.emplace_back(0);
-        scriptWitness.stack.emplace_back(0);
+        scriptWitness.stack.emplace_back(CPubKey::COMPRESSED_SIZE, 0);
 
 
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, scriptSig, scriptWitness);
@@ -190,7 +216,7 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
         scriptSig = CScript() << ToByteVector(scriptSig);
         CScriptWitness scriptWitness;
         scriptWitness.stack.emplace_back(0);
-        scriptWitness.stack.emplace_back(0);
+        scriptWitness.stack.emplace_back(CPubKey::COMPRESSED_SIZE, 0);
 
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, scriptSig, scriptWitness);
         assert(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags) == 1);
@@ -204,7 +230,7 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
         CScript scriptSig = CScript();
         CScriptWitness scriptWitness;
         scriptWitness.stack.emplace_back(0);
-        scriptWitness.stack.emplace_back(0);
+        scriptWitness.stack.emplace_back(CPubKey::COMPRESSED_SIZE, 0);
         scriptWitness.stack.emplace_back(witnessScript.begin(), witnessScript.end());
 
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, scriptSig, scriptWitness);
@@ -221,13 +247,47 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
         CScript scriptSig = CScript() << ToByteVector(redeemScript);
         CScriptWitness scriptWitness;
         scriptWitness.stack.emplace_back(0);
-        scriptWitness.stack.emplace_back(0);
+        scriptWitness.stack.emplace_back(CPubKey::COMPRESSED_SIZE, 0);
         scriptWitness.stack.emplace_back(witnessScript.begin(), witnessScript.end());
 
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, scriptSig, scriptWitness);
         assert(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags) == 2);
         assert(VerifyWithFlag(CTransaction(creationTx), spendingTx, flags) == SCRIPT_ERR_CHECKMULTISIGVERIFY);
     }
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_witness_v0_sigop_weighting)
+{
+    // BTQ-AUDIT-019: witness v0 keyhash spends must distinguish P2WPKH (1) from P2DWPKH (50).
+    CMutableTransaction creationTx;
+    CMutableTransaction spendingTx;
+    CCoinsView coinsDummy;
+    CCoinsViewCache coins(&coinsDummy);
+    const uint32_t flags{SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH};
+
+    CDilithiumKey dilithium_key;
+    BOOST_REQUIRE(dilithium_key.MakeNewKey());
+    const CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
+
+    CScript scriptPubKey = GetScriptForDestination(DilithiumWitnessV0KeyHash(dilithium_pubkey));
+    CScriptWitness scriptWitness;
+    scriptWitness.stack.push_back(std::vector<unsigned char>(DilithiumConstants::SIGNATURE_SIZE, 0x01));
+    scriptWitness.stack.push_back(std::vector<unsigned char>(dilithium_pubkey.begin(), dilithium_pubkey.end()));
+
+    BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, scriptWitness);
+    BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
+                      static_cast<int64_t>(DILITHIUM_SIGOP_COST));
+
+    // Classical P2WPKH with compressed pubkey witness must remain weight 1.
+    CKey ecdsa_key;
+    ecdsa_key.MakeNewKey(true);
+    scriptPubKey = GetScriptForDestination(WitnessV0KeyHash(ecdsa_key.GetPubKey()));
+    scriptWitness.stack.clear();
+    scriptWitness.stack.push_back(std::vector<unsigned char>(72, 0x01));
+    scriptWitness.stack.push_back(std::vector<unsigned char>(ecdsa_key.GetPubKey().begin(), ecdsa_key.GetPubKey().end()));
+
+    BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, scriptWitness);
+    BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

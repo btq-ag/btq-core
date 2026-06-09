@@ -18,9 +18,9 @@ BOOST_FIXTURE_TEST_SUITE(dilithium_basic_tests, BasicTestingSetup)
 BOOST_AUTO_TEST_CASE(dilithium_script_verification_flags)
 {
     // Dilithium verification is gated by nDilithiumHeight in GetBlockScriptFlags,
-    // not MANDATORY_SCRIPT_VERIFY_FLAGS (allows future soft-fork activation).
+    // not relay-policy flags (allows future soft-fork activation).
     BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM));
-    BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
+    BOOST_CHECK(!(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM));
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_key_basic_operations)
@@ -108,11 +108,13 @@ BOOST_AUTO_TEST_CASE(dilithium_script_signature_with_sighash_byte)
         const CTransaction ctx{tx};
 
         ScriptError error{SCRIPT_ERR_OK};
+        // BTQ gates Dilithium opcodes behind SCRIPT_VERIFY_DILITHIUM (buried
+        // DEPLOYMENT_DILITHIUM, active from height 1); apply it as consensus/policy do.
         const bool verified = VerifyScript(
             ctx.vin[0].scriptSig,
             script_pubkey,
             nullptr,
-            STANDARD_SCRIPT_VERIFY_FLAGS,
+            STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DILITHIUM,
             TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL),
             &error);
 

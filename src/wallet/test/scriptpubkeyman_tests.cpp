@@ -227,5 +227,34 @@ BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
     BOOST_CHECK(after_encrypt == before_encrypt);
 }
 
+// BTQ-AUDIT-001/009: encryptwallet must migrate plaintext Dilithium keys to crypted map.
+BOOST_AUTO_TEST_CASE(dilithium_encrypt_wallet_roundtrip)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
+
+    LOCK2(wallet.cs_wallet, keyman.cs_KeyStore);
+    BOOST_REQUIRE(keyman.SetupGeneration(true));
+
+    WalletBatch batch(wallet.GetDatabase());
+    CHDChain hd_chain = keyman.GetHDChain();
+    const CDilithiumPubKey pubkey = keyman.GenerateNewDilithiumKey(batch, hd_chain, /*internal=*/false);
+    const CKeyID key_id = CKeyID(pubkey.GetID());
+
+    CDilithiumKey plain_key;
+    BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, plain_key));
+
+    BOOST_REQUIRE(wallet.EncryptWallet("encrypt-pass"));
+    wallet.Lock();
+
+    CDilithiumKey locked_key;
+    BOOST_CHECK(!keyman.GetDilithiumKey(key_id, locked_key));
+
+    BOOST_REQUIRE(wallet.Unlock("encrypt-pass"));
+    CDilithiumKey decrypted_key;
+    BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, decrypted_key));
+    BOOST_CHECK(decrypted_key == plain_key);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 } // namespace wallet

@@ -66,19 +66,20 @@ public:
         return std::visit([](const auto& key) { return key.IsValid(); }, m_key);
     }
     
-    // Generate new key
-    void MakeNewKey(KeyType type, bool fCompressed = true) {
+    // Generate new key. Returns false if key generation failed (e.g. RNG failure);
+    // the resulting key is then invalid.
+    bool MakeNewKey(KeyType type, bool fCompressed = true) {
         m_type = type;
         switch (type) {
             case KeyType::ECDSA:
                 m_key = ECDSAKey{};
                 std::get<ECDSAKey>(m_key).MakeNewKey(fCompressed);
-                break;
+                return std::get<ECDSAKey>(m_key).IsValid();
             case KeyType::DILITHIUM:
                 m_key = DilithiumKey{};
-                std::get<DilithiumKey>(m_key).MakeNewKey();
-                break;
+                return std::get<DilithiumKey>(m_key).MakeNewKey();
         }
+        return false;
     }
     
     // Get public key

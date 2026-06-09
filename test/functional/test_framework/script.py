@@ -26,7 +26,7 @@ from .messages import (
 
 from .ripemd160 import ripemd160
 
-MAX_SCRIPT_ELEMENT_SIZE = 15000
+MAX_SCRIPT_ELEMENT_SIZE = 15000  # BTQ consensus cap (see src/script/script.h)
 MAX_PUBKEYS_PER_MULTI_A = 999
 DILITHIUM_SIGOP_COST = 50
 LOCKTIME_THRESHOLD = 500000000

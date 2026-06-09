@@ -718,8 +718,10 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
     }
     sigdata.scriptSig = PushAll(result);
 
-    // Test solution
-    sigdata.complete = solved && VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, creator.Checker());
+    // Test solution. BTQ activates Dilithium from height 1 (buried DEPLOYMENT_DILITHIUM),
+    // so the wallet's solution check must enable SCRIPT_VERIFY_DILITHIUM to validate
+    // OP_CHECKSIGDILITHIUM satisfactions (it is not part of STANDARD_SCRIPT_VERIFY_FLAGS).
+    sigdata.complete = solved && VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DILITHIUM, creator.Checker());
     return sigdata.complete;
 }
 

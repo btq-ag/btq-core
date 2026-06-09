@@ -46,7 +46,7 @@ bool DilithiumExpandSeedIntoKeydata(const unsigned char seed[BTQ_DILITHIUM_SEED_
 }
 } // namespace
 
-void CDilithiumKey::MakeNewKey()
+bool CDilithiumKey::MakeNewKey()
 {
     // Sample exactly 32 bytes of strong randomness; the Dilithium reference
     // implementation internally expands those into (rho, key, rhoprime) via
@@ -56,14 +56,17 @@ void CDilithiumKey::MakeNewKey()
         GetStrongRandBytes(Span<unsigned char>(seed.data(), seed.size()));
     } catch (...) {
         ClearKeyData();
-        return;
+        return false;
     }
 
     MakeKeyData();
     if (!DilithiumExpandSeedIntoKeydata(seed.data(), keydata->data())) {
         ClearKeyData();
+        memory_cleanse(seed.data(), seed.size());
+        return false;
     }
     memory_cleanse(seed.data(), seed.size());
+    return true;
 }
 
 bool CDilithiumKey::GenerateFromEntropy(const std::vector<unsigned char>& entropy)

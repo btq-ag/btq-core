@@ -77,9 +77,7 @@ util::Result<CTxDestination> DilithiumWalletManager::GetNewDilithiumAddress(Outp
 {
     // Generate a new Dilithium key
     CDilithiumKey dilithium_key;
-    dilithium_key.MakeNewKey();
-    
-    if (!dilithium_key.IsValid()) {
+    if (!dilithium_key.MakeNewKey() || !dilithium_key.IsValid()) {
         return util::Error{_("Error: Failed to generate Dilithium key")};
     }
     

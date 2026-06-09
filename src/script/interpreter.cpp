@@ -2134,9 +2134,17 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
             if (stack.size() != 2) {
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH); // 2 items in witness
             }
-            
-            // P2WPKH is ECDSA-only; Dilithium uses dilithium_bech32 (distinct HRP/program).
-            if (stack.back().size() != CPubKey::COMPRESSED_SIZE) {
+
+            const valtype& vchPubKey = stack.back();
+            if (vchPubKey.size() == DilithiumConstants::PUBLIC_KEY_SIZE) {
+                if (!(flags & SCRIPT_VERIFY_DILITHIUM)) {
+                    return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE);
+                }
+                exec_script << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIGDILITHIUM;
+                return ExecuteWitnessScript(stack, exec_script, flags, SigVersion::WITNESS_V0, checker, execdata, serror);
+            }
+
+            if ((flags & SCRIPT_VERIFY_WITNESS_PUBKEYTYPE) != 0 && vchPubKey.size() != CPubKey::COMPRESSED_SIZE) {
                 return set_error(serror, SCRIPT_ERR_WITNESS_PUBKEYTYPE);
             }
             exec_script << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
@@ -2365,8 +2373,18 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
 size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& witprogram, const CScriptWitness& witness)
 {
     if (witversion == 0) {
-        if (witprogram.size() == WITNESS_V0_KEYHASH_SIZE)
+        if (witprogram.size() == WITNESS_V0_KEYHASH_SIZE) {
+            // Witness v0 keyhash scripts are identical for ECDSA P2WPKH and Dilithium P2DWPKH.
+            if (witness.stack.size() >= 2 &&
+                witness.stack[1].size() == DilithiumConstants::PUBLIC_KEY_SIZE) {
+                return DILITHIUM_SIGOP_COST;
+            }
+            if (!witness.stack.empty() &&
+                witness.stack[0].size() >= DilithiumConstants::SIGNATURE_SIZE) {
+                return DILITHIUM_SIGOP_COST;
+            }
             return 1;
+        }
 
         if (witprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE && witness.stack.size() > 0) {
             CScript subscript(witness.stack.back().begin(), witness.stack.back().end());
