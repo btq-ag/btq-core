@@ -15,11 +15,7 @@ FUZZ_TARGET(dilithium)
     FuzzedDataProvider fuzzed_data_provider{buffer.data(), buffer.size()};
 
     std::array<uint8_t, BTQ_DILITHIUM_SEED_SIZE> seed{};
-    if (fuzzed_data_provider.remaining_bytes() >= BTQ_DILITHIUM_SEED_SIZE) {
-        seed = fuzzed_data_provider.ConsumeBytes<uint8_t>(BTQ_DILITHIUM_SEED_SIZE);
-    } else {
-        fuzzed_data_provider.ConsumeData(seed.data(), seed.size());
-    }
+    fuzzed_data_provider.ConsumeData(seed.data(), seed.size());
 
     std::array<uint8_t, BTQ_DILITHIUM_PUBLIC_KEY_SIZE> pk{};
     std::array<uint8_t, BTQ_DILITHIUM_SECRET_KEY_SIZE> sk{};
@@ -27,7 +23,7 @@ FUZZ_TARGET(dilithium)
         return;
     }
 
-    const std::vector<uint8_t> message = fuzzed_data_provider.ConsumeRandomLengthByteVector(256);
+    const std::vector<uint8_t> message = ConsumeRandomLengthByteVector(fuzzed_data_provider, 256);
     std::array<uint8_t, BTQ_DILITHIUM_SIGNATURE_SIZE> sig{};
     size_t siglen = 0;
     if (btq_dilithium_sign(sig.data(), &siglen, message.data(), message.size(), nullptr, 0, sk.data()) != 0) {
