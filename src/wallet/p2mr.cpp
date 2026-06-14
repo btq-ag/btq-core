@@ -7,6 +7,7 @@
 #include <core_io.h>
 #include <interfaces/chain.h>
 #include <key_io.h>
+#include <policy/policy.h>
 #include <rpc/protocol.h>
 #include <rpc/request.h>
 #include <rpc/util.h>
@@ -24,6 +25,7 @@
 #include <wallet/walletdb.h>
 
 #include <algorithm>
+#include <set>
 
 namespace wallet {
 
@@ -67,6 +69,17 @@ UniValue BuildMetadataJSON(const std::string& id,
 bool DecodeMetadata(const std::string& raw, UniValue& out)
 {
     return out.read(raw) && out.isObject();
+}
+
+bool SameP2MRTree(const std::vector<P2MRTreeLeaf>& a, const std::vector<P2MRTreeLeaf>& b)
+{
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].depth != b[i].depth) return false;
+        if (a[i].leaf_version != b[i].leaf_version) return false;
+        if (a[i].script != b[i].script) return false;
+    }
+    return true;
 }
 
 P2MREntry MetadataToEntry(const CTxDestination& dest, const UniValue& meta, const std::string& fallback_id)
@@ -140,6 +153,7 @@ util::Result<std::vector<P2MRTreeLeaf>> ParseP2MRTreeChecked(const UniValue& tre
         }
         if (depth < 0 || depth > 128) return util::Error{Untranslated("depth out of range")};
         if (leaf_version < 0 || leaf_version > 255) return util::Error{Untranslated("leaf_version out of range")};
+        if ((leaf_version & ~TAPROOT_LEAF_MASK) != 0) return util::Error{Untranslated("leaf_version parity bit must be unset")};
         auto script = TryParseHex<unsigned char>(script_hex);
         if (!script) return util::Error{Untranslated("script must be valid hex")};
 
@@ -166,12 +180,18 @@ util::Result<P2MRBuilder> BuildP2MRTreeChecked(const std::vector<P2MRTreeLeaf>& 
     }
     P2MRBuilder builder;
     for (const auto& leaf : leaves) {
+        if (leaf.depth > P2MR_CONTROL_MAX_NODE_COUNT) {
+            return util::Error{Untranslated("depth out of range")};
+        }
+        if ((leaf.leaf_version & ~TAPROOT_LEAF_MASK) != 0) {
+            return util::Error{Untranslated("leaf_version parity bit must be unset")};
+        }
         builder.Add(leaf.depth, leaf.script, leaf.leaf_version);
     }
-    builder.Finalize();
     if (!builder.IsValid() || !builder.IsComplete()) {
         return util::Error{Untranslated("invalid P2MR tree, verify DFS order and depths")};
     }
+    builder.Finalize();
     return builder;
 }
 
@@ -261,7 +281,9 @@ CAmount GetTrackedP2MRBalance(const CWallet& wallet, int min_depth)
 {
     AssertLockHeld(wallet.cs_wallet);
     CAmount total{0};
+    std::set<CScript> counted_scripts;
     for (const auto& entry : ListP2MR(wallet)) {
+        if (!counted_scripts.insert(entry.script_pub_key).second) continue;
         total += SumUnspentForScript(wallet, entry.script_pub_key, min_depth);
     }
     return total;
@@ -282,10 +304,20 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     out.dest = builder.GetOutput();
     out.script_pub_key = GetScriptForDestination(out.dest);
     out.address = EncodeDestination(out.dest);
-    out.id = NewP2MRId();
     const WitnessV2P2MR& w = std::get<WitnessV2P2MR>(out.dest);
     std::copy(w.begin(), w.end(), out.merkle_root.begin());
 
+    for (const auto& entry : ListP2MR(wallet)) {
+        if (entry.script_pub_key == out.script_pub_key && SameP2MRTree(entry.tree, leaves)) {
+            out.id = entry.id;
+            out.address = entry.address;
+            out.merkle_root = entry.merkle_root;
+            out.dest = entry.dest;
+            return out;
+        }
+    }
+
+    out.id = NewP2MRId();
     const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, label, leaves);
 
     WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
@@ -422,10 +454,8 @@ util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
             continue;
         }
 
-        // Fallback: if the builder produced exactly one tapscript leaf with control
-        // block, finalize directly. This mirrors the previous RPC behavior so the
-        // OP_TRUE template (and any single-leaf script) signs cleanly without a
-        // SignatureChecker round-trip.
+        // Fallback for no-argument scripts such as OP_TRUE. Only report completion
+        // after verifying the assembled witness against the actual transaction.
         bool fallback_ok = false;
         if (!solutions.empty() && solutions[0].size() == WitnessV2P2MR::SIZE) {
             const WitnessV2P2MR p2mr_output{solutions[0]};
@@ -438,7 +468,18 @@ util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
                     out.tx.vin[i].scriptWitness.stack.clear();
                     out.tx.vin[i].scriptWitness.stack.emplace_back(script.begin(), script.end());
                     out.tx.vin[i].scriptWitness.stack.push_back(*control_blocks.begin());
-                    fallback_ok = true;
+                    std::vector<CTxOut> spent_outputs;
+                    spent_outputs.reserve(out.tx.vin.size());
+                    for (const CTxIn& txin : out.tx.vin) {
+                        const auto coin_it = coins.find(txin.prevout);
+                        spent_outputs.push_back(coin_it != coins.end() && !coin_it->second.IsSpent() ? coin_it->second.out : CTxOut{});
+                    }
+                    PrecomputedTransactionData txdata;
+                    txdata.Init(out.tx, std::move(spent_outputs), /*force=*/true);
+                    const CTransaction tx_const{out.tx};
+                    TransactionSignatureChecker checker(&tx_const, i, it->second.out.nValue, txdata, MissingDataBehavior::FAIL);
+                    fallback_ok = VerifyScript(out.tx.vin[i].scriptSig, it->second.out.scriptPubKey, &out.tx.vin[i].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker);
+                    if (!fallback_ok) out.tx.vin[i].scriptWitness.stack.clear();
                 }
             }
         }

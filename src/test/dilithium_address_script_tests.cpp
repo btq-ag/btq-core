@@ -199,7 +199,8 @@ BOOST_AUTO_TEST_CASE(dilithium_script_solving)
     BOOST_CHECK(solutions[0].size() == 20);
     BOOST_CHECK(std::equal(solutions[0].begin(), solutions[0].end(), pk_hash.begin()));
     
-    // Test Dilithium P2SH script solving
+    // P2SH scriptPubKeys do not commit to the signature algorithm; the redeem
+    // script carries the Dilithium opcode, but the outer script solves as P2SH.
     CScript redeem_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
     DilithiumScriptHash script_hash(redeem_script);
     CScript p2sh_script = CScript() << OP_HASH160 << ToByteVector(script_hash) << OP_EQUAL;
@@ -267,16 +268,18 @@ BOOST_AUTO_TEST_CASE(dilithium_destination_extraction)
     BOOST_CHECK(std::holds_alternative<DilithiumPKHash>(dest));
     BOOST_CHECK(std::get<DilithiumPKHash>(dest) == pk_hash);
     
-    // Test Dilithium P2SH destination extraction
+    // The outer P2SH destination is algorithm-agnostic; the redeem script is
+    // still a Dilithium script, but ExtractDestination returns ScriptHash.
     CScript redeem_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
     DilithiumScriptHash script_hash(redeem_script);
+    ScriptHash ordinary_script_hash(redeem_script);
     CScript p2sh_script = CScript() << OP_HASH160 << ToByteVector(script_hash) << OP_EQUAL;
     dest = CTxDestination{};
     has_address = ExtractDestination(p2sh_script, dest);
     BOOST_CHECK(has_address);
     // P2SH outputs are indistinguishable from standard P2SH at scriptPubKey level.
     BOOST_CHECK(std::holds_alternative<ScriptHash>(dest));
-    BOOST_CHECK(std::get<ScriptHash>(dest) == ScriptHash(script_hash));
+    BOOST_CHECK(std::get<ScriptHash>(dest) == ordinary_script_hash);
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_output_types)
@@ -321,10 +324,10 @@ BOOST_AUTO_TEST_CASE(dilithium_valid_destination)
     BOOST_CHECK(IsValidDestination(script_hash));
     
     DilithiumWitnessV0KeyHash witness_key_hash(pubkey);
-    BOOST_CHECK(IsValidDestination(witness_key_hash));
-    
+    BOOST_CHECK(!IsValidDestination(witness_key_hash));
+
     DilithiumWitnessV0ScriptHash witness_script_hash(script);
-    BOOST_CHECK(IsValidDestination(witness_script_hash));
+    BOOST_CHECK(!IsValidDestination(witness_script_hash));
 }
 
 BOOST_AUTO_TEST_SUITE_END()

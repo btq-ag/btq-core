@@ -228,6 +228,12 @@ RPCHelpMan getnewdilithiumaddress()
                 }
                 output_type = *parsed;
             }
+            if (output_type == OutputType::BECH32 || output_type == OutputType::DILITHIUM_BECH32) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "dilithium-bech32 is disabled because witness v0 keyhash programs are indistinguishable from ECDSA P2WPKH and are not spendable with Dilithium keys");
+            }
+            if (output_type != OutputType::LEGACY && output_type != OutputType::DILITHIUM_LEGACY && output_type != OutputType::P2SH_SEGWIT) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Unsupported Dilithium address type '%s'", request.params[1].isNull() ? "legacy" : request.params[1].get_str()));
+            }
 
             std::string address;
             if (output_type == OutputType::P2SH_SEGWIT) {
@@ -252,15 +258,11 @@ RPCHelpMan getnewdilithiumaddress()
                     wallet->SetAddressBook(DecodeDestination(address), label, AddressPurpose::RECEIVE);
                 }
             } else {
-                const OutputType dil_type = (output_type == OutputType::BECH32)
-                    ? OutputType::DILITHIUM_BECH32
-                    : OutputType::DILITHIUM_LEGACY;
+                const OutputType dil_type = OutputType::DILITHIUM_LEGACY;
                 util::Result<CTxDestination> dest = util::Error{Untranslated("")};
                 if (wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
                     // Descriptor wallets register spk managers under classical output types.
-                    const OutputType spkm_type = (output_type == OutputType::BECH32)
-                        ? OutputType::BECH32
-                        : OutputType::LEGACY;
+                    const OutputType spkm_type = OutputType::LEGACY;
                     ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(spkm_type, /*internal=*/false);
                     if (!spk_man) {
                         throw JSONRPCError(RPC_WALLET_ERROR, "No active ScriptPubKeyMan for Dilithium address generation");
@@ -655,4 +657,3 @@ RPCHelpMan signtransactionwithdilithium()
 }
 
 } // namespace wallet
-

@@ -702,7 +702,7 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
         sigdata.scriptWitness.stack = result;
         sigdata.witness = true;
         result.clear();
-    } else if (whichType == TxoutType::WITNESS_V1_TAPROOT && !P2SH) {
+    } else if ((whichType == TxoutType::WITNESS_V1_TAPROOT || whichType == TxoutType::WITNESS_V2_P2MR) && !P2SH) {
         sigdata.witness = true;
         if (solved) {
             sigdata.scriptWitness.stack = std::move(result);
@@ -718,8 +718,10 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
     }
     sigdata.scriptSig = PushAll(result);
 
-    // Test solution
-    sigdata.complete = solved && VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, creator.Checker());
+    // Test solution. BTQ activates Dilithium from height 1 (buried DEPLOYMENT_DILITHIUM),
+    // so the wallet's solution check must enable SCRIPT_VERIFY_DILITHIUM to validate
+    // OP_CHECKSIGDILITHIUM satisfactions (it is not part of STANDARD_SCRIPT_VERIFY_FLAGS).
+    sigdata.complete = solved && VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DILITHIUM, creator.Checker());
     return sigdata.complete;
 }
 
@@ -737,6 +739,16 @@ public:
         if (m_checker.CheckECDSASignature(scriptSig, vchPubKey, scriptCode, sigversion)) {
             CPubKey pubkey(vchPubKey);
             sigdata.signatures.emplace(pubkey.GetID(), SigPair(pubkey, scriptSig));
+            return true;
+        }
+        return false;
+    }
+
+    bool CheckDilithiumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override
+    {
+        if (m_checker.CheckDilithiumSignature(scriptSig, vchPubKey, scriptCode, sigversion)) {
+            CDilithiumPubKey pubkey(vchPubKey);
+            sigdata.dilithium_signatures.emplace(pubkey.GetID(), std::make_pair(pubkey, scriptSig));
             return true;
         }
         return false;

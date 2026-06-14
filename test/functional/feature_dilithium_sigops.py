@@ -40,6 +40,7 @@ from test_framework.script import (
     CScript,
     CScriptNum,
     CScriptOp,
+    DILITHIUM_SIGOP_COST,
     LEAF_VERSION_TAPSCRIPT,
     OP_0,
     OP_1,
@@ -67,13 +68,8 @@ from test_framework.test_framework import BTQTestFramework
 from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
 
-# ============================================================================
-#  Constants
-# ============================================================================
 TAPROOT_LEAF_MASK = 0xfe
 TAPROOT_LEAF_TAPSCRIPT = 0xc0
-MAX_BLOCK_SIGOPS_COST = 80000
-WITNESS_SCALE_FACTOR = 16
 
 
 # ============================================================================
@@ -112,18 +108,23 @@ def get_sigop_count(script_bytes):
             last_opcode = opcode
             continue
 
-        # ---- single-sig opcodes (+1 each) ----
-        if opcode in (0xac, 0xad,   # OP_CHECKSIG, OP_CHECKSIGVERIFY
-                      0xbb, 0xbc):  # OP_CHECKSIGDILITHIUM, OP_CHECKSIGDILITHIUMVERIFY
+        # ---- single-sig opcodes ----
+        if opcode in (0xac, 0xad):  # OP_CHECKSIG, OP_CHECKSIGVERIFY
             n += 1
+        elif opcode in (0xbb, 0xbc):  # OP_CHECKSIGDILITHIUM, OP_CHECKSIGDILITHIUMVERIFY
+            n += DILITHIUM_SIGOP_COST
 
-        # ---- multisig opcodes (+N or +20) ----
-        elif opcode in (0xae, 0xaf,   # OP_CHECKMULTISIG(VERIFY)
-                        0xbd, 0xbe):  # OP_CHECKMULTISIGDILITHIUM(VERIFY)
+        # ---- multisig opcodes (+N or +20 keys) ----
+        elif opcode in (0xae, 0xaf):  # OP_CHECKMULTISIG(VERIFY)
             if 0x51 <= last_opcode <= 0x60:   # OP_1 .. OP_16
                 n += last_opcode - 0x50
             else:
                 n += 20  # MAX_PUBKEYS_PER_MULTISIG
+        elif opcode in (0xbd, 0xbe):  # OP_CHECKMULTISIGDILITHIUM(VERIFY)
+            if 0x51 <= last_opcode <= 0x60:   # OP_1 .. OP_16
+                n += (last_opcode - 0x50) * DILITHIUM_SIGOP_COST
+            else:
+                n += 20 * DILITHIUM_SIGOP_COST
 
         last_opcode = opcode
     return n
@@ -222,22 +223,22 @@ class DilithiumSigopsTest(BTQTestFramework):
         self._test_1e_non_sigops()
 
     def _test_1a_basic_checksig(self):
-        print(sub_test('1a. OP_CHECKSIGDILITHIUM counts as 1 sigop'))
+        print(sub_test('1a. OP_CHECKSIGDILITHIUM counts at Dilithium cost'))
 
         cases = [
-            (CScript([OP_CHECKSIGDILITHIUM]),         1, 'single OP_CHECKSIGDILITHIUM'),
-            (CScript([OP_CHECKSIGDILITHIUMVERIFY]),    1, 'single OP_CHECKSIGDILITHIUMVERIFY'),
+            (CScript([OP_CHECKSIGDILITHIUM]),         DILITHIUM_SIGOP_COST, 'single OP_CHECKSIGDILITHIUM'),
+            (CScript([OP_CHECKSIGDILITHIUMVERIFY]),   DILITHIUM_SIGOP_COST, 'single OP_CHECKSIGDILITHIUMVERIFY'),
             (CScript([OP_CHECKSIGDILITHIUM,
-                      OP_CHECKSIGDILITHIUMVERIFY]),    2, 'both Dilithium checksig variants'),
+                      OP_CHECKSIGDILITHIUMVERIFY]),    2 * DILITHIUM_SIGOP_COST, 'both Dilithium checksig variants'),
             (CScript([OP_CHECKSIG]),                   1, 'ECDSA OP_CHECKSIG (control)'),
             (CScript([OP_CHECKSIG,
-                      OP_CHECKSIGDILITHIUM]),          2, 'ECDSA + Dilithium mixed'),
+                      OP_CHECKSIGDILITHIUM]),          1 + DILITHIUM_SIGOP_COST, 'ECDSA + Dilithium mixed'),
         ]
 
         for script, expected, label in cases:
             actual = get_sigop_count(bytes(script))
             assert_equal(actual, expected)
-            print(info(f'{label}: {actual} sigop(s)'))
+            print(info(f'{label}: {actual} sigop cost unit(s)'))
 
         print(passed())
 
@@ -245,23 +246,23 @@ class DilithiumSigopsTest(BTQTestFramework):
         print(sub_test('1b. OP_CHECKMULTISIGDILITHIUM uses N-of-M counting'))
 
         cases = [
-            (CScript([OP_3, OP_CHECKMULTISIGDILITHIUM]),              3,  '3 keys (OP_3 prefix)'),
-            (CScript([OP_2, OP_CHECKMULTISIGDILITHIUMVERIFY]),        2,  '2 keys (OP_2 prefix)'),
-            (CScript([OP_1, OP_CHECKMULTISIGDILITHIUMVERIFY]),        1,  '1 key  (OP_1 prefix)'),
-            (CScript([OP_DROP, OP_CHECKMULTISIGDILITHIUM]),           20, 'no OP_N prefix -> 20 (MAX)'),
+            (CScript([OP_3, OP_CHECKMULTISIGDILITHIUM]),              3 * DILITHIUM_SIGOP_COST,  '3 keys (OP_3 prefix)'),
+            (CScript([OP_2, OP_CHECKMULTISIGDILITHIUMVERIFY]),        2 * DILITHIUM_SIGOP_COST,  '2 keys (OP_2 prefix)'),
+            (CScript([OP_1, OP_CHECKMULTISIGDILITHIUMVERIFY]),        DILITHIUM_SIGOP_COST,      '1 key  (OP_1 prefix)'),
+            (CScript([OP_DROP, OP_CHECKMULTISIGDILITHIUM]),           20 * DILITHIUM_SIGOP_COST, 'no OP_N prefix -> 20 (MAX)'),
             (CScript([OP_3, OP_CHECKMULTISIG]),                       3,  'ECDSA 3-key multisig (control)'),
         ]
 
         for script, expected, label in cases:
             actual = get_sigop_count(bytes(script))
             assert_equal(actual, expected)
-            print(info(f'{label}: {actual} sigop(s)'))
+            print(info(f'{label}: {actual} sigop cost unit(s)'))
 
-        # Parity check: ECDSA and Dilithium multisig count identically
+        # Cost check: Dilithium multisig is deliberately more expensive than ECDSA.
         ecdsa = get_sigop_count(bytes(CScript([OP_3, OP_CHECKMULTISIG])))
         dilithium = get_sigop_count(bytes(CScript([OP_3, OP_CHECKMULTISIGDILITHIUM])))
-        assert_equal(ecdsa, dilithium)
-        print(info(f'ECDSA vs Dilithium parity: both = {ecdsa}'))
+        assert_equal(dilithium, ecdsa * DILITHIUM_SIGOP_COST)
+        print(info(f'ECDSA 3-key cost = {ecdsa}; Dilithium 3-key cost = {dilithium}'))
 
         print(passed())
 
@@ -275,10 +276,11 @@ class DilithiumSigopsTest(BTQTestFramework):
             OP_CHECKSIGDILITHIUMVERIFY,                     # +1  Dilithium
             OP_3, OP_CHECKMULTISIG,                         # +3  ECDSA multisig
             OP_2, OP_CHECKMULTISIGDILITHIUM,                # +2  Dilithium multisig
-        ])                                                  # ---
-        actual = get_sigop_count(bytes(script))             #  9  total
-        assert_equal(actual, 9)
-        print(info(f'1+1+1+1+3+2 = {actual} sigops'))
+        ])
+        actual = get_sigop_count(bytes(script))
+        expected = 1 + 1 + DILITHIUM_SIGOP_COST + DILITHIUM_SIGOP_COST + 3 + 2 * DILITHIUM_SIGOP_COST
+        assert_equal(actual, expected)
+        print(info(f'1+1+50+50+3+100 = {actual} sigop cost units'))
 
         print(passed())
 
@@ -288,8 +290,8 @@ class DilithiumSigopsTest(BTQTestFramework):
         for count in [10, 50, 100]:
             script = CScript([OP_CHECKSIGDILITHIUMVERIFY] * count)
             actual = get_sigop_count(bytes(script))
-            assert_equal(actual, count)
-            print(info(f'{count} repeated CHECKSIGDILITHIUMVERIFY -> {actual} sigops'))
+            assert_equal(actual, count * DILITHIUM_SIGOP_COST)
+            print(info(f'{count} repeated CHECKSIGDILITHIUMVERIFY -> {actual} sigop cost units'))
 
         print(passed('DoS vector properly bounded by sigop counting'))
 

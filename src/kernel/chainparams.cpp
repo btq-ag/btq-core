@@ -87,7 +87,7 @@ public:
         // BTQ: Enable SegWit at height 1 for Dilithium witness transactions
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.nLWMAHeight = 300000;
@@ -107,10 +107,10 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
-        // Pre-launch floor: cumulative work through the remined genesis block.
+        // Pre-launch floor: tied to the remined genesis block (see assert below).
         // Rotate both values at each tagged release (see doc/release-process.md).
         consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000000000000010002");
-        consensus.defaultAssumeValid = uint256S("0000ca45ea08433961609b50cd0c3f76d14589f8f61973ebbc344c3a160f7cdd");
+        consensus.defaultAssumeValid = uint256S("0x000003194a90d8d8eff8b39a7ad4e2490729b97a6772b7f4c4cb8887dffd1ae4");
 
         pchMessageStart[0] = 0xf1;
         pchMessageStart[1] = 0xb2;
@@ -121,9 +121,9 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        genesis = CreateGenesisBlock(1771804800, 184980, 0x1f00ffff, 1, 5 * COIN); 
+        genesis = CreateGenesisBlock(1771804800, 12582602, 0x1e0377ae, 1, 5 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x0000ca45ea08433961609b50cd0c3f76d14589f8f61973ebbc344c3a160f7cdd"));
+        assert(consensus.hashGenesisBlock == uint256S("0x000003194a90d8d8eff8b39a7ad4e2490729b97a6772b7f4c4cb8887dffd1ae4"));
         assert(genesis.hashMerkleRoot == uint256S("0xec88310bd306cf5f9554cc257db16b81147e4bd0efda75f11b38467a5d918db1"));
 
         vSeeds.emplace_back("seed1.btq.com");
@@ -182,7 +182,7 @@ public:
         
         consensus.SegwitHeight = 1;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.nLWMAHeight = 300000;
@@ -216,9 +216,9 @@ public:
 
         const char* pszTimestamp = "BTQ testnet genesis block 20260526";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771977600, 3, 0x207fffff, 1, 5 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771977600, 2443007, 0x1e0377ae, 1, 5 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0xb82c2238f94b4c89c1d29af05ca1004ab8eaf35e313790b634aa663cb734b7f0"));
+        assert(consensus.hashGenesisBlock == uint256S("0x000000ffba1eed17608850f753ca60e74456dd3fe7af86b72aadba7d6052f7dd"));
         assert(genesis.hashMerkleRoot == uint256S("0xcd6a53f536b1f8f9442397d1d4f3db492d88bc4280f4c172eb5b1d9e1b6152e5"));
 
         vFixedSeeds.clear();
@@ -326,7 +326,7 @@ public:
         consensus.nRuleChangeActivationThreshold = 18144; // 90% of 20160
         consensus.nMinerConfirmationWindow = 20160;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nDilithiumHeight = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;

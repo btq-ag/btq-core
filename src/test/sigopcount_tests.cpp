@@ -81,6 +81,15 @@ BOOST_AUTO_TEST_CASE(dilithium_sigop_weighting)
                        << ToByteVector(dilithium_key.GetPubKey()) << OP_2
                        << OP_CHECKMULTISIGDILITHIUM;
     BOOST_CHECK_EQUAL(dilithium_multisig.GetSigOpCount(true), 2U * DILITHIUM_SIGOP_COST);
+
+    // P2SH-wrapped Dilithium: GetSigOpCount(scriptSig) must recurse into the
+    // redeem script and weight the hidden OP_CHECKSIGDILITHIUM accordingly.
+    const CScript& dilithium_redeem = dilithium_p2pk;
+    const CScript p2sh = CScript() << OP_HASH160 << ToByteVector(CScriptID(dilithium_redeem)) << OP_EQUAL;
+    const CScript p2sh_scriptsig = CScript() << Serialize(dilithium_redeem);
+    BOOST_CHECK_EQUAL(p2sh.GetSigOpCount(p2sh_scriptsig), DILITHIUM_SIGOP_COST);
+    // The P2SH scriptPubKey on its own hides the redeem script, so it must report 0.
+    BOOST_CHECK_EQUAL(p2sh.GetSigOpCount(true), 0U);
 }
 
 /**

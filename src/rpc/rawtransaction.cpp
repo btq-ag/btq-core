@@ -558,6 +558,7 @@ static RPCHelpMan decodescript()
         case TxoutType::SCRIPTHASH:
         case TxoutType::WITNESS_UNKNOWN:
         case TxoutType::WITNESS_V1_TAPROOT:
+        case TxoutType::WITNESS_V2_P2MR:
         case TxoutType::DILITHIUM_PUBKEY:
         case TxoutType::DILITHIUM_PUBKEYHASH:
         case TxoutType::DILITHIUM_SCRIPTHASH:
@@ -606,6 +607,7 @@ static RPCHelpMan decodescript()
             case TxoutType::WITNESS_V0_KEYHASH:
             case TxoutType::WITNESS_V0_SCRIPTHASH:
             case TxoutType::WITNESS_V1_TAPROOT:
+            case TxoutType::WITNESS_V2_P2MR:
             case TxoutType::DILITHIUM_PUBKEY:
             case TxoutType::DILITHIUM_PUBKEYHASH:
             case TxoutType::DILITHIUM_SCRIPTHASH:

@@ -583,6 +583,39 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
         BOOST_CHECK(keystore.GetLegacyScriptPubKeyMan()->GetScriptPubKeys().count(scriptPubKey) == 1);
     }
 
+    // P2WSH multisig wrapped in P2SH, imported through the legacy import path
+    {
+        CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
+        keystore.SetupLegacyScriptPubKeyMan();
+        LOCK(keystore.GetLegacyScriptPubKeyMan()->cs_KeyStore);
+
+        CScript witnessScript = GetScriptForMultisig(1, {pubkeys[0]});
+        CScript redeemScript = GetScriptForDestination(WitnessV0ScriptHash(witnessScript));
+        scriptPubKey = GetScriptForDestination(ScriptHash(redeemScript));
+
+        BOOST_CHECK(keystore.GetLegacyScriptPubKeyMan()->ImportScripts({redeemScript, witnessScript}, /*timestamp=*/1));
+        BOOST_CHECK(keystore.GetLegacyScriptPubKeyMan()->ImportPrivKeys({{pubkeys[0].GetID(), keys[0]}}, /*timestamp=*/1));
+        result = keystore.GetLegacyScriptPubKeyMan()->IsMine(scriptPubKey);
+        BOOST_CHECK_EQUAL(result, ISMINE_SPENDABLE);
+        BOOST_CHECK(keystore.GetLegacyScriptPubKeyMan()->GetScriptPubKeys().count(scriptPubKey) == 1);
+    }
+
+    // Wallet-level legacy imports invalidate stale IsMine cache entries
+    {
+        CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
+        keystore.SetupLegacyScriptPubKeyMan();
+        LOCK(keystore.cs_wallet);
+
+        CScript witnessScript = GetScriptForMultisig(1, {pubkeys[0]});
+        CScript redeemScript = GetScriptForDestination(WitnessV0ScriptHash(witnessScript));
+        scriptPubKey = GetScriptForDestination(ScriptHash(redeemScript));
+
+        BOOST_CHECK_EQUAL(keystore.IsMine(scriptPubKey), ISMINE_NO);
+        BOOST_CHECK(keystore.ImportScripts({redeemScript, witnessScript}, /*timestamp=*/1));
+        BOOST_CHECK(keystore.ImportPrivKeys({{pubkeys[0].GetID(), keys[0]}}, /*timestamp=*/1));
+        BOOST_CHECK_EQUAL(keystore.IsMine(scriptPubKey), ISMINE_SPENDABLE);
+    }
+
     // P2WSH multisig wrapped in P2SH - Descriptor
     {
         CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());

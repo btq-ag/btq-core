@@ -127,7 +127,6 @@ void P2MRVaultDialog::refresh()
     }
 
     auto rows = m_controller->listVaults(/*min_depth=*/1);
-    CAmount total{0};
     for (const auto& r : rows) {
         const int row = m_table->rowCount();
         m_table->insertRow(row);
@@ -153,10 +152,9 @@ void P2MRVaultDialog::refresh()
         m_table->setItem(row, COL_STATE, state_item);
         m_table->setItem(row, COL_CREATED, created_item);
         m_table->setItem(row, COL_ID, id_item);
-
-        total += r.balance;
     }
 
+    const CAmount total{m_controller->totalBalance(/*min_depth=*/1)};
     QString total_str = m_wallet_model && m_wallet_model->getOptionsModel()
         ? BTQUnits::formatWithUnit(m_wallet_model->getOptionsModel()->getDisplayUnit(), total)
         : QString::number(total);

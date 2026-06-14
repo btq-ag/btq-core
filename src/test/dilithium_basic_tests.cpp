@@ -4,8 +4,11 @@
 
 #include <test/util/setup_common.h>
 #include <crypto/dilithium_key.h>
+#include <key.h>
+#include <primitives/transaction.h>
 #include <script/script.h>
 #include <script/interpreter.h>
+#include <script/sign.h>
 #include <policy/policy.h>
 
 #include <boost/test/unit_test.hpp>
@@ -78,6 +81,133 @@ BOOST_AUTO_TEST_CASE(dilithium_script_limits)
     std::vector<unsigned char> signature;
     BOOST_CHECK(dilithium_key.Sign(test_hash, signature));
     BOOST_CHECK_LE(signature.size(), MAX_SCRIPT_ELEMENT_SIZE);
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_script_signature_with_sighash_byte)
+{
+    CDilithiumKey dilithium_key;
+    dilithium_key.MakeNewKey();
+    const CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
+    const DilithiumPKHash key_id{dilithium_pubkey};
+
+    FlatSigningProvider provider;
+    provider.dilithium_pubkeys.emplace(key_id, dilithium_pubkey);
+    provider.dilithium_keys.emplace(key_id, dilithium_key);
+
+    CMutableTransaction spending_tx;
+    spending_tx.nVersion = 1;
+    spending_tx.vin.resize(1);
+    spending_tx.vin[0].prevout = COutPoint{uint256::ONE, 0};
+    spending_tx.vout.emplace_back(1, CScript() << OP_TRUE);
+
+    const CAmount amount{1};
+
+    const auto check_spend = [&](const CScript& script_pubkey, const CScript& script_sig, const ScriptError expected) {
+        CMutableTransaction tx{spending_tx};
+        tx.vin[0].scriptSig = script_sig;
+        const CTransaction ctx{tx};
+
+        ScriptError error{SCRIPT_ERR_OK};
+        // BTQ gates Dilithium opcodes behind SCRIPT_VERIFY_DILITHIUM (buried
+        // DEPLOYMENT_DILITHIUM, active from height 1); apply it as consensus/policy do.
+        const bool verified = VerifyScript(
+            ctx.vin[0].scriptSig,
+            script_pubkey,
+            nullptr,
+            STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DILITHIUM,
+            TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL),
+            &error);
+
+        BOOST_CHECK_EQUAL(verified, expected == SCRIPT_ERR_OK);
+        BOOST_CHECK_EQUAL(error, expected);
+    };
+
+    const auto sign_for_script = [&](const CScript& script_pubkey) {
+        std::vector<unsigned char> signature;
+        const uint256 sighash = SignatureHash(script_pubkey, spending_tx, 0, SIGHASH_ALL, amount, SigVersion::BASE);
+        BOOST_REQUIRE(dilithium_key.Sign(sighash, signature));
+        BOOST_REQUIRE_EQUAL(signature.size(), BTQ_DILITHIUM_SIGNATURE_SIZE);
+        return signature;
+    };
+
+    const auto pushed_values = [](const CScript& script) {
+        std::vector<std::vector<unsigned char>> pushes;
+        CScript::const_iterator pc = script.begin();
+        while (pc != script.end()) {
+            opcodetype opcode;
+            std::vector<unsigned char> data;
+            BOOST_REQUIRE(script.GetOp(pc, opcode, data));
+            BOOST_REQUIRE_LE(opcode, OP_PUSHDATA4);
+            pushes.push_back(std::move(data));
+        }
+        return pushes;
+    };
+
+    const auto check_produced_signature = [&](const CScript& script_pubkey, const size_t expected_pushes) {
+        MutableTransactionSignatureCreator creator{spending_tx, 0, amount, SIGHASH_ALL};
+        SignatureData sigdata;
+        BOOST_REQUIRE(ProduceSignature(provider, creator, script_pubkey, sigdata));
+        BOOST_CHECK(sigdata.complete);
+        BOOST_CHECK(!sigdata.witness);
+        BOOST_REQUIRE_EQUAL(sigdata.dilithium_signatures.size(), 1);
+
+        const std::vector<unsigned char>& signature = sigdata.dilithium_signatures.begin()->second.second;
+        BOOST_REQUIRE_EQUAL(signature.size(), BTQ_DILITHIUM_SIGNATURE_SIZE + 1);
+        BOOST_CHECK_EQUAL(signature.back(), SIGHASH_ALL);
+
+        const auto pushes = pushed_values(sigdata.scriptSig);
+        BOOST_REQUIRE_EQUAL(pushes.size(), expected_pushes);
+        BOOST_REQUIRE_EQUAL(pushes.front().size(), BTQ_DILITHIUM_SIGNATURE_SIZE + 1);
+        BOOST_CHECK_EQUAL(pushes.front().back(), SIGHASH_ALL);
+        check_spend(script_pubkey, sigdata.scriptSig, SCRIPT_ERR_OK);
+    };
+
+    const CScript p2pk_script = CScript() << ToByteVector(dilithium_pubkey) << OP_CHECKSIGDILITHIUM;
+    std::vector<unsigned char> p2pk_signature = sign_for_script(p2pk_script);
+
+    CScript raw_signature_script_sig = CScript() << p2pk_signature;
+    check_spend(p2pk_script, raw_signature_script_sig, SCRIPT_ERR_SIG_DER);
+
+    p2pk_signature.push_back(SIGHASH_ALL);
+    CScript p2pk_script_sig = CScript() << p2pk_signature;
+    check_spend(p2pk_script, p2pk_script_sig, SCRIPT_ERR_OK);
+    check_produced_signature(p2pk_script, 1);
+
+    const CScript p2pkh_script = CScript() << OP_DUP << OP_HASH160 << ToByteVector(dilithium_pubkey.GetID()) << OP_EQUALVERIFY << OP_CHECKSIGDILITHIUM;
+    std::vector<unsigned char> p2pkh_signature = sign_for_script(p2pkh_script);
+    p2pkh_signature.push_back(SIGHASH_ALL);
+    CScript p2pkh_script_sig = CScript() << p2pkh_signature << ToByteVector(dilithium_pubkey);
+    check_spend(p2pkh_script, p2pkh_script_sig, SCRIPT_ERR_OK);
+    check_produced_signature(p2pkh_script, 2);
+}
+
+BOOST_AUTO_TEST_CASE(ecdsa_oversized_signature_rejected_under_standard_flags)
+{
+    CKey key;
+    key.MakeNewKey(true);
+
+    CMutableTransaction spending_tx;
+    spending_tx.nVersion = 1;
+    spending_tx.vin.resize(1);
+    spending_tx.vin[0].prevout = COutPoint{uint256::ONE, 0};
+    spending_tx.vout.emplace_back(1, CScript() << OP_TRUE);
+
+    const CAmount amount{1};
+    const CScript script_pubkey = CScript() << ToByteVector(key.GetPubKey()) << OP_CHECKSIG;
+    spending_tx.vin[0].scriptSig = CScript() << std::vector<unsigned char>(600, 0);
+    const CTransaction ctx{spending_tx};
+
+    ScriptError error{SCRIPT_ERR_OK};
+    const bool verified = VerifyScript(
+        ctx.vin[0].scriptSig,
+        script_pubkey,
+        nullptr,
+        STANDARD_SCRIPT_VERIFY_FLAGS,
+        TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL),
+        &error);
+
+    BOOST_CHECK(!verified);
+    BOOST_CHECK_EQUAL(error, SCRIPT_ERR_SIG_DER);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

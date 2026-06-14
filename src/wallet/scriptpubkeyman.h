@@ -266,7 +266,6 @@ static const std::unordered_set<OutputType> LEGACY_OUTPUT_TYPES {
     OutputType::P2SH_SEGWIT,
     OutputType::BECH32,
     OutputType::DILITHIUM_LEGACY,
-    OutputType::DILITHIUM_BECH32,
 };
 
 class DescriptorScriptPubKeyMan;
@@ -455,6 +454,7 @@ public:
     //! Get a Dilithium key from the store
     bool GetDilithiumKey(const CKeyID &address, CDilithiumKey& keyOut) const;
     bool HaveDilithiumKey(const CKeyID &address) const;
+    std::set<CKeyID> GetDilithiumKeyIDs() const;
     //! Generate a new Dilithium key using HD derivation
     CDilithiumPubKey GenerateNewDilithiumKey(WalletBatch& batch, CHDChain& hd_chain, bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
     //! Derive a new Dilithium child key using HD derivation

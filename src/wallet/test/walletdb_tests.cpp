@@ -4,10 +4,12 @@
 
 #include <test/util/setup_common.h>
 #include <clientversion.h>
+#include <crypto/dilithium_key.h>
 #include <streams.h>
 #include <uint256.h>
 #include <wallet/test/util.h>
 #include <wallet/wallet.h>
+#include <wallet/walletdb.h>
 
 #include <boost/test/unit_test.hpp>
 
@@ -52,6 +54,50 @@ BOOST_AUTO_TEST_CASE(walletdb_read_write_deadlock)
 
         // Now delete all records, which performs a read write operation.
         BOOST_CHECK(wallet->GetLegacyScriptPubKeyMan()->DeleteRecords());
+    }
+}
+
+BOOST_AUTO_TEST_CASE(walletdb_loads_dilithium_key_metadata)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    const CKeyID key_id{key.GetPubKey().GetID()};
+
+    CKeyMetadata metadata{123456789};
+    metadata.hdKeypath = "m/0'/0'/7'";
+
+    MockableData records;
+    {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        LOCK(wallet->cs_wallet);
+        wallet->SetupLegacyScriptPubKeyMan();
+        WalletBatch batch{wallet->GetDatabase()};
+        const std::vector<unsigned char> secret{key.begin(), key.end()};
+        BOOST_REQUIRE(batch.WriteDilithiumKeyByID(key_id, secret, metadata));
+        wallet->Flush();
+        records = GetMockableDatabase(*wallet).m_records;
+    }
+
+    {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+        {
+            LOCK(wallet->cs_wallet);
+            wallet->SetupLegacyScriptPubKeyMan();
+        }
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+
+        LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+        BOOST_REQUIRE(spk_man);
+        CDilithiumKey loaded_key;
+        BOOST_REQUIRE(spk_man->GetDilithiumKey(key_id, loaded_key));
+        BOOST_CHECK(loaded_key == key);
+
+        LOCK(spk_man->cs_KeyStore);
+        const auto it = spk_man->mapKeyMetadata.find(key_id);
+        BOOST_REQUIRE(it != spk_man->mapKeyMetadata.end());
+        BOOST_CHECK_EQUAL(it->second.nCreateTime, metadata.nCreateTime);
+        BOOST_CHECK_EQUAL(it->second.hdKeypath, metadata.hdKeypath);
     }
 }
 

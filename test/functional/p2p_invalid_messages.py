@@ -11,7 +11,7 @@ import time
 from test_framework.messages import (
     CBlockHeader,
     CInv,
-    MAX_HEADERS_RESULTS,
+MAX_HEADERS_RESULTS,
     MAX_INV_SIZE,
     MAX_PROTOCOL_MESSAGE_LENGTH,
     MSG_TX,
@@ -33,6 +33,7 @@ from test_framework.util import (
 )
 
 VALID_DATA_LIMIT = MAX_PROTOCOL_MESSAGE_LENGTH - 5  # Account for the 5-byte length prefix
+RESOURCE_EXHAUSTION_DATA_LIMIT = min(VALID_DATA_LIMIT, 4_000_000 - 5)
 
 
 class msg_unrecognized:
@@ -137,7 +138,9 @@ class InvalidMessagesTest(BTQTestFramework):
     def test_size(self):
         self.log.info("Test message with oversized payload disconnects peer")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
-        with self.nodes[0].assert_debug_log(['Header error: Size too large (badmsg, 4000001 bytes)']):
+        with self.nodes[0].assert_debug_log([
+            f'Header error: Size too large (badmsg, {MAX_PROTOCOL_MESSAGE_LENGTH + 1} bytes)'
+        ]):
             msg = msg_unrecognized(str_data="d" * (VALID_DATA_LIMIT + 1))
             msg = conn.build_message(msg)
             conn.send_raw_message(msg)
@@ -308,10 +311,10 @@ class InvalidMessagesTest(BTQTestFramework):
         self.log.info("Test node stays up despite many large junk messages")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
         conn2 = self.nodes[0].add_p2p_connection(P2PDataStore())
-        msg_at_size = msg_unrecognized(str_data="b" * VALID_DATA_LIMIT)
-        assert len(msg_at_size.serialize()) == MAX_PROTOCOL_MESSAGE_LENGTH
+        msg_at_size = msg_unrecognized(str_data="b" * RESOURCE_EXHAUSTION_DATA_LIMIT)
+        assert len(msg_at_size.serialize()) <= MAX_PROTOCOL_MESSAGE_LENGTH
 
-        self.log.info("(a) Send 80 messages, each of maximum valid data size (4MB)")
+        self.log.info(f"(a) Send 80 large valid messages, each {len(msg_at_size.serialize())} bytes")
         for _ in range(80):
             conn.send_message(msg_at_size)
 

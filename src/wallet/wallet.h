@@ -140,8 +140,9 @@ constexpr CAmount DEFAULT_TRANSACTION_MAXFEE{COIN / 10};
 constexpr CAmount HIGH_TX_FEE_PER_KB{COIN / 100};
 //! -maxtxfee will warn if called with a higher fee than this amount (in satoshis)
 constexpr CAmount HIGH_MAX_TX_FEE{100 * HIGH_TX_FEE_PER_KB};
-//! Pre-calculated constants for input size estimation in *virtual size*
-static constexpr size_t DUMMY_NESTED_P2WPKH_INPUT_SIZE = 91;
+//! Pre-calculated constants for input size estimation in *virtual size*.
+//! BTQ's 16x witness scale makes nested P2WPKH smaller in vbytes than Bitcoin's 4x scale.
+static constexpr size_t DUMMY_NESTED_P2WPKH_INPUT_SIZE = 71;
 
 class CCoinControl;
 
