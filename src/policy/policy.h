@@ -8,7 +8,6 @@
 
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
-#include <consensus/consensus.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/solver.h>

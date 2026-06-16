@@ -54,13 +54,3 @@ int btq_dilithium_verify(const uint8_t *sig, size_t siglen,
     
     return pqcrystals_dilithium2_ref_verify(sig, siglen, m, mlen, ctx_ptr, ctx_len, pk);
 }
-
-int btq_dilithium_sk_to_pk(uint8_t *pk, const uint8_t *sk)
-{
-    // Extract public key from secret key
-    // In Dilithium, the secret key contains the public key at the beginning
-    // For Dilithium2: sk = (rho, K, tr, s1, s2, t0) and pk = (rho, K, tr)
-    // The public key is the first 1312 bytes of the secret key
-    memcpy(pk, sk, pqcrystals_dilithium2_ref_PUBLICKEYBYTES);
-    return 0;
-}
