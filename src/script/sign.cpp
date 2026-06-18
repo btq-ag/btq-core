@@ -90,9 +90,9 @@ bool MutableTransactionSignatureCreator::CreateSchnorrSig(const SigningProvider&
     return true;
 }
 
-bool MutableTransactionSignatureCreator::CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion) const
+bool MutableTransactionSignatureCreator::CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion, const uint256* leaf_hash) const
 {
-    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0);
+    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::P2MR_TAPSCRIPT);
 
     CDilithiumKey key;
     if (!provider.GetDilithiumKeyByHash(keyid, key))
@@ -104,7 +104,20 @@ bool MutableTransactionSignatureCreator::CreateDilithiumSig(const SigningProvide
     // BASE/WITNESS_V0 signatures don't support explicit SIGHASH_DEFAULT, use SIGHASH_ALL instead.
     const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
 
-    uint256 hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
+    uint256 hash;
+    if (sigversion == SigVersion::P2MR_TAPSCRIPT) {
+        if (!leaf_hash || !m_txdata || !m_txdata->m_bip341_taproot_ready || !m_txdata->m_spent_outputs_ready) return false;
+        ScriptExecutionData execdata;
+        execdata.m_annex_init = true;
+        execdata.m_annex_present = false;
+        execdata.m_codeseparator_pos_init = true;
+        execdata.m_codeseparator_pos = 0xFFFFFFFF;
+        execdata.m_tapleaf_hash_init = true;
+        execdata.m_tapleaf_hash = *leaf_hash;
+        if (!SignatureHashSchnorr(hash, execdata, m_txto, nIn, static_cast<uint8_t>(hashtype), sigversion, *m_txdata, MissingDataBehavior::FAIL)) return false;
+    } else {
+        hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
+    }
     if (!key.Sign(hash, vchSig))
         return false;
     vchSig.push_back((unsigned char)hashtype);
@@ -190,21 +203,34 @@ static bool CreateSig(const BaseSignatureCreator& creator, SignatureData& sigdat
     return false;
 }
 
-static bool CreateDilithiumSig(const BaseSignatureCreator& creator, SignatureData& sigdata, const SigningProvider& provider, std::vector<unsigned char>& sig_out, const CDilithiumPubKey& pubkey, const CScript& scriptcode, SigVersion sigversion)
+static bool CreateDilithiumSig(const BaseSignatureCreator& creator, SignatureData& sigdata, const SigningProvider& provider, std::vector<unsigned char>& sig_out, const CDilithiumPubKey& pubkey, const CScript& scriptcode, SigVersion sigversion, const uint256* leaf_hash = nullptr)
 {
     DilithiumPKHash keyid(pubkey.GetID());
-    const auto it = sigdata.dilithium_signatures.find(keyid);
-    if (it != sigdata.dilithium_signatures.end()) {
-        sig_out = it->second.second;
-        return true;
+    if (sigversion == SigVersion::P2MR_TAPSCRIPT && leaf_hash) {
+        const auto lookup_key = std::make_pair(keyid, *leaf_hash);
+        const auto it = sigdata.p2mr_dilithium_script_sigs.find(lookup_key);
+        if (it != sigdata.p2mr_dilithium_script_sigs.end()) {
+            sig_out = it->second.second;
+            return true;
+        }
+    } else {
+        const auto it = sigdata.dilithium_signatures.find(keyid);
+        if (it != sigdata.dilithium_signatures.end()) {
+            sig_out = it->second.second;
+            return true;
+        }
     }
     KeyOriginInfo info;
     if (provider.GetDilithiumKeyOrigin(keyid, info)) {
         sigdata.dilithium_misc_pubkeys.emplace(keyid, std::make_pair(pubkey, std::move(info)));
     }
-    if (creator.CreateDilithiumSig(provider, sig_out, keyid, scriptcode, sigversion)) {
-        auto i = sigdata.dilithium_signatures.emplace(keyid, std::make_pair(pubkey, sig_out));
-        assert(i.second);
+    if (creator.CreateDilithiumSig(provider, sig_out, keyid, scriptcode, sigversion, leaf_hash)) {
+        if (sigversion == SigVersion::P2MR_TAPSCRIPT && leaf_hash) {
+            sigdata.p2mr_dilithium_script_sigs.emplace(std::make_pair(keyid, *leaf_hash), std::make_pair(pubkey, sig_out));
+        } else {
+            auto i = sigdata.dilithium_signatures.emplace(keyid, std::make_pair(pubkey, sig_out));
+            assert(i.second);
+        }
         return true;
     }
     // Could not make signature or signature not found, add keyid to missing
@@ -379,6 +405,9 @@ struct TapSatisfier: Satisfier<XOnlyPubKey> {
     }
 };
 
+static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& scriptPubKey,
+                     std::vector<valtype>& ret, TxoutType& whichTypeRet, SigVersion sigversion, SignatureData& sigdata, const uint256* leaf_hash = nullptr);
+
 static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatureCreator& creator, SignatureData& sigdata, int leaf_version, Span<const unsigned char> script_bytes, SigVersion sigversion, std::vector<valtype>& result)
 {
     // Only BIP342 tapscript signing is supported for now.
@@ -389,7 +418,16 @@ static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatu
 
     TapSatisfier ms_satisfier{provider, sigdata, creator, script, leaf_hash, sigversion};
     const auto ms = miniscript::FromScript(script, ms_satisfier);
-    return ms && ms->Satisfy(ms_satisfier, result) == miniscript::Availability::YES;
+    if (ms && ms->Satisfy(ms_satisfier, result) == miniscript::Availability::YES) return true;
+
+    // Miniscript does not model BTQ's Dilithium opcodes. P2MR explicitly
+    // permits those opcodes, so let the ordinary solver sign directly
+    // recognized Dilithium leaf scripts such as <pubkey> OP_CHECKSIGDILITHIUM.
+    if (sigversion == SigVersion::P2MR_TAPSCRIPT && result.empty()) {
+        TxoutType which_type;
+        return SignStep(provider, creator, script, result, which_type, sigversion, sigdata, &leaf_hash);
+    }
+    return false;
 }
 
 static bool SignTaproot(const SigningProvider& provider, const BaseSignatureCreator& creator, const WitnessV1Taproot& output, SignatureData& sigdata, std::vector<valtype>& result)
@@ -488,7 +526,7 @@ static bool SignP2MR(const SigningProvider& provider, const BaseSignatureCreator
  * Returns false if scriptPubKey could not be completely satisfied.
  */
 static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& scriptPubKey,
-                     std::vector<valtype>& ret, TxoutType& whichTypeRet, SigVersion sigversion, SignatureData& sigdata)
+                     std::vector<valtype>& ret, TxoutType& whichTypeRet, SigVersion sigversion, SignatureData& sigdata, const uint256* leaf_hash)
 {
     CScript scriptRet;
     ret.clear();
@@ -567,7 +605,7 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
     case TxoutType::WITNESS_V2_P2MR:
         return SignP2MR(provider, creator, WitnessV2P2MR(uint256(vSolutions[0])), sigdata, ret);
     case TxoutType::DILITHIUM_PUBKEY: {
-        if (!CreateDilithiumSig(creator, sigdata, provider, sig, CDilithiumPubKey(vSolutions[0]), scriptPubKey, sigversion)) return false;
+        if (!CreateDilithiumSig(creator, sigdata, provider, sig, CDilithiumPubKey(vSolutions[0]), scriptPubKey, sigversion, leaf_hash)) return false;
         ret.push_back(std::move(sig));
         return true;
     }
@@ -580,7 +618,7 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
             sigdata.missing_dilithium_pubkeys.push_back(keyID);
             return false;
         }
-        if (!CreateDilithiumSig(creator, sigdata, provider, sig, pubkey, scriptPubKey, sigversion)) return false;
+        if (!CreateDilithiumSig(creator, sigdata, provider, sig, pubkey, scriptPubKey, sigversion, leaf_hash)) return false;
         ret.push_back(std::move(sig));
         ret.push_back(ToByteVector(pubkey));
         return true;
@@ -604,7 +642,7 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
             // We need to always call CreateDilithiumSig in order to fill sigdata with all
             // possible signatures that we can create. This will allow further PSBT
             // processing to work as it needs all possible signature and pubkey pairs
-            if (CreateDilithiumSig(creator, sigdata, provider, sig, pubkey, scriptPubKey, sigversion)) {
+            if (CreateDilithiumSig(creator, sigdata, provider, sig, pubkey, scriptPubKey, sigversion, leaf_hash)) {
                 if (ret.size() < required + 1) {
                     ret.push_back(std::move(sig));
                 }
@@ -744,11 +782,16 @@ public:
         return false;
     }
 
-    bool CheckDilithiumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override
+    bool CheckDilithiumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion, ScriptExecutionData* execdata = nullptr) const override
     {
-        if (m_checker.CheckDilithiumSignature(scriptSig, vchPubKey, scriptCode, sigversion)) {
+        if (m_checker.CheckDilithiumSignature(scriptSig, vchPubKey, scriptCode, sigversion, execdata)) {
             CDilithiumPubKey pubkey(vchPubKey);
-            sigdata.dilithium_signatures.emplace(pubkey.GetID(), std::make_pair(pubkey, scriptSig));
+            DilithiumPKHash keyid(pubkey.GetID());
+            if (sigversion == SigVersion::P2MR_TAPSCRIPT && execdata && execdata->m_tapleaf_hash_init) {
+                sigdata.p2mr_dilithium_script_sigs.emplace(std::make_pair(keyid, execdata->m_tapleaf_hash), std::make_pair(pubkey, scriptSig));
+            } else {
+                sigdata.dilithium_signatures.emplace(keyid, std::make_pair(pubkey, scriptSig));
+            }
             return true;
         }
         return false;
@@ -856,6 +899,30 @@ void SignatureData::MergeSignatureData(SignatureData sigdata)
     tr_spenddata.Merge(std::move(sigdata.tr_spenddata));
     p2mr_spenddata.Merge(std::move(sigdata.p2mr_spenddata));
     signatures.insert(std::make_move_iterator(sigdata.signatures.begin()), std::make_move_iterator(sigdata.signatures.end()));
+    misc_pubkeys.insert(std::make_move_iterator(sigdata.misc_pubkeys.begin()), std::make_move_iterator(sigdata.misc_pubkeys.end()));
+    dilithium_signatures.insert(std::make_move_iterator(sigdata.dilithium_signatures.begin()), std::make_move_iterator(sigdata.dilithium_signatures.end()));
+    p2mr_dilithium_script_sigs.insert(std::make_move_iterator(sigdata.p2mr_dilithium_script_sigs.begin()), std::make_move_iterator(sigdata.p2mr_dilithium_script_sigs.end()));
+    dilithium_misc_pubkeys.insert(std::make_move_iterator(sigdata.dilithium_misc_pubkeys.begin()), std::make_move_iterator(sigdata.dilithium_misc_pubkeys.end()));
+    if (taproot_key_path_sig.empty() && !sigdata.taproot_key_path_sig.empty()) {
+        taproot_key_path_sig = std::move(sigdata.taproot_key_path_sig);
+    }
+    taproot_script_sigs.insert(std::make_move_iterator(sigdata.taproot_script_sigs.begin()), std::make_move_iterator(sigdata.taproot_script_sigs.end()));
+    taproot_misc_pubkeys.insert(std::make_move_iterator(sigdata.taproot_misc_pubkeys.begin()), std::make_move_iterator(sigdata.taproot_misc_pubkeys.end()));
+    tap_pubkeys.insert(std::make_move_iterator(sigdata.tap_pubkeys.begin()), std::make_move_iterator(sigdata.tap_pubkeys.end()));
+    missing_pubkeys.insert(missing_pubkeys.end(), std::make_move_iterator(sigdata.missing_pubkeys.begin()), std::make_move_iterator(sigdata.missing_pubkeys.end()));
+    missing_sigs.insert(missing_sigs.end(), std::make_move_iterator(sigdata.missing_sigs.begin()), std::make_move_iterator(sigdata.missing_sigs.end()));
+    missing_dilithium_pubkeys.insert(missing_dilithium_pubkeys.end(), std::make_move_iterator(sigdata.missing_dilithium_pubkeys.begin()), std::make_move_iterator(sigdata.missing_dilithium_pubkeys.end()));
+    missing_dilithium_sigs.insert(missing_dilithium_sigs.end(), std::make_move_iterator(sigdata.missing_dilithium_sigs.begin()), std::make_move_iterator(sigdata.missing_dilithium_sigs.end()));
+    if (missing_redeem_script.IsNull() && !sigdata.missing_redeem_script.IsNull()) {
+        missing_redeem_script = sigdata.missing_redeem_script;
+    }
+    if (missing_witness_script.IsNull() && !sigdata.missing_witness_script.IsNull()) {
+        missing_witness_script = sigdata.missing_witness_script;
+    }
+    sha256_preimages.insert(std::make_move_iterator(sigdata.sha256_preimages.begin()), std::make_move_iterator(sigdata.sha256_preimages.end()));
+    hash256_preimages.insert(std::make_move_iterator(sigdata.hash256_preimages.begin()), std::make_move_iterator(sigdata.hash256_preimages.end()));
+    ripemd160_preimages.insert(std::make_move_iterator(sigdata.ripemd160_preimages.begin()), std::make_move_iterator(sigdata.ripemd160_preimages.end()));
+    hash160_preimages.insert(std::make_move_iterator(sigdata.hash160_preimages.begin()), std::make_move_iterator(sigdata.hash160_preimages.end()));
 }
 
 bool SignSignature(const SigningProvider &provider, const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn, const CAmount& amount, int nHashType, SignatureData& sig_data)
@@ -887,7 +954,7 @@ public:
     DummySignatureChecker() = default;
     bool CheckECDSASignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override { return sig.size() != 0; }
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror) const override { return sig.size() != 0; }
-    bool CheckDilithiumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override { return scriptSig.size() != 0; }
+    bool CheckDilithiumSignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion, ScriptExecutionData* execdata = nullptr) const override { return scriptSig.size() != 0; }
     bool CheckLockTime(const CScriptNum& nLockTime) const override { return true; }
     bool CheckSequence(const CScriptNum& nSequence) const override { return true; }
 };
@@ -923,7 +990,7 @@ public:
         sig.assign(64, '\000');
         return true;
     }
-    bool CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion) const override
+    bool CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion, const uint256* leaf_hash = nullptr) const override
     {
         // Create a dummy Dilithium signature
         vchSig.assign(DilithiumConstants::SIGNATURE_SIZE, '\000');

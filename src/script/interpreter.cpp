@@ -138,7 +138,7 @@ static bool EvalChecksigDilithium(const valtype& sig, const valtype& pubkey, CSc
 
     // Use the checker pattern like other signature types
     CScript scriptCode(pbegincodehash, pend);
-    success = checker.CheckDilithiumSignature(sig, pubkey, scriptCode, sigversion);
+    success = checker.CheckDilithiumSignature(sig, pubkey, scriptCode, sigversion, &execdata);
     return true;
 }
 
@@ -1287,6 +1287,8 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     bool fSuccess = false;
                     if (!EvalChecksigDilithium(vchSig, vchPubKey, pbegincodehash, pend, execdata, flags, checker, sigversion, serror, fSuccess))
                         return false;
+                    if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && vchSig.size())
+                        return set_error(serror, SCRIPT_ERR_SIG_NULLFAIL);
                     popstack(stack);
                     popstack(stack);
                     stack.push_back(fSuccess ? vchTrue : vchFalse);
@@ -1600,11 +1602,11 @@ void PrecomputedTransactionData::Init(const T& txTo, std::vector<CTxOut>&& spent
     for (size_t inpos = 0; inpos < txTo.vin.size() && !(uses_bip143_segwit && uses_bip341_taproot); ++inpos) {
         if (!txTo.vin[inpos].scriptWitness.IsNull()) {
             if (m_spent_outputs_ready && m_spent_outputs[inpos].scriptPubKey.size() == 2 + WITNESS_V1_TAPROOT_SIZE &&
-                m_spent_outputs[inpos].scriptPubKey[0] == OP_1) {
-                // Treat every witness-bearing spend with 34-byte scriptPubKey that starts with OP_1 as a Taproot
-                // spend. This only works if spent_outputs was provided as well, but if it wasn't, actual validation
-                // will fail anyway. Note that this branch may trigger for scriptPubKeys that aren't actually segwit
-                // but in that case validation will fail as SCRIPT_ERR_WITNESS_UNEXPECTED anyway.
+                (m_spent_outputs[inpos].scriptPubKey[0] == OP_1 || m_spent_outputs[inpos].scriptPubKey[0] == OP_2)) {
+                // Treat every witness-bearing spend with a 34-byte OP_1 Taproot or OP_2 P2MR scriptPubKey as a
+                // BIP341-style spend. This only works if spent_outputs was provided as well, but if it wasn't,
+                // actual validation will fail anyway. Note that this branch may trigger for scriptPubKeys that
+                // aren't actually segwit but in that case validation will fail as SCRIPT_ERR_WITNESS_UNEXPECTED.
                 uses_bip341_taproot = true;
             } else {
                 // Treat every spend that's not known to native witness v1 as a Witness v0 spend. This branch may
@@ -1888,7 +1890,7 @@ bool GenericTransactionSignatureChecker<T>::CheckSchnorrSignature(Span<const uns
 }
 
 template <class T>
-bool GenericTransactionSignatureChecker<T>::CheckDilithiumSignature(const std::vector<unsigned char>& vchSigIn, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
+bool GenericTransactionSignatureChecker<T>::CheckDilithiumSignature(const std::vector<unsigned char>& vchSigIn, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion, ScriptExecutionData* execdata) const
 {
     // Create Dilithium public key object
     CDilithiumPubKey pubkey(vchPubKey);
@@ -1905,7 +1907,14 @@ bool GenericTransactionSignatureChecker<T>::CheckDilithiumSignature(const std::v
     // Witness sighashes need the amount.
     if (sigversion == SigVersion::WITNESS_V0 && amount < 0) return HandleMissingData(m_mdb);
 
-    uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
+    uint256 sighash;
+    if (sigversion == SigVersion::P2MR_TAPSCRIPT) {
+        if (nHashType == SIGHASH_DEFAULT) return false;
+        if (!this->txdata || !execdata) return HandleMissingData(m_mdb);
+        if (!SignatureHashSchnorr(sighash, *execdata, *txTo, nIn, static_cast<uint8_t>(nHashType), sigversion, *this->txdata, m_mdb)) return false;
+    } else {
+        sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
+    }
 
     // Verify the Dilithium signature
     if (!VerifyDilithiumSignature(vchSig, pubkey, sighash))

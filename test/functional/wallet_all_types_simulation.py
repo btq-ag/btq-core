@@ -5,7 +5,7 @@
 """All-wallet-types transfer simulation on regtest.
 
 For every combination of classical address type (legacy / p2sh-segwit /
-bech32 / bech32m) AND Dilithium addresses, this test:
+bech32 / bech32m) AND spendable Dilithium addresses, this test:
 
     1. Generates at least one address of that type on a single descriptor
        wallet (via explicit `getnewaddress` / `getnewdilithiumaddress`
@@ -85,8 +85,7 @@ class WalletAllTypesSimulation(BTQTestFramework):
     def _generate_address(self, role):
         """Generate one address of the given role on the shared wallet.
 
-        Roles: "legacy", "p2sh-segwit", "bech32", "bech32m",
-        "dilithium", "dilithium-bech32".
+        Roles: "legacy", "p2sh-segwit", "bech32", "bech32m", "dilithium".
         """
         w = self._wallet()
         if role in CLASSICAL_TYPES:
@@ -95,8 +94,6 @@ class WalletAllTypesSimulation(BTQTestFramework):
             # Default Dilithium output type is legacy (see
             # src/wallet/rpc/dilithium.cpp:getnewdilithiumaddress).
             return w, w.getnewdilithiumaddress()
-        if role == "dilithium-bech32":
-            return w, w.getnewdilithiumaddress("", "bech32")
         raise AssertionError(f"unknown role {role}")
 
     def _assert_valid_on_self(self, node, address, role):
@@ -128,7 +125,14 @@ class WalletAllTypesSimulation(BTQTestFramework):
         assert_greater_than(miner.getbalance(), Decimal("450"))
 
         self.log.info("Generating at least one address per role")
-        roles = CLASSICAL_TYPES + ["dilithium", "dilithium-bech32"]
+        assert_raises_rpc_error(
+            -4,
+            "dilithium-bech32 is disabled",
+            self._wallet().getnewdilithiumaddress,
+            "",
+            "bech32",
+        )
+        roles = CLASSICAL_TYPES + ["dilithium"]
         addresses = {}
         owning_nodes = {}
         for role in roles:
@@ -138,11 +142,9 @@ class WalletAllTypesSimulation(BTQTestFramework):
             owning_nodes[role] = node
 
         # Sanity: classical bech32 address starts with regtest HRP "qcrt1",
-        # Dilithium bech32 address starts with "rdbt1".
+        # while spendable Dilithium legacy uses a base58 regtest prefix.
         assert addresses["bech32"].startswith("qcrt1"), addresses["bech32"]
         assert addresses["bech32m"].startswith("qcrt1"), addresses["bech32m"]
-        assert addresses["dilithium-bech32"].startswith("rdbt1"), \
-            addresses["dilithium-bech32"]
 
         self.log.info("Funding every recipient wallet from the miner")
         for role, addr in addresses.items():
@@ -212,7 +214,6 @@ class WalletAllTypesSimulation(BTQTestFramework):
             addresses["p2sh-segwit"]:      Decimal("0.11"),
             addresses["bech32m"]:          Decimal("0.12"),
             addresses["dilithium"]:        Decimal("0.13"),
-            addresses["dilithium-bech32"]: Decimal("0.14"),
         }
         txid = sender.sendmany("", many)
         assert txid

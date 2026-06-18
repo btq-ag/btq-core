@@ -15,8 +15,9 @@ This test launches one ephemeral btqd per chain (test, signet, regtest,
 main) and, on each:
 
   1. Creates a wallet.
-  2. Calls `getnewaddress` for legacy / p2sh-segwit / bech32 / bech32m
-     and `getnewdilithiumaddress` for legacy / bech32 Dilithium types.
+  2. Calls `getnewaddress` for legacy / p2sh-segwit / bech32 / bech32m,
+     calls `getnewdilithiumaddress` for legacy Dilithium, and asserts the
+     disabled Dilithium bech32 output type is rejected.
   3. Asserts each generated address uses that chain's expected HRP /
      Base58 prefix.
   4. Calls `validateaddress` on a canonical representative of every
@@ -39,6 +40,7 @@ from test_framework.test_framework import BTQTestFramework
 from test_framework.test_node import TestNode
 from test_framework.util import (
     assert_equal,
+    assert_raises_rpc_error,
     get_datadir_path,
     initialize_datadir,
 )
@@ -109,11 +111,13 @@ class WalletCrossChainAddresses(BTQTestFramework):
         """Launch a fresh btqd on `chain`, return the running TestNode."""
         datadir = get_datadir_path(self.options.tmpdir, node_index)
         initialize_datadir(self.options.tmpdir, node_index, chain, self.disable_autoconnect)
+        chain_args = ["-chain=test"] if chain == "test" else []
+        node_chain = "" if chain == "main" else chain
 
         node = TestNode(
             node_index,
             datadir,
-            chain=chain,
+            chain=node_chain,
             rpchost=None,
             timewait=self.rpc_timeout,
             timeout_factor=self.options.timeout_factor,
@@ -123,7 +127,7 @@ class WalletCrossChainAddresses(BTQTestFramework):
             coverage_dir=self.options.coveragedir,
             cwd=self.options.tmpdir,
             extra_conf=["bind=127.0.0.1"],
-            extra_args=[
+            extra_args=chain_args + [
                 # Stay off every real network. dnsseed/fixedseeds are
                 # already disabled by write_config().
                 "-maxconnections=0",
@@ -196,21 +200,25 @@ class WalletCrossChainAddresses(BTQTestFramework):
                     )
                 self.log.info(f"  [{chain}] {t:12s}: {addr}")
 
-            # 2. Dilithium addresses.
+            # 2. Dilithium addresses. Dilithium bech32 is intentionally
+            # disabled because witness v0 keyhash programs are ambiguous with
+            # ECDSA P2WPKH and are not spendable with Dilithium keys.
             dilithium_addresses = {}
-            for t in ["legacy", "bech32"]:
-                try:
-                    addr = w.getnewdilithiumaddress("", t)
-                except Exception as e:
-                    raise AssertionError(
-                        f"[{chain}] getnewdilithiumaddress(type={t}) failed: {e}"
-                    )
-                dilithium_addresses[t] = addr
-                if t == "bech32":
-                    self._assert_address_hrp(
-                        addr, spec["dilithium_hrp"], f"dilithium-{t}", chain
-                    )
-                self.log.info(f"  [{chain}] dilithium-{t:6s}: {addr}")
+            try:
+                addr = w.getnewdilithiumaddress("", "legacy")
+            except Exception as e:
+                raise AssertionError(
+                    f"[{chain}] getnewdilithiumaddress(type=legacy) failed: {e}"
+                )
+            dilithium_addresses["legacy"] = addr
+            self.log.info(f"  [{chain}] dilithium-legacy: {addr}")
+            assert_raises_rpc_error(
+                -4,
+                "dilithium-bech32 is disabled",
+                w.getnewdilithiumaddress,
+                "",
+                "bech32",
+            )
 
             # 3. Same-chain validateaddress: every address we just
             # generated must validate as isvalid=True.

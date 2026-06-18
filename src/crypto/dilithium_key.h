@@ -87,6 +87,9 @@ private:
         keydata.reset();
     }
 
+    /** Verify the stored secret key signs for the stored public key. */
+    bool KeyDataSelfChecks() const;
+
 public:
     /** Default constructor - creates invalid key */
     CDilithiumKey() noexcept = default;
@@ -134,6 +137,7 @@ public:
         } else {
             MakeKeyData();
             memcpy(keydata->data(), (unsigned char*)&pbegin[0], keydata->size());
+            if (!KeyDataSelfChecks()) ClearKeyData();
         }
     }
 

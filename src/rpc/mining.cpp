@@ -872,7 +872,7 @@ static RPCHelpMan getblocktemplate()
         // when attempting to mine with this template
         aRules.push_back("!signet");
     }
-    if (DeploymentActiveAt(*pindexPrev, consensusParams, Consensus::DEPLOYMENT_LWMA, chainman.m_versionbitscache)) {
+    if (DeploymentActiveAfter(pindexPrev, consensusParams, Consensus::DEPLOYMENT_LWMA, chainman.m_versionbitscache)) {
         aRules.push_back("!lwma");
     }
 

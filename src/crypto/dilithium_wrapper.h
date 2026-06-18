@@ -74,10 +74,14 @@ int btq_dilithium_verify(const uint8_t *sig, size_t siglen,
                          const uint8_t *pk);
 
 /**
- * Extract public key from secret key.
+ * Raw Dilithium2 secret keys do not contain enough material to return the
+ * packed public key used by verification. This helper fails closed; callers
+ * should retain the public key returned by key generation or use BTQ's stored
+ * sk || pk keydata representation.
+ *
  * @param pk Output buffer for public key (must be BTQ_DILITHIUM_PUBLIC_KEY_SIZE bytes)
  * @param sk Secret key (must be BTQ_DILITHIUM_SECRET_KEY_SIZE bytes)
- * @return 0 on success, non-zero on failure
+ * @return Always non-zero.
  */
 int btq_dilithium_sk_to_pk(uint8_t *pk, const uint8_t *sk);
 

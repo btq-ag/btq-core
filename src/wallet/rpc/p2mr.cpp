@@ -229,6 +229,15 @@ RPCHelpMan createp2mrspend()
             {RPCResult::Type::STR, "p2mr_id", "P2MR metadata id used"},
             {RPCResult::Type::STR_HEX, "input_txid", "Selected P2MR input txid"},
             {RPCResult::Type::NUM, "input_vout", "Selected P2MR input vout"},
+            {RPCResult::Type::ARR, "inputs", "Selected P2MR inputs", {
+                {RPCResult::Type::OBJ, "", "", {
+                    {RPCResult::Type::STR_HEX, "txid", "Input txid"},
+                    {RPCResult::Type::NUM, "vout", "Input vout"},
+                }},
+            }},
+            {RPCResult::Type::STR_AMOUNT, "input_amount", "Total selected P2MR input amount"},
+            {RPCResult::Type::STR_AMOUNT, "effective_fee", "Actual transaction fee after change and dust handling"},
+            {RPCResult::Type::STR_AMOUNT, "change_amount", "Change amount, or 0 when change is dust and added to fee"},
         }},
         RPCExamples{HelpExampleCli("createp2mrspend", "\"abcd1234\" \"" + EXAMPLE_ADDRESS[0] + "\" 0.5")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -265,6 +274,17 @@ RPCHelpMan createp2mrspend()
             out.pushKV("p2mr_id", spend->p2mr_id);
             out.pushKV("input_txid", spend->input.hash.GetHex());
             out.pushKV("input_vout", (uint64_t)spend->input.n);
+            UniValue inputs(UniValue::VARR);
+            for (const COutPoint& input : spend->inputs) {
+                UniValue input_obj(UniValue::VOBJ);
+                input_obj.pushKV("txid", input.hash.GetHex());
+                input_obj.pushKV("vout", (uint64_t)input.n);
+                inputs.push_back(std::move(input_obj));
+            }
+            out.pushKV("inputs", std::move(inputs));
+            out.pushKV("input_amount", ValueFromAmount(spend->input_amount));
+            out.pushKV("effective_fee", ValueFromAmount(spend->effective_fee));
+            out.pushKV("change_amount", ValueFromAmount(spend->change_amount));
             return out;
         },
     };

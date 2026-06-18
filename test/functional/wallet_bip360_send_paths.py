@@ -4,10 +4,11 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """End-to-end checks for sendmany/sendrawtransaction after BIP-360 changes.
 
-This test validates three transaction paths on regtest:
+This test validates four transaction paths on regtest:
 1) wallet sendmany to multiple recipients
 2) raw transaction built/signed by wallet and submitted via sendrawtransaction
 3) BIP-360 P2MR script-path spend submitted via sendrawtransaction
+4) wallet-tracked P2MR metadata funding/spend/idempotency paths
 """
 
 from decimal import Decimal
@@ -23,6 +24,7 @@ from test_framework.messages import (
 )
 from test_framework.script import (
     CScript,
+    LEAF_VERSION_TAPSCRIPT,
     OP_TRUE,
     p2mr_construct,
 )
@@ -50,10 +52,10 @@ class WalletBip360SendPathsTest(BTQTestFramework):
         miniwallet = MiniWallet(node)
 
         self.log.info("Funding RPC wallet and MiniWallet")
-        self.generate(wallet, COINBASE_MATURITY + 5)
+        self.generatetoaddress(node, COINBASE_MATURITY + 5, wallet.getnewaddress())
         self.generate(miniwallet, COINBASE_MATURITY + 5)
 
-        self.log.info("1/3: sendmany should succeed and confirm")
+        self.log.info("1/4: sendmany should succeed and confirm")
         recipients = {
             node.getnewaddress(): Decimal("1.00000000"),
             node.getnewaddress(): Decimal("1.25000000"),
@@ -63,7 +65,7 @@ class WalletBip360SendPathsTest(BTQTestFramework):
         self.generate(node, 1)
         assert_equal(wallet.gettransaction(sendmany_txid)["confirmations"], 1)
 
-        self.log.info("2/3: createrawtransaction + signrawtransactionwithwallet + sendrawtransaction should succeed")
+        self.log.info("2/4: createrawtransaction + signrawtransactionwithwallet + sendrawtransaction should succeed")
         utxo = wallet.listunspent(1, 9999999)[0]
         fee = Decimal("0.00010000")
         amount = Decimal(str(utxo["amount"])) - fee
@@ -78,7 +80,7 @@ class WalletBip360SendPathsTest(BTQTestFramework):
         self.generate(node, 1)
         assert_equal(wallet.gettransaction(raw_send_txid)["confirmations"], 1)
 
-        self.log.info("3/3: BIP-360 P2MR script-path spend via sendrawtransaction should succeed")
+        self.log.info("3/4: BIP-360 P2MR script-path spend via sendrawtransaction should succeed")
         p2mr = p2mr_construct([("leaf", CScript([OP_TRUE]))])
         funded = miniwallet.send_to(from_node=node, scriptPubKey=p2mr.scriptPubKey, amount=50_000)
         self.generate(node, 1)
@@ -101,6 +103,40 @@ class WalletBip360SendPathsTest(BTQTestFramework):
         block_hash = node.getbestblockhash()
         block = node.getblock(block_hash)
         assert p2mr_spend_txid in block["tx"]
+
+        self.log.info("4/4: wallet-tracked P2MR metadata can fund, spend, and deduplicate")
+        receiver = node.get_wallet_rpc(node.createwallet(wallet_name="p2mr_receiver", descriptors=True)["name"])
+        tree = [{
+            "depth": 0,
+            "leaf_version": LEAF_VERSION_TAPSCRIPT,
+            "script": "51",
+        }]
+
+        created = receiver.getnewp2mraddress(tree, "plain-wallet-send")
+        assert created["address"].startswith("qcrt1z")
+        assert created["scriptPubKey"].startswith("5220")
+        assert_equal(receiver.getp2mrinfo(created["p2mr_id"])["address"], created["address"])
+
+        wallet_send_txid = wallet.sendtoaddress(created["address"], Decimal("1.0"))
+        assert wallet_send_txid in node.getrawmempool()
+        self.generate(node, 1)
+
+        spendable = receiver.createp2mrspend(created["p2mr_id"], wallet.getnewaddress(), Decimal("0.5"))
+        assert_equal(spendable["p2mr_id"], created["p2mr_id"])
+        assert spendable["input_txid"]
+
+        p2mr_signed = receiver.signp2mrtransaction(spendable["hex"], created["p2mr_id"])
+        assert p2mr_signed["complete"]
+        accepted = receiver.testp2mrtransaction(p2mr_signed["hex"])
+        assert_equal(accepted[0]["allowed"], True)
+        spent_txid = receiver.sendrawtransaction(p2mr_signed["hex"])
+        self.generate(node, 1)
+        assert_equal(receiver.gettransaction(spent_txid, True)["confirmations"], 1)
+
+        funded_p2mr = wallet.sendtop2mr(tree, Decimal("0.25"), "sender-owned-p2mr")
+        duplicate = wallet.getnewp2mraddress(tree, "sender-owned-p2mr-duplicate")
+        assert_equal(funded_p2mr["address"], duplicate["address"])
+        assert_equal(funded_p2mr["p2mr_id"], duplicate["p2mr_id"])
 
 
 if __name__ == "__main__":

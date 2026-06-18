@@ -82,9 +82,10 @@ BOOST_AUTO_TEST_CASE(dilithium_script_verification_flags)
 {
     // Test that Dilithium verification flags are properly set
     
-    // Dilithium is height-gated in consensus, not relay-policy mandatory.
+    // Dilithium is not mandatory policy, but standard relay policy verifies it
+    // once the height-gated consensus rule is active.
     BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM));
-    BOOST_CHECK(!(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM));
+    BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
 
     // Test that the flag value is correct
     BOOST_CHECK_EQUAL(SCRIPT_VERIFY_DILITHIUM, (1U << 21));

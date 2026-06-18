@@ -2,7 +2,7 @@
 
 This document is a **copy-paste agent prompt** for an unbiased reviewer to determine whether audit findings `BTQ-AUDIT-2026-001` through `-027` (and related issue #53 HD wallet work) are actually fixed.
 
-**Primary audit source:** [`AUDIT_REPORT_2026-05-19.md`](AUDIT_REPORT_2026-05-19.md)  
+**Primary audit source:** [`AUDIT_REPORT_2026-05-19.md`](AUDIT_REPORT_2026-05-19.md)
 **Short predecessor:** [`INTERNAL_AUDIT_FINDINGS_2026-05-19.md`](INTERNAL_AUDIT_FINDINGS_2026-05-19.md)
 
 ---

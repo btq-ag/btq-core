@@ -8,6 +8,8 @@
 Check the test suite naming conventions
 """
 
+import ast
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -76,10 +78,72 @@ def check_unique_test_names(test_suite_list):
     return 0
 
 
+def check_unit_tests_are_registered():
+    test_makefile = Path("src/Makefile.test.include").read_text(encoding="utf8")
+    unit_test_files = subprocess.check_output(
+        [
+            "git",
+            "ls-files",
+            "src/test/*_tests.cpp",
+            "src/wallet/test/*_tests.cpp",
+        ],
+        text=True,
+        encoding="utf8",
+    ).splitlines()
+
+    missing = []
+    for test_file in unit_test_files:
+        makefile_path = test_file.removeprefix("src/")
+        if makefile_path not in test_makefile:
+            missing.append(test_file)
+
+    if missing:
+        print(
+            "The following unit test source files are not registered in "
+            "src/Makefile.test.include:\n\n" + "\n".join(sorted(missing)) + "\n"
+        )
+        return 1
+    return 0
+
+
+def check_functional_tests_exist():
+    runner = Path("test/functional/test_runner.py")
+    tree = ast.parse(runner.read_text(encoding="utf8"))
+    registered = []
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id not in {"BASE_SCRIPTS", "EXTENDED_SCRIPTS"}:
+                continue
+            for entry in node.value.elts:
+                if isinstance(entry, ast.Constant) and isinstance(entry.value, str):
+                    registered.append((target.id, entry.value))
+
+    missing = []
+    for group, entry in registered:
+        script = entry.split()[0]
+        if not Path("test/functional", script).exists():
+            missing.append(f"{group}: {entry}")
+
+    if missing:
+        print(
+            "The following functional tests are registered in "
+            "test/functional/test_runner.py but do not exist:\n\n"
+            + "\n".join(sorted(missing)) + "\n"
+        )
+        return 1
+    return 0
+
+
 def main():
     test_suite_list = grep_boost_fixture_test_suite().splitlines()
     exit_code = check_matching_test_names(test_suite_list)
     exit_code |= check_unique_test_names(test_suite_list)
+    exit_code |= check_unit_tests_are_registered()
+    exit_code |= check_functional_tests_exist()
     sys.exit(exit_code)
 
 

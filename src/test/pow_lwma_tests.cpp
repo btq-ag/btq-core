@@ -28,7 +28,7 @@ std::vector<CBlockIndex> BuildLwmaChain(int height, int64_t base_time, int64_t s
     return blocks;
 }
 
-uint32_t ReferenceLwmaNextWork(const CBlockIndex* pindexLast, const CBlockHeader* pblock,
+uint32_t ReferenceLwmaNextWork(const CBlockIndex* pindexLast, const CBlockHeader*,
                                const Consensus::Params& params)
 {
     const int64_t T = params.nPowTargetSpacing;
@@ -41,7 +41,8 @@ uint32_t ReferenceLwmaNextWork(const CBlockIndex* pindexLast, const CBlockHeader
         return powLimit.GetCompact();
     }
 
-    arith_uint256 sumTarget;
+    arith_uint256 targetQuotientSum;
+    arith_uint256 targetRemainderSum;
     int64_t weightedSolvetimes = 0;
     int64_t previousTimestamp = pindexLast->GetAncestor(height - N)->GetBlockTime();
 
@@ -57,7 +58,9 @@ uint32_t ReferenceLwmaNextWork(const CBlockIndex* pindexLast, const CBlockHeader
 
         arith_uint256 target;
         target.SetCompact(block->nBits);
-        sumTarget += target / arith_uint256(static_cast<uint64_t>(k) * static_cast<uint64_t>(N));
+        const arith_uint256 targetQuotient = target / N;
+        targetQuotientSum += targetQuotient;
+        targetRemainderSum += target - targetQuotient * static_cast<uint32_t>(N);
 
         previousTimestamp = thisTimestamp;
     }
@@ -66,7 +69,19 @@ uint32_t ReferenceLwmaNextWork(const CBlockIndex* pindexLast, const CBlockHeader
         weightedSolvetimes = 1;
     }
 
-    arith_uint256 nextTarget = sumTarget * static_cast<uint32_t>(weightedSolvetimes);
+    const arith_uint256 averageTarget = targetQuotientSum + targetRemainderSum / N;
+    const arith_uint256 k_uint{static_cast<uint64_t>(k)};
+    const uint32_t weighted_solvetimes_u32{static_cast<uint32_t>(weightedSolvetimes)};
+    const arith_uint256 quotient = averageTarget / k_uint;
+    const arith_uint256 remainder = averageTarget - quotient * static_cast<uint32_t>(k);
+
+    arith_uint256 nextTarget;
+    if (quotient > powLimit / weighted_solvetimes_u32) {
+        nextTarget = powLimit;
+    } else {
+        nextTarget = quotient * weighted_solvetimes_u32;
+        nextTarget += (remainder * weighted_solvetimes_u32) / k_uint;
+    }
 
     if (nextTarget > powLimit) {
         nextTarget = powLimit;
@@ -102,6 +117,42 @@ BOOST_AUTO_TEST_CASE(lwma_before_activation_uses_legacy_path)
 
     const uint32_t next = CalculateNextWorkRequired(&pindexLast, nFirstBlockTime, consensus);
     BOOST_CHECK(next > 0);
+}
+
+BOOST_AUTO_TEST_CASE(lwma_preserves_low_constant_target_without_zero_underflow)
+{
+    auto params = CreateChainParams(*m_node.args, ChainType::BTQREGTEST);
+    Consensus::Params consensus = params->GetConsensus();
+    consensus.fPowNoRetargeting = false;
+    consensus.nLWMAHeight = 1;
+
+    const arith_uint256 low_target{1000000};
+    const uint32_t low_bits = low_target.GetCompact();
+    const auto blocks = BuildLwmaChain(Consensus::Params::LWMA_WINDOW, /*base_time=*/1000000, consensus.nPowTargetSpacing, low_bits, consensus);
+
+    CBlockHeader next_block;
+    next_block.nTime = blocks.back().GetBlockTime() + consensus.nPowTargetSpacing;
+
+    const uint32_t next_bits = LwmaGetNextWorkRequired(&blocks.back(), &next_block, consensus);
+    BOOST_CHECK_NE(next_bits, 0U);
+    BOOST_CHECK_EQUAL(next_bits, low_bits);
+    BOOST_CHECK(CheckProofOfWork(ArithToUint256(arith_uint256{1}), next_bits, consensus));
+}
+
+BOOST_AUTO_TEST_CASE(lwma_respects_pow_no_retargeting)
+{
+    auto params = CreateChainParams(*m_node.args, ChainType::BTQREGTEST);
+    Consensus::Params consensus = params->GetConsensus();
+    consensus.fPowNoRetargeting = true;
+    consensus.nLWMAHeight = 1;
+
+    const uint32_t bits = arith_uint256{123456789}.GetCompact();
+    const auto blocks = BuildLwmaChain(Consensus::Params::LWMA_WINDOW, /*base_time=*/1000000, consensus.nPowTargetSpacing * 3, bits, consensus);
+
+    CBlockHeader next_block;
+    next_block.nTime = blocks.back().GetBlockTime() + consensus.nPowTargetSpacing * 6;
+
+    BOOST_CHECK_EQUAL(GetNextWorkRequired(&blocks.back(), &next_block, consensus), bits);
 }
 
 BOOST_AUTO_TEST_CASE(lwma_post_activation_permitted_any_transition)
@@ -151,12 +202,8 @@ BOOST_AUTO_TEST_CASE(lwma_equal_spacing_preserves_target)
     header.nTime = blocks[N].nTime + T;
 
     const uint32_t next = LwmaGetNextWorkRequired(&blocks[N], &header, consensus);
-    arith_uint256 old_target, new_target;
-    old_target.SetCompact(nBits);
-    new_target.SetCompact(next);
-    // Equal spacing -> target should be within one compact-encoding step.
-    arith_uint256 diff = (new_target > old_target) ? new_target - old_target : old_target - new_target;
-    BOOST_CHECK(diff <= old_target / 100000);
+    BOOST_CHECK_EQUAL(next, nBits);
+    BOOST_CHECK_EQUAL(next, ReferenceLwmaNextWork(&blocks[N], &header, consensus));
 }
 
 BOOST_AUTO_TEST_CASE(lwma_fast_blocks_raise_difficulty)

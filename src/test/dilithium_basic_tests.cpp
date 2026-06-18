@@ -17,10 +17,10 @@ BOOST_FIXTURE_TEST_SUITE(dilithium_basic_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(dilithium_script_verification_flags)
 {
-    // Dilithium verification is gated by nDilithiumHeight in GetBlockScriptFlags,
-    // not relay-policy flags (allows future soft-fork activation).
+    // Dilithium verification is height-gated for blocks, but standard relay
+    // policy verifies it once active.
     BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM));
-    BOOST_CHECK(!(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM));
+    BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_key_basic_operations)
@@ -108,13 +108,11 @@ BOOST_AUTO_TEST_CASE(dilithium_script_signature_with_sighash_byte)
         const CTransaction ctx{tx};
 
         ScriptError error{SCRIPT_ERR_OK};
-        // BTQ gates Dilithium opcodes behind SCRIPT_VERIFY_DILITHIUM (buried
-        // DEPLOYMENT_DILITHIUM, active from height 1); apply it as consensus/policy do.
         const bool verified = VerifyScript(
             ctx.vin[0].scriptSig,
             script_pubkey,
             nullptr,
-            STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DILITHIUM,
+            STANDARD_SCRIPT_VERIFY_FLAGS,
             TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL),
             &error);
 
@@ -179,6 +177,83 @@ BOOST_AUTO_TEST_CASE(dilithium_script_signature_with_sighash_byte)
     CScript p2pkh_script_sig = CScript() << p2pkh_signature << ToByteVector(dilithium_pubkey);
     check_spend(p2pkh_script, p2pkh_script_sig, SCRIPT_ERR_OK);
     check_produced_signature(p2pkh_script, 2);
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_signature_data_merge_preserves_partial_state)
+{
+    CDilithiumKey first_key;
+    first_key.MakeNewKey();
+    const CDilithiumPubKey first_pubkey = first_key.GetPubKey();
+    const DilithiumPKHash first_keyid{first_pubkey};
+
+    CDilithiumKey second_key;
+    second_key.MakeNewKey();
+    const CDilithiumPubKey second_pubkey = second_key.GetPubKey();
+    const DilithiumPKHash second_keyid{second_pubkey};
+
+    std::vector<unsigned char> first_sig;
+    BOOST_REQUIRE(first_key.Sign(uint256::ONE, first_sig));
+    first_sig.push_back(SIGHASH_ALL);
+
+    std::vector<unsigned char> second_sig;
+    BOOST_REQUIRE(second_key.Sign(uint256::ONE, second_sig));
+    second_sig.push_back(SIGHASH_ALL);
+
+    SignatureData base;
+    base.dilithium_signatures.emplace(first_keyid, std::make_pair(first_pubkey, first_sig));
+
+    SignatureData incoming;
+    incoming.dilithium_signatures.emplace(second_keyid, std::make_pair(second_pubkey, second_sig));
+    incoming.missing_dilithium_pubkeys.push_back(first_keyid);
+    incoming.missing_dilithium_sigs.push_back(second_keyid);
+
+    base.MergeSignatureData(std::move(incoming));
+
+    BOOST_REQUIRE_EQUAL(base.dilithium_signatures.size(), 2);
+    BOOST_CHECK_EQUAL(base.dilithium_signatures.at(first_keyid).second.size(), BTQ_DILITHIUM_SIGNATURE_SIZE + 1);
+    BOOST_CHECK_EQUAL(base.dilithium_signatures.at(second_keyid).second.size(), BTQ_DILITHIUM_SIGNATURE_SIZE + 1);
+    BOOST_REQUIRE_EQUAL(base.missing_dilithium_pubkeys.size(), 1);
+    BOOST_CHECK(base.missing_dilithium_pubkeys.front() == first_keyid);
+    BOOST_REQUIRE_EQUAL(base.missing_dilithium_sigs.size(), 1);
+    BOOST_CHECK(base.missing_dilithium_sigs.front() == second_keyid);
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_checksig_nullfail_rejects_nonempty_invalid_signature)
+{
+    CDilithiumKey dilithium_key;
+    dilithium_key.MakeNewKey();
+    const CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
+
+    CMutableTransaction spending_tx;
+    spending_tx.nVersion = 1;
+    spending_tx.vin.resize(1);
+    spending_tx.vin[0].prevout = COutPoint{uint256::ONE, 0};
+    spending_tx.vout.emplace_back(1, CScript() << OP_TRUE);
+
+    std::vector<unsigned char> invalid_signature(BTQ_DILITHIUM_SIGNATURE_SIZE + 1, 0);
+    invalid_signature.back() = SIGHASH_ALL;
+
+    spending_tx.vin[0].scriptSig = CScript() << invalid_signature;
+    const CTransaction ctx{spending_tx};
+    const CScript script_pubkey = CScript() << ToByteVector(dilithium_pubkey) << OP_CHECKSIGDILITHIUM << OP_NOT;
+
+    auto verify = [&](unsigned int flags, ScriptError& error) {
+        error = SCRIPT_ERR_OK;
+        return VerifyScript(
+            ctx.vin[0].scriptSig,
+            script_pubkey,
+            nullptr,
+            flags,
+            TransactionSignatureChecker(&ctx, 0, /*amount=*/1, MissingDataBehavior::ASSERT_FAIL),
+            &error);
+    };
+
+    ScriptError error{SCRIPT_ERR_OK};
+    BOOST_CHECK(verify(STANDARD_SCRIPT_VERIFY_FLAGS & ~SCRIPT_VERIFY_NULLFAIL, error));
+    BOOST_CHECK_EQUAL(error, SCRIPT_ERR_OK);
+
+    BOOST_CHECK(!verify(STANDARD_SCRIPT_VERIFY_FLAGS, error));
+    BOOST_CHECK_EQUAL(error, SCRIPT_ERR_SIG_NULLFAIL);
 }
 
 BOOST_AUTO_TEST_CASE(ecdsa_oversized_signature_rejected_under_standard_flags)

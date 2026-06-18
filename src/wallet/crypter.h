@@ -113,6 +113,7 @@ bool DecryptKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned ch
 uint256 KeyIDToIV(const CKeyID& id);
 
 // Dilithium key encryption/decryption functions
+/** Historical hash-based Dilithium IV retained for encrypted-wallet compatibility. */
 uint256 DeriveDilithiumKeyIV(const CKeyID& keyid);
 bool EncryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vchPlaintext, const uint256& nIV, std::vector<unsigned char> &vchCiphertext);
 bool DecryptDilithiumSecret(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCiphertext, const uint256& nIV, CKeyingMaterial& vchPlaintext);

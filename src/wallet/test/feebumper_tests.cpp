@@ -29,7 +29,7 @@ public:
         return true;
     }
 
-    bool CheckDilithiumSignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& pubkey, const CScript& script, SigVersion sigversion) const override
+    bool CheckDilithiumSignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& pubkey, const CScript& script, SigVersion sigversion, ScriptExecutionData* execdata = nullptr) const override
     {
         dilithium_checks++;
         return true;
@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(signature_weight_checker_records_schnorr_and_dilithium)
 
     const std::vector<unsigned char> dilithium_sig(DilithiumConstants::SIGNATURE_SIZE);
     const std::vector<unsigned char> dilithium_pubkey(DilithiumConstants::PUBLIC_KEY_SIZE);
-    BOOST_CHECK(weight_checker.CheckDilithiumSignature(dilithium_sig, dilithium_pubkey, CScript{}, SigVersion::P2MR_TAPSCRIPT));
+    BOOST_CHECK(weight_checker.CheckDilithiumSignature(dilithium_sig, dilithium_pubkey, CScript{}, SigVersion::P2MR_TAPSCRIPT, &execdata));
     BOOST_CHECK_EQUAL(valid_checker.dilithium_checks, 1);
     BOOST_CHECK_EQUAL(weights.GetWeightDiffToMax(), 2);
 }

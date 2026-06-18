@@ -4,6 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test LWMA difficulty adjustment activation on regtest (BTQ-AUDIT-015)."""
 
+from test_framework.blocktools import NORMAL_GBT_REQUEST_PARAMS
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
@@ -36,16 +37,19 @@ class LwmaActivationTest(BTQTestFramework):
 
         self.log.info('LWMA inactive at genesis')
         self.test_lwma_info(is_active=False)
+        assert "!lwma" not in node.getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)["rules"]
 
         self.log.info('Mine to two blocks before LWMA activation')
         self.generate(wallet, LWMA_HEIGHT - 2)
         assert_equal(node.getblockcount(), LWMA_HEIGHT - 2)
         self.test_lwma_info(is_active=False)
+        assert "!lwma" not in node.getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)["rules"]
 
         self.log.info('Mine to one block before activation (RPC reports active for next block)')
         self.generate(wallet, 1)
         assert_equal(node.getblockcount(), LWMA_HEIGHT - 1)
         self.test_lwma_info(is_active=True)
+        assert "!lwma" in node.getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)["rules"]
         pre_bits = node.getblockheader(node.getbestblockhash())['bits']
 
         self.log.info('Mine past LWMA activation with accelerated block times')
@@ -57,10 +61,8 @@ class LwmaActivationTest(BTQTestFramework):
         assert_equal(node.getblockcount(), LWMA_HEIGHT - 1 + 5)
         self.test_lwma_info(is_active=True)
 
-        self.log.info('LWMA path should adjust difficulty after activation')
-        # Lower compact nBits value means higher difficulty after fast blocks.
-        assert post_bits != pre_bits
-        assert post_bits < pre_bits, f'expected harder difficulty, got {post_bits:#08x} from {pre_bits:#08x}'
+        self.log.info('Regtest no-retargeting keeps difficulty unchanged after activation')
+        assert_equal(post_bits, pre_bits)
 
 
 if __name__ == '__main__':

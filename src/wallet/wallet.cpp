@@ -65,6 +65,7 @@
 #include <wallet/crypter.h>
 #include <wallet/db.h>
 #include <wallet/external_signer_scriptpubkeyman.h>
+#include <wallet/p2mr.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/transaction.h>
 #include <wallet/types.h>
@@ -1591,6 +1592,9 @@ isminetype CWallet::IsMine(const CScript& script) const
         result = std::max(result, spk_man_pair.second->IsMine(script));
         if (result == ISMINE_SPENDABLE) break;
     }
+    if (result == ISMINE_NO) {
+        result = GetTrackedP2MRScriptIsMine(*this, script);
+    }
 
     m_ismine_cache[script] = result;
     return result;
@@ -2862,7 +2866,9 @@ static constexpr std::string_view P2MR_RECEIVE_REQUEST_PREFIX{"rrp2mr:"};
 
 bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value)
 {
-    return SetAddressReceiveRequest(batch, dest, std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id, value);
+    const bool result = SetAddressReceiveRequest(batch, dest, std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id, value);
+    if (result) m_ismine_cache.erase(GetScriptForDestination(dest));
+    return result;
 }
 
 bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const
