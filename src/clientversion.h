@@ -16,8 +16,13 @@
 #error Client version information missing: version is not defined by btq-config.h or in any other way
 #endif
 
+//! First year of BTQ / network copyright range (not Bitcoin’s 2009 genesis).
+#ifndef BTQ_LAUNCH_YEAR
+#define BTQ_LAUNCH_YEAR 2026
+#endif
+
 //! Copyright string used in Windows .rc files
-#define COPYRIGHT_STR "2009-" STRINGIZE(COPYRIGHT_YEAR) " " COPYRIGHT_HOLDERS_FINAL
+#define COPYRIGHT_STR STRINGIZE(BTQ_LAUNCH_YEAR) "-" STRINGIZE(COPYRIGHT_YEAR) " " COPYRIGHT_HOLDERS_FINAL
 
 /**
  * btqd-res.rc includes this file, but it cannot cope with real c++ code.

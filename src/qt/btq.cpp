@@ -20,6 +20,7 @@
 #include <node/context.h>
 #include <node/interface_ui.h>
 #include <noui.h>
+#include <qt/bitcoinquantumtheme.h>
 #include <qt/btqgui.h>
 #include <qt/clientmodel.h>
 #include <qt/guiconstants.h>
@@ -235,8 +236,14 @@ void BTQApplication::setupPlatformStyle()
     // UI per-platform customization
     // This must be done inside the BTQApplication constructor, or after it, because
     // PlatformStyle::instantiate requires a QApplication
-    std::string platformName;
-    platformName = gArgs.GetArg("-uiplatform", BTQGUI::DEFAULT_UIPLATFORM);
+#if defined(Q_OS_WIN)
+    // Fusion + dark theme needs tinted single-colour icons; default "windows"
+    // platform keeps opaque black glyphs on the toolbar.
+    std::string def_platform{"other"};
+#else
+    std::string def_platform{BTQGUI::DEFAULT_UIPLATFORM};
+#endif
+    std::string platformName = gArgs.GetArg("-uiplatform", def_platform);
     platformStyle = PlatformStyle::instantiate(QString::fromStdString(platformName));
     if (!platformStyle) // Fall back to "other" if specified name not found
         platformStyle = PlatformStyle::instantiate("other");
@@ -553,6 +560,7 @@ int GuiMain(int argc, char* argv[])
 
     // Now that the QApplication is setup and we have parsed our parameters, we can set the platform style
     app.setupPlatformStyle();
+    GUIUtil::InstallBitcoinQuantumTheme(app);
 
     /// 3. Application identification
     // must be set before OptionsModel is initialized or translations are loaded,

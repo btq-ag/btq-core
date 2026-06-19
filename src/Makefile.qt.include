@@ -110,6 +110,7 @@ BTQ_QT_H = \
   qt/addresstablemodel.h \
   qt/askpassphrasedialog.h \
   qt/bantablemodel.h \
+  qt/bitcoinquantumtheme.h \
   qt/btq.h \
   qt/btqaddressvalidator.h \
   qt/btqamountfield.h \
@@ -221,6 +222,7 @@ QT_RES_ICONS = \
 
 BTQ_QT_BASE_CPP = \
   qt/bantablemodel.cpp \
+  qt/bitcoinquantumtheme.cpp \
   qt/btq.cpp \
   qt/btqaddressvalidator.cpp \
   qt/btqamountfield.cpp \

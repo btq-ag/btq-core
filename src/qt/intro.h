@@ -9,6 +9,8 @@
 #include <QMutex>
 #include <QThread>
 
+#include <util/chaintype.h>
+
 static const bool DEFAULT_CHOOSE_DATADIR = false;
 
 class FreespaceChecker;
@@ -31,6 +33,7 @@ class Intro : public QDialog
 
 public:
     explicit Intro(QWidget *parent = nullptr,
+                   ChainType chain = ChainType::BTQMAIN,
                    int64_t blockchain_size_gb = 0, int64_t chain_state_size_gb = 0);
     ~Intro();
 

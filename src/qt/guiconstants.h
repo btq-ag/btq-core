@@ -24,8 +24,8 @@ static const int STATUSBAR_ICONSIZE = 16;
 
 static const bool DEFAULT_SPLASHSCREEN = true;
 
-/* Invalid field background style */
-#define STYLE_INVALID "background:#FF8080"
+/* Invalid field background style (Bitcoin Quantum dark theme) */
+#define STYLE_INVALID "background-color:#43171c;color:#fca5a5;border:1px solid #fca5a5;border-radius:8px;"
 
 /* Transaction list -- unconfirmed transaction */
 #define COLOR_UNCONFIRMED QColor(128, 128, 128)
