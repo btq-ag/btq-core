@@ -151,3 +151,22 @@ dist/
 
 /ci/scratch/
 release/
+
+# Out-of-tree build directories
+/build-linux/
+/build-win/
+/src/build-linux/
+
+# Stray duplicated source/config (accidental copies; canonical lives at repo root / src)
+/src/src/
+/src/configure.ac
+
+# Stale autotools lib backups
+src/secp256k1/.libs_root_old_*/
+
+# Apple SDK extraction tooling and Xcode payloads (never committed here)
+/apple-sdk-tools/
+/Xcode.app/
+*.xip
+# Windows "mark of the web" alternate-data-stream artifacts
+*:Zone.Identifier
