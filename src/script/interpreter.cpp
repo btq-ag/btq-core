@@ -1342,10 +1342,12 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         valtype& vchSig    = stacktop(-isig);
                         valtype& vchPubKey = stacktop(-ikey);
 
-                        // Check signature
-                        if (!EvalChecksigDilithium(vchSig, vchPubKey, pbegincodehash, pend, execdata, flags, checker, sigversion, serror, fSuccess)) return false;
+                        // Check signature (use a separate fOk like OP_CHECKMULTISIG so a
+                        // mismatch advances to the next key instead of aborting the loop).
+                        bool fOk = false;
+                        if (!EvalChecksigDilithium(vchSig, vchPubKey, pbegincodehash, pend, execdata, flags, checker, sigversion, serror, fOk)) return false;
 
-                        if (fSuccess) {
+                        if (fOk) {
                             isig++;
                             nSigsCount--;
                         }
