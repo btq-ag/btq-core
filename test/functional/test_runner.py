@@ -110,6 +110,7 @@ BASE_SCRIPTS = [
     'feature_lwma_activation.py',
     'feature_dilithium_activation.py --descriptors',
     'feature_p2mr.py',
+    'feature_p2mr_dilithium_multisig.py',
     'feature_p2mr_rpc.py --descriptors',
     'feature_block.py',
     'btq_regtest_mining.py',

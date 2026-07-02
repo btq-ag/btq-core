@@ -628,7 +628,7 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
     case TxoutType::DILITHIUM_MULTISIG: {
         if (sigversion != SigVersion::P2MR_TAPSCRIPT) return false;
         size_t required = vSolutions.front()[0];
-        ret.emplace_back(); // workaround CHECKMULTISIGDILITHIUM bug
+        ret.emplace_back(); // workaround CHECKMULTISIG off-by-one dummy (same as ECDSA path)
         for (size_t i = 1; i < vSolutions.size() - 1; ++i) {
             CDilithiumPubKey pubkey = CDilithiumPubKey(vSolutions[i]);
             // We need to always call CreateDilithiumSig in order to fill sigdata with all
