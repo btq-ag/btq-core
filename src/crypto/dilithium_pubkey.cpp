@@ -35,14 +35,31 @@ bool CDilithiumPubKey::IsValid() const
 
 bool CDilithiumPubKey::IsFullyValid() const
 {
+    // BTQ-AUDIT-022: structural validation of an ML-DSA-44 public key.
+    //
+    // Layout is rho(32) || t1(1280 bytes). Unlike a secret key, there is NO
+    // coefficient-range check to perform: t1 is stored as a 10-bit packed field
+    // (POLYT1_PACKEDBYTES), so every correctly-sized byte string unpacks to
+    // coefficients already in [0, 2^10) and unpack_pk cannot read out of bounds.
+    // Structural validity therefore reduces to (a) correct length and (b)
+    // rejection of degenerate keys that key generation never produces. We
+    // deliberately do NOT call the verifier on a dummy signature as a "does it
+    // crash" probe: it validates nothing (a well-formed key returns "invalid"
+    // just like a malformed one) and only adds a heavy NTT to every check.
     if (!IsValid()) {
-        return false;
+        return false;   // wrong length or all-zero blob
     }
-    // Reject pubkeys whose rho prefix is all-zero (malformed / cheap DoS bait).
+    // Reject an all-zero rho (the public seed): never emitted by keygen, and a
+    // cheap DoS/confusion input.
+    bool rho_nonzero = false;
     for (size_t i = 0; i < 32; ++i) {
-        if (vch[i] != 0) {
-            return true;
-        }
+        if (vch[i] != 0) { rho_nonzero = true; break; }
+    }
+    if (!rho_nonzero) return false;
+    // Reject an all-zero t1: a real keypair's t1 = Power2Round(A*s1 + s2) is
+    // never identically zero, so this catches structurally degenerate keys.
+    for (size_t i = 32; i < SIZE; ++i) {
+        if (vch[i] != 0) return true;
     }
     return false;
 }
