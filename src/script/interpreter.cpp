@@ -2403,28 +2403,17 @@ size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& wi
 
     if (witversion == 2 && witprogram.size() == WITNESS_V2_P2MR_SIZE && witness.stack.size() >= 2) {
         // P2MR witness: [args...] [script] [control_block] [optional annex]
-        // Determine if annex is present (last element starts with ANNEX_TAG)
-        size_t last = witness.stack.size() - 1;
-        bool has_annex = (witness.stack.size() >= 2 &&
-                          !witness.stack[last].empty() &&
-                          witness.stack[last][0] == ANNEX_TAG);
-        size_t control_idx = has_annex ? last - 1 : last;
+        // Mirror VerifyWitnessProgram's annex / control / script indexing, then
+        // reuse GetSigOpCount(true) so Dilithium (and any ECDSA) opcodes get the
+        // same weighting as legacy / P2WSH — including accurate multisig key counts.
+        const size_t last = witness.stack.size() - 1;
+        const bool has_annex = !witness.stack[last].empty() && witness.stack[last][0] == ANNEX_TAG;
+        const size_t control_idx = has_annex ? last - 1 : last;
         if (control_idx < 1) return 0;
-        size_t script_idx = control_idx - 1;
+        const size_t script_idx = control_idx - 1;
 
-        const auto& script_data = witness.stack[script_idx];
-        CScript subscript(script_data.begin(), script_data.end());
-        unsigned int n = 0;
-        CScript::const_iterator pc = subscript.begin();
-        opcodetype opcode;
-        while (pc < subscript.end()) {
-            if (!subscript.GetOp(pc, opcode)) break;
-            if (opcode == OP_CHECKSIGDILITHIUM || opcode == OP_CHECKSIGDILITHIUMVERIFY)
-                n++;
-            else if (opcode == OP_CHECKMULTISIGDILITHIUM || opcode == OP_CHECKMULTISIGDILITHIUMVERIFY)
-                n += MAX_PUBKEYS_PER_MULTISIG;
-        }
-        return n * DILITHIUM_SIGOP_COST;
+        CScript subscript(witness.stack[script_idx].begin(), witness.stack[script_idx].end());
+        return subscript.GetSigOpCount(true);
     }
 
     // Future flags may be implemented here.
