@@ -194,7 +194,7 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
         assert(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags) == 1);
         // No signature operations if we don't verify the witness.
         assert(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags & ~SCRIPT_VERIFY_WITNESS) == 0);
-        assert(VerifyWithFlag(CTransaction(creationTx), spendingTx, flags) == SCRIPT_ERR_WITNESS_PUBKEYTYPE);
+        assert(VerifyWithFlag(CTransaction(creationTx), spendingTx, flags) == SCRIPT_ERR_EQUALVERIFY);
 
         // The sig op cost for witness version != 0 is zero.
         assert(scriptPubKey[0] == 0x00);
@@ -220,7 +220,7 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
 
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, scriptSig, scriptWitness);
         assert(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags) == 1);
-        assert(VerifyWithFlag(CTransaction(creationTx), spendingTx, flags) == SCRIPT_ERR_WITNESS_PUBKEYTYPE);
+        assert(VerifyWithFlag(CTransaction(creationTx), spendingTx, flags) == SCRIPT_ERR_EQUALVERIFY);
     }
 
     // P2WSH witness program
@@ -258,7 +258,8 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
 
 BOOST_AUTO_TEST_CASE(dilithium_witness_v0_sigop_weighting)
 {
-    // BTQ-AUDIT-019: witness v0 keyhash spends must distinguish P2WPKH (1) from P2DWPKH (50).
+    // After BTQ-AUDIT-048, Dilithium-sized witnesses on v0 keyhash are not a
+    // Dilithium consensus path and must not inflate the block sigop budget.
     CMutableTransaction creationTx;
     CMutableTransaction spendingTx;
     CCoinsView coinsDummy;
@@ -275,8 +276,7 @@ BOOST_AUTO_TEST_CASE(dilithium_witness_v0_sigop_weighting)
     scriptWitness.stack.push_back(std::vector<unsigned char>(dilithium_pubkey.begin(), dilithium_pubkey.end()));
 
     BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, scriptWitness);
-    BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
-                      static_cast<int64_t>(DILITHIUM_SIGOP_COST));
+    BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
 
     // Classical P2WPKH with compressed pubkey witness must remain weight 1.
     CKey ecdsa_key;
@@ -288,6 +288,73 @@ BOOST_AUTO_TEST_CASE(dilithium_witness_v0_sigop_weighting)
 
     BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, scriptWitness);
     BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
+}
+
+/** Dummy P2MR scriptPubKey: WitnessSigOps only checks version + 32-byte program. */
+static CScript MakeP2MRScriptPubKey()
+{
+    return GetScriptForDestination(WitnessV2P2MR(uint256{}));
+}
+
+static CScriptWitness MakeP2MRWitness(const CScript& leaf_script,
+                                      const std::vector<std::vector<unsigned char>>& args = {},
+                                      bool with_annex = false)
+{
+    CScriptWitness witness;
+    for (const auto& arg : args) {
+        witness.stack.push_back(arg);
+    }
+    witness.stack.emplace_back(leaf_script.begin(), leaf_script.end());
+    witness.stack.push_back(std::vector<unsigned char>{static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 0x01)});
+    if (with_annex) {
+        witness.stack.push_back(std::vector<unsigned char>{static_cast<unsigned char>(ANNEX_TAG), 0x00});
+    }
+    return witness;
+}
+
+BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
+{
+    CMutableTransaction creationTx;
+    CMutableTransaction spendingTx;
+    CCoinsView coinsDummy;
+    CCoinsViewCache coins(&coinsDummy);
+    const uint32_t flags{SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH};
+    const CScript scriptPubKey = MakeP2MRScriptPubKey();
+
+    CDilithiumKey dilithium_key;
+    BOOST_REQUIRE(dilithium_key.MakeNewKey());
+    const auto dilithium_pubkey = ToByteVector(dilithium_key.GetPubKey());
+
+    {
+        const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM;
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{},
+                 MakeP2MRWitness(leaf, {/*args=*/{std::vector<unsigned char>{0x01}}}));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
+                          static_cast<int64_t>(DILITHIUM_SIGOP_COST));
+    }
+
+    {
+        const CScript leaf = CScript() << OP_2 << dilithium_pubkey << dilithium_pubkey << OP_2
+                                       << OP_CHECKMULTISIGDILITHIUM;
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
+                          static_cast<int64_t>(2U * DILITHIUM_SIGOP_COST));
+    }
+
+    {
+        const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM;
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{},
+                 MakeP2MRWitness(leaf, {}, /*with_annex=*/true));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
+                          static_cast<int64_t>(DILITHIUM_SIGOP_COST));
+    }
+
+    {
+        CScriptWitness witness;
+        witness.stack.push_back(std::vector<unsigned char>{0x01});
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, witness);
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

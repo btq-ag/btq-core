@@ -50,9 +50,10 @@ BOOST_AUTO_TEST_CASE(dilithium_transaction_weight_limits)
     int64_t serialized_size = GetSerializeSize(tx, PROTOCOL_VERSION);
     BOOST_CHECK_GT(serialized_size, 0);
     
-    // Test that transaction is standard
+    // Legacy Dilithium BASE outputs are non-standard under P2MR-only consensus.
     std::string reason;
-    BOOST_CHECK(IsStandardTx(tx, std::nullopt, true, CFeeRate(1000), reason));
+    BOOST_CHECK(!IsStandardTx(tx, std::nullopt, true, CFeeRate(1000), reason));
+    BOOST_CHECK_EQUAL(reason, "scriptpubkey");
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_signature_size_limits)

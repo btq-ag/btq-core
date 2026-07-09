@@ -2151,6 +2151,16 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
         }
     }
 
+    // P2MR destinations are tracked outside ScriptPubKeyMans. Merge their
+    // builders/keys and retry so ordinary send/fund paths can spend Dilithium
+    // (and other) P2MR leaves without requiring signp2mrtransaction.
+    FlatSigningProvider p2mr_provider = BuildP2MRSigningProvider(*this, /*only_id=*/std::nullopt);
+    if (!p2mr_provider.p2mr_trees.empty()) {
+        if (::SignTransaction(tx, &p2mr_provider, coins, sighash, input_errors)) {
+            return true;
+        }
+    }
+
     // At this point, one input was not fully signed otherwise we would have exited already
     return false;
 }
@@ -3521,6 +3531,10 @@ std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& scri
                 return provider;
             }
         }
+    }
+    // Tracked P2MR scriptPubKeys are owned via wallet metadata, not descriptors.
+    if (auto entry = GetP2MRByScript(*this, script)) {
+        return std::make_unique<FlatSigningProvider>(BuildP2MRSigningProvider(*this, entry->id));
     }
     return nullptr;
 }

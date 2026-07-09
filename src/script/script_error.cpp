@@ -112,7 +112,7 @@ std::string ScriptErrorString(const ScriptError serror)
         case SCRIPT_ERR_TAPSCRIPT_MINIMALIF:
             return "OP_IF/NOTIF argument must be minimal in tapscript";
         case SCRIPT_ERR_TAPSCRIPT_DILITHIUM:
-            return "Dilithium opcodes are not available in tapscript (P2TR is quantum-vulnerable)";
+            return "Dilithium opcodes are only available in P2MR tapscript (witness v2)";
         case SCRIPT_ERR_OP_CODESEPARATOR:
             return "Using OP_CODESEPARATOR in non-witness script";
         case SCRIPT_ERR_SIG_FINDANDDELETE:

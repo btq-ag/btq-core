@@ -2,7 +2,11 @@
 # Copyright (c) 2026 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test Dilithium opcode activation height on regtest (BTQ-AUDIT-017)."""
+"""Test Dilithium opcode activation height on regtest (BTQ-AUDIT-017).
+
+Dilithium opcodes are consensus-valid only inside P2MR tapscript leaves.
+Receives use getnewdilithiumaddress (P2MR), and spends use signp2mrtransaction.
+"""
 
 from decimal import Decimal
 
@@ -40,20 +44,18 @@ class DilithiumActivationTest(BTQTestFramework):
             },
         )
 
-    def sign_dilithium_spend(self, node, *, utxo, dest, amount):
-        prevtxs = [{
-            'txid': utxo['txid'],
-            'vout': utxo['vout'],
-            'scriptPubKey': utxo['scriptPubKey'],
-            'amount': utxo['amount'],
-        }]
-        raw = node.createrawtransaction(
-            [{'txid': utxo['txid'], 'vout': utxo['vout']}],
-            [{dest: amount}],
-        )
-        signed = node.signtransactionwithdilithium(raw, prevtxs)
-        assert signed['complete'], signed.get('errors')
-        return signed['hex']
+    def dilithium_receive(self, node, label=""):
+        created = node.getnewdilithiumaddress(label)
+        assert isinstance(created, dict), created
+        assert created["address"]
+        assert created["p2mr_id"]
+        return created
+
+    def sign_dilithium_p2mr_spend(self, node, *, p2mr_id, dest, amount):
+        spend = node.createp2mrspend(p2mr_id, dest, amount)
+        signed = node.signp2mrtransaction(spend["hex"], p2mr_id)
+        assert signed["complete"], signed
+        return signed["hex"]
 
     def run_test(self):
         node = self.nodes[0]
@@ -66,9 +68,11 @@ class DilithiumActivationTest(BTQTestFramework):
         assert_equal(node.getblockcount(), DILITHIUM_HEIGHT - 2)
         self.test_dilithium_info(is_active=False)
 
-        dil_addr = node.getnewdilithiumaddress()
+        created = self.dilithium_receive(node)
+        dil_addr = created["address"]
+        p2mr_id = created["p2mr_id"]
 
-        self.log.info('Creating Dilithium outputs before activation is allowed')
+        self.log.info('Creating Dilithium P2MR outputs before activation is allowed')
         txid = node.sendtoaddress(dil_addr, Decimal('1.0'))
         assert txid
         self.generate(node, 1)
@@ -79,10 +83,18 @@ class DilithiumActivationTest(BTQTestFramework):
         assert_equal(len(dil_utxos), 1)
         dest = node.getnewaddress()
 
-        self.log.info('Spending Dilithium before activation must be rejected')
-        spend_hex = self.sign_dilithium_spend(
+        self.log.info('Legacy signtransactionwithdilithium is disabled')
+        assert_raises_rpc_error(
+            -32,
+            "signtransactionwithdilithium is disabled",
+            node.signtransactionwithdilithium,
+            "00",
+        )
+
+        self.log.info('Spending Dilithium P2MR before activation must be rejected')
+        spend_hex = self.sign_dilithium_p2mr_spend(
             node,
-            utxo=dil_utxos[0],
+            p2mr_id=p2mr_id,
             dest=dest,
             amount=Decimal('0.49'),
         )
@@ -90,7 +102,7 @@ class DilithiumActivationTest(BTQTestFramework):
         assert_equal(result['allowed'], False)
         assert 'Public key version reserved for soft-fork upgrades' in result['reject-reason']
 
-        self.log.info('Mine past activation; Dilithium receive must work')
+        self.log.info('Mine past activation; Dilithium P2MR receive must work')
         self.generate(node, 2)
         assert_equal(node.getblockcount(), DILITHIUM_HEIGHT + 1)
         self.test_dilithium_info(is_active=True)
@@ -100,14 +112,15 @@ class DilithiumActivationTest(BTQTestFramework):
         self.generate(node, 1)
         assert_equal(node.getreceivedbyaddress(dil_addr), Decimal('1.5'))
 
-        self.log.info('Spending Dilithium after activation must succeed')
+        self.log.info('Spending Dilithium P2MR after activation must succeed')
         dil_utxos = node.listunspent(minconf=1, addresses=[dil_addr])
         assert len(dil_utxos) >= 2
-        # Use the 0.5 BTQ output confirmed after activation (not the pre-activation 1.0).
-        post_act_utxo = next(u for u in dil_utxos if u['amount'] == Decimal('0.5'))
-        spend_hex = self.sign_dilithium_spend(
+        # Prefer the post-activation 0.5 BTQ output when selecting via createp2mrspend
+        # by spending a small amount that fits either UTXO; createp2mrspend picks
+        # confirmed UTXOs for this p2mr_id.
+        spend_hex = self.sign_dilithium_p2mr_spend(
             node,
-            utxo=post_act_utxo,
+            p2mr_id=p2mr_id,
             dest=dest,
             amount=Decimal('0.25'),
         )

@@ -2387,15 +2387,9 @@ size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& wi
 {
     if (witversion == 0) {
         if (witprogram.size() == WITNESS_V0_KEYHASH_SIZE) {
-            // Witness v0 keyhash scripts are identical for ECDSA P2WPKH and Dilithium P2DWPKH.
-            if (witness.stack.size() >= 2 &&
-                witness.stack[1].size() == DilithiumConstants::PUBLIC_KEY_SIZE) {
-                return DILITHIUM_SIGOP_COST;
-            }
-            if (!witness.stack.empty() &&
-                witness.stack[0].size() >= DilithiumConstants::SIGNATURE_SIZE) {
-                return DILITHIUM_SIGOP_COST;
-            }
+            // BIP141 P2WPKH only. Dilithium spends must use P2MR (witness v2); a
+            // Dilithium-sized witness on v0 is not a valid Dilithium path and must
+            // not inflate the block sigop budget.
             return 1;
         }
 
@@ -2403,6 +2397,20 @@ size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& wi
             CScript subscript(witness.stack.back().begin(), witness.stack.back().end());
             return subscript.GetSigOpCount(true);
         }
+    }
+
+    if (witversion == 2 && witprogram.size() == WITNESS_V2_P2MR_SIZE && witness.stack.size() >= 2) {
+        // P2MR witness: [args...] [script] [control_block] [optional annex]
+        // Mirror VerifyWitnessProgram indexing, then reuse GetSigOpCount(true) so
+        // Dilithium (and any ECDSA) opcodes match legacy / P2WSH weighting.
+        const size_t last = witness.stack.size() - 1;
+        const bool has_annex = !witness.stack[last].empty() && witness.stack[last][0] == ANNEX_TAG;
+        const size_t control_idx = has_annex ? last - 1 : last;
+        if (control_idx < 1) return 0;
+        const size_t script_idx = control_idx - 1;
+
+        CScript subscript(witness.stack[script_idx].begin(), witness.stack[script_idx].end());
+        return subscript.GetSigOpCount(true);
     }
 
     // Future flags may be implemented here.

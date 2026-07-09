@@ -120,10 +120,38 @@ std::vector<P2MREntry> ListP2MR(const CWallet& wallet);
 /** Lookup a single entry by id. */
 std::optional<P2MREntry> GetP2MR(const CWallet& wallet, const std::string& id);
 
+/** Lookup a tracked P2MR entry by scriptPubKey. */
+std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script);
+
+/** Lookup a tracked P2MR entry by destination / address encoding. */
+std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDestination& dest);
+
+/**
+ * Resolve the Dilithium key id used by a single-key Dilithium P2MR receive
+ * destination. Returns nullopt if the address is not a tracked P2MR or the
+ * tree does not contain exactly one Dilithium key.
+ */
+std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest);
+
 /** Create and persist a new P2MR destination. */
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label);
+
+/**
+ * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR
+ * receive destination whose leaf is `<pubkey> OP_CHECKSIGDILITHIUM`.
+ * This is the only consensus-valid Dilithium receive path.
+ */
+util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet, const std::string& label);
+
+/**
+ * Import an existing Dilithium key and create a matching single-leaf P2MR
+ * receive destination for it.
+ */
+util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
+                                                   const CDilithiumKey& key,
+                                                   const std::string& label);
 
 /** Create + persist + fund a P2MR destination in one call. */
 util::Result<P2MRFunded> FundP2MR(CWallet& wallet,

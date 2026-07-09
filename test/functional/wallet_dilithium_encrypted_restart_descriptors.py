@@ -20,6 +20,11 @@ class WalletDilithiumEncryptedRestartDescriptorsTest(BTQTestFramework):
         self.skip_if_no_wallet()
         self.skip_if_no_sqlite()
 
+    def dilithium_address(self, wallet):
+        created = wallet.getnewdilithiumaddress()
+        assert isinstance(created, dict), created
+        return created["address"]
+
     def run_test(self):
         node = self.nodes[0]
         self.generate(node, 101)
@@ -27,10 +32,10 @@ class WalletDilithiumEncryptedRestartDescriptorsTest(BTQTestFramework):
         passphrase = 'audit-encrypted-dilithium-desc'
         msg = 'encrypted descriptor dilithium restart test'
 
-        self.log.info('Create descriptor wallet, derive Dilithium key, sign')
+        self.log.info('Create descriptor wallet, derive Dilithium P2MR key, sign')
         node.createwallet('enc_dil_desc', descriptors=True)
         w = node.get_wallet_rpc('enc_dil_desc')
-        addr = w.getnewdilithiumaddress()
+        addr = self.dilithium_address(w)
         sig_before = w.signmessagewithdilithium(addr, msg)
         assert w.verifydilithiumsignature(msg, addr, sig_before)
 
@@ -67,8 +72,8 @@ class WalletDilithiumEncryptedRestartDescriptorsTest(BTQTestFramework):
         sig_after = w.signmessagewithdilithium(addr, msg)
         assert w.verifydilithiumsignature(msg, addr, sig_after)
 
-        self.log.info('Second Dilithium address from same descriptor wallet after restart')
-        addr2 = w.getnewdilithiumaddress()
+        self.log.info('Second Dilithium P2MR address from same descriptor wallet after restart')
+        addr2 = self.dilithium_address(w)
         assert addr2 != addr
         sig2 = w.signmessagewithdilithium(addr2, msg)
         assert w.verifydilithiumsignature(msg, addr2, sig2)

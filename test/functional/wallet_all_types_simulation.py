@@ -91,9 +91,11 @@ class WalletAllTypesSimulation(BTQTestFramework):
         if role in CLASSICAL_TYPES:
             return w, w.getnewaddress("", role)
         if role == "dilithium":
-            # Default Dilithium output type is legacy (see
-            # src/wallet/rpc/dilithium.cpp:getnewdilithiumaddress).
-            return w, w.getnewdilithiumaddress()
+            # Dilithium receives are P2MR (witness v2); see
+            # src/wallet/rpc/dilithium.cpp:getnewdilithiumaddress.
+            created = w.getnewdilithiumaddress()
+            assert isinstance(created, dict), created
+            return w, created["address"]
         raise AssertionError(f"unknown role {role}")
 
     def _assert_valid_on_self(self, node, address, role):
@@ -126,11 +128,18 @@ class WalletAllTypesSimulation(BTQTestFramework):
 
         self.log.info("Generating at least one address per role")
         assert_raises_rpc_error(
-            -4,
-            "dilithium-bech32 is disabled",
+            -5,
+            "Unsupported Dilithium address type",
             self._wallet().getnewdilithiumaddress,
             "",
             "bech32",
+        )
+        assert_raises_rpc_error(
+            -5,
+            "Unsupported Dilithium address type",
+            self._wallet().getnewdilithiumaddress,
+            "",
+            "legacy",
         )
         roles = CLASSICAL_TYPES + ["dilithium"]
         addresses = {}
@@ -142,9 +151,10 @@ class WalletAllTypesSimulation(BTQTestFramework):
             owning_nodes[role] = node
 
         # Sanity: classical bech32 address starts with regtest HRP "qcrt1",
-        # while spendable Dilithium legacy uses a base58 regtest prefix.
+        # while Dilithium receives are P2MR bech32m (also qcrt1 on regtest).
         assert addresses["bech32"].startswith("qcrt1"), addresses["bech32"]
         assert addresses["bech32m"].startswith("qcrt1"), addresses["bech32m"]
+        assert addresses["dilithium"].startswith("qcrt1"), addresses["dilithium"]
 
         self.log.info("Funding every recipient wallet from the miner")
         for role, addr in addresses.items():

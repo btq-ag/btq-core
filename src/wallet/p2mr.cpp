@@ -432,6 +432,33 @@ std::optional<P2MREntry> GetP2MR(const CWallet& wallet, const std::string& id)
     return std::nullopt;
 }
 
+std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    for (const auto& entry : ListP2MR(wallet)) {
+        if (entry.script_pub_key == script) return entry;
+    }
+    return std::nullopt;
+}
+
+std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDestination& dest)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    if (!std::holds_alternative<WitnessV2P2MR>(dest)) return std::nullopt;
+    const CScript script = GetScriptForDestination(dest);
+    return GetP2MRByScript(wallet, script);
+}
+
+std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    auto entry = GetP2MRByDestination(wallet, dest);
+    if (!entry) return std::nullopt;
+    const auto key_ids = GetP2MRDilithiumKeyIDs(entry->tree);
+    if (key_ids.size() != 1) return std::nullopt;
+    return *key_ids.begin();
+}
+
 // --- Signing provider ------------------------------------------------------
 
 FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::optional<std::string>& only_id)
@@ -544,6 +571,119 @@ CAmount GetTrackedP2MRBalance(const CWallet& wallet, int min_depth)
 }
 
 // --- Create / Fund ---------------------------------------------------------
+
+namespace {
+
+util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
+                                                        const CDilithiumPubKey& pubkey,
+                                                        const std::string& label)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    if (!pubkey.IsValid()) {
+        return util::Error{Untranslated("invalid Dilithium public key")};
+    }
+    const CScript leaf_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
+    std::vector<P2MRTreeLeaf> leaves;
+    leaves.push_back(P2MRTreeLeaf{
+        /*depth=*/0,
+        /*leaf_version=*/TAPROOT_LEAF_TAPSCRIPT,
+        /*script=*/std::vector<unsigned char>{leaf_script.begin(), leaf_script.end()},
+    });
+    return CreateP2MR(wallet, leaves, label);
+}
+
+bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    if (wallet.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+        for (auto* spk_man : wallet.GetAllScriptPubKeyMans()) {
+            if (auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) return true;
+            }
+        }
+        return false;
+    }
+    LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
+    return legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
+}
+
+util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)
+{
+    AssertLockHeld(wallet.cs_wallet);
+
+    if (LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan()) {
+        LOCK(legacy->cs_KeyStore);
+        if (!legacy->CanGenerateKeys()) {
+            return util::Error{Untranslated("Error: Keypool ran out, please call keypoolrefill first")};
+        }
+        WalletBatch batch(wallet.GetDatabase());
+        CHDChain hd_chain = legacy->GetHDChain();
+        CDilithiumPubKey pubkey = legacy->GenerateNewDilithiumKey(batch, hd_chain, /*internal=*/false);
+        if (!pubkey.IsValid()) {
+            return util::Error{Untranslated("Failed to generate Dilithium key")};
+        }
+        return pubkey;
+    }
+
+    // Descriptor wallets: derive a deterministic Dilithium key from the active
+    // LEGACY descriptor's private material (same scheme as GetNewDestination).
+    ScriptPubKeyMan* spk_man = wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false);
+    auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+    if (!desc) {
+        return util::Error{Untranslated("No ScriptPubKeyMan available for Dilithium key generation")};
+    }
+
+    auto dest = desc->GetNewDestination(OutputType::DILITHIUM_LEGACY);
+    if (!dest) {
+        // Fall back to ephemeral key storage if the descriptor path is unavailable.
+        CDilithiumKey key;
+        if (!key.MakeNewKey()) {
+            return util::Error{util::ErrorString(dest)};
+        }
+        if (!desc->AddDilithiumKeyPubKey(key, CPubKey())) {
+            return util::Error{Untranslated("Failed to store Dilithium key")};
+        }
+        return key.GetPubKey();
+    }
+    // GetNewDestination(DILITHIUM_LEGACY) still returns DilithiumPKHash for key
+    // material bookkeeping; extract the pubkey from the wallet store.
+    if (!std::holds_alternative<DilithiumPKHash>(*dest)) {
+        return util::Error{Untranslated("Unexpected Dilithium destination type from key generation")};
+    }
+    const DilithiumPKHash& keyhash = std::get<DilithiumPKHash>(*dest);
+    CDilithiumKey key;
+    {
+        LOCK(desc->cs_desc_man);
+        if (!desc->GetDilithiumKey(CKeyID(static_cast<uint160>(keyhash)), key)) {
+            return util::Error{Untranslated("Generated Dilithium key not found in wallet")};
+        }
+    }
+    return key.GetPubKey();
+}
+
+} // namespace
+
+util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet, const std::string& label)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    auto pubkey = GenerateWalletDilithiumPubKey(wallet);
+    if (!pubkey) return util::Error{util::ErrorString(pubkey)};
+    return CreateSingleLeafDilithiumP2MR(wallet, *pubkey, label);
+}
+
+util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
+                                                   const CDilithiumKey& key,
+                                                   const std::string& label)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    if (!key.IsValid()) {
+        return util::Error{Untranslated("Invalid Dilithium private key")};
+    }
+    if (!StoreDilithiumKeyInWallet(wallet, key)) {
+        return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
+    }
+    return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), label);
+}
 
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,

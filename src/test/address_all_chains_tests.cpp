@@ -189,9 +189,20 @@ BOOST_AUTO_TEST_CASE(encode_decode_roundtrip_all_chains)
 
             std::string err;
             CTxDestination decoded = DecodeDestination(encoded, err);
-            BOOST_CHECK_MESSAGE(IsValidDestination(decoded),
-                "Same-chain decode failed for " << label << " on " << info.name
-                << " addr=" << encoded << " err=" << err);
+            const bool legacy_dilithium =
+                label == "P2DPKH" || label == "P2DSH" || label == "P2DWPKH" || label == "P2DWSH";
+            if (legacy_dilithium) {
+                // Historical Dilithium destinations remain encodable/decodable for
+                // display, but are no longer valid payment destinations.
+                BOOST_CHECK_MESSAGE(decoded.index() == dest.index(),
+                    "Decoded variant index mismatch for " << label << " on " << info.name);
+                BOOST_CHECK_MESSAGE(!IsValidDestination(decoded),
+                    "Legacy Dilithium destination unexpectedly valid for payments: " << label);
+            } else {
+                BOOST_CHECK_MESSAGE(IsValidDestination(decoded),
+                    "Same-chain decode failed for " << label << " on " << info.name
+                    << " addr=" << encoded << " err=" << err);
+            }
             BOOST_CHECK_MESSAGE(err.empty(),
                 "Same-chain decode produced error for " << label << " on " << info.name
                 << " addr=" << encoded << " err=" << err);
@@ -369,9 +380,13 @@ BOOST_AUTO_TEST_CASE(tbtq_regression_vector)
     {
         std::string err;
         CTxDestination d = DecodeDestination(tdbt_addr, err);
-        BOOST_CHECK_MESSAGE(IsValidDestination(d),
+        // Historical Dilithium witness-v0 addresses still decode, but are not
+        // valid payment destinations under P2MR-only Dilithium consensus.
+        BOOST_CHECK_MESSAGE(std::holds_alternative<DilithiumWitnessV0KeyHash>(d),
             "tdbt P2DWPKH failed to decode on testnet: " << err);
-        BOOST_TEST_MESSAGE("       On testnet: tdbt addr valid; variant=" << VariantLabel(d) << "; err=\"" << err << "\".");
+        BOOST_CHECK_MESSAGE(!IsValidDestination(d),
+            "tdbt P2DWPKH unexpectedly remains a valid payment destination");
+        BOOST_TEST_MESSAGE("       On testnet: tdbt addr decoded; variant=" << VariantLabel(d) << "; err=\"" << err << "\".");
     }
 
     BOOST_TEST_MESSAGE(" Step 4: switch to each non-testnet chain; both addresses must fail");
