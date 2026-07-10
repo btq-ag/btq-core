@@ -12,8 +12,22 @@
 #include <key.h>
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <vector>
+
+namespace dilithium_internal {
+/** Constant-time equality: no early exit, so timing does not reveal how many
+ *  leading bytes of two keys match. volatile prevents the compiler from
+ *  optimizing the loop back into a short-circuiting compare. */
+inline bool TimingSafeEqual(const unsigned char* a, const unsigned char* b, size_t n) noexcept
+{
+    volatile unsigned char result = 0;
+    for (size_t i = 0; i < n; i++)
+        result |= a[i] ^ b[i];
+    return result == 0;
+}
+} // namespace dilithium_internal
 
 // Dilithium extended key serialization size.
 //
@@ -119,7 +133,7 @@ public:
     friend bool operator==(const CDilithiumKey& a, const CDilithiumKey& b)
     {
         return a.size() == b.size() &&
-               (a.size() == 0 || memcmp(a.data(), b.data(), a.size()) == 0);
+               (a.size() == 0 || dilithium_internal::TimingSafeEqual(a.begin(), b.begin(), a.size()));
     }
 
     /** Inequality operator */
@@ -276,7 +290,7 @@ public:
     //! Comparator implementations.
     friend bool operator==(const CDilithiumPubKey& a, const CDilithiumPubKey& b)
     {
-        return memcmp(a.vch.data(), b.vch.data(), SIZE) == 0;
+        return dilithium_internal::TimingSafeEqual(a.vch.data(), b.vch.data(), SIZE);
     }
     
     friend bool operator!=(const CDilithiumPubKey& a, const CDilithiumPubKey& b)
@@ -373,10 +387,12 @@ public:
     friend bool operator==(const CDilithiumExtKey& a, const CDilithiumExtKey& b)
     {
         return a.nDepth == b.nDepth &&
-            memcmp(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) == 0 &&
+            dilithium_internal::TimingSafeEqual(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) &&
             a.nChild == b.nChild &&
             a.chaincode == b.chaincode &&
-            a.seed == b.seed;
+            // The seed is the master secret; std::array's operator== would
+            // short-circuit on the first differing byte.
+            dilithium_internal::TimingSafeEqual(a.seed.data(), b.seed.data(), a.seed.size());
     }
 
     void Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const;
@@ -410,7 +426,7 @@ public:
     friend bool operator==(const CDilithiumExtPubKey& a, const CDilithiumExtPubKey& b)
     {
         return a.nDepth == b.nDepth &&
-            memcmp(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) == 0 &&
+            dilithium_internal::TimingSafeEqual(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) &&
             a.nChild == b.nChild &&
             a.chaincode == b.chaincode &&
             a.pubkey == b.pubkey;
