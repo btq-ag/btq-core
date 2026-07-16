@@ -90,7 +90,12 @@ public:
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        consensus.nLWMAHeight = 300000;
+        // BTQ-AUDIT-103: LWMA from block 1 so mainnet never has a pre-LWMA
+        // legacy-retarget window that can be manipulated. Mainnet only: the
+        // live testnet keeps its scheduled height (changing it retroactively
+        // would invalidate existing history — see the height-gate pattern in
+        // nDilithiumP2MRHeight).
+        consensus.nLWMAHeight = 1;
         consensus.nDilithiumHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
