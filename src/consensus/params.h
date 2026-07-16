@@ -40,8 +40,9 @@ enum BuriedDeployment : int16_t {
     DEPLOYMENT_SEGWIT,
     DEPLOYMENT_LWMA,
     DEPLOYMENT_DILITHIUM,
+    DEPLOYMENT_DILITHIUM_P2MR,
 };
-constexpr bool ValidDeployment(BuriedDeployment dep) { return dep <= DEPLOYMENT_DILITHIUM; }
+constexpr bool ValidDeployment(BuriedDeployment dep) { return dep <= DEPLOYMENT_DILITHIUM_P2MR; }
 
 enum DeploymentPos : uint16_t {
     DEPLOYMENT_TESTDUMMY,
@@ -135,6 +136,10 @@ struct Params {
     int nLWMAHeight{std::numeric_limits<int>::max()};
     /** Height at which Dilithium script opcodes become consensus-mandatory */
     int nDilithiumHeight{1};
+    /** Height at which Dilithium opcodes become P2MR-only (BTQ-AUDIT-048).
+     *  Blocks at or above this height reject Dilithium opcodes outside P2MR
+     *  tapscript and disable the legacy witness-v0 Dilithium keyhash routing. */
+    int nDilithiumP2MRHeight{1};
     static constexpr int LWMA_WINDOW = 45;
     std::chrono::seconds PowTargetSpacing() const
     {
@@ -170,6 +175,8 @@ struct Params {
             return nLWMAHeight;
         case DEPLOYMENT_DILITHIUM:
             return nDilithiumHeight;
+        case DEPLOYMENT_DILITHIUM_P2MR:
+            return nDilithiumP2MRHeight;
         } // no default case, so the compiler can warn about missing cases
         return std::numeric_limits<int>::max();
     }

@@ -2125,6 +2125,11 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
         flags |= SCRIPT_VERIFY_DILITHIUM;
     }
 
+    // BTQ-AUDIT-048: restrict Dilithium opcodes to P2MR tapscript after activation
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DILITHIUM_P2MR)) {
+        flags |= SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY;
+    }
+
     // BTQ: Enable BIP360 P2MR (Pay-to-Merkle-Root) validation
     flags |= SCRIPT_VERIFY_P2MR;
     
