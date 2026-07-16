@@ -296,6 +296,10 @@ static CScript MakeP2MRScriptPubKey()
     return GetScriptForDestination(WitnessV2P2MR(uint256{}));
 }
 
+/**
+ * Build a P2MR-shaped witness: [args...] [leaf_script] [control] [optional annex].
+ * Control/merkle validity is irrelevant for sigop counting.
+ */
 static CScriptWitness MakeP2MRWitness(const CScript& leaf_script,
                                       const std::vector<std::vector<unsigned char>>& args = {},
                                       bool with_annex = false)
@@ -305,6 +309,7 @@ static CScriptWitness MakeP2MRWitness(const CScript& leaf_script,
         witness.stack.push_back(arg);
     }
     witness.stack.emplace_back(leaf_script.begin(), leaf_script.end());
+    // P2MR control base: leaf version | parity bit 1 (required by VerifyWitnessProgram).
     witness.stack.push_back(std::vector<unsigned char>{static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 0x01)});
     if (with_annex) {
         witness.stack.push_back(std::vector<unsigned char>{static_cast<unsigned char>(ANNEX_TAG), 0x00});
@@ -314,6 +319,7 @@ static CScriptWitness MakeP2MRWitness(const CScript& leaf_script,
 
 BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
 {
+    // P2MR Dilithium leaves must count toward MAX_BLOCK_SIGOPS_COST via WitnessSigOps.
     CMutableTransaction creationTx;
     CMutableTransaction spendingTx;
     CCoinsView coinsDummy;
@@ -325,34 +331,102 @@ BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
     BOOST_REQUIRE(dilithium_key.MakeNewKey());
     const auto dilithium_pubkey = ToByteVector(dilithium_key.GetPubKey());
 
+    // Single-sig Dilithium leaf.
     {
         const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM;
-        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{},
-                 MakeP2MRWitness(leaf, {/*args=*/{std::vector<unsigned char>{0x01}}}));
+        const CScriptWitness witness = MakeP2MRWitness(leaf, {/*args=*/{std::vector<unsigned char>{0x01}}});
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, witness);
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
+                          static_cast<int64_t>(DILITHIUM_SIGOP_COST));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags & ~SCRIPT_VERIFY_WITNESS), 0);
+    }
+
+    // OP_CHECKSIGDILITHIUMVERIFY counts the same as OP_CHECKSIGDILITHIUM.
+    {
+        const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUMVERIFY;
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
         BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
                           static_cast<int64_t>(DILITHIUM_SIGOP_COST));
     }
 
+    // Accurate Dilithium multisig: OP_2 ... OP_2 OP_CHECKMULTISIGDILITHIUM → 2 * cost.
     {
         const CScript leaf = CScript() << OP_2 << dilithium_pubkey << dilithium_pubkey << OP_2
                                        << OP_CHECKMULTISIGDILITHIUM;
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
         BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
                           static_cast<int64_t>(2U * DILITHIUM_SIGOP_COST));
+        BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true), 2U * DILITHIUM_SIGOP_COST);
+        // Inaccurate path would charge MAX_PUBKEYS_PER_MULTISIG * cost — must not match that.
+        BOOST_CHECK(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags) !=
+                    static_cast<int64_t>(MAX_PUBKEYS_PER_MULTISIG * DILITHIUM_SIGOP_COST));
     }
 
+    // Annex present: still locate leaf at control_idx - 1 and count the same.
     {
         const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM;
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{},
-                 MakeP2MRWitness(leaf, {}, /*with_annex=*/true));
+                 MakeP2MRWitness(leaf, {/*args=*/{std::vector<unsigned char>{0x01}}}, /*with_annex=*/true));
         BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
                           static_cast<int64_t>(DILITHIUM_SIGOP_COST));
     }
 
+    // ECDSA OP_CHECKSIG in a P2MR leaf counts via GetSigOpCount (1), matching P2WSH.
+    {
+        CKey ecdsa_key;
+        ecdsa_key.MakeNewKey(true);
+        const CScript leaf = CScript() << ToByteVector(ecdsa_key.GetPubKey()) << OP_CHECKSIG;
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
+    }
+
+    // Mixed leaf: one Dilithium + one ECDSA.
+    {
+        CKey ecdsa_key;
+        ecdsa_key.MakeNewKey(true);
+        const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM
+                                       << ToByteVector(ecdsa_key.GetPubKey()) << OP_CHECKSIG;
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
+                          static_cast<int64_t>(DILITHIUM_SIGOP_COST + 1));
+    }
+
+    // Too few witness elements: no script+control pair → 0.
     {
         CScriptWitness witness;
         witness.stack.push_back(std::vector<unsigned char>{0x01});
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, witness);
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
+    }
+
+    // [control][annex] only: annex strips to a single control element → 0.
+    {
+        CScriptWitness witness;
+        witness.stack.push_back(std::vector<unsigned char>{static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 0x01)});
+        witness.stack.push_back(std::vector<unsigned char>{static_cast<unsigned char>(ANNEX_TAG)});
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, witness);
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
+    }
+
+    // Empty leaf script → 0.
+    {
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(CScript{}));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
+    }
+
+    // Wrong program length is not P2MR; WitnessSigOps returns 0 for non-v0/non-P2MR.
+    {
+        CScript bad = CScript() << OP_2 << std::vector<unsigned char>(20, 0x00);
+        const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM;
+        BuildTxs(spendingTx, coins, creationTx, bad, CScript{}, MakeP2MRWitness(leaf));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
+    }
+
+    // Coinbase witness is ignored by GetTransactionSigOpCost.
+    {
+        const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM;
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
+        spendingTx.vin[0].prevout.SetNull();
         BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
     }
 }
