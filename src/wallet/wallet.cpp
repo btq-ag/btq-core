@@ -3533,8 +3533,13 @@ std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& scri
         }
     }
     // Tracked P2MR scriptPubKeys are owned via wallet metadata, not descriptors.
-    if (auto entry = GetP2MRByScript(*this, script)) {
-        return std::make_unique<FlatSigningProvider>(BuildP2MRSigningProvider(*this, entry->id));
+    // Callers of GetSolvingProvider are not required to hold cs_wallet, but the
+    // P2MR metadata lookups are; take it here (cs_wallet is recursive).
+    {
+        LOCK(cs_wallet);
+        if (auto entry = GetP2MRByScript(*this, script)) {
+            return std::make_unique<FlatSigningProvider>(BuildP2MRSigningProvider(*this, entry->id));
+        }
     }
     return nullptr;
 }

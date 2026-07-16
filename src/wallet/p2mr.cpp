@@ -635,15 +635,10 @@ util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)
 
     auto dest = desc->GetNewDestination(OutputType::DILITHIUM_LEGACY);
     if (!dest) {
-        // Fall back to ephemeral key storage if the descriptor path is unavailable.
-        CDilithiumKey key;
-        if (!key.MakeNewKey()) {
-            return util::Error{util::ErrorString(dest)};
-        }
-        if (!desc->AddDilithiumKeyPubKey(key, CPubKey())) {
-            return util::Error{Untranslated("Failed to store Dilithium key")};
-        }
-        return key.GetPubKey();
+        // Do NOT fall back to an ephemeral (non-seed-derived) key here: such a key
+        // would not be recoverable from an HD seed backup and could silently lose
+        // funds. Fail so the caller surfaces the underlying error instead.
+        return util::Error{util::ErrorString(dest)};
     }
     // GetNewDestination(DILITHIUM_LEGACY) still returns DilithiumPKHash for key
     // material bookkeeping; extract the pubkey from the wallet store.

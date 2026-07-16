@@ -232,8 +232,10 @@ IsMineResult IsMineInner(const LegacyScriptPubKeyMan& keystore, const CScript& s
     case TxoutType::DILITHIUM_SCRIPTHASH:
     case TxoutType::DILITHIUM_MULTISIG:
     case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
-        // Legacy Dilithium templates are consensus-unspendable (P2MR-only opcodes).
-        return IsMineResult::INVALID;
+        // Legacy Dilithium templates are consensus-unspendable (P2MR-only opcodes),
+        // so never SPENDABLE. Fall through to the watch-only check below so users
+        // can still see/import stranded legacy outputs as watch-only.
+        break;
     } // no default case, so the compiler can warn about missing cases
 
     if (ret == IsMineResult::NO && keystore.HaveWatchOnly(scriptPubKey)) {

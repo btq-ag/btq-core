@@ -99,7 +99,8 @@ bool MutableTransactionSignatureCreator::CreateDilithiumSig(const SigningProvide
     if (!provider.GetDilithiumKeyByHash(keyid, key))
         return false;
 
-    // BASE/WITNESS_V0 signatures don't support explicit SIGHASH_DEFAULT, use SIGHASH_ALL instead.
+    // The Dilithium signature encodes an explicit hashtype byte, so map
+    // SIGHASH_DEFAULT to SIGHASH_ALL.
     const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
 
     uint256 hash;

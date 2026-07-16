@@ -80,16 +80,28 @@ static std::optional<int64_t> MaxInputWeight(const Descriptor& desc, const std::
     return {};
 }
 
-static int EstimateSignedWitnessInputVSize(const SignatureData& sigdata)
+/**
+ * Estimate a signed input's weight from a dummy satisfaction, for outputs
+ * (e.g. P2MR) whose leaves descriptor inference cannot model. Only witness
+ * satisfactions are supported: a scriptSig-based solution would invalidate
+ * the fixed non-witness size assumed below, so nullopt is returned instead.
+ */
+static std::optional<int64_t> DummySignInputWeight(const SigningProvider& provider, const CScript& script_pub_key)
 {
+    SignatureData sigdata;
+    if (!ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, script_pub_key, sigdata) || !sigdata.complete) {
+        return std::nullopt;
+    }
+    if (!sigdata.scriptSig.empty() || sigdata.scriptWitness.stack.empty()) {
+        return std::nullopt;
+    }
     // prevout (32+4) + nSequence (4) + empty scriptSig compact-size (1)
     constexpr int64_t nonwitness_bytes = 32 + 4 + 4 + 1;
     int64_t witness_bytes = GetSizeOfCompactSize(sigdata.scriptWitness.stack.size());
     for (const auto& item : sigdata.scriptWitness.stack) {
         witness_bytes += GetSizeOfCompactSize(item.size()) + static_cast<int64_t>(item.size());
     }
-    const int64_t weight = nonwitness_bytes * WITNESS_SCALE_FACTOR + witness_bytes;
-    return static_cast<int>(GetVirtualTransactionSize(weight, /*nSigOpCost=*/0, /*bytes_per_sigop=*/0));
+    return nonwitness_bytes * WITNESS_SCALE_FACTOR + witness_bytes;
 }
 
 int CalculateMaximumSignedInputSize(const CTxOut& txout, const COutPoint outpoint, const SigningProvider* provider, bool can_grind_r, const CCoinControl* coin_control)
@@ -105,9 +117,8 @@ int CalculateMaximumSignedInputSize(const CTxOut& txout, const COutPoint outpoin
 
     // P2MR (and other) outputs may be solvable via signing providers even when
     // descriptors cannot model the leaf. Estimate size from a dummy satisfaction.
-    SignatureData sigdata;
-    if (ProduceSignature(*provider, DUMMY_SIGNATURE_CREATOR, txout.scriptPubKey, sigdata) && sigdata.complete) {
-        return EstimateSignedWitnessInputVSize(sigdata);
+    if (const auto weight = DummySignInputWeight(*provider, txout.scriptPubKey)) {
+        return static_cast<int>(GetVirtualTransactionSize(*weight, /*nSigOpCost=*/0, /*bytes_per_sigop=*/0));
     }
 
     return -1;
@@ -161,14 +172,8 @@ static std::optional<int64_t> GetSignedTxinWeight(const CWallet* wallet, const C
         provider = std::make_unique<FlatSigningProvider>(coin_control->m_external_provider);
     }
     if (provider) {
-        SignatureData sigdata;
-        if (ProduceSignature(*provider, DUMMY_SIGNATURE_CREATOR, txo.scriptPubKey, sigdata) && sigdata.complete) {
-            constexpr int64_t nonwitness_bytes = 32 + 4 + 4 + 1;
-            int64_t witness_bytes = GetSizeOfCompactSize(sigdata.scriptWitness.stack.size());
-            for (const auto& item : sigdata.scriptWitness.stack) {
-                witness_bytes += GetSizeOfCompactSize(item.size()) + static_cast<int64_t>(item.size());
-            }
-            return nonwitness_bytes * WITNESS_SCALE_FACTOR + witness_bytes;
+        if (const auto weight = DummySignInputWeight(*provider, txo.scriptPubKey)) {
+            return weight;
         }
     }
 
