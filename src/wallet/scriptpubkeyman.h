@@ -455,6 +455,12 @@ public:
     bool GetDilithiumKey(const CKeyID &address, CDilithiumKey& keyOut) const;
     bool HaveDilithiumKey(const CKeyID &address) const;
     std::set<CKeyID> GetDilithiumKeyIDs() const;
+    //! SigningProvider overrides. Without these, ProduceSignature cannot look up
+    //! Dilithium keys held by this keyman and legacy wallets cannot spend
+    //! Dilithium coins (issue #74).
+    bool GetDilithiumPubKey(const DilithiumPKHash& address, CDilithiumPubKey& pubkey) const override;
+    bool GetDilithiumKeyByHash(const DilithiumPKHash& address, CDilithiumKey& key) const override;
+    bool GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const override;
     //! Generate a new Dilithium key using HD derivation
     CDilithiumPubKey GenerateNewDilithiumKey(WalletBatch& batch, CHDChain& hd_chain, bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
     //! Derive a new Dilithium child key using HD derivation
@@ -574,6 +580,9 @@ public:
     bool GetKey(const CKeyID &address, CKey& key) const override { return false; }
     bool HaveKey(const CKeyID &address) const override { return false; }
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override { return m_spk_man.GetKeyOrigin(keyid, info); }
+    bool GetDilithiumPubKey(const DilithiumPKHash& address, CDilithiumPubKey& pubkey) const override { return m_spk_man.GetDilithiumPubKey(address, pubkey); }
+    bool GetDilithiumKeyByHash(const DilithiumPKHash& address, CDilithiumKey& key) const override { return false; }
+    bool GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const override { return m_spk_man.GetDilithiumKeyOrigin(keyid, info); }
 };
 
 class DescriptorScriptPubKeyMan : public ScriptPubKeyMan
