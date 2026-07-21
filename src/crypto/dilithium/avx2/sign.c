@@ -451,9 +451,15 @@ int crypto_sign_verify_internal(const uint8_t *sig, size_t siglen, const uint8_t
   shake256_absorb(&state, buf.coeffs, K*POLYW1_PACKEDBYTES);
   shake256_finalize(&state);
   shake256_squeeze(buf.coeffs, CTILDEBYTES, &state);
-  for(i = 0; i < CTILDEBYTES; ++i)
-    if(buf.coeffs[i] != sig[i])
+  {
+    /* Constant-time challenge comparison: no early exit on first mismatch.
+     * Not linked today (Makefile builds ref/), but keep avx2 in sync. */
+    volatile uint8_t result = 0;
+    for(i = 0; i < CTILDEBYTES; ++i)
+      result |= buf.coeffs[i] ^ sig[i];
+    if(result)
       return -1;
+  }
 
   return 0;
 }

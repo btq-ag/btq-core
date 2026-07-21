@@ -383,8 +383,10 @@ int crypto_sign_verify_internal(const uint8_t *sig,
   shake256_finalize(&state);
   shake256_squeeze(c2, CTILDEBYTES, &state);
   {
-    /* Constant-time challenge comparison: no early exit on first mismatch. */
-    uint8_t result = 0;
+    /* Constant-time challenge comparison: no early exit on first mismatch.
+     * volatile keeps compilers from rewriting this into a short-circuiting
+     * byte loop (same rationale as TimingSafeEqual in dilithium_key.h). */
+    volatile uint8_t result = 0;
     for(i = 0; i < CTILDEBYTES; ++i)
       result |= c[i] ^ c2[i];
     if(result)

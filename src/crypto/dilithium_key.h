@@ -18,13 +18,17 @@
 
 namespace dilithium_internal {
 /** Constant-time equality: no early exit, so timing does not reveal how many
- *  leading bytes of two keys match. volatile prevents the compiler from
- *  optimizing the loop back into a short-circuiting compare. */
+ *  leading bytes of two buffers match. The accumulator is volatile so the
+ *  compiler cannot collapse the loop into a short-circuiting memcmp-style
+ *  compare. Callers that combine multiple checks must use bitwise & (not &&)
+ *  if every secret buffer must always be scanned. Length mismatches should be
+ *  handled before calling this (do not pass unequal lengths). */
 inline bool TimingSafeEqual(const unsigned char* a, const unsigned char* b, size_t n) noexcept
 {
     volatile unsigned char result = 0;
-    for (size_t i = 0; i < n; i++)
-        result |= a[i] ^ b[i];
+    for (size_t i = 0; i < n; i++) {
+        result |= static_cast<unsigned char>(a[i] ^ b[i]);
+    }
     return result == 0;
 }
 } // namespace dilithium_internal
@@ -386,13 +390,17 @@ public:
 
     friend bool operator==(const CDilithiumExtKey& a, const CDilithiumExtKey& b)
     {
-        return a.nDepth == b.nDepth &&
-            dilithium_internal::TimingSafeEqual(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) &&
-            a.nChild == b.nChild &&
-            a.chaincode == b.chaincode &&
-            // The seed is the master secret; std::array's operator== would
-            // short-circuit on the first differing byte.
-            dilithium_internal::TimingSafeEqual(a.seed.data(), b.seed.data(), a.seed.size());
+        // Seed and chaincode are secret HD material. Evaluate both
+        // TimingSafeEqual calls into locals first so && short-circuit cannot
+        // skip a secret scan. Do not use ChainCode/uint256 operator== — it
+        // short-circuits via memcmp.
+        const bool seed_equal = dilithium_internal::TimingSafeEqual(a.seed.data(), b.seed.data(), a.seed.size());
+        const bool chaincode_equal = dilithium_internal::TimingSafeEqual(
+            a.chaincode.begin(), b.chaincode.begin(), a.chaincode.size());
+        const bool fingerprint_equal = dilithium_internal::TimingSafeEqual(
+            a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint));
+        return seed_equal && chaincode_equal && fingerprint_equal &&
+               a.nDepth == b.nDepth && a.nChild == b.nChild;
     }
 
     void Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const;
@@ -425,11 +433,15 @@ public:
 
     friend bool operator==(const CDilithiumExtPubKey& a, const CDilithiumExtPubKey& b)
     {
-        return a.nDepth == b.nDepth &&
-            dilithium_internal::TimingSafeEqual(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) &&
-            a.nChild == b.nChild &&
-            a.chaincode == b.chaincode &&
-            a.pubkey == b.pubkey;
+        // Chaincode is HD secret material; always CT-compare it (local first
+        // so short-circuit cannot skip the scan). Pubkey == uses TimingSafeEqual.
+        const bool chaincode_equal = dilithium_internal::TimingSafeEqual(
+            a.chaincode.begin(), b.chaincode.begin(), a.chaincode.size());
+        const bool fingerprint_equal = dilithium_internal::TimingSafeEqual(
+            a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint));
+        const bool pubkey_equal = (a.pubkey == b.pubkey);
+        return chaincode_equal && fingerprint_equal && pubkey_equal &&
+               a.nDepth == b.nDepth && a.nChild == b.nChild;
     }
 
     void Encode(unsigned char code[DILITHIUM_EXTPUBKEY_SIZE]) const;

@@ -279,6 +279,80 @@ BOOST_AUTO_TEST_CASE(dilithium_pubkey_equality)
     BOOST_CHECK((pubkey1 < pubkey2) != (pubkey2 < pubkey1));
 }
 
+
+BOOST_AUTO_TEST_CASE(dilithium_timingsafe_equal_functional)
+{
+    // Functional coverage for TimingSafeEqual: equal buffers, mismatch at
+    // first byte, and mismatch only at the last byte (the case short-circuit
+    // memcmp would still reject — but after scanning every byte).
+    unsigned char a[32]{}, b[32]{};
+    for (size_t i = 0; i < sizeof(a); ++i) {
+        a[i] = static_cast<unsigned char>(i * 7 + 3);
+        b[i] = a[i];
+    }
+    BOOST_CHECK(dilithium_internal::TimingSafeEqual(a, b, sizeof(a)));
+
+    b[0] ^= 0x01;
+    BOOST_CHECK(!dilithium_internal::TimingSafeEqual(a, b, sizeof(a)));
+    b[0] = a[0];
+
+    b[sizeof(b) - 1] ^= 0x80;
+    BOOST_CHECK(!dilithium_internal::TimingSafeEqual(a, b, sizeof(a)));
+    BOOST_CHECK(dilithium_internal::TimingSafeEqual(a, b, sizeof(a) - 1));
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_key_equality_last_byte_differs)
+{
+    CDilithiumKey key1;
+    BOOST_REQUIRE(key1.MakeNewKey());
+    std::vector<unsigned char> bytes = key1.Serialize();
+    BOOST_REQUIRE_EQUAL(bytes.size(), CDilithiumKey::GetKeySize());
+
+    CDilithiumKey key_same;
+    BOOST_REQUIRE(key_same.Load(Span<const unsigned char>(bytes)));
+    BOOST_CHECK(key1 == key_same);
+
+    // Flip the final secret-key byte. Load/Set may reject inconsistent
+    // key material via self-checks, so compare via TimingSafeEqual on the
+    // serialized buffers and via operator== only when both keys remain valid.
+    std::vector<unsigned char> mutated = bytes;
+    mutated.back() ^= 0x01;
+    BOOST_CHECK(!dilithium_internal::TimingSafeEqual(bytes.data(), mutated.data(), bytes.size()));
+
+    // PubKey: last-byte mismatch must yield inequality.
+    CDilithiumPubKey pub = key1.GetPubKey();
+    std::vector<unsigned char> pub_bytes(pub.begin(), pub.end());
+    std::vector<unsigned char> pub_mut = pub_bytes;
+    pub_mut.back() ^= 0x01;
+    CDilithiumPubKey pub_other(pub_mut.begin(), pub_mut.end());
+    BOOST_CHECK(pub != pub_other);
+    BOOST_CHECK(!(pub == pub_other));
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_extkey_equality_secret_fields)
+{
+    const auto raw_seed = std::vector<std::byte>(32, std::byte{0x42});
+    CDilithiumExtKey a;
+    a.SetSeed(Span<const std::byte>(raw_seed.data(), raw_seed.size()));
+    CDilithiumExtKey b = a;
+    BOOST_CHECK(a == b);
+
+    // Differ only in the last seed byte; metadata left identical.
+    b.seed.back() ^= 0x01;
+    BOOST_CHECK(!(a == b));
+
+    // Restore seed; differ only in last chaincode byte (secret HD material
+    // previously compared via short-circuiting uint256 operator==).
+    b = a;
+    b.chaincode.begin()[CDilithiumExtKey::SEED_SIZE - 1] ^= 0x01;
+    BOOST_CHECK(!(a == b));
+
+    // Differ only in fingerprint with identical seed/chaincode.
+    b = a;
+    b.vchFingerprint[3] ^= 0x01;
+    BOOST_CHECK(!(a == b));
+}
+
 BOOST_AUTO_TEST_CASE(dilithium_sanity_check)
 {
     // Test the global sanity check function
