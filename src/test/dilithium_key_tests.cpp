@@ -36,10 +36,55 @@ BOOST_AUTO_TEST_CASE(dilithium_pubkey_derivation)
     // Get public key
     CDilithiumPubKey pubkey = key.GetPubKey();
     BOOST_CHECK(pubkey.IsValid());
+    BOOST_CHECK(pubkey.IsFullyValid());
     BOOST_CHECK(pubkey.size() == CDilithiumPubKey::SIZE);
     
     // Verify the private key corresponds to the public key
     BOOST_CHECK(key.VerifyPubKey(pubkey));
+}
+
+
+BOOST_AUTO_TEST_CASE(dilithium_pubkey_isfullvalid_rejects_malformed)
+{
+    // Dilithium2 / ML-DSA-44 layout: rho(32) || t1(1280) == 1312.
+    BOOST_STATIC_ASSERT(CDilithiumPubKey::SIZE == 1312);
+    constexpr size_t RHO_SIZE = 32;
+
+    CDilithiumPubKey empty;
+    BOOST_CHECK(!empty.IsValid());
+    BOOST_CHECK(!empty.IsFullyValid());
+
+    std::vector<unsigned char> wrong_len(64, 0xab);
+    CDilithiumPubKey wrong_size(wrong_len.begin(), wrong_len.end());
+    BOOST_CHECK(!wrong_size.IsValid());
+    BOOST_CHECK(!wrong_size.IsFullyValid());
+
+    // Nonzero t1, all-zero rho.
+    std::array<unsigned char, CDilithiumPubKey::SIZE> zero_rho{};
+    zero_rho[RHO_SIZE] = 0x01;
+    CDilithiumPubKey pk_zero_rho(zero_rho.begin(), zero_rho.end());
+    BOOST_CHECK(pk_zero_rho.IsValid());
+    BOOST_CHECK(!pk_zero_rho.IsFullyValid());
+
+    // Nonzero rho, all-zero t1 (accepted by master's rho-only IsFullyValid).
+    std::array<unsigned char, CDilithiumPubKey::SIZE> zero_t1{};
+    zero_t1[0] = 0x01;
+    CDilithiumPubKey pk_zero_t1(zero_t1.begin(), zero_t1.end());
+    BOOST_CHECK(pk_zero_t1.IsValid());
+    BOOST_CHECK(!pk_zero_t1.IsFullyValid());
+
+    // Nonzero rho and t1: structural pass only.
+    std::array<unsigned char, CDilithiumPubKey::SIZE> structural{};
+    structural[0] = 0x01;
+    structural[RHO_SIZE] = 0x01;
+    CDilithiumPubKey pk_structural(structural.begin(), structural.end());
+    BOOST_CHECK(pk_structural.IsValid());
+    BOOST_CHECK(pk_structural.IsFullyValid());
+
+    // Real keygen output must remain fully valid.
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    BOOST_CHECK(key.GetPubKey().IsFullyValid());
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_raw_secret_key_to_public_key_fails_closed)
