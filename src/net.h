@@ -68,11 +68,13 @@ static constexpr auto EXTRA_BLOCK_RELAY_ONLY_PEER_INTERVAL = 5min;
  *
  * Derived from MAX_BLOCK_SERIALIZED_SIZE so a future block-size change cannot
  * silently make valid blocks unrelayable. The largest legitimate message is a
- * `block`: block weight (stripped_size * (WITNESS_SCALE_FACTOR - 1) + total_size
- * <= MAX_BLOCK_WEIGHT) caps the serialized size of any valid block - including
- * one stuffed with Dilithium witness data - strictly below
- * MAX_BLOCK_SERIALIZED_SIZE. The extra 1 MB covers message framing and any
- * non-block message. Mirrored in test_framework/messages.py.
+ * `block` (or near-full `blocktxn`): block weight
+ * (stripped_size * (WITNESS_SCALE_FACTOR - 1) + total_size <= MAX_BLOCK_WEIGHT)
+ * caps the with-witness serialized size of any valid block — including one
+ * stuffed with Dilithium witness data — strictly below MAX_BLOCK_SERIALIZED_SIZE.
+ * The extra 1 MB is headroom above that consensus buffer for non-block messages
+ * (inv/getdata peak ~1.8 MB). Payload size only; V1 headers are not counted.
+ * Mirrored in test_framework/messages.py.
  */
 static const unsigned int MAX_PROTOCOL_MESSAGE_LENGTH = MAX_BLOCK_SERIALIZED_SIZE + 1 * 1000 * 1000; // 9 MB
 static_assert(MAX_PROTOCOL_MESSAGE_LENGTH <= MAX_SIZE,
