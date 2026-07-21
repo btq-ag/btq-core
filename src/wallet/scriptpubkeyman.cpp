@@ -2470,10 +2470,12 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
             hmac.Write(&type_byte, 1);
             unsigned char I[64];
             hmac.Finalize(I);
-            const std::vector<unsigned char> seed(I, I + BTQ_DILITHIUM_SEED_SIZE);
+            std::vector<unsigned char> seed(I, I + BTQ_DILITHIUM_SEED_SIZE);
             memory_cleanse(I, sizeof(I));
 
-            if (!dilithium_key.GenerateFromEntropy(seed)) {
+            const bool ok = dilithium_key.GenerateFromEntropy(seed);
+            memory_cleanse(seed.data(), seed.size());
+            if (!ok) {
                 return util::Error{_("Error: Failed to generate Dilithium key")};
             }
 
