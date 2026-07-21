@@ -257,7 +257,7 @@ bool CheckSequenceLocksAtTip(CBlockIndex* tip,
 }
 
 // Returns the script flags which should be checked for a given block
-static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman);
+unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman);
 
 static void LimitMempoolSize(CTxMemPool& pool, CCoinsViewCache& coins_cache)
     EXCLUSIVE_LOCKS_REQUIRED(::cs_main, pool.cs)
@@ -2096,7 +2096,7 @@ public:
     }
 };
 
-static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman)
+unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman)
 {
     const Consensus::Params& consensusparams = chainman.GetConsensus();
 
@@ -2109,31 +2109,23 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     // For simplicity, always leave P2SH on, but conditionally enable WITNESS and TAPROOT
     // BTQ: Modified to conditionally include WITNESS and TAPROOT based on deployment status
     uint32_t flags{SCRIPT_VERIFY_P2SH};
-    
+
     // BTQ: Only enable Witness (SegWit) if the deployment is active
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_SEGWIT)) {
         flags |= SCRIPT_VERIFY_WITNESS;
     }
-    
+
     // BTQ: Only enable Taproot if the deployment is active
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_TAPROOT)) {
         flags |= SCRIPT_VERIFY_TAPROOT;
     }
-    
-    // BTQ: Enable Dilithium signature validation after activation height
-    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DILITHIUM)) {
-        flags |= SCRIPT_VERIFY_DILITHIUM;
-    }
 
-    // BTQ: Enable BIP360 P2MR (Pay-to-Merkle-Root) validation
-    flags |= SCRIPT_VERIFY_P2MR;
-    
+    // Exception entries completely replace the flags computed above. Any rule that
+    // must remain enforceable has to be applied *after* this override — the same
+    // pattern Bitcoin uses for DERSIG/CLTV/CSV/NULLDUMMY below.
     const auto it{consensusparams.script_flag_exceptions.find(*Assert(block_index.phashBlock))};
     if (it != consensusparams.script_flag_exceptions.end()) {
         flags = it->second;
-        // Dilithium and P2MR verification must never be disabled by exceptions
-        flags |= SCRIPT_VERIFY_DILITHIUM;
-        flags |= SCRIPT_VERIFY_P2MR;
     }
 
     // Enforce the DERSIG (BIP66) rule
@@ -2155,6 +2147,13 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_SEGWIT)) {
         flags |= SCRIPT_VERIFY_NULLDUMMY;
     }
+
+    // BTQ: Dilithium and P2MR must never be clearable via script_flag_exceptions.
+    // Keep Dilithium deployment-gated (do not force it on pre-activation heights).
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DILITHIUM)) {
+        flags |= SCRIPT_VERIFY_DILITHIUM;
+    }
+    flags |= SCRIPT_VERIFY_P2MR;
 
     return flags;
 }
