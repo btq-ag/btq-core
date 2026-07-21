@@ -2412,13 +2412,24 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
     return set_success(serror);
 }
 
-size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& witprogram, const CScriptWitness& witness)
+size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& witprogram, const CScriptWitness& witness, unsigned int flags)
 {
     if (witversion == 0) {
         if (witprogram.size() == WITNESS_V0_KEYHASH_SIZE) {
-            // BIP141 P2WPKH only. Dilithium spends must use P2MR (witness v2); a
-            // Dilithium-sized witness on v0 is not a valid Dilithium path and must
-            // not inflate the block sigop budget.
+            // Pre-DEPLOYMENT_DILITHIUM_P2MR: Dilithium-sized v0 keyhash witnesses
+            // used the historical Dilithium path and must keep DILITHIUM_SIGOP_COST
+            // so ConnectBlock accounting matches pre-fork nodes. After activation,
+            // that path is disabled — count as BIP141 P2WPKH (=1).
+            if (!(flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY)) {
+                if (witness.stack.size() >= 2 &&
+                    witness.stack[1].size() == DilithiumConstants::PUBLIC_KEY_SIZE) {
+                    return DILITHIUM_SIGOP_COST;
+                }
+                if (!witness.stack.empty() &&
+                    witness.stack[0].size() >= DilithiumConstants::SIGNATURE_SIZE) {
+                    return DILITHIUM_SIGOP_COST;
+                }
+            }
             return 1;
         }
 
@@ -2459,7 +2470,7 @@ size_t CountWitnessSigOps(const CScript& scriptSig, const CScript& scriptPubKey,
     int witnessversion;
     std::vector<unsigned char> witnessprogram;
     if (scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
-        return WitnessSigOps(witnessversion, witnessprogram, witness ? *witness : witnessEmpty);
+        return WitnessSigOps(witnessversion, witnessprogram, witness ? *witness : witnessEmpty, flags);
     }
 
     if (scriptPubKey.IsPayToScriptHash() && scriptSig.IsPushOnly()) {
@@ -2471,7 +2482,7 @@ size_t CountWitnessSigOps(const CScript& scriptSig, const CScript& scriptPubKey,
         }
         CScript subscript(data.begin(), data.end());
         if (subscript.IsWitnessProgram(witnessversion, witnessprogram)) {
-            return WitnessSigOps(witnessversion, witnessprogram, witness ? *witness : witnessEmpty);
+            return WitnessSigOps(witnessversion, witnessprogram, witness ? *witness : witnessEmpty, flags);
         }
     }
 
