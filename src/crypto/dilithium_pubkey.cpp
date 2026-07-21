@@ -35,29 +35,25 @@ bool CDilithiumPubKey::IsValid() const
 
 bool CDilithiumPubKey::IsFullyValid() const
 {
-    // BTQ-AUDIT-022: structural validation of an ML-DSA-44 public key.
+    // BTQ-AUDIT-022: cheap structural checks for an ML-DSA-44 / Dilithium2
+    // public key (rho(32) || t1(1280) == SIZE).
     //
-    // Layout is rho(32) || t1(1280 bytes). Unlike a secret key, there is NO
-    // coefficient-range check to perform: t1 is stored as a 10-bit packed field
-    // (POLYT1_PACKEDBYTES), so every correctly-sized byte string unpacks to
-    // coefficients already in [0, 2^10) and unpack_pk cannot read out of bounds.
-    // Structural validity therefore reduces to (a) correct length and (b)
-    // rejection of degenerate keys that key generation never produces. We
-    // deliberately do NOT call the verifier on a dummy signature as a "does it
-    // crash" probe: it validates nothing (a well-formed key returns "invalid"
-    // just like a malformed one) and only adds a heavy NTT to every check.
+    // t1 is 10-bit packed, so any SIZE-byte string unpacks in-bounds; there is
+    // no coefficient-range check analogous to secp256k1 curve membership.
+    // Random non-degenerate blobs still pass — this rejects only empty /
+    // all-zero and the all-zero-rho / all-zero-t1 encodings that keygen does
+    // not produce. We deliberately do NOT probe with a dummy verify() call.
     if (!IsValid()) {
-        return false;   // wrong length or all-zero blob
+        return false;   // all-zero blob (wrong-length Set() also clears to this)
     }
-    // Reject an all-zero rho (the public seed): never emitted by keygen, and a
-    // cheap DoS/confusion input.
+    // Reject all-zero rho (public seed): not produced by keygen.
     bool rho_nonzero = false;
     for (size_t i = 0; i < 32; ++i) {
         if (vch[i] != 0) { rho_nonzero = true; break; }
     }
     if (!rho_nonzero) return false;
-    // Reject an all-zero t1: a real keypair's t1 = Power2Round(A*s1 + s2) is
-    // never identically zero, so this catches structurally degenerate keys.
+    // Reject all-zero t1: Power2Round(A*s1+s2) is not expected to be identically
+    // zero for a keygen output; treat that encoding as degenerate.
     for (size_t i = 32; i < SIZE; ++i) {
         if (vch[i] != 0) return true;
     }

@@ -315,8 +315,8 @@ public:
     bool IsValid() const;
 
     /**
-     * Fully validate whether this is a valid Dilithium public key.
-     * This performs more extensive validation than IsValid().
+     * Structural Dilithium pubkey check beyond IsValid(): reject all-zero
+     * rho or all-zero t1. Not a cryptographic membership proof.
      */
     bool IsFullyValid() const;
 

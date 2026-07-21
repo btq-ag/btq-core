@@ -101,8 +101,9 @@ bool static IsValidDilithiumPubKey(const valtype &vchPubKey) {
     if (vchPubKey.size() != CDilithiumPubKey::SIZE) {
         return false;
     }
-    CDilithiumPubKey pubkey(vchPubKey);
-    return pubkey.IsValid();
+    // Size + structural checks (nonzero rho and nonzero t1). Used by
+    // OP_CHECKSIGDILITHIUM* (via EvalChecksigDilithium) and OP_DILITHIUM_PUBKEY.
+    return CDilithiumPubKey(vchPubKey).IsFullyValid();
 }
 
 /** Helper for OP_CHECKSIGDILITHIUM and OP_CHECKSIGDILITHIUMVERIFY.
@@ -116,11 +117,8 @@ static bool EvalChecksigDilithium(const valtype& sig, const valtype& pubkey, CSc
         return set_error(serror, SCRIPT_ERR_SIG_DER);
     }
 
-    // Check public key encoding
+    // Check public key encoding / structural validity (size, rho, t1).
     if (!IsValidDilithiumPubKey(pubkey)) {
-        return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
-    }
-    if (!CDilithiumPubKey(pubkey).IsFullyValid()) {
         return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
     }
 
