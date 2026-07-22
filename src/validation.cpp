@@ -1917,6 +1917,13 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
                 // splitting the network between upgraded and
                 // non-upgraded nodes by banning CONSENSUS-failing
                 // data providers.
+                //
+                // BTQ: SCRIPT_VERIFY_DILITHIUM is in MANDATORY_SCRIPT_VERIFY_FLAGS
+                // so it survives this mask. That is required for the testnet
+                // policy-ahead SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY regime: a
+                // consensus-valid legacy Dilithium spend must soft-fail as
+                // TX_NOT_STANDARD here, not lose Dilithium on the retry and
+                // come back as TX_CONSENSUS (Misbehaving).
                 CScriptCheck check2(txdata.m_spent_outputs[i], tx, i,
                         flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheSigStore, &txdata);
                 if (check2())

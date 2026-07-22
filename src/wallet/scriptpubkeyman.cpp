@@ -1140,8 +1140,12 @@ bool LegacyScriptPubKeyMan::GetDilithiumKeyByHash(const DilithiumPKHash& address
 
 bool LegacyScriptPubKeyMan::GetDilithiumPubKey(const DilithiumPKHash& address, CDilithiumPubKey& pubkey) const
 {
-    // The store keeps only private keys (encrypted wallets hold a dummy
-    // CPubKey), so derive the public key from the private key.
+    // Encrypted legacy wallets store only a dummy CPubKey alongside the
+    // Dilithium ciphertext (unlike ECDSA, which keeps a real pubkey in
+    // mapCryptedKeys). Derive the Dilithium pubkey from the private key,
+    // which requires the wallet to be unlocked. Callers that need pubkey
+    // metadata while locked (e.g. some PSBT fill paths) will fail until a
+    // future wallet-format change persists CDilithiumPubKey with the ciphertext.
     CDilithiumKey key;
     if (!GetDilithiumKeyByHash(address, key)) {
         return false;

@@ -202,6 +202,10 @@ public:
         // reset) would fork upgraded nodes away from non-upgraded ones. Until a
         // height is chosen the restriction is policy-only on testnet (non-standard
         // to relay, refused by the wallet) but not yet enforced in blocks.
+        // Soft-reject classification relies on SCRIPT_VERIFY_DILITHIUM being
+        // mandatory while SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY stays non-mandatory
+        // — otherwise CheckInputScripts would Misbehave peers that relay still-
+        // consensus-valid legacy Dilithium spends (see policy.h).
         consensus.nDilithiumP2MRHeight = std::numeric_limits<int>::max();
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;

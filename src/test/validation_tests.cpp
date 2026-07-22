@@ -152,33 +152,36 @@ BOOST_AUTO_TEST_CASE(test_assumeutxo)
 BOOST_AUTO_TEST_CASE(script_flag_exceptions_cannot_clear_dilithium_p2mr)
 {
     // BTQ currently ships an empty script_flag_exceptions map, but the
-    // override mechanism must not be able to clear Dilithium/P2MR if entries
-    // are ever added (including Bitcoin-lineage hashes).
+    // override mechanism must not be able to clear Dilithium / P2MR /
+    // P2MR_ONLY if entries are ever added (including Bitcoin-lineage hashes).
     auto& chainman = *Assert(m_node.chainman);
     Consensus::Params& consensus = const_cast<Consensus::Params&>(chainman.GetConsensus());
 
     uint256 exception_hash = uint256S("0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-    // Exception payload with neither Dilithium nor P2MR bits.
+    // Exception payload with none of the Dilithium / P2MR bits.
     consensus.script_flag_exceptions[exception_hash] = SCRIPT_VERIFY_P2SH;
 
     CBlockIndex index;
     index.nHeight = 0;
     index.phashBlock = &exception_hash;
 
-    // Height 0 is before nDilithiumHeight (1) on regtest: P2MR forced, Dilithium not.
+    // Height 0 is before nDilithiumHeight (1) and nDilithiumP2MRHeight (1) on
+    // regtest: P2MR forced, Dilithium / P2MR_ONLY not.
     {
         const unsigned flags = GetBlockScriptFlags(index, chainman);
         BOOST_CHECK(flags & SCRIPT_VERIFY_P2MR);
         BOOST_CHECK(!(flags & SCRIPT_VERIFY_DILITHIUM));
+        BOOST_CHECK(!(flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY));
         BOOST_CHECK(flags & SCRIPT_VERIFY_P2SH); // from exception payload
     }
 
-    // After Dilithium activation height, Dilithium must also be forced back on.
+    // After both activation heights, all three bits must be forced back on.
     index.nHeight = 1;
     {
         const unsigned flags = GetBlockScriptFlags(index, chainman);
         BOOST_CHECK(flags & SCRIPT_VERIFY_P2MR);
         BOOST_CHECK(flags & SCRIPT_VERIFY_DILITHIUM);
+        BOOST_CHECK(flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY);
     }
 
     // Cleanup so later tests see the stock empty map.

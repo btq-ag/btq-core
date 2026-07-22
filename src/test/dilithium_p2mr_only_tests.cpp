@@ -37,6 +37,18 @@ BOOST_AUTO_TEST_CASE(standard_flags_include_p2mr_only_policy)
     BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY);
     BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY));
     BOOST_CHECK_EQUAL(SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY, (1U << 23));
+
+    // Dilithium must be mandatory so the CheckInputScripts NOT_MANDATORY retry
+    // keeps it enabled when only P2MR_ONLY failed.
+    BOOST_CHECK(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
+    BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
+
+    // Simulated NOT_MANDATORY retry mask (validation.cpp CheckInputScripts).
+    const uint32_t retry_flags =
+        STANDARD_SCRIPT_VERIFY_FLAGS & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS;
+    BOOST_CHECK_EQUAL(retry_flags, MANDATORY_SCRIPT_VERIFY_FLAGS);
+    BOOST_CHECK(retry_flags & SCRIPT_VERIFY_DILITHIUM);
+    BOOST_CHECK(!(retry_flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY));
 }
 
 BOOST_AUTO_TEST_CASE(chainparams_dilithium_p2mr_heights)
@@ -192,6 +204,58 @@ BOOST_AUTO_TEST_CASE(legacy_dilithium_destinations_not_valid_payments)
     BOOST_CHECK(!IsValidDestination(DilithiumWitnessV0KeyHash{pubkey}));
     BOOST_CHECK(!IsValidDestination(DilithiumPubKeyDestination{pubkey}));
     BOOST_CHECK(IsValidDestination(WitnessV2P2MR{uint256::ONE}));
+}
+
+BOOST_AUTO_TEST_CASE(p2mr_only_policy_failure_survives_mandatory_retry)
+{
+    // Lock the testnet soft-reject invariant end-to-end at the script layer:
+    // a consensus-valid legacy Dilithium spend must fail STANDARD (P2MR_ONLY)
+    // but still verify under the NOT_MANDATORY retry mask (mandatory flags,
+    // which keep Dilithium and drop P2MR_ONLY). If Dilithium were also
+    // stripped on the retry, VerifyScript would fail for a different reason
+    // and CheckInputScripts would return TX_CONSENSUS → Misbehaving(100).
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CDilithiumPubKey pubkey = key.GetPubKey();
+
+    CMutableTransaction spending_tx;
+    spending_tx.nVersion = 1;
+    spending_tx.vin.resize(1);
+    spending_tx.vin[0].prevout = COutPoint{uint256::ONE, 0};
+    spending_tx.vout.emplace_back(1, CScript() << OP_TRUE);
+    const CAmount amount{1};
+
+    const CScript script_pubkey = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
+    const uint256 sighash = SignatureHash(script_pubkey, spending_tx, 0, SIGHASH_ALL, amount, SigVersion::BASE);
+    std::vector<unsigned char> signature;
+    BOOST_REQUIRE(key.Sign(sighash, signature));
+    signature.push_back(SIGHASH_ALL);
+    spending_tx.vin[0].scriptSig = CScript() << signature;
+    const CTransaction ctx{spending_tx};
+
+    ScriptError err{SCRIPT_ERR_OK};
+    BOOST_CHECK(!VerifyScript(
+        ctx.vin[0].scriptSig, script_pubkey, nullptr, STANDARD_SCRIPT_VERIFY_FLAGS,
+        TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL), &err));
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+
+    const uint32_t retry_flags =
+        STANDARD_SCRIPT_VERIFY_FLAGS & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS;
+    err = SCRIPT_ERR_OK;
+    BOOST_CHECK(VerifyScript(
+        ctx.vin[0].scriptSig, script_pubkey, nullptr, retry_flags,
+        TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL), &err));
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_OK);
+
+    // Negative control: clearing Dilithium on the retry (the old bug) fails
+    // for a non-P2MR_ONLY reason and would be misclassified as consensus.
+    err = SCRIPT_ERR_OK;
+    BOOST_CHECK(!VerifyScript(
+        ctx.vin[0].scriptSig, script_pubkey, nullptr,
+        retry_flags & ~SCRIPT_VERIFY_DILITHIUM,
+        TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL), &err));
+    BOOST_CHECK(err != SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+    BOOST_CHECK(err != SCRIPT_ERR_OK);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

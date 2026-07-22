@@ -2,12 +2,19 @@
 # Copyright (c) 2026 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Legacy (BDB) wallets must be able to spend Dilithium coins (issue #74).
+"""Legacy (BDB) wallets must receive and spend Dilithium via P2MR.
 
-Covers the repro matrix from the issue:
-  - legacy, plain:     receive OK, spend must work
-  - legacy, encrypted: receive OK, spend must work
-  - ECDSA coin in a separate legacy wallet still spends (control)
+After the P2MR-only Dilithium work (#64), getnewdilithiumaddress creates a
+single-leaf P2MR receive (not DILITHIUM_PUBKEYHASH). This functional test
+locks the umbrella behaviour:
+
+  - legacy BDB wallets can create P2MR Dilithium receives
+  - plain and encrypted legacy wallets can spend those UTXOs
+  - ECDSA coins in a separate legacy wallet still spend (control)
+
+The SigningProvider Dilithium overrides for historical DILITHIUM_PUBKEYHASH
+spends (issue #74) are covered by
+wallet/test/scriptpubkeyman_tests/legacy_dilithium_signing_provider_produces_signature.
 """
 
 from decimal import Decimal
@@ -27,6 +34,14 @@ class WalletDilithiumLegacySpendTest(BTQTestFramework):
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
         self.skip_if_no_bdb()
+
+    def new_dilithium_address(self, wallet):
+        """getnewdilithiumaddress returns a P2MR object after #64."""
+        result = wallet.getnewdilithiumaddress()
+        assert isinstance(result, dict), f"expected P2MR object, got {type(result)}"
+        assert "address" in result and result["address"]
+        assert "p2mr_id" in result and result["p2mr_id"]
+        return result["address"]
 
     def fund_address(self, address, amount):
         txid = self.funding.sendtoaddress(address, amount)
@@ -72,29 +87,29 @@ class WalletDilithiumLegacySpendTest(BTQTestFramework):
         self.funding = node.get_wallet_rpc("funding")
         self.generatetoaddress(node, 110, self.funding.getnewaddress())
 
-        self.log.info("Legacy plain wallet: receive Dilithium coins")
+        self.log.info("Legacy plain wallet: receive Dilithium P2MR coins")
         node.createwallet(wallet_name="legacy_plain", descriptors=False)
         plain = node.get_wallet_rpc("legacy_plain")
-        addr = plain.getnewdilithiumaddress()
+        addr = self.new_dilithium_address(plain)
         info = plain.getaddressinfo(addr)
         assert info["ismine"], "legacy_plain: dilithium address not ismine"
         assert info["solvable"], "legacy_plain: dilithium address not solvable"
         self.fund_address(addr, Decimal("10"))
         assert_equal(plain.getbalance(), Decimal("10"))
 
-        self.log.info("Legacy plain wallet: spend Dilithium coins (issue #74)")
+        self.log.info("Legacy plain wallet: spend Dilithium P2MR coins")
         self.assert_spend_roundtrip(plain, "legacy_plain")
 
-        self.log.info("Legacy encrypted wallet: receive Dilithium coins")
+        self.log.info("Legacy encrypted wallet: receive Dilithium P2MR coins")
         node.createwallet(wallet_name="legacy_enc", descriptors=False)
         enc = node.get_wallet_rpc("legacy_enc")
         enc.encryptwallet("pass")
         enc.walletpassphrase("pass", 600)
-        enc_addr = enc.getnewdilithiumaddress()
+        enc_addr = self.new_dilithium_address(enc)
         self.fund_address(enc_addr, Decimal("10"))
         assert_equal(enc.getbalance(), Decimal("10"))
 
-        self.log.info("Legacy encrypted wallet: spend Dilithium coins (issue #74)")
+        self.log.info("Legacy encrypted wallet: spend Dilithium P2MR coins")
         self.assert_spend_roundtrip(enc, "legacy_enc")
 
         self.log.info("Legacy encrypted wallet: locked wallet cannot spend Dilithium")
@@ -121,7 +136,7 @@ class WalletDilithiumLegacySpendTest(BTQTestFramework):
         self.funding = node.get_wallet_rpc("funding")
         node.loadwallet("legacy_plain")
         plain = node.get_wallet_rpc("legacy_plain")
-        addr2 = plain.getnewdilithiumaddress()
+        addr2 = self.new_dilithium_address(plain)
         self.fund_address(addr2, Decimal("5"))
         balance = plain.getbalance()
         assert_greater_than(balance, Decimal("0"))

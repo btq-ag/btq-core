@@ -92,6 +92,15 @@ static constexpr unsigned int EXTRA_DESCENDANT_TX_SIZE_LIMIT{10000};
  * Note that this does not affect consensus validity; see GetBlockScriptFlags()
  * for that.
  */
+// SCRIPT_VERIFY_DILITHIUM is mandatory for *classification* once Dilithium is
+// active: CheckInputScripts retries failed STANDARD checks with
+// ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, and TX_CONSENSUS results Misbehave(100)
+// peers. Dilithium must survive that retry so that a policy-only failure of
+// SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY (e.g. testnet today, where
+// nDilithiumP2MRHeight = INT_MAX) is reported as TX_NOT_STANDARD rather than
+// being reclassified as a mandatory Dilithium/pubkeytype failure.
+// Block consensus still gates Dilithium via GetBlockScriptFlags /
+// DEPLOYMENT_DILITHIUM; this constant only affects mempool/P2P classification.
 static constexpr unsigned int MANDATORY_SCRIPT_VERIFY_FLAGS{SCRIPT_VERIFY_P2SH |
                                                              SCRIPT_VERIFY_DERSIG |
                                                              SCRIPT_VERIFY_NULLDUMMY |
@@ -99,13 +108,20 @@ static constexpr unsigned int MANDATORY_SCRIPT_VERIFY_FLAGS{SCRIPT_VERIFY_P2SH |
                                                              SCRIPT_VERIFY_CHECKSEQUENCEVERIFY |
                                                              SCRIPT_VERIFY_WITNESS |
                                                              SCRIPT_VERIFY_TAPROOT |
-                                                             SCRIPT_VERIFY_P2MR};
+                                                             SCRIPT_VERIFY_P2MR |
+                                                             SCRIPT_VERIFY_DILITHIUM};
 
 /**
  * Standard script verification flags that standard transactions will comply
  * with. However we do not ban/disconnect nodes that forward txs violating
  * the additional (non-mandatory) rules here, to improve forwards and
  * backwards compatability.
+ *
+ * SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY stays non-mandatory on purpose: on networks
+ * where the consensus height is not yet scheduled (testnet), upgraded nodes
+ * must soft-reject legacy Dilithium spends from the mempool without banning
+ * peers that still relay them (those spends remain consensus-valid in blocks
+ * until nDilithiumP2MRHeight activates).
  */
 static constexpr unsigned int STANDARD_SCRIPT_VERIFY_FLAGS{MANDATORY_SCRIPT_VERIFY_FLAGS |
                                                              SCRIPT_VERIFY_STRICTENC |
@@ -117,7 +133,6 @@ static constexpr unsigned int STANDARD_SCRIPT_VERIFY_FLAGS{MANDATORY_SCRIPT_VERI
                                                              SCRIPT_VERIFY_LOW_S |
                                                              SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM |
                                                              SCRIPT_VERIFY_WITNESS_PUBKEYTYPE |
-                                                             SCRIPT_VERIFY_DILITHIUM |
                                                              SCRIPT_VERIFY_CONST_SCRIPTCODE |
                                                              SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION |
                                                              SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS |
