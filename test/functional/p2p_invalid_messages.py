@@ -136,6 +136,19 @@ class InvalidMessagesTest(BTQTestFramework):
         self.nodes[0].disconnect_p2ps()
 
     def test_size(self):
+        self.log.info("Test message at maximum payload size is accepted")
+        # Boundary check: a message exactly at MAX_PROTOCOL_MESSAGE_LENGTH must
+        # not be rejected. This keeps the cap honest against the 8 MB consensus
+        # block size (a full block, e.g. one stuffed with Dilithium witness
+        # data, must always fit).
+        conn = self.nodes[0].add_p2p_connection(P2PDataStore())
+        msg_limit = msg_unrecognized(str_data="d" * VALID_DATA_LIMIT)
+        assert_equal(len(conn.build_message(msg_limit)) - 24, MAX_PROTOCOL_MESSAGE_LENGTH)  # minus header
+        conn.send_message(msg_limit)
+        conn.sync_with_ping(timeout=60)
+        assert conn.is_connected
+        self.nodes[0].disconnect_p2ps()
+
         self.log.info("Test message with oversized payload disconnects peer")
         conn = self.nodes[0].add_p2p_connection(P2PDataStore())
         with self.nodes[0].assert_debug_log([

@@ -55,7 +55,12 @@ def eval_int_expr(node, names):
     raise ValueError(f"unsupported integer expression: {node!r}")
 
 
-def cpp_constant(path, name):
+def cpp_constant(path, name, names=None):
+    """Evaluate a C++ integer constant initializer.
+
+    `names` supplies identifiers referenced by the expression (e.g. when
+    MAX_PROTOCOL_MESSAGE_LENGTH is defined in terms of MAX_BLOCK_SERIALIZED_SIZE).
+    """
     text = (REPO_ROOT / path).read_text(encoding="utf8")
     match = re.search(
         rf"\b{name}\b\s*=\s*(?P<expr>[^;]+);",
@@ -65,7 +70,7 @@ def cpp_constant(path, name):
         raise ValueError(f"could not find {name} in {path}")
     expr = match.group("expr").split("//", 1)[0].strip()
     tree = parse(expr, mode="eval")
-    return eval_int_expr(tree.body, {})
+    return eval_int_expr(tree.body, dict(names or {}))
 
 
 def cpp_regex_int(path, pattern):
@@ -162,7 +167,9 @@ def check_equal(errors, label, actual, expected):
 def main():
     errors = []
 
+    max_block_serialized_size = cpp_constant("src/consensus/consensus.h", "MAX_BLOCK_SERIALIZED_SIZE")
     consensus = {
+        "MAX_BLOCK_SERIALIZED_SIZE": max_block_serialized_size,
         "MAX_BLOCK_WEIGHT": cpp_constant("src/consensus/consensus.h", "MAX_BLOCK_WEIGHT"),
         "MAX_BLOCK_SIGOPS_COST": cpp_constant("src/consensus/consensus.h", "MAX_BLOCK_SIGOPS_COST"),
         "WITNESS_SCALE_FACTOR": cpp_constant("src/consensus/consensus.h", "WITNESS_SCALE_FACTOR"),
@@ -170,11 +177,23 @@ def main():
         "MAX_SCRIPT_ELEMENT_SIZE": cpp_constant("src/script/script.h", "MAX_SCRIPT_ELEMENT_SIZE"),
         "DILITHIUM_SIGOP_COST": cpp_constant("src/script/script.h", "DILITHIUM_SIGOP_COST"),
         "MAX_FUTURE_BLOCK_TIME": cpp_constant("src/chain.h", "MAX_FUTURE_BLOCK_TIME"),
-        "MAX_PROTOCOL_MESSAGE_LENGTH": cpp_constant("src/net.h", "MAX_PROTOCOL_MESSAGE_LENGTH"),
+        # Derived as MAX_BLOCK_SERIALIZED_SIZE + 1 MB in src/net.h.
+        "MAX_PROTOCOL_MESSAGE_LENGTH": cpp_constant(
+            "src/net.h",
+            "MAX_PROTOCOL_MESSAGE_LENGTH",
+            {"MAX_BLOCK_SERIALIZED_SIZE": max_block_serialized_size},
+        ),
         "INITIAL_SUBSIDY_BTQ": cpp_regex_int("src/validation.cpp", r"CAmount nSubsidy = (\d+) \* COIN;"),
         "REGTEST_HALVING_INTERVAL": cpp_regex_int("src/kernel/chainparams.cpp", r"class CRegTestParams[\s\S]*?consensus\.nSubsidyHalvingInterval = (\d+);"),
         "REGTEST_GENESIS_TIME": cpp_regex_int("src/kernel/chainparams.cpp", r"class CRegTestParams[\s\S]*?genesis = CreateGenesisBlock\([^;]*?,\s*(\d+),\s*3,\s*0x"),
     }
+
+    check_equal(
+        errors,
+        "net.h MAX_PROTOCOL_MESSAGE_LENGTH",
+        consensus["MAX_PROTOCOL_MESSAGE_LENGTH"],
+        consensus["MAX_BLOCK_SERIALIZED_SIZE"] + 1_000_000,
+    )
 
     messages = python_constants("test/functional/test_framework/messages.py")
     blocktools = python_constants("test/functional/test_framework/blocktools.py")
