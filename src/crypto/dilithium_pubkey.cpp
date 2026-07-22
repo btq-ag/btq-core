@@ -35,14 +35,27 @@ bool CDilithiumPubKey::IsValid() const
 
 bool CDilithiumPubKey::IsFullyValid() const
 {
+    // BTQ-AUDIT-022: cheap structural checks for an ML-DSA-44 / Dilithium2
+    // public key (rho(32) || t1(1280) == SIZE).
+    //
+    // t1 is 10-bit packed, so any SIZE-byte string unpacks in-bounds; there is
+    // no coefficient-range check analogous to secp256k1 curve membership.
+    // Random non-degenerate blobs still pass — this rejects only empty /
+    // all-zero and the all-zero-rho / all-zero-t1 encodings that keygen does
+    // not produce. We deliberately do NOT probe with a dummy verify() call.
     if (!IsValid()) {
-        return false;
+        return false;   // all-zero blob (wrong-length Set() also clears to this)
     }
-    // Reject pubkeys whose rho prefix is all-zero (malformed / cheap DoS bait).
+    // Reject all-zero rho (public seed): not produced by keygen.
+    bool rho_nonzero = false;
     for (size_t i = 0; i < 32; ++i) {
-        if (vch[i] != 0) {
-            return true;
-        }
+        if (vch[i] != 0) { rho_nonzero = true; break; }
+    }
+    if (!rho_nonzero) return false;
+    // Reject all-zero t1: Power2Round(A*s1+s2) is not expected to be identically
+    // zero for a keygen output; treat that encoding as degenerate.
+    for (size_t i = 32; i < SIZE; ++i) {
+        if (vch[i] != 0) return true;
     }
     return false;
 }
