@@ -53,6 +53,7 @@ NODE_WITNESS = (1 << 3)
 NODE_COMPACT_FILTERS = (1 << 6)
 NODE_NETWORK_LIMITED = (1 << 10)
 NODE_P2P_V2 = (1 << 11)
+NODE_BTQ_DILITHIUM = (1 << 25)  # mirrors src/protocol.h; identification only
 
 MSG_TX = 1
 MSG_BLOCK = 2
