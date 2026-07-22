@@ -257,7 +257,7 @@ bool CheckSequenceLocksAtTip(CBlockIndex* tip,
 }
 
 // Returns the script flags which should be checked for a given block
-unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman);
+// GetBlockScriptFlags is declared in validation.h (exported for unit tests).
 
 static void LimitMempoolSize(CTxMemPool& pool, CCoinsViewCache& coins_cache)
     EXCLUSIVE_LOCKS_REQUIRED(::cs_main, pool.cs)

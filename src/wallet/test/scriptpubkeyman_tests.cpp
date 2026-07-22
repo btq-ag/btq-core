@@ -258,8 +258,10 @@ BOOST_AUTO_TEST_CASE(dilithium_encrypt_wallet_roundtrip)
     BOOST_CHECK(decrypted_key == plain_key);
 }
 
-// Issue #74: LegacyScriptPubKeyMan must implement SigningProvider Dilithium lookups
-// so ProduceSignature can sign DILITHIUM_PUBKEYHASH inputs.
+// Issue #74 / #75: LegacyScriptPubKeyMan must implement SigningProvider Dilithium
+// lookups. After #64, SignStep only signs Dilithium inside P2MR_TAPSCRIPT (BASE
+// DILITHIUM_PUBKEYHASH returns false immediately), but P2MR leaf signing still
+// calls GetDilithiumKeyByHash / GetDilithiumPubKey on the legacy keyman.
 BOOST_AUTO_TEST_CASE(legacy_dilithium_signing_provider_produces_signature)
 {
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
@@ -267,7 +269,6 @@ BOOST_AUTO_TEST_CASE(legacy_dilithium_signing_provider_produces_signature)
 
     CDilithiumKey dilithium_key;
     CDilithiumPubKey dilithium_pubkey;
-    CScript script_pubkey;
     DilithiumPKHash key_hash;
     {
         LOCK(keyman.cs_KeyStore);
@@ -279,7 +280,6 @@ BOOST_AUTO_TEST_CASE(legacy_dilithium_signing_provider_produces_signature)
         key_hash = DilithiumPKHash(dilithium_pubkey);
         const CKeyID key_id = CKeyID(dilithium_pubkey.GetID());
         BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, dilithium_key));
-        script_pubkey = GetScriptForDestination(key_hash);
     }
 
     CDilithiumPubKey looked_up_pubkey;
@@ -289,15 +289,27 @@ BOOST_AUTO_TEST_CASE(legacy_dilithium_signing_provider_produces_signature)
     BOOST_REQUIRE(keyman.GetDilithiumKeyByHash(key_hash, looked_up_key));
     BOOST_CHECK(looked_up_key == dilithium_key);
 
+    KeyOriginInfo origin;
+    // Origin may be absent for non-HD keys; the override must still be callable.
+    (void)keyman.GetDilithiumKeyOrigin(key_hash, origin);
+
+    // LegacySigningProvider forwards pubkeys/origins but never private keys.
+    const LegacySigningProvider hiding{keyman};
+    CDilithiumPubKey hiding_pubkey;
+    BOOST_REQUIRE(hiding.GetDilithiumPubKey(key_hash, hiding_pubkey));
+    BOOST_CHECK(hiding_pubkey == dilithium_pubkey);
+    CDilithiumKey hiding_key;
+    BOOST_CHECK(!hiding.GetDilithiumKeyByHash(key_hash, hiding_key));
+
+    // BASE Dilithium P2PKH is intentionally unsatisfiable after P2MR-only.
+    const CScript script_pubkey = GetScriptForDestination(key_hash);
     CMutableTransaction spending_tx;
     spending_tx.vin.resize(1);
     spending_tx.vout.emplace_back(1 * COIN, CScript() << OP_TRUE);
     MutableTransactionSignatureCreator creator{spending_tx, 0, 1 * COIN, SIGHASH_ALL};
     SignatureData sigdata;
-    BOOST_REQUIRE(ProduceSignature(keyman, creator, script_pubkey, sigdata));
-    BOOST_CHECK(sigdata.complete);
-    BOOST_REQUIRE_EQUAL(sigdata.dilithium_signatures.size(), 1);
-    BOOST_CHECK(sigdata.dilithium_signatures.find(key_hash) != sigdata.dilithium_signatures.end());
+    BOOST_CHECK(!ProduceSignature(keyman, creator, script_pubkey, sigdata));
+    BOOST_CHECK(!sigdata.complete);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
