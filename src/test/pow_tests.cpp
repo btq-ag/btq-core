@@ -48,11 +48,14 @@ BOOST_AUTO_TEST_CASE(get_next_work_pow_limit)
     BOOST_CHECK(PermittedDifficultyTransition(consensus, pindexLast.nHeight+1, pindexLast.nBits, expected_nbits));
 }
 
-/* Test the constraint on the lower bound for actual time taken */
+/* Test the constraint on the lower bound for actual time taken.
+ * Mainnet activates LWMA from block 1, so restore a legacy window locally:
+ * the ±4x transition bounds only apply to heights below nLWMAHeight. */
 BOOST_AUTO_TEST_CASE(get_next_work_lower_limit_actual)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::BTQMAIN);
-    const auto& consensus = chainParams->GetConsensus();
+    Consensus::Params consensus = chainParams->GetConsensus();
+    consensus.nLWMAHeight = 300000;
     int64_t nLastRetargetTime = 1279008237; // Block #66528
     CBlockIndex pindexLast;
     pindexLast.nHeight = consensus.DifficultyAdjustmentInterval() - 1;
@@ -66,11 +69,13 @@ BOOST_AUTO_TEST_CASE(get_next_work_lower_limit_actual)
     BOOST_CHECK(!PermittedDifficultyTransition(consensus, pindexLast.nHeight+1, pindexLast.nBits, invalid_nbits));
 }
 
-/* Test the constraint on the upper bound for actual time taken */
+/* Test the constraint on the upper bound for actual time taken.
+ * Local legacy window for the same reason as the lower-limit case above. */
 BOOST_AUTO_TEST_CASE(get_next_work_upper_limit_actual)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::BTQMAIN);
-    const auto& consensus = chainParams->GetConsensus();
+    Consensus::Params consensus = chainParams->GetConsensus();
+    consensus.nLWMAHeight = 300000;
     int64_t nLastRetargetTime = 1263163443; // NOTE: Not an actual block time
     CBlockIndex pindexLast;
     pindexLast.nHeight = consensus.DifficultyAdjustmentInterval() - 1;
