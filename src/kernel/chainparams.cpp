@@ -116,7 +116,9 @@ public:
 
         // Pre-launch floor: tied to the remined genesis block (see assert below).
         // Rotate both values at each tagged release (see doc/release-process.md).
-        consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000000000000010002");
+        // 0x49d414 is GetBlockProof(genesis) for nBits 0x1e0377ae; the previous
+        // 0x10002 predated the genesis remine and was below one block's work.
+        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000000000049d414");
         consensus.defaultAssumeValid = uint256S("0x000003194a90d8d8eff8b39a7ad4e2490729b97a6772b7f4c4cb8887dffd1ae4");
 
         pchMessageStart[0] = 0xf1;
