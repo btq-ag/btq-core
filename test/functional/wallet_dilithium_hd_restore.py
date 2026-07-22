@@ -2,7 +2,7 @@
 # Copyright (c) 2026 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test Dilithium HD wallet: same seed must yield the same Dilithium addresses."""
+"""Test Dilithium HD wallet: same seed must yield the same Dilithium P2MR addresses."""
 
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import assert_equal, assert_raises_rpc_error
@@ -21,6 +21,11 @@ class WalletDilithiumHDRestoreTest(BTQTestFramework):
         self.skip_if_no_wallet()
         self.skip_if_no_bdb()
 
+    def dilithium_receive(self, wallet):
+        created = wallet.getnewdilithiumaddress()
+        assert isinstance(created, dict), created
+        return created
+
     def run_test(self):
         node = self.nodes[0]
         self.generate(node, 101)
@@ -33,23 +38,26 @@ class WalletDilithiumHDRestoreTest(BTQTestFramework):
         w1 = node.get_wallet_rpc("w1")
         w1.sethdseed(False, seed_wif)
 
-        addr1 = w1.getnewdilithiumaddress()
-        addr2 = w1.getnewdilithiumaddress()
+        created1 = self.dilithium_receive(w1)
+        created2 = self.dilithium_receive(w1)
+        addr1 = created1["address"]
+        addr2 = created2["address"]
         assert addr1 != addr2
 
         msg = "dilithium hd restore test"
         sig = w1.signmessagewithdilithium(addr1, msg)
         assert w1.verifydilithiumsignature(msg, addr1, sig)
 
-        self.log.info("Create w2 with the same seed; first Dilithium address must match w1")
+        self.log.info("Create w2 with the same seed; first Dilithium P2MR address must match w1")
         node.createwallet("w2", descriptors=False, blank=True)
         w2 = node.get_wallet_rpc("w2")
         w2.sethdseed(False, seed_wif)
 
-        addr1_restored = w2.getnewdilithiumaddress()
-        assert_equal(addr1, addr1_restored)
+        created1_restored = self.dilithium_receive(w2)
+        assert_equal(addr1, created1_restored["address"])
+        assert_equal(created1["merkle_root"], created1_restored["merkle_root"])
 
-        assert w2.verifydilithiumsignature(msg, addr1_restored, sig)
+        assert w2.verifydilithiumsignature(msg, created1_restored["address"], sig)
 
         self.log.info("getnewdilithiumaddress on blank wallet without HD seed must fail")
         node.createwallet("blank", descriptors=False, blank=True)

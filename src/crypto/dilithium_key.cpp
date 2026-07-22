@@ -289,7 +289,9 @@ void CDilithiumExtKey::Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE])
 
     // Regenerate the expanded keypair from the seed.
     std::vector<unsigned char> seed_vec(seed.begin(), seed.end());
-    if (!key.GenerateFromEntropy(seed_vec)) {
+    const bool ok = key.GenerateFromEntropy(seed_vec);
+    memory_cleanse(seed_vec.data(), seed_vec.size());
+    if (!ok) {
         key = CDilithiumKey();
     }
 }
@@ -333,7 +335,9 @@ bool CDilithiumExtKey::Derive(CDilithiumExtKey& out, unsigned int child_index) c
 
     // Expand the seed into the full keypair.
     std::vector<unsigned char> child_seed_vec(out.seed.begin(), out.seed.end());
-    if (!out.key.GenerateFromEntropy(child_seed_vec)) {
+    const bool ok = out.key.GenerateFromEntropy(child_seed_vec);
+    memory_cleanse(child_seed_vec.data(), child_seed_vec.size());
+    if (!ok) {
         return false;
     }
     return out.key.IsValid();
@@ -371,7 +375,9 @@ void CDilithiumExtKey::SetSeed(Span<const std::byte> hd_seed)
     nChild = 0;
 
     std::vector<unsigned char> seed_vec(seed.begin(), seed.end());
-    if (!key.GenerateFromEntropy(seed_vec)) {
+    const bool ok = key.GenerateFromEntropy(seed_vec);
+    memory_cleanse(seed_vec.data(), seed_vec.size());
+    if (!ok) {
         key = CDilithiumKey();
     }
 }

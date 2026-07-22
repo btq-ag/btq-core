@@ -257,7 +257,7 @@ bool CheckSequenceLocksAtTip(CBlockIndex* tip,
 }
 
 // Returns the script flags which should be checked for a given block
-static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman);
+// GetBlockScriptFlags is declared in validation.h (exported for unit tests).
 
 static void LimitMempoolSize(CTxMemPool& pool, CCoinsViewCache& coins_cache)
     EXCLUSIVE_LOCKS_REQUIRED(::cs_main, pool.cs)
@@ -1917,6 +1917,13 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
                 // splitting the network between upgraded and
                 // non-upgraded nodes by banning CONSENSUS-failing
                 // data providers.
+                //
+                // BTQ: SCRIPT_VERIFY_DILITHIUM is in MANDATORY_SCRIPT_VERIFY_FLAGS
+                // so it survives this mask. That is required for the testnet
+                // policy-ahead SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY regime: a
+                // consensus-valid legacy Dilithium spend must soft-fail as
+                // TX_NOT_STANDARD here, not lose Dilithium on the retry and
+                // come back as TX_CONSENSUS (Misbehaving).
                 CScriptCheck check2(txdata.m_spent_outputs[i], tx, i,
                         flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheSigStore, &txdata);
                 if (check2())
@@ -2096,7 +2103,7 @@ public:
     }
 };
 
-static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman)
+unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman)
 {
     const Consensus::Params& consensusparams = chainman.GetConsensus();
 
@@ -2109,25 +2116,22 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     // For simplicity, always leave P2SH on, but conditionally enable WITNESS and TAPROOT
     // BTQ: Modified to conditionally include WITNESS and TAPROOT based on deployment status
     uint32_t flags{SCRIPT_VERIFY_P2SH};
-    
+
     // BTQ: Only enable Witness (SegWit) if the deployment is active
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_SEGWIT)) {
         flags |= SCRIPT_VERIFY_WITNESS;
     }
-    
+
     // BTQ: Only enable Taproot if the deployment is active
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_TAPROOT)) {
         flags |= SCRIPT_VERIFY_TAPROOT;
     }
-    
-    // BTQ: Enable Dilithium signature validation after activation height
-    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DILITHIUM)) {
-        flags |= SCRIPT_VERIFY_DILITHIUM;
-    }
 
-    // BTQ: Enable BIP360 P2MR (Pay-to-Merkle-Root) validation
-    flags |= SCRIPT_VERIFY_P2MR;
-    
+    // Exception entries completely replace the flags computed above. Any rule
+    // that must remain enforceable has to be applied *after* this override —
+    // the same pattern Bitcoin uses for DERSIG/CLTV/CSV/NULLDUMMY below.
+    // Dilithium / P2MR / P2MR_ONLY used to be OR'd before the override, so a
+    // (future/stale) exception payload could clear them.
     const auto it{consensusparams.script_flag_exceptions.find(*Assert(block_index.phashBlock))};
     if (it != consensusparams.script_flag_exceptions.end()) {
         flags = it->second;
@@ -2152,6 +2156,18 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_SEGWIT)) {
         flags |= SCRIPT_VERIFY_NULLDUMMY;
     }
+
+    // BTQ: Dilithium, P2MR, and P2MR-only must never be clearable via
+    // script_flag_exceptions. Keep Dilithium and P2MR-only deployment-gated
+    // (do not force them on pre-activation heights).
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DILITHIUM)) {
+        flags |= SCRIPT_VERIFY_DILITHIUM;
+    }
+    // BTQ-AUDIT-048: restrict Dilithium opcodes to P2MR tapscript after activation
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DILITHIUM_P2MR)) {
+        flags |= SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY;
+    }
+    flags |= SCRIPT_VERIFY_P2MR;
 
     return flags;
 }

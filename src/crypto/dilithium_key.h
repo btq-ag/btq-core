@@ -12,8 +12,26 @@
 #include <key.h>
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <vector>
+
+namespace dilithium_internal {
+/** Constant-time equality: no early exit, so timing does not reveal how many
+ *  leading bytes of two buffers match. The accumulator is volatile so the
+ *  compiler cannot collapse the loop into a short-circuiting memcmp-style
+ *  compare. Callers that combine multiple checks must use bitwise & (not &&)
+ *  if every secret buffer must always be scanned. Length mismatches should be
+ *  handled before calling this (do not pass unequal lengths). */
+inline bool TimingSafeEqual(const unsigned char* a, const unsigned char* b, size_t n) noexcept
+{
+    volatile unsigned char result = 0;
+    for (size_t i = 0; i < n; i++) {
+        result |= static_cast<unsigned char>(a[i] ^ b[i]);
+    }
+    return result == 0;
+}
+} // namespace dilithium_internal
 
 // Dilithium extended key serialization size.
 //
@@ -119,7 +137,7 @@ public:
     friend bool operator==(const CDilithiumKey& a, const CDilithiumKey& b)
     {
         return a.size() == b.size() &&
-               (a.size() == 0 || memcmp(a.data(), b.data(), a.size()) == 0);
+               (a.size() == 0 || dilithium_internal::TimingSafeEqual(a.begin(), b.begin(), a.size()));
     }
 
     /** Inequality operator */
@@ -276,7 +294,7 @@ public:
     //! Comparator implementations.
     friend bool operator==(const CDilithiumPubKey& a, const CDilithiumPubKey& b)
     {
-        return memcmp(a.vch.data(), b.vch.data(), SIZE) == 0;
+        return dilithium_internal::TimingSafeEqual(a.vch.data(), b.vch.data(), SIZE);
     }
     
     friend bool operator!=(const CDilithiumPubKey& a, const CDilithiumPubKey& b)
@@ -315,8 +333,8 @@ public:
     bool IsValid() const;
 
     /**
-     * Fully validate whether this is a valid Dilithium public key.
-     * This performs more extensive validation than IsValid().
+     * Structural Dilithium pubkey check beyond IsValid(): reject all-zero
+     * rho or all-zero t1. Not a cryptographic membership proof.
      */
     bool IsFullyValid() const;
 
@@ -372,11 +390,17 @@ public:
 
     friend bool operator==(const CDilithiumExtKey& a, const CDilithiumExtKey& b)
     {
-        return a.nDepth == b.nDepth &&
-            memcmp(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) == 0 &&
-            a.nChild == b.nChild &&
-            a.chaincode == b.chaincode &&
-            a.seed == b.seed;
+        // Seed and chaincode are secret HD material. Evaluate both
+        // TimingSafeEqual calls into locals first so && short-circuit cannot
+        // skip a secret scan. Do not use ChainCode/uint256 operator== — it
+        // short-circuits via memcmp.
+        const bool seed_equal = dilithium_internal::TimingSafeEqual(a.seed.data(), b.seed.data(), a.seed.size());
+        const bool chaincode_equal = dilithium_internal::TimingSafeEqual(
+            a.chaincode.begin(), b.chaincode.begin(), a.chaincode.size());
+        const bool fingerprint_equal = dilithium_internal::TimingSafeEqual(
+            a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint));
+        return seed_equal && chaincode_equal && fingerprint_equal &&
+               a.nDepth == b.nDepth && a.nChild == b.nChild;
     }
 
     void Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const;
@@ -409,11 +433,15 @@ public:
 
     friend bool operator==(const CDilithiumExtPubKey& a, const CDilithiumExtPubKey& b)
     {
-        return a.nDepth == b.nDepth &&
-            memcmp(a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint)) == 0 &&
-            a.nChild == b.nChild &&
-            a.chaincode == b.chaincode &&
-            a.pubkey == b.pubkey;
+        // Chaincode is HD secret material; always CT-compare it (local first
+        // so short-circuit cannot skip the scan). Pubkey == uses TimingSafeEqual.
+        const bool chaincode_equal = dilithium_internal::TimingSafeEqual(
+            a.chaincode.begin(), b.chaincode.begin(), a.chaincode.size());
+        const bool fingerprint_equal = dilithium_internal::TimingSafeEqual(
+            a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint));
+        const bool pubkey_equal = (a.pubkey == b.pubkey);
+        return chaincode_equal && fingerprint_equal && pubkey_equal &&
+               a.nDepth == b.nDepth && a.nChild == b.nChild;
     }
 
     void Encode(unsigned char code[DILITHIUM_EXTPUBKEY_SIZE]) const;

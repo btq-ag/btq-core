@@ -10,6 +10,7 @@
 #include <chainparams.h>
 #include <common/bloom.h>
 #include <compat/compat.h>
+#include <consensus/consensus.h>
 #include <consensus/amount.h>
 #include <crypto/siphash.h>
 #include <hash.h>
@@ -63,8 +64,21 @@ static constexpr std::chrono::minutes TIMEOUT_INTERVAL{20};
 static constexpr auto FEELER_INTERVAL = 2min;
 /** Run the extra block-relay-only connection loop once every 5 minutes. **/
 static constexpr auto EXTRA_BLOCK_RELAY_ONLY_PEER_INTERVAL = 5min;
-/** Maximum length of incoming protocol messages (raised to carry ≥64 MB blocks). */
-static const unsigned int MAX_PROTOCOL_MESSAGE_LENGTH = 70 * 1000 * 1000; // 70 MB
+/** Maximum length of incoming protocol messages (block size + overhead).
+ *
+ * Derived from MAX_BLOCK_SERIALIZED_SIZE so a future block-size change cannot
+ * silently make valid blocks unrelayable. The largest legitimate message is a
+ * `block` (or near-full `blocktxn`): block weight
+ * (stripped_size * (WITNESS_SCALE_FACTOR - 1) + total_size <= MAX_BLOCK_WEIGHT)
+ * caps the with-witness serialized size of any valid block — including one
+ * stuffed with Dilithium witness data — strictly below MAX_BLOCK_SERIALIZED_SIZE.
+ * The extra 1 MB is headroom above that consensus buffer for non-block messages
+ * (inv/getdata peak ~1.8 MB). Payload size only; V1 headers are not counted.
+ * Mirrored in test_framework/messages.py.
+ */
+static const unsigned int MAX_PROTOCOL_MESSAGE_LENGTH = MAX_BLOCK_SERIALIZED_SIZE + 1 * 1000 * 1000; // 9 MB
+static_assert(MAX_PROTOCOL_MESSAGE_LENGTH <= MAX_SIZE,
+              "message length cap above MAX_SIZE would be ineffective (see V1Transport header checks)");
 /** Maximum length of the user agent string in `version` message */
 static const unsigned int MAX_SUBVERSION_LENGTH = 256;
 /** Maximum number of automatic outgoing nodes over which we'll relay everything (blocks, tx, addrs, etc) */

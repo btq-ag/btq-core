@@ -86,6 +86,13 @@ bool IsStandard(const CScript& scriptPubKey, const std::optional<unsigned>& max_
         if (!max_datacarrier_bytes || scriptPubKey.size() > *max_datacarrier_bytes) {
             return false;
         }
+    } else if (whichType == TxoutType::DILITHIUM_PUBKEY ||
+               whichType == TxoutType::DILITHIUM_PUBKEYHASH ||
+               whichType == TxoutType::DILITHIUM_SCRIPTHASH ||
+               whichType == TxoutType::DILITHIUM_MULTISIG) {
+        // Dilithium opcodes are consensus-valid only in P2MR tapscript. Legacy
+        // BASE Dilithium templates are unspendable and must not be relayed.
+        return false;
     }
 
     return true;

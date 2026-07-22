@@ -2,7 +2,7 @@
 # Copyright (c) 2026 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Regression tests for wallet sends/funding with Dilithium descriptor UTXOs."""
+"""Regression tests for wallet sends/funding with Dilithium P2MR UTXOs."""
 
 from decimal import Decimal
 
@@ -21,6 +21,11 @@ class WalletDilithiumSendTest(BTQTestFramework):
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
 
+    def dilithium_address(self, wallet, label=""):
+        created = wallet.getnewdilithiumaddress(label)
+        assert isinstance(created, dict), created
+        return created["address"]
+
     def run_test(self):
         node = self.nodes[0]
 
@@ -31,8 +36,8 @@ class WalletDilithiumSendTest(BTQTestFramework):
         node.createwallet(wallet_name="repro", descriptors=True)
         repro = node.get_wallet_rpc("repro")
 
-        self.log.info("Descriptor Dilithium keys remain usable after wallet encryption")
-        dilithium_address = repro.getnewdilithiumaddress()
+        self.log.info("Descriptor Dilithium P2MR keys remain usable after wallet encryption")
+        dilithium_address = self.dilithium_address(repro)
         msg = "descriptor encrypted dilithium signing"
         sig = repro.signmessagewithdilithium(dilithium_address, msg)
         assert repro.verifydilithiumsignature(msg, dilithium_address, sig)
@@ -48,10 +53,10 @@ class WalletDilithiumSendTest(BTQTestFramework):
         sig = repro.signmessagewithdilithium(dilithium_address, msg)
         assert repro.verifydilithiumsignature(msg, dilithium_address, sig)
 
-        self.log.info("Fund repro wallet with confirmed Dilithium and bech32m UTXOs")
+        self.log.info("Fund repro wallet with confirmed Dilithium P2MR and bech32m UTXOs")
         taproot_address = repro.getnewaddress(address_type="bech32m")
         # A second Dilithium UTXO so sendmany can be exercised independently.
-        dilithium_address2 = repro.getnewdilithiumaddress()
+        dilithium_address2 = self.dilithium_address(repro)
         funding.sendtoaddress(dilithium_address, Decimal("10"))
         funding.sendtoaddress(dilithium_address2, Decimal("10"))
         funding.sendtoaddress(taproot_address, Decimal("10"))
@@ -64,6 +69,11 @@ class WalletDilithiumSendTest(BTQTestFramework):
         dilithium_utxo2 = next(utxo for utxo in utxos if utxo["address"] == dilithium_address2)
         taproot_utxo = next(utxo for utxo in utxos if utxo["address"] == taproot_address)
 
+        info = repro.getaddressinfo(dilithium_address)
+        assert info["solvable"]
+        assert info["isdilithium"]
+        assert info["ismine"]
+
         raw = repro.createrawtransaction(
             [{"txid": dilithium_utxo["txid"], "vout": dilithium_utxo["vout"]}],
             [{repro.getnewaddress(): Decimal("0.01")}],
@@ -72,9 +82,9 @@ class WalletDilithiumSendTest(BTQTestFramework):
         assert funded["hex"]
         assert funded["fee"] > 0
 
-        self.log.info("sendtoaddress must return a valid, broadcastable tx spending the Dilithium UTXO")
+        self.log.info("sendtoaddress must return a valid, broadcastable tx spending the Dilithium P2MR UTXO")
         # Lock every other input so coin selection is forced to spend the Dilithium UTXO,
-        # exercising the OP_CHECKSIGDILITHIUM signing path (regression for issue #41).
+        # exercising the OP_CHECKSIGDILITHIUM P2MR signing path (regression for issue #41).
         repro.lockunspent(False, [
             {"txid": taproot_utxo["txid"], "vout": taproot_utxo["vout"]},
             {"txid": dilithium_utxo2["txid"], "vout": dilithium_utxo2["vout"]},
@@ -95,7 +105,7 @@ class WalletDilithiumSendTest(BTQTestFramework):
         unspent_after = {(u["txid"], u["vout"]) for u in repro.listunspent(0)}
         assert (dilithium_utxo["txid"], dilithium_utxo["vout"]) not in unspent_after
 
-        self.log.info("sendmany must also spend a Dilithium UTXO and broadcast a valid tx")
+        self.log.info("sendmany must also spend a Dilithium P2MR UTXO and broadcast a valid tx")
         repro.lockunspent(True)
         # Leave only the second Dilithium UTXO spendable.
         others = [
@@ -106,7 +116,7 @@ class WalletDilithiumSendTest(BTQTestFramework):
         repro.lockunspent(False, others)
         many_txid = repro.sendmany("", {
             repro.getnewaddress(): Decimal("0.2"),
-            repro.getnewdilithiumaddress(): Decimal("0.3"),
+            self.dilithium_address(repro): Decimal("0.3"),
         })
         assert many_txid in node.getrawmempool()
         many_spent = {(vin["txid"], vin["vout"]) for vin in node.getrawtransaction(many_txid, True)["vin"]}

@@ -50,9 +50,10 @@ BOOST_AUTO_TEST_CASE(dilithium_transaction_weight_limits)
     int64_t serialized_size = GetSerializeSize(tx, PROTOCOL_VERSION);
     BOOST_CHECK_GT(serialized_size, 0);
     
-    // Test that transaction is standard
+    // Legacy Dilithium BASE outputs are non-standard under P2MR-only consensus.
     std::string reason;
-    BOOST_CHECK(IsStandardTx(tx, std::nullopt, true, CFeeRate(1000), reason));
+    BOOST_CHECK(!IsStandardTx(tx, std::nullopt, true, CFeeRate(1000), reason));
+    BOOST_CHECK_EQUAL(reason, "scriptpubkey");
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_signature_size_limits)
@@ -82,9 +83,9 @@ BOOST_AUTO_TEST_CASE(dilithium_script_verification_flags)
 {
     // Test that Dilithium verification flags are properly set
     
-    // Dilithium is not mandatory policy, but standard relay policy verifies it
-    // once the height-gated consensus rule is active.
-    BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM));
+    // Dilithium is mandatory for classification (survives the NOT_MANDATORY
+    // retry). Block consensus remains height-gated via GetBlockScriptFlags.
+    BOOST_CHECK(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
     BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
 
     // Test that the flag value is correct

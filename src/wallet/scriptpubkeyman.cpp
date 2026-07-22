@@ -227,43 +227,14 @@ IsMineResult IsMineInner(const LegacyScriptPubKeyMan& keystore, const CScript& s
         break;
     }
     case TxoutType::DILITHIUM_PUBKEY:
-    {
-        keyID = CPubKey(vSolutions[0]).GetID();
-        if (keystore.HaveDilithiumKey(keyID)) {
-            ret = std::max(ret, IsMineResult::SPENDABLE);
-        }
-        break;
-    }
     case TxoutType::DILITHIUM_PUBKEYHASH:
-    {
-        assert(vSolutions[0].size() == 20);
-        keyID = CKeyID();
-        std::memcpy(keyID.begin(), vSolutions[0].data(), 20);
-        if (keystore.HaveDilithiumKey(keyID)) {
-            ret = std::max(ret, IsMineResult::SPENDABLE);
-        }
-        break;
-    }
     case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
-    {
-        if (sigversion == IsMineSigVersion::WITNESS_V0) {
-            return IsMineResult::INVALID;
-        }
-        if (sigversion == IsMineSigVersion::TOP && !keystore.HaveCScript(CScriptID(CScript() << OP_0 << vSolutions[0]))) {
-            break;
-        }
-        assert(vSolutions[0].size() == 20);
-        keyID = CKeyID();
-        std::memcpy(keyID.begin(), vSolutions[0].data(), 20);
-        if (keystore.HaveDilithiumKey(keyID)) {
-            ret = std::max(ret, IsMineResult::SPENDABLE);
-        }
-        break;
-    }
     case TxoutType::DILITHIUM_SCRIPTHASH:
     case TxoutType::DILITHIUM_MULTISIG:
     case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
-        // These Dilithium script types are not yet implemented
+        // Legacy Dilithium templates are consensus-unspendable (P2MR-only opcodes),
+        // so never SPENDABLE. Fall through to the watch-only check below so users
+        // can still see/import stranded legacy outputs as watch-only.
         break;
     } // no default case, so the compiler can warn about missing cases
 
@@ -718,11 +689,18 @@ bool LegacyScriptPubKeyMan::CanProvide(const CScript& script, SignatureData& sig
         ProduceSignature(*this, DUMMY_SIGNATURE_CREATOR, script, sigdata);
         if (!sigdata.signatures.empty()) {
             // If we could make signatures, make sure we have a private key to actually make a signature
-            bool has_privkeys = false;
             for (const auto& key_sig_pair : sigdata.signatures) {
-                has_privkeys |= HaveKey(key_sig_pair.first);
+                if (HaveKey(key_sig_pair.first)) {
+                    return true;
+                }
             }
-            return has_privkeys;
+        }
+        if (!sigdata.dilithium_signatures.empty()) {
+            for (const auto& sig_pair : sigdata.dilithium_signatures) {
+                if (HaveDilithiumKey(CKeyID{static_cast<uint160>(sig_pair.first)})) {
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -1152,6 +1130,34 @@ bool LegacyScriptPubKeyMan::HaveDilithiumKey(const CKeyID &address) const
         // For encrypted wallets, check if we have the encrypted Dilithium key
         return mapCryptedDilithiumKeys.count(address) > 0;
     }
+}
+
+bool LegacyScriptPubKeyMan::GetDilithiumKeyByHash(const DilithiumPKHash& address, CDilithiumKey& key) const
+{
+    // Dilithium keys are stored under the CKeyID with the same 160-bit hash.
+    return GetDilithiumKey(CKeyID{static_cast<uint160>(address)}, key);
+}
+
+bool LegacyScriptPubKeyMan::GetDilithiumPubKey(const DilithiumPKHash& address, CDilithiumPubKey& pubkey) const
+{
+    // Encrypted legacy wallets store only a dummy CPubKey alongside the
+    // Dilithium ciphertext (unlike ECDSA, which keeps a real pubkey in
+    // mapCryptedKeys). Derive the Dilithium pubkey from the private key,
+    // which requires the wallet to be unlocked. Callers that need pubkey
+    // metadata while locked (e.g. some PSBT fill paths) will fail until a
+    // future wallet-format change persists CDilithiumPubKey with the ciphertext.
+    CDilithiumKey key;
+    if (!GetDilithiumKeyByHash(address, key)) {
+        return false;
+    }
+    pubkey = key.GetPubKey();
+    return pubkey.IsValid() && DilithiumPKHash(pubkey) == address;
+}
+
+bool LegacyScriptPubKeyMan::GetDilithiumKeyOrigin(const DilithiumPKHash& keyid, KeyOriginInfo& info) const
+{
+    // Metadata for Dilithium keys is stored under the equivalent CKeyID.
+    return GetKeyOrigin(CKeyID{static_cast<uint160>(keyid)}, info);
 }
 
 std::set<CKeyID> LegacyScriptPubKeyMan::GetDilithiumKeyIDs() const
@@ -2470,10 +2476,12 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
             hmac.Write(&type_byte, 1);
             unsigned char I[64];
             hmac.Finalize(I);
-            const std::vector<unsigned char> seed(I, I + BTQ_DILITHIUM_SEED_SIZE);
+            std::vector<unsigned char> seed(I, I + BTQ_DILITHIUM_SEED_SIZE);
             memory_cleanse(I, sizeof(I));
 
-            if (!dilithium_key.GenerateFromEntropy(seed)) {
+            const bool ok = dilithium_key.GenerateFromEntropy(seed);
+            memory_cleanse(seed.data(), seed.size());
+            if (!ok) {
                 return util::Error{_("Error: Failed to generate Dilithium key")};
             }
 
@@ -2540,48 +2548,22 @@ isminetype DescriptorScriptPubKeyMan::IsMine(const CScript& script) const
     CKeyID keyID;
     switch (whichType) {
     case TxoutType::DILITHIUM_PUBKEY:
-    {
-        keyID = CPubKey(vSolutions[0]).GetID();
-        if (HaveDilithiumKey(keyID)) {
-            return ISMINE_SPENDABLE;
-        }
-        break;
-    }
     case TxoutType::DILITHIUM_PUBKEYHASH:
-    {
-        assert(vSolutions[0].size() == 20);
-        keyID = CKeyID();
-        std::memcpy(keyID.begin(), vSolutions[0].data(), 20);
-        if (HaveDilithiumKey(keyID)) {
-            return ISMINE_SPENDABLE;
-        }
-        break;
-    }
     case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
-    {
-        assert(vSolutions[0].size() == 20);
-        keyID = CKeyID();
-        std::memcpy(keyID.begin(), vSolutions[0].data(), 20);
-        if (HaveDilithiumKey(keyID)) {
-            return ISMINE_SPENDABLE;
-        }
-        break;
-    }
+    case TxoutType::DILITHIUM_SCRIPTHASH:
+    case TxoutType::DILITHIUM_MULTISIG:
+    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
+        // Legacy Dilithium templates are consensus-unspendable (P2MR-only opcodes).
+        return ISMINE_NO;
     case TxoutType::WITNESS_V0_KEYHASH:
     {
         keyID = CKeyID(uint160(vSolutions[0]));
-        if (HaveDilithiumKey(keyID)) {
-            return ISMINE_SPENDABLE;
-        }
+        // Do not treat ordinary P2WPKH as Dilithium-spendable by key-id collision.
         if (m_map_keys.find(keyID) != m_map_keys.end() || m_map_crypted_keys.find(keyID) != m_map_crypted_keys.end()) {
             return ISMINE_SPENDABLE;
         }
         break;
     }
-    case TxoutType::DILITHIUM_SCRIPTHASH:
-    case TxoutType::DILITHIUM_MULTISIG:
-    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
-        break;
     default:
         break;
     }

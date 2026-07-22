@@ -101,8 +101,9 @@ bool static IsValidDilithiumPubKey(const valtype &vchPubKey) {
     if (vchPubKey.size() != CDilithiumPubKey::SIZE) {
         return false;
     }
-    CDilithiumPubKey pubkey(vchPubKey);
-    return pubkey.IsValid();
+    // Size + structural checks (nonzero rho and nonzero t1). Used by
+    // OP_CHECKSIGDILITHIUM* (via EvalChecksigDilithium) and OP_DILITHIUM_PUBKEY.
+    return CDilithiumPubKey(vchPubKey).IsFullyValid();
 }
 
 /** Helper for OP_CHECKSIGDILITHIUM and OP_CHECKSIGDILITHIUMVERIFY.
@@ -116,11 +117,8 @@ static bool EvalChecksigDilithium(const valtype& sig, const valtype& pubkey, CSc
         return set_error(serror, SCRIPT_ERR_SIG_DER);
     }
 
-    // Check public key encoding
+    // Check public key encoding / structural validity (size, rho, t1).
     if (!IsValidDilithiumPubKey(pubkey)) {
-        return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
-    }
-    if (!CDilithiumPubKey(pubkey).IsFullyValid()) {
         return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
     }
 
@@ -1272,7 +1270,16 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 case OP_CHECKSIGDILITHIUM:
                 case OP_CHECKSIGDILITHIUMVERIFY:
                 {
-                    if (sigversion == SigVersion::TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+                    // BTQ-AUDIT-048: once DEPLOYMENT_DILITHIUM_P2MR activates, Dilithium opcodes
+                    // are consensus-valid ONLY in P2MR tapscript (witness v2), so they cannot
+                    // retroactively change pre-existing script semantics. Before activation,
+                    // preserve the historical rule (rejected in BIP341 tapscript only) so
+                    // pre-fork blocks keep validating.
+                    if (flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY) {
+                        if (sigversion != SigVersion::P2MR_TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+                    } else if (sigversion == SigVersion::TAPSCRIPT) {
+                        return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+                    }
                     if (!(flags & SCRIPT_VERIFY_DILITHIUM)) {
                         return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE);
                     }
@@ -1305,7 +1312,16 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 case OP_CHECKMULTISIGDILITHIUM:
                 case OP_CHECKMULTISIGDILITHIUMVERIFY:
                 {
-                    if (sigversion == SigVersion::TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+                    // BTQ-AUDIT-048: once DEPLOYMENT_DILITHIUM_P2MR activates, Dilithium opcodes
+                    // are consensus-valid ONLY in P2MR tapscript (witness v2), so they cannot
+                    // retroactively change pre-existing script semantics. Before activation,
+                    // preserve the historical rule (rejected in BIP341 tapscript only) so
+                    // pre-fork blocks keep validating.
+                    if (flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY) {
+                        if (sigversion != SigVersion::P2MR_TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+                    } else if (sigversion == SigVersion::TAPSCRIPT) {
+                        return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+                    }
                     if (!(flags & SCRIPT_VERIFY_DILITHIUM)) {
                         return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE);
                     }
@@ -1388,7 +1404,16 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 
                 case OP_DILITHIUM_PUBKEY:
                 {
-                    if (sigversion == SigVersion::TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+                    // BTQ-AUDIT-048: once DEPLOYMENT_DILITHIUM_P2MR activates, Dilithium opcodes
+                    // are consensus-valid ONLY in P2MR tapscript (witness v2), so they cannot
+                    // retroactively change pre-existing script semantics. Before activation,
+                    // preserve the historical rule (rejected in BIP341 tapscript only) so
+                    // pre-fork blocks keep validating.
+                    if (flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY) {
+                        if (sigversion != SigVersion::P2MR_TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+                    } else if (sigversion == SigVersion::TAPSCRIPT) {
+                        return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
+                    }
                     if (!(flags & SCRIPT_VERIFY_DILITHIUM)) {
                         return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE);
                     }
@@ -2145,7 +2170,13 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
             }
 
             const valtype& vchPubKey = stack.back();
-            if (vchPubKey.size() == DilithiumConstants::PUBLIC_KEY_SIZE) {
+            // BTQ-AUDIT-048: after DEPLOYMENT_DILITHIUM_P2MR activation the witness-v0
+            // size==1312 heuristic that routed a P2WPKH spend to Dilithium is disabled.
+            // Dilithium spends must use P2MR (witness v2); a Dilithium-sized key in a v0
+            // keyhash spend then falls through to the ECDSA path and is rejected.
+            // Pre-activation, keep the historical routing so pre-fork blocks validate.
+            if (!(flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY) &&
+                vchPubKey.size() == DilithiumConstants::PUBLIC_KEY_SIZE) {
                 if (!(flags & SCRIPT_VERIFY_DILITHIUM)) {
                     return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE);
                 }
@@ -2379,18 +2410,23 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
     return set_success(serror);
 }
 
-size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& witprogram, const CScriptWitness& witness)
+size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& witprogram, const CScriptWitness& witness, unsigned int flags)
 {
     if (witversion == 0) {
         if (witprogram.size() == WITNESS_V0_KEYHASH_SIZE) {
-            // Witness v0 keyhash scripts are identical for ECDSA P2WPKH and Dilithium P2DWPKH.
-            if (witness.stack.size() >= 2 &&
-                witness.stack[1].size() == DilithiumConstants::PUBLIC_KEY_SIZE) {
-                return DILITHIUM_SIGOP_COST;
-            }
-            if (!witness.stack.empty() &&
-                witness.stack[0].size() >= DilithiumConstants::SIGNATURE_SIZE) {
-                return DILITHIUM_SIGOP_COST;
+            // Pre-DEPLOYMENT_DILITHIUM_P2MR: Dilithium-sized v0 keyhash witnesses
+            // used the historical Dilithium path and must keep DILITHIUM_SIGOP_COST
+            // so ConnectBlock accounting matches pre-fork nodes. After activation,
+            // that path is disabled — count as BIP141 P2WPKH (=1).
+            if (!(flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY)) {
+                if (witness.stack.size() >= 2 &&
+                    witness.stack[1].size() == DilithiumConstants::PUBLIC_KEY_SIZE) {
+                    return DILITHIUM_SIGOP_COST;
+                }
+                if (!witness.stack.empty() &&
+                    witness.stack[0].size() >= DilithiumConstants::SIGNATURE_SIZE) {
+                    return DILITHIUM_SIGOP_COST;
+                }
             }
             return 1;
         }
@@ -2432,7 +2468,7 @@ size_t CountWitnessSigOps(const CScript& scriptSig, const CScript& scriptPubKey,
     int witnessversion;
     std::vector<unsigned char> witnessprogram;
     if (scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
-        return WitnessSigOps(witnessversion, witnessprogram, witness ? *witness : witnessEmpty);
+        return WitnessSigOps(witnessversion, witnessprogram, witness ? *witness : witnessEmpty, flags);
     }
 
     if (scriptPubKey.IsPayToScriptHash() && scriptSig.IsPushOnly()) {
@@ -2444,7 +2480,7 @@ size_t CountWitnessSigOps(const CScript& scriptSig, const CScript& scriptPubKey,
         }
         CScript subscript(data.begin(), data.end());
         if (subscript.IsWitnessProgram(witnessversion, witnessprogram)) {
-            return WitnessSigOps(witnessversion, witnessprogram, witness ? *witness : witnessEmpty);
+            return WitnessSigOps(witnessversion, witnessprogram, witness ? *witness : witnessEmpty, flags);
         }
     }
 

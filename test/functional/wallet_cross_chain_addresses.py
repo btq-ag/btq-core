@@ -200,21 +200,29 @@ class WalletCrossChainAddresses(BTQTestFramework):
                     )
                 self.log.info(f"  [{chain}] {t:12s}: {addr}")
 
-            # 2. Dilithium addresses. Dilithium bech32 is intentionally
-            # disabled because witness v0 keyhash programs are ambiguous with
-            # ECDSA P2WPKH and are not spendable with Dilithium keys.
+            # 2. Dilithium P2MR receive addresses. Legacy Dilithium address types
+            # are disabled; only "p2mr" is accepted.
             dilithium_addresses = {}
             try:
-                addr = w.getnewdilithiumaddress("", "legacy")
+                created = w.getnewdilithiumaddress("", "p2mr")
             except Exception as e:
                 raise AssertionError(
-                    f"[{chain}] getnewdilithiumaddress(type=legacy) failed: {e}"
+                    f"[{chain}] getnewdilithiumaddress(type=p2mr) failed: {e}"
                 )
-            dilithium_addresses["legacy"] = addr
-            self.log.info(f"  [{chain}] dilithium-legacy: {addr}")
+            assert isinstance(created, dict), created
+            addr = created["address"]
+            dilithium_addresses["p2mr"] = addr
+            self.log.info(f"  [{chain}] dilithium-p2mr: {addr}")
             assert_raises_rpc_error(
-                -4,
-                "dilithium-bech32 is disabled",
+                -5,
+                "Unsupported Dilithium address type",
+                w.getnewdilithiumaddress,
+                "",
+                "legacy",
+            )
+            assert_raises_rpc_error(
+                -5,
+                "Unsupported Dilithium address type",
                 w.getnewdilithiumaddress,
                 "",
                 "bech32",

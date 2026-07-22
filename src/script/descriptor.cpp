@@ -758,6 +758,8 @@ public:
         // NOTE:
         // - Legacy P2PKH-style satisfactions are measured in bytes and multiplied by 4.
         // - Witness-v0 satisfactions are already measured in witness weight units (no *4).
+        // P2MR (WitnessV2P2MR) satisfaction size depends on the leaf script and is
+        // estimated via dummy ProduceSignature in the wallet, not here.
         const int64_t sig_with_hashtype = static_cast<int64_t>(DilithiumConstants::SIGNATURE_SIZE) + 1;
         const int64_t pubkey_size = static_cast<int64_t>(DilithiumConstants::PUBLIC_KEY_SIZE);
         const int64_t push_overhead = 6; // large element varint/push overhead for signature + pubkey

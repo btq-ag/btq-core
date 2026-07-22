@@ -11,6 +11,7 @@
 #include <util/translation.h>
 #include <wallet/receive.h>
 #include <wallet/rpc/util.h>
+#include <wallet/p2mr.h>
 #include <wallet/wallet.h>
 
 #include <univalue.h>
@@ -589,8 +590,8 @@ RPCHelpMan getaddressinfo()
         auto inferred = InferDescriptor(scriptPubKey, *provider);
         bool solvable = inferred->IsSolvable();
         
-        // Special handling for Dilithium addresses
-        // InferDescriptor doesn't recognize Dilithium, but we can check if we have the key
+        // Special handling for Dilithium / P2MR Dilithium addresses.
+        // InferDescriptor may not mark them solvable without tree/key context.
         if (!solvable) {
             // Check if this is a Dilithium address and if we have the key
             if (std::holds_alternative<DilithiumPKHash>(dest) ||
@@ -638,6 +639,12 @@ RPCHelpMan getaddressinfo()
                 if (has_dilithium_key) {
                     solvable = true;
                 }
+            } else if (std::holds_alternative<WitnessV2P2MR>(dest)) {
+                if (GetSingleDilithiumKeyIDForP2MR(*pwallet, dest)) {
+                    solvable = true;
+                } else if (IsTrackedP2MRScript(*pwallet, scriptPubKey)) {
+                    solvable = true;
+                }
             }
         }
         
@@ -646,7 +653,7 @@ RPCHelpMan getaddressinfo()
             ret.pushKV("desc", inferred->ToString());
         }
     } else {
-        // provider is null - check if this is a Dilithium address we can solve
+        // provider is null - check if this is a Dilithium / P2MR address we can solve
         bool solvable = false;
         if (std::holds_alternative<DilithiumPKHash>(dest) ||
             std::holds_alternative<DilithiumWitnessV0KeyHash>(dest) ||
@@ -689,6 +696,8 @@ RPCHelpMan getaddressinfo()
             }
             
             solvable = has_dilithium_key;
+        } else if (std::holds_alternative<WitnessV2P2MR>(dest) && IsTrackedP2MRScript(*pwallet, scriptPubKey)) {
+            solvable = true;
         }
         ret.pushKV("solvable", solvable);
     }
@@ -711,12 +720,14 @@ RPCHelpMan getaddressinfo()
     UniValue detail = DescribeWalletAddress(*pwallet, dest);
     ret.pushKVs(detail);
     
-    // Add isdilithium flag for Dilithium addresses
+    // Add isdilithium flag for Dilithium addresses (legacy templates or P2MR Dilithium receives)
     bool is_dilithium = std::holds_alternative<DilithiumPKHash>(dest) ||
                         std::holds_alternative<DilithiumWitnessV0KeyHash>(dest) ||
                         std::holds_alternative<DilithiumScriptHash>(dest) ||
                         std::holds_alternative<DilithiumWitnessV0ScriptHash>(dest) ||
-                        std::holds_alternative<DilithiumPubKeyDestination>(dest);
+                        std::holds_alternative<DilithiumPubKeyDestination>(dest) ||
+                        (std::holds_alternative<WitnessV2P2MR>(dest) &&
+                         GetSingleDilithiumKeyIDForP2MR(*pwallet, dest).has_value());
     ret.pushKV("isdilithium", is_dilithium);
 
     ret.pushKV("ischange", ScriptIsChange(*pwallet, scriptPubKey));

@@ -90,8 +90,15 @@ public:
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        consensus.nLWMAHeight = 300000;
+        // BTQ-AUDIT-103: LWMA from block 1 so mainnet never has a pre-LWMA
+        // legacy-retarget window that can be manipulated. Mainnet only: the
+        // live testnet keeps its scheduled height (changing it retroactively
+        // would invalidate existing history — see the height-gate pattern in
+        // nDilithiumP2MRHeight).
+        consensus.nLWMAHeight = 1;
         consensus.nDilithiumHeight = 1;
+        // Mainnet is pre-launch: Dilithium is P2MR-only from genesis.
+        consensus.nDilithiumP2MRHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 18144; // 90% of 20160
@@ -109,7 +116,9 @@ public:
 
         // Pre-launch floor: tied to the remined genesis block (see assert below).
         // Rotate both values at each tagged release (see doc/release-process.md).
-        consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000000000000010002");
+        // 0x49d414 is GetBlockProof(genesis) for nBits 0x1e0377ae; the previous
+        // 0x10002 predated the genesis remine and was below one block's work.
+        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000000000049d414");
         consensus.defaultAssumeValid = uint256S("0x000003194a90d8d8eff8b39a7ad4e2490729b97a6772b7f4c4cb8887dffd1ae4");
 
         pchMessageStart[0] = 0xf1;
@@ -187,6 +196,17 @@ public:
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.nLWMAHeight = 300000;
         consensus.nDilithiumHeight = 1;
+        // TODO(release): schedule DEPLOYMENT_DILITHIUM_P2MR on testnet. The running
+        // testnet has legacy BASE/witness-v0 Dilithium UTXOs that this restriction
+        // makes unspendable; activating without a coordinated height (or a chain
+        // reset) would fork upgraded nodes away from non-upgraded ones. Until a
+        // height is chosen the restriction is policy-only on testnet (non-standard
+        // to relay, refused by the wallet) but not yet enforced in blocks.
+        // Soft-reject classification relies on SCRIPT_VERIFY_DILITHIUM being
+        // mandatory while SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY stays non-mandatory
+        // — otherwise CheckInputScripts would Misbehave peers that relay still-
+        // consensus-valid legacy Dilithium spends (see policy.h).
+        consensus.nDilithiumP2MRHeight = std::numeric_limits<int>::max();
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
@@ -328,6 +348,7 @@ public:
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nDilithiumHeight = 1;
+        consensus.nDilithiumP2MRHeight = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -404,6 +425,7 @@ public:
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.nLWMAHeight = 300000;
         consensus.nDilithiumHeight = 1;
+        consensus.nDilithiumP2MRHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
@@ -453,6 +475,9 @@ public:
                 break;
             case Consensus::BuriedDeployment::DEPLOYMENT_DILITHIUM:
                 consensus.nDilithiumHeight = int{height};
+                break;
+            case Consensus::BuriedDeployment::DEPLOYMENT_DILITHIUM_P2MR:
+                consensus.nDilithiumP2MRHeight = int{height};
                 break;
             }
         }

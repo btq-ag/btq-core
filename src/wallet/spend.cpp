@@ -22,10 +22,12 @@
 #include <util/translation.h>
 #include <wallet/coincontrol.h>
 #include <wallet/fees.h>
+#include <wallet/p2mr.h>
 #include <wallet/receive.h>
 #include <wallet/spend.h>
 #include <wallet/transaction.h>
 #include <wallet/wallet.h>
+#include <script/sign.h>
 
 #include <cmath>
 
@@ -78,6 +80,30 @@ static std::optional<int64_t> MaxInputWeight(const Descriptor& desc, const std::
     return {};
 }
 
+/**
+ * Estimate a signed input's weight from a dummy satisfaction, for outputs
+ * (e.g. P2MR) whose leaves descriptor inference cannot model. Only witness
+ * satisfactions are supported: a scriptSig-based solution would invalidate
+ * the fixed non-witness size assumed below, so nullopt is returned instead.
+ */
+static std::optional<int64_t> DummySignInputWeight(const SigningProvider& provider, const CScript& script_pub_key)
+{
+    SignatureData sigdata;
+    if (!ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, script_pub_key, sigdata) || !sigdata.complete) {
+        return std::nullopt;
+    }
+    if (!sigdata.scriptSig.empty() || sigdata.scriptWitness.stack.empty()) {
+        return std::nullopt;
+    }
+    // prevout (32+4) + nSequence (4) + empty scriptSig compact-size (1)
+    constexpr int64_t nonwitness_bytes = 32 + 4 + 4 + 1;
+    int64_t witness_bytes = GetSizeOfCompactSize(sigdata.scriptWitness.stack.size());
+    for (const auto& item : sigdata.scriptWitness.stack) {
+        witness_bytes += GetSizeOfCompactSize(item.size()) + static_cast<int64_t>(item.size());
+    }
+    return nonwitness_bytes * WITNESS_SCALE_FACTOR + witness_bytes;
+}
+
 int CalculateMaximumSignedInputSize(const CTxOut& txout, const COutPoint outpoint, const SigningProvider* provider, bool can_grind_r, const CCoinControl* coin_control)
 {
     if (!provider) return -1;
@@ -87,6 +113,12 @@ int CalculateMaximumSignedInputSize(const CTxOut& txout, const COutPoint outpoin
         if (const auto weight = MaxInputWeight(*desc, {}, coin_control, true, can_grind_r)) {
             return static_cast<int>(GetVirtualTransactionSize(*weight, 0, 0));
         }
+    }
+
+    // P2MR (and other) outputs may be solvable via signing providers even when
+    // descriptors cannot model the leaf. Estimate size from a dummy satisfaction.
+    if (const auto weight = DummySignInputWeight(*provider, txout.scriptPubKey)) {
+        return static_cast<int>(GetVirtualTransactionSize(*weight, /*nSigOpCost=*/0, /*bytes_per_sigop=*/0));
     }
 
     return -1;
@@ -106,6 +138,10 @@ static std::unique_ptr<Descriptor> GetDescriptor(const CWallet* wallet, const CC
     for (const auto spkman: wallet->GetScriptPubKeyMans(script_pubkey)) {
         providers.AddProvider(spkman->GetSolvingProvider(script_pubkey));
     }
+    // Include tracked P2MR builders so MaxInputWeight / IsSegwit can see them.
+    if (auto p2mr_provider = wallet->GetSolvingProvider(script_pubkey)) {
+        providers.AddProvider(std::move(p2mr_provider));
+    }
     if (coin_control) {
         providers.AddProvider(std::make_unique<FlatSigningProvider>(coin_control->m_external_provider));
     }
@@ -124,7 +160,22 @@ static std::optional<int64_t> GetSignedTxinWeight(const CWallet* wallet, const C
 
     // Otherwise, use the maximum satisfaction size provided by the descriptor.
     std::unique_ptr<Descriptor> desc{GetDescriptor(wallet, coin_control, txo.scriptPubKey)};
-    if (desc) return MaxInputWeight(*desc, {txin}, coin_control, tx_is_segwit, can_grind_r);
+    if (desc) {
+        if (auto weight = MaxInputWeight(*desc, {txin}, coin_control, tx_is_segwit, can_grind_r)) {
+            return weight;
+        }
+    }
+
+    // Descriptor inference may not model P2MR leaves; fall back to dummy satisfaction.
+    std::unique_ptr<SigningProvider> provider = wallet->GetSolvingProvider(txo.scriptPubKey);
+    if (!provider && coin_control) {
+        provider = std::make_unique<FlatSigningProvider>(coin_control->m_external_provider);
+    }
+    if (provider) {
+        if (const auto weight = DummySignInputWeight(*provider, txo.scriptPubKey)) {
+            return weight;
+        }
+    }
 
     return {};
 }

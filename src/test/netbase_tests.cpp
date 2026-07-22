@@ -611,4 +611,27 @@ BOOST_AUTO_TEST_CASE(isbadport)
     BOOST_CHECK_EQUAL(total_bad_ports, 80);
 }
 
+BOOST_AUTO_TEST_CASE(node_btq_dilithium_service_bit)
+{
+    // Identification-only flag: value, stringification, and peer-selection
+    // must not require it from remote peers (including pre-bit testnet nodes).
+    BOOST_CHECK_EQUAL(static_cast<uint64_t>(NODE_BTQ_DILITHIUM), 1ULL << 25);
+
+    const auto names = serviceFlagsToStr(NODE_BTQ_DILITHIUM);
+    BOOST_REQUIRE_EQUAL(names.size(), 1U);
+    BOOST_CHECK_EQUAL(names.at(0), "BTQ_DILITHIUM");
+
+    SetServiceFlagsIBDCache(/*state=*/false);
+    BOOST_CHECK_EQUAL(GetDesirableServiceFlags(NODE_NONE), ServiceFlags(NODE_NETWORK | NODE_WITNESS));
+    BOOST_CHECK(!(GetDesirableServiceFlags(NODE_NONE) & NODE_BTQ_DILITHIUM));
+    BOOST_CHECK(HasAllDesirableServiceFlags(ServiceFlags(NODE_NETWORK | NODE_WITNESS)));
+    BOOST_CHECK(HasAllDesirableServiceFlags(ServiceFlags(NODE_NETWORK | NODE_WITNESS | NODE_BTQ_DILITHIUM)));
+
+    SetServiceFlagsIBDCache(/*state=*/true);
+    BOOST_CHECK_EQUAL(GetDesirableServiceFlags(NODE_NETWORK_LIMITED), ServiceFlags(NODE_NETWORK_LIMITED | NODE_WITNESS));
+    BOOST_CHECK(!(GetDesirableServiceFlags(NODE_NETWORK_LIMITED) & NODE_BTQ_DILITHIUM));
+    BOOST_CHECK(HasAllDesirableServiceFlags(ServiceFlags(NODE_NETWORK_LIMITED | NODE_WITNESS)));
+    SetServiceFlagsIBDCache(/*state=*/false);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

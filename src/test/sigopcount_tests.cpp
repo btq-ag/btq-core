@@ -194,7 +194,7 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
         assert(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags) == 1);
         // No signature operations if we don't verify the witness.
         assert(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags & ~SCRIPT_VERIFY_WITNESS) == 0);
-        assert(VerifyWithFlag(CTransaction(creationTx), spendingTx, flags) == SCRIPT_ERR_WITNESS_PUBKEYTYPE);
+        assert(VerifyWithFlag(CTransaction(creationTx), spendingTx, flags) == SCRIPT_ERR_EQUALVERIFY);
 
         // The sig op cost for witness version != 0 is zero.
         assert(scriptPubKey[0] == 0x00);
@@ -220,7 +220,7 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
 
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, scriptSig, scriptWitness);
         assert(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags) == 1);
-        assert(VerifyWithFlag(CTransaction(creationTx), spendingTx, flags) == SCRIPT_ERR_WITNESS_PUBKEYTYPE);
+        assert(VerifyWithFlag(CTransaction(creationTx), spendingTx, flags) == SCRIPT_ERR_EQUALVERIFY);
     }
 
     // P2WSH witness program
@@ -258,7 +258,8 @@ BOOST_AUTO_TEST_CASE(GetTxSigOpCost)
 
 BOOST_AUTO_TEST_CASE(dilithium_witness_v0_sigop_weighting)
 {
-    // BTQ-AUDIT-019: witness v0 keyhash spends must distinguish P2WPKH (1) from P2DWPKH (50).
+    // Dilithium-sized v0 keyhash witnesses keep historical DILITHIUM_SIGOP_COST
+    // until SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY activates (then count as P2WPKH=1).
     CMutableTransaction creationTx;
     CMutableTransaction spendingTx;
     CCoinsView coinsDummy;
@@ -277,6 +278,9 @@ BOOST_AUTO_TEST_CASE(dilithium_witness_v0_sigop_weighting)
     BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, scriptWitness);
     BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
                       static_cast<int64_t>(DILITHIUM_SIGOP_COST));
+    BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins,
+                                              flags | SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY),
+                      1);
 
     // Classical P2WPKH with compressed pubkey witness must remain weight 1.
     CKey ecdsa_key;

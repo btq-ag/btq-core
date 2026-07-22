@@ -43,7 +43,7 @@ MAX_MONEY = 21000000 * COIN
 MAX_BIP125_RBF_SEQUENCE = 0xfffffffd  # Sequence number that is rbf-opt-in (BIP 125) and csv-opt-out (BIP 68)
 SEQUENCE_FINAL = 0xffffffff  # Sequence number that disables nLockTime if set for every input of a tx
 
-MAX_PROTOCOL_MESSAGE_LENGTH = 70000000  # Maximum length of incoming protocol messages
+MAX_PROTOCOL_MESSAGE_LENGTH = 9000000  # Maximum length of incoming protocol messages (MAX_BLOCK_SERIALIZED_SIZE + 1 MB, mirrors src/net.h)
 MAX_HEADERS_RESULTS = 2000  # Number of headers sent in one getheaders result
 MAX_INV_SIZE = 50000  # Maximum number of entries in an 'inv' protocol message
 
@@ -53,6 +53,7 @@ NODE_WITNESS = (1 << 3)
 NODE_COMPACT_FILTERS = (1 << 6)
 NODE_NETWORK_LIMITED = (1 << 10)
 NODE_P2P_V2 = (1 << 11)
+NODE_BTQ_DILITHIUM = (1 << 25)  # mirrors src/protocol.h; identification only
 
 MSG_TX = 1
 MSG_BLOCK = 2

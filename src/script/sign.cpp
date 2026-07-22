@@ -92,32 +92,27 @@ bool MutableTransactionSignatureCreator::CreateSchnorrSig(const SigningProvider&
 
 bool MutableTransactionSignatureCreator::CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion, const uint256* leaf_hash) const
 {
-    assert(sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0 || sigversion == SigVersion::P2MR_TAPSCRIPT);
+    // Dilithium signatures are consensus-valid only in P2MR tapscript.
+    assert(sigversion == SigVersion::P2MR_TAPSCRIPT);
 
     CDilithiumKey key;
     if (!provider.GetDilithiumKeyByHash(keyid, key))
         return false;
 
-    // Signing without known amount does not work in witness scripts.
-    if (sigversion == SigVersion::WITNESS_V0 && !MoneyRange(amount)) return false;
-
-    // BASE/WITNESS_V0 signatures don't support explicit SIGHASH_DEFAULT, use SIGHASH_ALL instead.
+    // The Dilithium signature encodes an explicit hashtype byte, so map
+    // SIGHASH_DEFAULT to SIGHASH_ALL.
     const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
 
     uint256 hash;
-    if (sigversion == SigVersion::P2MR_TAPSCRIPT) {
-        if (!leaf_hash || !m_txdata || !m_txdata->m_bip341_taproot_ready || !m_txdata->m_spent_outputs_ready) return false;
-        ScriptExecutionData execdata;
-        execdata.m_annex_init = true;
-        execdata.m_annex_present = false;
-        execdata.m_codeseparator_pos_init = true;
-        execdata.m_codeseparator_pos = 0xFFFFFFFF;
-        execdata.m_tapleaf_hash_init = true;
-        execdata.m_tapleaf_hash = *leaf_hash;
-        if (!SignatureHashSchnorr(hash, execdata, m_txto, nIn, static_cast<uint8_t>(hashtype), sigversion, *m_txdata, MissingDataBehavior::FAIL)) return false;
-    } else {
-        hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
-    }
+    if (!leaf_hash || !m_txdata || !m_txdata->m_bip341_taproot_ready || !m_txdata->m_spent_outputs_ready) return false;
+    ScriptExecutionData execdata;
+    execdata.m_annex_init = true;
+    execdata.m_annex_present = false;
+    execdata.m_codeseparator_pos_init = true;
+    execdata.m_codeseparator_pos = 0xFFFFFFFF;
+    execdata.m_tapleaf_hash_init = true;
+    execdata.m_tapleaf_hash = *leaf_hash;
+    if (!SignatureHashSchnorr(hash, execdata, m_txto, nIn, static_cast<uint8_t>(hashtype), sigversion, *m_txdata, MissingDataBehavior::FAIL)) return false;
     if (!key.Sign(hash, vchSig))
         return false;
     vchSig.push_back((unsigned char)hashtype);
@@ -605,11 +600,14 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
     case TxoutType::WITNESS_V2_P2MR:
         return SignP2MR(provider, creator, WitnessV2P2MR(uint256(vSolutions[0])), sigdata, ret);
     case TxoutType::DILITHIUM_PUBKEY: {
+        // Dilithium opcodes are consensus-valid only inside P2MR tapscript leaves.
+        if (sigversion != SigVersion::P2MR_TAPSCRIPT) return false;
         if (!CreateDilithiumSig(creator, sigdata, provider, sig, CDilithiumPubKey(vSolutions[0]), scriptPubKey, sigversion, leaf_hash)) return false;
         ret.push_back(std::move(sig));
         return true;
     }
     case TxoutType::DILITHIUM_PUBKEYHASH: {
+        if (sigversion != SigVersion::P2MR_TAPSCRIPT) return false;
         DilithiumPKHash keyID;
         std::copy(vSolutions[0].begin(), vSolutions[0].end(), keyID.begin());
         CDilithiumPubKey pubkey;
@@ -624,17 +622,11 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
         return true;
     }
     case TxoutType::DILITHIUM_SCRIPTHASH: {
-        DilithiumScriptHash scriptID;
-        std::copy(vSolutions[0].begin(), vSolutions[0].end(), scriptID.begin());
-        if (GetCScript(provider, sigdata, CScriptID{static_cast<uint160>(scriptID)}, scriptRet)) {
-            ret.emplace_back(scriptRet.begin(), scriptRet.end());
-            return true;
-        }
-        // Could not find redeemScript, add to missing
-        sigdata.missing_redeem_script = static_cast<uint160>(scriptID);
+        // Legacy Dilithium P2SH wrappers are unspendable under P2MR-only consensus.
         return false;
     }
     case TxoutType::DILITHIUM_MULTISIG: {
+        if (sigversion != SigVersion::P2MR_TAPSCRIPT) return false;
         size_t required = vSolutions.front()[0];
         ret.emplace_back(); // workaround CHECKMULTISIGDILITHIUM bug
         for (size_t i = 1; i < vSolutions.size() - 1; ++i) {
@@ -655,16 +647,8 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
         return ok;
     }
     case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
-        ret.push_back(vSolutions[0]);
-        return true;
-
     case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
-        if (GetCScript(provider, sigdata, CScriptID{RIPEMD160(vSolutions[0])}, scriptRet)) {
-            ret.emplace_back(scriptRet.begin(), scriptRet.end());
-            return true;
-        }
-        // Could not find witnessScript, add to missing
-        sigdata.missing_witness_script = uint256(vSolutions[0]);
+        // Witness-v0 Dilithium destinations are consensus-unspendable.
         return false;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
@@ -756,9 +740,10 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
     }
     sigdata.scriptSig = PushAll(result);
 
-    // Test solution. BTQ activates Dilithium from height 1 (buried DEPLOYMENT_DILITHIUM),
-    // so the wallet's solution check must enable SCRIPT_VERIFY_DILITHIUM to validate
-    // OP_CHECKSIGDILITHIUM satisfactions (it is not part of STANDARD_SCRIPT_VERIFY_FLAGS).
+    // Test solution. SCRIPT_VERIFY_DILITHIUM is already in STANDARD (mandatory for
+    // classification); OR it explicitly for clarity. SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY
+    // is also in STANDARD, so BASE / witness-v0 Dilithium spends will not complete —
+    // new Dilithium receives are P2MR-only after BTQ-AUDIT-048.
     sigdata.complete = solved && VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DILITHIUM, creator.Checker());
     return sigdata.complete;
 }

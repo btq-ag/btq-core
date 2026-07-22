@@ -71,6 +71,7 @@ BOOST_AUTO_TEST_CASE(mixed_mode_raw_key_signatures_remain_distinct)
 
 BOOST_AUTO_TEST_CASE(mixed_mode_script_execution_requires_both_signature_families)
 {
+    // Mixed BASE scripts that include Dilithium opcodes are consensus-invalid.
     CKey ecdsa_key;
     ecdsa_key.MakeNewKey(true);
     const CPubKey ecdsa_pubkey = ecdsa_key.GetPubKey();
@@ -107,31 +108,19 @@ BOOST_AUTO_TEST_CASE(mixed_mode_script_execution_requires_both_signature_familie
     const CTransaction ctx{spending_tx};
 
     ScriptError error{SCRIPT_ERR_OK};
-    BOOST_CHECK(VerifyScript(
+    BOOST_CHECK(!VerifyScript(
         ctx.vin[0].scriptSig,
         mixed_script,
         nullptr,
         STANDARD_SCRIPT_VERIFY_FLAGS,
         TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL),
         &error));
-    BOOST_CHECK_EQUAL(error, SCRIPT_ERR_OK);
-
-    CMutableTransaction missing_dilithium_tx{spending_tx};
-    missing_dilithium_tx.vin[0].scriptSig = CScript() << ecdsa_sig << std::vector<unsigned char>{};
-    const CTransaction missing_dilithium_ctx{missing_dilithium_tx};
-    error = SCRIPT_ERR_OK;
-    BOOST_CHECK(!VerifyScript(
-        missing_dilithium_ctx.vin[0].scriptSig,
-        mixed_script,
-        nullptr,
-        STANDARD_SCRIPT_VERIFY_FLAGS,
-        TransactionSignatureChecker(&missing_dilithium_ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL),
-        &error));
-    BOOST_CHECK_NE(error, SCRIPT_ERR_OK);
+    BOOST_CHECK_EQUAL(error, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
 }
 
 BOOST_AUTO_TEST_CASE(mixed_mode_transaction_signing)
 {
+    // ECDSA BASE signing still works; Dilithium BASE signing must fail closed.
     CKey ecdsa_key;
     ecdsa_key.MakeNewKey(true);
     const CPubKey ecdsa_pubkey = ecdsa_key.GetPubKey();
@@ -168,15 +157,12 @@ BOOST_AUTO_TEST_CASE(mixed_mode_transaction_signing)
     mtx.vin[0].scriptSig = ecdsa_sigdata.scriptSig;
 
     SignatureData dilithium_sigdata;
-    BOOST_REQUIRE(ProduceSignature(
+    BOOST_CHECK(!ProduceSignature(
         provider,
         MutableTransactionSignatureCreator{mtx, 1, dilithium_amount, SIGHASH_ALL},
         dilithium_script,
         dilithium_sigdata));
-    BOOST_REQUIRE(dilithium_sigdata.complete);
-    BOOST_REQUIRE_EQUAL(dilithium_sigdata.dilithium_signatures.size(), 1);
-    BOOST_REQUIRE_EQUAL(dilithium_sigdata.dilithium_signatures.begin()->second.second.size(), BTQ_DILITHIUM_SIGNATURE_SIZE + 1);
-    mtx.vin[1].scriptSig = dilithium_sigdata.scriptSig;
+    BOOST_CHECK(!dilithium_sigdata.complete);
 
     const CTransaction ctx{mtx};
     ScriptError error{SCRIPT_ERR_OK};
@@ -186,16 +172,6 @@ BOOST_AUTO_TEST_CASE(mixed_mode_transaction_signing)
         nullptr,
         STANDARD_SCRIPT_VERIFY_FLAGS,
         TransactionSignatureChecker(&ctx, 0, ecdsa_amount, MissingDataBehavior::ASSERT_FAIL),
-        &error));
-    BOOST_CHECK_EQUAL(error, SCRIPT_ERR_OK);
-
-    error = SCRIPT_ERR_OK;
-    BOOST_CHECK(VerifyScript(
-        ctx.vin[1].scriptSig,
-        dilithium_script,
-        nullptr,
-        STANDARD_SCRIPT_VERIFY_FLAGS,
-        TransactionSignatureChecker(&ctx, 1, dilithium_amount, MissingDataBehavior::ASSERT_FAIL),
         &error));
     BOOST_CHECK_EQUAL(error, SCRIPT_ERR_OK);
 }

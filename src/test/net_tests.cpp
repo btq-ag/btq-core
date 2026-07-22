@@ -36,6 +36,21 @@ using namespace std::literals;
 
 BOOST_FIXTURE_TEST_SUITE(net_tests, RegTestingSetup)
 
+BOOST_AUTO_TEST_CASE(max_protocol_message_length)
+{
+    // Transport cap must clear the largest legitimate payload (a serialized
+    // block, bounded by MAX_BLOCK_SERIALIZED_SIZE / weight) with the documented
+    // 1 MB headroom, and must not exceed CompactSize MAX_SIZE — otherwise the
+    // V1Transport hdr.nMessageSize > MAX_SIZE check would make the cap a no-op.
+    BOOST_CHECK_EQUAL(MAX_PROTOCOL_MESSAGE_LENGTH, MAX_BLOCK_SERIALIZED_SIZE + 1 * 1000 * 1000);
+    BOOST_CHECK_LE(MAX_PROTOCOL_MESSAGE_LENGTH, MAX_SIZE);
+    BOOST_CHECK_GT(MAX_PROTOCOL_MESSAGE_LENGTH, MAX_BLOCK_SERIALIZED_SIZE);
+    // Largest common non-block inventory message stays well under the cap.
+    constexpr size_t MAX_INV_ENTRIES = 50000;
+    constexpr size_t INV_ENTRY_BYTES = 36; // type (4) + hash (32)
+    BOOST_CHECK_LT(MAX_INV_ENTRIES * INV_ENTRY_BYTES, MAX_PROTOCOL_MESSAGE_LENGTH);
+}
+
 BOOST_AUTO_TEST_CASE(cnode_listen_port)
 {
     // test default
@@ -1413,8 +1428,8 @@ BOOST_AUTO_TEST_CASE(v2transport_test)
         BOOST_CHECK((*ret)[0] && (*ret)[0]->m_type == "inv" && Span{(*ret)[0]->m_recv} == MakeByteSpan(msg_data_1));
         BOOST_CHECK((*ret)[1] && (*ret)[1]->m_type == "pong" && Span{(*ret)[1]->m_recv} == MakeByteSpan(msg_data_2));
 
-        // Then send a too-large message.
-        auto msg_data_3 = g_insecure_rand_ctx.randbytes<uint8_t>(4005000);
+        // Then send a too-large message (beyond MAX_PROTOCOL_MESSAGE_LENGTH plus framing slack).
+        auto msg_data_3 = g_insecure_rand_ctx.randbytes<uint8_t>(MAX_PROTOCOL_MESSAGE_LENGTH + 5000);
         tester.SendMessage(uint8_t(11), msg_data_3); // getdata short id
         ret = tester.Interact();
         BOOST_CHECK(!ret);

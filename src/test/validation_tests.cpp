@@ -9,6 +9,9 @@
 #include <uint256.h>
 #include <util/chaintype.h>
 #include <validation.h>
+#include <deploymentstatus.h>
+#include <chain.h>
+#include <script/interpreter.h>
 
 #include <test/util/setup_common.h>
 
@@ -144,5 +147,46 @@ BOOST_AUTO_TEST_CASE(test_assumeutxo)
     BOOST_CHECK_EQUAL(out110_2.hash_serialized.ToString(), "6657b736d4fe4db0cbc796789e812d5dba7f5c143764b1b6905612f1830609d1");
     BOOST_CHECK_EQUAL(out110_2.nChainTx, 111U);
 }
+
+
+BOOST_AUTO_TEST_CASE(script_flag_exceptions_cannot_clear_dilithium_p2mr)
+{
+    // BTQ currently ships an empty script_flag_exceptions map, but the
+    // override mechanism must not be able to clear Dilithium / P2MR /
+    // P2MR_ONLY if entries are ever added (including Bitcoin-lineage hashes).
+    auto& chainman = *Assert(m_node.chainman);
+    Consensus::Params& consensus = const_cast<Consensus::Params&>(chainman.GetConsensus());
+
+    uint256 exception_hash = uint256S("0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    // Exception payload with none of the Dilithium / P2MR bits.
+    consensus.script_flag_exceptions[exception_hash] = SCRIPT_VERIFY_P2SH;
+
+    CBlockIndex index;
+    index.nHeight = 0;
+    index.phashBlock = &exception_hash;
+
+    // Height 0 is before nDilithiumHeight (1) and nDilithiumP2MRHeight (1) on
+    // regtest: P2MR forced, Dilithium / P2MR_ONLY not.
+    {
+        const unsigned flags = GetBlockScriptFlags(index, chainman);
+        BOOST_CHECK(flags & SCRIPT_VERIFY_P2MR);
+        BOOST_CHECK(!(flags & SCRIPT_VERIFY_DILITHIUM));
+        BOOST_CHECK(!(flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY));
+        BOOST_CHECK(flags & SCRIPT_VERIFY_P2SH); // from exception payload
+    }
+
+    // After both activation heights, all three bits must be forced back on.
+    index.nHeight = 1;
+    {
+        const unsigned flags = GetBlockScriptFlags(index, chainman);
+        BOOST_CHECK(flags & SCRIPT_VERIFY_P2MR);
+        BOOST_CHECK(flags & SCRIPT_VERIFY_DILITHIUM);
+        BOOST_CHECK(flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY);
+    }
+
+    // Cleanup so later tests see the stock empty map.
+    consensus.script_flag_exceptions.erase(exception_hash);
+}
+
 
 BOOST_AUTO_TEST_SUITE_END()

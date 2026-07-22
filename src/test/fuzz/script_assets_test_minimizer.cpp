@@ -97,6 +97,7 @@ const std::map<std::string, unsigned int> FLAG_NAMES = {
     {std::string("WITNESS"), (unsigned int)SCRIPT_VERIFY_WITNESS},
     {std::string("TAPROOT"), (unsigned int)SCRIPT_VERIFY_TAPROOT},
     {std::string("DILITHIUM"), (unsigned int)SCRIPT_VERIFY_DILITHIUM},
+    {std::string("DILITHIUM_P2MR_ONLY"), (unsigned int)SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY},
 };
 
 std::vector<unsigned int> AllFlags()

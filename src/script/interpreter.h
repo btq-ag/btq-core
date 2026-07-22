@@ -148,6 +148,12 @@ enum : uint32_t {
     // BIP360 P2MR (Pay-to-Merkle-Root) validation
     SCRIPT_VERIFY_P2MR = (1U << 22),
 
+    // BTQ-AUDIT-048: restrict Dilithium opcodes to P2MR tapscript (witness v2).
+    // When set, Dilithium opcodes fail in BASE / P2SH / witness-v0 / BIP341
+    // tapscript contexts and the historical witness-v0 Dilithium keyhash
+    // routing is disabled. Activated per-chain via DEPLOYMENT_DILITHIUM_P2MR.
+    SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY = (1U << 23),
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER

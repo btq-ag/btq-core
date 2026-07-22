@@ -317,11 +317,11 @@ BOOST_AUTO_TEST_CASE(dilithium_valid_destination)
     BOOST_CHECK(!IsValidDestination(pubkey_dest)); // P2PK doesn't have address
     
     DilithiumPKHash pk_hash(pubkey);
-    BOOST_CHECK(IsValidDestination(pk_hash));
+    BOOST_CHECK(!IsValidDestination(pk_hash));
     
     CScript script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
     DilithiumScriptHash script_hash(script);
-    BOOST_CHECK(IsValidDestination(script_hash));
+    BOOST_CHECK(!IsValidDestination(script_hash));
     
     DilithiumWitnessV0KeyHash witness_key_hash(pubkey);
     BOOST_CHECK(!IsValidDestination(witness_key_hash));
