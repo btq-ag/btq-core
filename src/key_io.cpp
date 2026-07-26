@@ -122,7 +122,7 @@ public:
     std::string operator()(const DilithiumPubKeyDestination& pk) const { return {}; }
 };
 
-CTxDestination DecodeDestination(const std::string& str, const CChainParams& params, std::string& error_str, std::vector<int>* error_locations)
+CTxDestination DecodeDestinationInner(const std::string& str, const CChainParams& params, std::string& error_str, std::vector<int>* error_locations)
 {
     std::vector<unsigned char> data;
     uint160 hash;
@@ -327,6 +327,38 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     error_str = res.first;
     if (error_locations) *error_locations = std::move(res.second);
     return CNoDestination();
+}
+
+/**
+ * Whether a well-formed address decoded to a legacy (pre-BIP360) Dilithium
+ * destination. These stay decodable so historical addresses and wallet history
+ * still render, but IsValidDestination() rejects them: Dilithium opcodes are
+ * consensus-valid only inside P2MR tapscript leaves.
+ */
+bool IsLegacyDilithiumDestination(const CTxDestination& dest)
+{
+    return std::holds_alternative<DilithiumPubKeyDestination>(dest) ||
+           std::holds_alternative<DilithiumPKHash>(dest) ||
+           std::holds_alternative<DilithiumScriptHash>(dest) ||
+           std::holds_alternative<DilithiumWitnessV0KeyHash>(dest) ||
+           std::holds_alternative<DilithiumWitnessV0ScriptHash>(dest);
+}
+
+CTxDestination DecodeDestination(const std::string& str, const CChainParams& params, std::string& error_str, std::vector<int>* error_locations)
+{
+    const CTxDestination dest = DecodeDestinationInner(str, params, error_str, error_locations);
+
+    // Callers rely on "not a valid destination" implying a non-empty error —
+    // validateaddress asserts exactly that. A legacy Dilithium address decodes
+    // cleanly yet is invalid, so without this it would report failure with no
+    // reason and trip the assertion.
+    if (error_str.empty() && !IsValidDestination(dest)) {
+        error_str = IsLegacyDilithiumDestination(dest)
+            ? "Legacy Dilithium address: Dilithium is only valid inside P2MR (BIP360) tapscript, so this is not a spendable payment destination. Use getnewdilithiumaddress to obtain a P2MR address."
+            : "Address is well-formed but is not a valid payment destination.";
+    }
+
+    return dest;
 }
 } // namespace
 

@@ -146,4 +146,32 @@ BOOST_AUTO_TEST_CASE(key_io_invalid)
     }
 }
 
+// Goal: legacy (pre-BIP360) Dilithium addresses still decode, but are not valid
+// payment destinations. validateaddress asserts that an invalid destination always
+// carries an explanatory error, so DecodeDestination must never return one silently.
+BOOST_AUTO_TEST_CASE(key_io_legacy_dilithium_reports_error)
+{
+    SelectParams(ChainType::BTQREGTEST);
+
+    const std::string legacy_dilithium[] = {
+        "nEw8yjgSEg5hqRB6bgkbuQaajkzLc76BN4",           // base58 DilithiumPKHash
+        "2NSfQfy1vb1UBMG2TgM4h84iTEdtX1rD6xR",           // base58 DilithiumScriptHash
+        "rdbt1qd68s67kvaasd2d6ktevsr2t4gep8cg87tqye8c",  // bech32 DilithiumWitnessV0KeyHash
+    };
+
+    for (const auto& addr : legacy_dilithium) {
+        std::string error;
+        const CTxDestination dest = DecodeDestination(addr, error);
+        BOOST_CHECK_MESSAGE(!IsValidDestination(dest), "unexpectedly a valid destination: " + addr);
+        BOOST_CHECK_MESSAGE(!error.empty(), "invalid destination reported without an error: " + addr);
+    }
+
+    // Control: a P2MR address is the supported Dilithium destination and stays valid
+    // with no error, so the check above cannot pass by rejecting everything.
+    std::string error;
+    const CTxDestination p2mr = DecodeDestination("qcrt1zm9jhnxr4cuqen07hqplknfhp7q9rl26m4q6ez4gpjny0dxukx6eqnfj93l", error);
+    BOOST_CHECK(IsValidDestination(p2mr));
+    BOOST_CHECK(error.empty());
+}
+
 BOOST_AUTO_TEST_SUITE_END()
