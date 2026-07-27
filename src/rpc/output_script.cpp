@@ -61,6 +61,21 @@ static RPCHelpMan validateaddress()
             std::vector<int> error_locations;
             CTxDestination dest = DecodeDestination(request.params[0].get_str(), error_msg, &error_locations);
             const bool isValid = IsValidDestination(dest);
+            // DecodeDestination still returns legacy Dilithium witness-v0 (and,
+            // after P2MR-only activation, Base58 Dilithium) destinations for
+            // display/history with an empty error. validateaddress requires an
+            // explanatory error whenever isvalid is false.
+            if (!isValid && error_msg.empty() && !std::holds_alternative<CNoDestination>(dest)) {
+                const bool legacy_dilithium =
+                    std::holds_alternative<DilithiumPubKeyDestination>(dest) ||
+                    std::holds_alternative<DilithiumPKHash>(dest) ||
+                    std::holds_alternative<DilithiumScriptHash>(dest) ||
+                    std::holds_alternative<DilithiumWitnessV0KeyHash>(dest) ||
+                    std::holds_alternative<DilithiumWitnessV0ScriptHash>(dest);
+                error_msg = legacy_dilithium
+                    ? "Legacy Dilithium address: Dilithium is only valid inside P2MR (BIP360) tapscript, so this is not a spendable payment destination. Use getnewdilithiumaddress to obtain a P2MR address."
+                    : "Address is well-formed but is not a valid payment destination.";
+            }
             CHECK_NONFATAL(isValid == error_msg.empty());
 
             UniValue ret(UniValue::VOBJ);

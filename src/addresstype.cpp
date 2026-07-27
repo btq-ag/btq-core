@@ -4,6 +4,7 @@
 
 #include <addresstype.h>
 
+#include <chainparams.h>
 #include <crypto/dilithium_key.h>
 #include <crypto/sha256.h>
 #include <hash.h>
@@ -14,6 +15,7 @@
 #include <util/hash_type.h>
 
 #include <cassert>
+#include <limits>
 #include <vector>
 
 typedef std::vector<unsigned char> valtype;
@@ -229,6 +231,15 @@ public:
     }
 };
 
+/** True while DEPLOYMENT_DILITHIUM_P2MR remains unscheduled (testnet today).
+ *  Legacy Dilithium Base58 P2PKH/P2SH outputs are still consensus-spendable
+ *  there; on chains that activate P2MR-only from genesis/height 1 they are not
+ *  valid payment destinations. */
+bool LegacyDilithiumBase58PaymentsAllowed()
+{
+    return Params().GetConsensus().nDilithiumP2MRHeight == std::numeric_limits<int>::max();
+}
+
 class ValidDestinationVisitor
 {
 public:
@@ -242,11 +253,12 @@ public:
     bool operator()(const WitnessV2P2MR& dest) const { return true; }
     bool operator()(const WitnessUnknown& dest) const { return true; }
     // Dilithium destination operators
-    // Legacy Dilithium destinations remain decodable for display/history, but are
-    // not valid payment destinations: Dilithium opcodes are P2MR-only.
+    // Bare Dilithium P2PK and witness-v0 Dilithium templates are never address
+    // payment destinations. Base58 Dilithium P2PKH/P2SH remain valid only while
+    // P2MR-only is unscheduled (see LegacyDilithiumBase58PaymentsAllowed).
     bool operator()(const DilithiumPubKeyDestination& dest) const { return false; }
-    bool operator()(const DilithiumPKHash& dest) const { return false; }
-    bool operator()(const DilithiumScriptHash& dest) const { return false; }
+    bool operator()(const DilithiumPKHash& dest) const { return LegacyDilithiumBase58PaymentsAllowed(); }
+    bool operator()(const DilithiumScriptHash& dest) const { return LegacyDilithiumBase58PaymentsAllowed(); }
     bool operator()(const DilithiumWitnessV0KeyHash& dest) const { return false; }
     bool operator()(const DilithiumWitnessV0ScriptHash& dest) const { return false; }
 };
