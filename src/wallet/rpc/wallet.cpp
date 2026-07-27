@@ -872,6 +872,7 @@ RPCHelpMan signrawtransactionwithwallet();
 RPCHelpMan signmessage();
 RPCHelpMan signmessagewithdilithium();
 RPCHelpMan verifydilithiumsignature();
+RPCHelpMan verifymessagewithdilithium();
 
 // dilithium
 RPCHelpMan getnewdilithiumaddress();
@@ -958,6 +959,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &signmessage},
         {"wallet", &signmessagewithdilithium},
         {"wallet", &verifydilithiumsignature},
+        {"wallet", &verifymessagewithdilithium},
         {"wallet", &getnewdilithiumaddress},
         {"wallet", &importdilithiumkey},
         {"wallet", &signtransactionwithdilithium},

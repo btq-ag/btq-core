@@ -41,6 +41,20 @@ class WalletDilithiumSendTest(BTQTestFramework):
         msg = "descriptor encrypted dilithium signing"
         sig = repro.signmessagewithdilithium(dilithium_address, msg)
         assert repro.verifydilithiumsignature(msg, dilithium_address, sig)
+        # verifymessagewithdilithium takes (address, signature, message), mirroring
+        # verifymessage; verifydilithiumsignature is the deprecated reordered form.
+        assert repro.verifymessagewithdilithium(dilithium_address, sig, msg)
+        assert not repro.verifymessagewithdilithium(dilithium_address, sig, msg + "!")
+        # Passing the deprecated order to the new RPC must fail loudly, never
+        # silently verify: the message is rejected where an address is expected.
+        assert_raises_rpc_error(
+            -5,
+            "Address is not a Dilithium key address",
+            repro.verifymessagewithdilithium,
+            msg,
+            dilithium_address,
+            sig,
+        )
         repro.encryptwallet("pass")
         assert_raises_rpc_error(
             -13,
