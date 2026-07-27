@@ -283,10 +283,26 @@ BOOST_AUTO_TEST_CASE(cross_chain_rejection_all_chains)
 
             if (row.source_chain == target.chain) {
                 ++count_same_chain;
-                BOOST_CHECK_MESSAGE(valid,
-                    "Expected " << row.label << " from " << row.source_name
-                                << " to decode on target " << target.name
-                                << " addr=" << row.address << " err=" << err);
+                // Mirror encode_decode_roundtrip_all_chains: witness-v0 Dilithium
+                // is never a payment destination; Base58 Dilithium only while
+                // testnet keeps P2MR-only unscheduled.
+                const bool legacy_dilithium =
+                    row.label == "P2DPKH" || row.label == "P2DSH" ||
+                    row.label == "P2DWPKH" || row.label == "P2DWSH";
+                const bool legacy_base58_payments_allowed =
+                    (row.label == "P2DPKH" || row.label == "P2DSH") &&
+                    target.chain == ChainType::BTQTEST;
+                if (legacy_dilithium && !legacy_base58_payments_allowed) {
+                    BOOST_CHECK_MESSAGE(!valid,
+                        "Legacy Dilithium destination unexpectedly valid for payments: "
+                            << row.label << " on " << target.name
+                            << " addr=" << row.address);
+                } else {
+                    BOOST_CHECK_MESSAGE(valid,
+                        "Expected " << row.label << " from " << row.source_name
+                                    << " to decode on target " << target.name
+                                    << " addr=" << row.address << " err=" << err);
+                }
                 continue;
             }
 
