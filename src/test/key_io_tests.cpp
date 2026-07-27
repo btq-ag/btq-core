@@ -146,4 +146,31 @@ BOOST_AUTO_TEST_CASE(key_io_invalid)
     }
 }
 
+// Mining-pool coinbase address (testnet Dilithium Base58 P2PKH). While
+// DEPLOYMENT_DILITHIUM_P2MR is unscheduled on testnet these remain valid
+// payment destinations so validateaddress / Miningcore keep working.
+BOOST_AUTO_TEST_CASE(key_io_testnet_legacy_dilithium_base58_still_valid)
+{
+    SelectParams(ChainType::BTQTEST);
+
+    // Live Testnet-BTQ-Mining-Pool coinbase address.
+    const std::string pool_addr = "nSUTw4YKuND8kNFad9TyWBXCKouru85oGa";
+    std::string error;
+    const CTxDestination dest = DecodeDestination(pool_addr, error);
+    BOOST_CHECK_MESSAGE(error.empty(), "decode error for pool address: " + error);
+    BOOST_CHECK(std::holds_alternative<DilithiumPKHash>(dest));
+    BOOST_CHECK_MESSAGE(IsValidDestination(dest),
+                        "testnet legacy Dilithium Base58 must remain a valid payment destination");
+    BOOST_CHECK_EQUAL(EncodeDestination(dest), pool_addr);
+
+    // Same form on regtest (P2MR-only from height 1) must not be a payment destination.
+    SelectParams(ChainType::BTQREGTEST);
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const DilithiumPKHash regtest_pkh{key.GetPubKey()};
+    BOOST_CHECK(!IsValidDestination(regtest_pkh));
+
+    SelectParams(ChainType::BTQMAIN);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

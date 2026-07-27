@@ -191,7 +191,12 @@ BOOST_AUTO_TEST_CASE(encode_decode_roundtrip_all_chains)
             CTxDestination decoded = DecodeDestination(encoded, err);
             const bool legacy_dilithium =
                 label == "P2DPKH" || label == "P2DSH" || label == "P2DWPKH" || label == "P2DWSH";
-            if (legacy_dilithium) {
+            // Base58 Dilithium P2PKH/P2SH stay valid payment destinations on
+            // testnet while P2MR-only is unscheduled; witness-v0 Dilithium and
+            // post-activation Base58 Dilithium do not.
+            const bool legacy_base58_payments_allowed =
+                (label == "P2DPKH" || label == "P2DSH") && info.chain == ChainType::BTQTEST;
+            if (legacy_dilithium && !legacy_base58_payments_allowed) {
                 // Historical Dilithium destinations remain encodable/decodable for
                 // display, but are no longer valid payment destinations.
                 BOOST_CHECK_MESSAGE(decoded.index() == dest.index(),
