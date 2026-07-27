@@ -93,6 +93,12 @@ BasicTestingSetup::BasicTestingSetup(const ChainType chainType, const std::vecto
       m_args{}
 {
     m_node.args = &gArgs;
+    // gArgs is global and only cleared by ~BasicTestingSetup. If a test aborts
+    // mid-fixture that destructor never runs, and every later fixture then trips
+    // the duplicate-registration assert in SetupServerArgs() below — turning one
+    // failure into hundreds of unrelated ones. Clearing here is idempotent and
+    // keeps a single fatal test from taking the rest of the suite with it.
+    gArgs.ClearArgs();
     std::vector<const char*> arguments = Cat(
         {
             "dummy",
