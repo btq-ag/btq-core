@@ -334,22 +334,28 @@ def get_rpc_proxy(url: str, node_number: int, *, timeout: Optional[int]=None, co
     return coverage.AuthServiceProxyWrapper(proxy, url, coverage_logfile)
 
 
+# Both of these must include the PortSeed.n term. test_runner.py assigns every
+# parallel job a distinct --portseed, and that term is what turns it into a
+# disjoint port range per job. Deriving ports from the node index alone makes
+# every concurrent job bind the same ports, so node 0 of job B collides with
+# node 0 of job A and dies with "Unable to start HTTP server". Because --jobs
+# defaults to 4, that is the *default* invocation, not an opt-in: it produced
+# ~261 spurious failures out of 304 before this was restored, while the same
+# tests pass serially.
+#
+# These do not need to match the regtest defaults in chainparamsbase.cpp. Each
+# node is told its ports explicitly via initialize_datadir(), which writes
+# port= and rpcport= into that node's btq.conf.
+#
+# If this range ever collides with something else running locally, shift it with
+# the TEST_RUNNER_PORT_MIN environment variable rather than by dropping the seed.
 def p2p_port(n):
     assert n <= MAX_NODES
-    # BTQ: Use BTQ-specific ports for BTQ regtest
-    # BTQ regtest P2P port: 19444, RPC port: 18443
-    # For multiple nodes, increment by 1 for each node
-    # Use a larger range to avoid conflicts between P2P and RPC ports
-    return 19444 + n
+    return PORT_MIN + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
 
 
 def rpc_port(n):
-    # BTQ: Use BTQ-specific ports for BTQ regtest
-    # BTQ regtest RPC port: 18443 (from chainparamsbase.cpp)
-    # For multiple nodes, increment by 1 for each node
-    # Use a larger range to avoid conflicts between P2P and RPC ports
-    # Start RPC ports at 18443, but use a larger increment to avoid conflicts
-    return 18443 + (n * 10)
+    return PORT_MIN + PORT_RANGE + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
 
 
 def rpc_url(datadir, i, chain, rpchost):
