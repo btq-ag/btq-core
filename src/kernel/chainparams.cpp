@@ -508,7 +508,21 @@ public:
             }
         };
 
+        // Scaffolding for the assumeutxo tests, which mine to this height and
+        // then snapshot. Every chain shipped an empty table, so ActivateSnapshot
+        // rejected every snapshot as "height in snapshot metadata not
+        // recognized" and the whole feature went untested. These values are
+        // BTQ's own: the base block hash and the serialized UTXO hash both
+        // depend on the subsidy and chain parameters, so upstream's do not
+        // carry over. Regenerate with the dumptxoutset output logged by
+        // CreateAndActivateUTXOSnapshot if the test chain ever changes.
         m_assumeutxo_data = {
+            {
+                .height = 110,
+                .hash_serialized = AssumeutxoHash{uint256S("0x5d86a7f67e8bb0e146c206164dcc984c2af8b3449845a42dd72ef76f082e690a")},
+                .nChainTx = 111,
+                .blockhash = uint256S("0x100831e245415bda8a1b889280fd766c9a1e8a805e2c89c85ae4bc582b4f3efb"),
+            },
         };
 
         chainTxData = ChainTxData{
