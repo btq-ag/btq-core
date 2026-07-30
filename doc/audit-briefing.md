@@ -134,13 +134,24 @@ legacy non-witness Dilithium spend puts its signature in the scriptSig at 16
 weight units per byte, four times the upstream penalty, which caps such a
 transaction at about seven inputs.
 
-### The package weight limit may be unreachable
+### The mempool's size limits are now larger than a block
 
-`MAX_PACKAGE_WEIGHT` is 40,000,000 and `MAX_PACKAGE_COUNT` is 25. At the
-standard transaction ceiling of 400,000 weight units, twenty-five transactions
-total 10,000,000, a quarter of the limit. Only non-standard transactions can
-reach it, so in ordinary operation the count limit always binds first and the
-weight limit is close to dead code.
+A block holds 8,000,000 weight units, which at a scale factor of 16 is 500,000
+vbytes. Against that, `DEFAULT_ANCESTOR_SIZE_LIMIT_KVB` and
+`DEFAULT_DESCENDANT_SIZE_LIMIT_KVB` are 2,000 kvB, four times a block, and
+`MAX_PACKAGE_WEIGHT` is 40,000,000, five times `MAX_BLOCK_WEIGHT`. Upstream
+holds all three near a tenth of block capacity, which is what makes an accepted
+package always minable in one block. That ordering is inverted here.
+
+The 40,000,000 looks derived rather than chosen: `policy/packages.h` asserts
+`MAX_PACKAGE_WEIGHT >= DEFAULT_ANCESTOR_SIZE_LIMIT_KVB * WITNESS_SCALE_FACTOR *
+1000`, so the 2,000 kvB ancestor limit forced it. The ancestor limit is
+therefore the value to ask about.
+
+Separately, `MAX_PACKAGE_COUNT` is still 25, and twenty-five transactions at the
+standard ceiling of 400,000 weight units total 10,000,000 — a quarter of the
+package weight limit. In ordinary operation the count limit always binds first
+and the weight limit is close to dead code.
 
 ### Per-input weight changes what a wallet can spend
 
