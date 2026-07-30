@@ -78,8 +78,16 @@ BOOST_AUTO_TEST_CASE(bloom_create_insert_serialize_with_tweak)
 
 BOOST_AUTO_TEST_CASE(bloom_create_insert_key)
 {
-    std::string strSecret = std::string("5Kg1gnAjaLfKiwhhPpGS3QfRg2m6awQvaj98JCZBZQ5SuS2F15C");
-    CKey key = DecodeSecret(strSecret);
+    // Raw secret behind the Bitcoin mainnet WIF this test historically used
+    // ("5Kg1gnAjaLfKiwhhPpGS3QfRg2m6awQvaj98JCZBZQ5SuS2F15C"). Set it directly
+    // instead of via DecodeSecret: BTQ's base58 SECRET_KEY prefix differs, so
+    // that WIF does not decode here, leaving an invalid CKey whose GetPubKey()
+    // trips assert(keydata) and aborts the process. The key material is
+    // unchanged, so the expected filter bytes below still hold.
+    const std::vector<unsigned char> vchSecret{ParseHex("f49addfd726a59abde172c86452f5f73038a02f4415878dc14934175e8418aff")};
+    CKey key;
+    key.Set(vchSecret.begin(), vchSecret.end(), /*fCompressedIn=*/false);
+    BOOST_REQUIRE(key.IsValid());
     CPubKey pubkey = key.GetPubKey();
     std::vector<unsigned char> vchPubKey(pubkey.begin(), pubkey.end());
 
