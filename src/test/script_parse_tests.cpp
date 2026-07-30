@@ -50,6 +50,14 @@ BOOST_AUTO_TEST_CASE(parse_script)
 
     BOOST_CHECK_EXCEPTION(ParseScript("11111111111111111111"), std::runtime_error, HasReason("script parse error: decimal numeric value only allowed in the range -0xFFFFFFFF...0xFFFFFFFF"));
     BOOST_CHECK_EXCEPTION(ParseScript("11111111111"), std::runtime_error, HasReason("script parse error: decimal numeric value only allowed in the range -0xFFFFFFFF...0xFFFFFFFF"));
-    BOOST_CHECK_EXCEPTION(ParseScript("OP_CHECKSIGADD"), std::runtime_error, HasReason("script parse error: unknown opcode"));
+    BOOST_CHECK_EXCEPTION(ParseScript("OP_NOT_AN_OPCODE"), std::runtime_error, HasReason("script parse error: unknown opcode"));
+
+    // Upstream asserts OP_CHECKSIGADD is unknown here, because at Bitcoin's
+    // MAX_OPCODE (OP_NOP10, 0xb9) it sits outside the table OpCodeParser builds.
+    // BTQ added five Dilithium opcodes at 0xbb-0xbf and moved MAX_OPCODE to
+    // OP_DILITHIUM_PUBKEY, which brings 0xba back into range. The same constant
+    // bounds CScript::HasValidOps(), so this widening is not confined to parsing.
+    BOOST_CHECK_EQUAL(HexStr(ParseScript("OP_CHECKSIGADD")), "ba");
+    BOOST_CHECK_EQUAL(HexStr(ParseScript("OP_DILITHIUM_PUBKEY")), "bf");
 }
 BOOST_AUTO_TEST_SUITE_END()

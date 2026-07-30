@@ -4,7 +4,7 @@
     "version": 1,
     "size": 42,
     "vsize": 42,
-    "weight": 168,
+    "weight": 672,
     "locktime": 0,
     "vin": [
     ],
@@ -14,9 +14,9 @@
             "n": 0,
             "scriptPubKey": {
                 "asm": "OP_HASH160 a5ab14c9804d0d8bf02f1aea4e82780733ad0a83 OP_EQUAL",
-                "desc": "addr(3GnzN8FqgvYGYdhj8NW6UNxxVv3Uj1ApQn)#zsln680u",
+                "desc": "addr(wajQNF1HzNnArypzJuoXWgMEKVY77wtztp)#ejw3nvgm",
                 "hex": "a914a5ab14c9804d0d8bf02f1aea4e82780733ad0a8387",
-                "address": "3GnzN8FqgvYGYdhj8NW6UNxxVv3Uj1ApQn",
+                "address": "wajQNF1HzNnArypzJuoXWgMEKVY77wtztp",
                 "type": "scripthash"
             }
         }

@@ -614,7 +614,23 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     // Since 'd:' is 'u' we can use it directly inside a thresh. But we can't under P2WSH.
     Test("thresh(2,dv:older(42),s:pk(025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc),s:pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65))", "?", "7663012ab269687c205cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bcac937c20d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac935287", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, 12, 3, {}, {}, 4);
     // We can have a script that has more than 201 ops (n = 99), that needs a stack size > 100 (n = 110), or has a
-    // script that is larger than 3600 bytes (n = 200). All that can't be under P2WSH.
+    // script that is larger than 3600 bytes (n = 200).
+    //
+    // Upstream marks all three P2WSH-invalid, but that verdict came from one
+    // limit rather than three: TESTMODE_P2WSH_INVALID drives IsValid(), which
+    // checks only the node's type and its script size against MaxScriptSize().
+    // These three scripts are 3759, 4177 and 7597 bytes, so all of them cleared
+    // Bitcoin's 3600-byte ceiling for a standard witnessScript and none of them
+    // clear BTQ's, which policy.h sets to 65536. They parse under P2WSH here.
+    //
+    // Dropping the flag runs them through the valid branch in both contexts,
+    // which is worth more than the assertion it replaces: the ops and stack
+    // ceilings are unchanged at 201 and 100, so the P2WSH satisfactions still
+    // have to fail, and TestSatisfy pins down how. It only tolerates a failure
+    // that is an ops-count error when CheckOpsLimit() is false or a stack-size
+    // error when CheckStackSize() is false, so these now demonstrate that the
+    // scripts are parseable but unspendable under P2WSH rather than merely
+    // rejected. The size ceiling itself is covered separately below.
     for (const auto pk_count: {99, 110, 200}) {
         std::string ms_str_large;
         for (auto i = 0; i < pk_count - 1; ++i) {
@@ -622,7 +638,7 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
         }
         ms_str_large += "pk(" + HexStr(g_testdata->pubkeys[pk_count - 1]) + ")";
         ms_str_large.insert(ms_str_large.end(), pk_count - 1, ')');
-        Test(ms_str_large, "?", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, pk_count + (pk_count - 1) * 3, pk_count, {}, {}, pk_count + 1);
+        Test(ms_str_large, "?", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, pk_count + (pk_count - 1) * 3, pk_count, {}, {}, pk_count + 1);
     }
     // We can have a script that reaches a stack size of 1000 during execution.
     std::string ms_stack_limit;
@@ -634,13 +650,44 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     ms_stack_limit.insert(ms_stack_limit.end(), count, ')');
     const auto ms_stack_ok{miniscript::FromString(ms_stack_limit, tap_converter)};
     BOOST_CHECK(ms_stack_ok && ms_stack_ok->CheckStackSize());
-    Test(ms_stack_limit, "?", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, 4 * count + 1, 1, {}, {}, 1 + count + 1);
+    // P2WSH-invalid upstream for the same size reason as the loop above: these
+    // are about 5 KB, over Bitcoin's 3600-byte ceiling and under BTQ's 65536.
+    Test(ms_stack_limit, "?", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 4 * count + 1, 1, {}, {}, 1 + count + 1);
     // But one more element on the stack during execution will make it fail. And we'd detect that.
     count++;
     ms_stack_limit = "and_b(older(1),a:" + ms_stack_limit + ")";
     const auto ms_stack_nok{miniscript::FromString(ms_stack_limit, tap_converter)};
     BOOST_CHECK(ms_stack_nok && !ms_stack_nok->CheckStackSize());
-    Test(ms_stack_limit, "?", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG | TESTMODE_P2WSH_INVALID, 4 * count + 1, 1, {}, {}, 1 + count + 1);
+    Test(ms_stack_limit, "?", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 4 * count + 1, 1, {}, {}, 1 + count + 1);
+
+    // Cover the ceiling the three cases above used to cover, at the value BTQ
+    // actually sets. A witnessScript over MAX_STANDARD_P2WSH_SCRIPT_SIZE is
+    // still rejected under P2WSH, and this is what it now takes to reach it.
+    //
+    // The and_b(older(1)) chain is the construct that gets there: each level
+    // costs five script bytes and, unlike a chain of pk(), needs no witness
+    // element and no distinct key per level, so the script grows without the
+    // satisfaction stack growing with it. 13200 levels is 66035 bytes, just
+    // past the 65536 ceiling. The same script is oversized for a P2WSH
+    // witnessScript and fine as a tapscript, which is the contrast the flag
+    // exists to express.
+    std::string ms_p2wsh_oversized;
+    const auto oversized_count{13200};
+    for (auto i = 0; i < oversized_count; ++i) {
+        ms_p2wsh_oversized += "and_b(older(1),a:";
+    }
+    ms_p2wsh_oversized += "pk(" + HexStr(g_testdata->pubkeys[0]) + ")";
+    ms_p2wsh_oversized.insert(ms_p2wsh_oversized.end(), oversized_count, ')');
+    const auto ms_oversized_tap{miniscript::FromString(ms_p2wsh_oversized, tap_converter)};
+    BOOST_REQUIRE(ms_oversized_tap);
+    BOOST_CHECK_MESSAGE(ms_oversized_tap->ScriptSize() > MAX_STANDARD_P2WSH_SCRIPT_SIZE,
+                        "expected over " << MAX_STANDARD_P2WSH_SCRIPT_SIZE << " bytes, got " << ms_oversized_tap->ScriptSize());
+    BOOST_CHECK(ms_oversized_tap->IsValid());
+    // Same expression under P2WSH: either the parser refuses it outright or the
+    // node reports itself invalid, which is the pair TESTMODE_P2WSH_INVALID
+    // accepts above.
+    const auto ms_oversized_wsh{miniscript::FromString(ms_p2wsh_oversized, wsh_converter)};
+    BOOST_CHECK(!ms_oversized_wsh || !ms_oversized_wsh->IsValid());
 
     // Misc unit tests
     // A Script with a non minimal push is invalid

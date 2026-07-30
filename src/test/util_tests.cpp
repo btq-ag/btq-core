@@ -1279,7 +1279,7 @@ BOOST_AUTO_TEST_CASE(test_ToUpper)
 BOOST_AUTO_TEST_CASE(test_Capitalize)
 {
     BOOST_CHECK_EQUAL(Capitalize(""), "");
-    BOOST_CHECK_EQUAL(Capitalize("btq"), "BTQ");
+    BOOST_CHECK_EQUAL(Capitalize("btq"), "Btq");
     BOOST_CHECK_EQUAL(Capitalize("\x00\xfe\xff"), "\x00\xfe\xff");
 }
 
@@ -1584,7 +1584,7 @@ BOOST_AUTO_TEST_CASE(message_sign)
 {
     const std::array<unsigned char, 32> privkey_bytes = {
         // just some random data
-        // derived address from this private key: 15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs
+        // derived address from this private key: XFYfoPzagM2Gg1cRxkmCHu3uvpx5RHpwTK
         0xD9, 0x7F, 0x51, 0x08, 0xF1, 0x1C, 0xDA, 0x6E,
         0xEE, 0xBA, 0xAA, 0x42, 0x0F, 0xEF, 0x07, 0x26,
         0xB1, 0xF8, 0x98, 0x06, 0x0B, 0x98, 0x48, 0x9F,
@@ -1593,8 +1593,12 @@ BOOST_AUTO_TEST_CASE(message_sign)
 
     const std::string message = "Trust no one";
 
+    // Signature over MESSAGE_MAGIC ("BTQ Signed Message:\n") rather than
+    // Bitcoin's, so it necessarily differs from the upstream vector. Derived
+    // from RFC6979 ECDSA independently of this implementation; the generator
+    // reproduces upstream's value exactly when given upstream's magic.
     const std::string expected_signature =
-        "IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=";
+        "IOSLyhhLixuzqoPPoylRyzM0Bx1dI1r/U8CZHVIoIwptMzfxmg5nfB45Zx4G37LxYm19DewoKSw893Ga1qSiOKQ=";
 
     CKey privkey;
     std::string generated_signature;
@@ -1627,42 +1631,45 @@ BOOST_AUTO_TEST_CASE(message_verify)
 
     BOOST_CHECK_EQUAL(
         MessageVerify(
-            "3B5fQsEXEaV8v6U3ejYc8XaKXAkyQj2MjV",
+            "wV25QyyyY2j3ESbJqGr3ApxbLkFbvSLqui",
             "signature should be irrelevant",
             "message too"),
         MessageVerificationResult::ERR_ADDRESS_NO_KEY);
 
     BOOST_CHECK_EQUAL(
         MessageVerify(
-            "1KqbBpLy5FARmTPD4VZnDDpYjkUvkr82Pm",
+            "XWBq2xhaKmv96xqhtxYgadEYwaog5ys5FD",
             "invalid signature, not in base64 encoding",
             "message should be irrelevant"),
         MessageVerificationResult::ERR_MALFORMED_SIGNATURE);
 
     BOOST_CHECK_EQUAL(
         MessageVerify(
-            "1KqbBpLy5FARmTPD4VZnDDpYjkUvkr82Pm",
+            "XWBq2xhaKmv96xqhtxYgadEYwaog5ys5FD",
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             "message should be irrelevant"),
         MessageVerificationResult::ERR_PUBKEY_NOT_RECOVERED);
 
     BOOST_CHECK_EQUAL(
         MessageVerify(
-            "15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs",
-            "IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=",
+            "XFYfoPzagM2Gg1cRxkmCHu3uvpx5RHpwTK",
+            "IOSLyhhLixuzqoPPoylRyzM0Bx1dI1r/U8CZHVIoIwptMzfxmg5nfB45Zx4G37LxYm19DewoKSw893Ga1qSiOKQ=",
             "I never signed this"),
         MessageVerificationResult::ERR_NOT_SIGNED);
 
     BOOST_CHECK_EQUAL(
         MessageVerify(
-            "15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs",
-            "IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=",
+            "XFYfoPzagM2Gg1cRxkmCHu3uvpx5RHpwTK",
+            "IOSLyhhLixuzqoPPoylRyzM0Bx1dI1r/U8CZHVIoIwptMzfxmg5nfB45Zx4G37LxYm19DewoKSw893Ga1qSiOKQ=",
             "Trust no one"),
         MessageVerificationResult::OK);
 
+    // Not a real signature -- it is the Chancellor headline, base64'd, which
+    // happens to parse as a well-formed compact signature. The address is
+    // whatever pubkey that recovers to, so it moves with MESSAGE_MAGIC.
     BOOST_CHECK_EQUAL(
         MessageVerify(
-            "11canuhp9X2NocwCq7xNrQYTmUgZAnLK3",
+            "XF9AojAEBjbNpZyBwtwQ9kyanbKPACvFLk",
             "IIcaIENoYW5jZWxsb3Igb24gYnJpbmsgb2Ygc2Vjb25kIGJhaWxvdXQgZm9yIGJhbmtzIAaHRtbCeDZINyavx14=",
             "Trust me"),
         MessageVerificationResult::OK);
