@@ -18,16 +18,35 @@
 
 #include <boost/test/unit_test.hpp>
 
-static const std::string strSecret1 = "5HxWvvfubhXpYYpS3tJkw6fq9jE9j18THftkZjHHfmFiWtmAbrj";
-static const std::string strSecret2 = "5KC4ejrDjv152FGwP386VD1i2NYc5KkfSMyv1nGy1VGDxGHqVY3";
-static const std::string strSecret1C = "Kwr371tjA9u2rFSMZjTNun2PXXP3WPZu2afRHTcta6KxEUdm1vEw";
-static const std::string strSecret2C = "L3Hq7a8FEQwJkW1M2GNKDW28546Vp5miewcCzSqUD9kCAXrJdS3g";
-static const std::string addr1 = "1QFqqMUD55ZV3PJEJZtaKCsQmjLT6JkjvJ";
-static const std::string addr2 = "1F5y5E5FMc5YzdJtB9hLaUe43GDxEKXENJ";
-static const std::string addr1C = "1NoJrossxPBKfCHuJXT4HadJrXRE9Fxiqs";
-static const std::string addr2C = "1CRj2HyM1CXWzHAXLQtiGLyggNT9WQqsDs";
+// These were inherited from upstream Bitcoin and encoded under Bitcoin's base58
+// versions, so none of them decoded here: BTQ uses SECRET_KEY 235 (not 128) and
+// PUBKEY_ADDRESS 75 (not 0), see src/kernel/chainparams.cpp. DecodeSecret()
+// returned an invalid CKey, and the GetPubKey() calls below then tripped
+// assert(keydata) in key.cpp and took the whole test binary down with SIGABRT --
+// the same failure mode PR #87 fixed in bloom_tests.
+//
+// Re-encoded under BTQ's versions. Only the version byte changes; the 32 secret
+// bytes and the compression flag are byte-for-byte identical to what the Bitcoin
+// literals encoded, so every downstream expectation in this file (pubkeys,
+// signatures, negation, ellswift) still holds unchanged.
+//
+// Derived with test/functional/test_framework (base58 + ECKey + ripemd160), not
+// by recording what the C++ under test emitted. The same pipeline run with
+// Bitcoin's versions reproduces all eight original literals exactly, which is
+// what makes these trustworthy.
+static const std::string strSecret1 = "8sxAojhKnDu3yKzu3uifzQph8w7zHMJ9V4UGfktD2syDKLTwqiJ";
+static const std::string strSecret2 = "8uBiXYsdvSNJT2TQP4Y1YXAa1aSSdfvMdkZS7ostNbyikjv23Jd";
+static const std::string strSecret1C = "bmtWHHSytbvk7crYjqgw6Q9WA1sqqAagSrKNA4h27Hy7MtuKDJXU";
+static const std::string strSecret2C = "bsLJHqgVxry21sRYCNbsQ89EhYbJ8rnW5DG9s3ubkMPMHxC75WoV";
+static const std::string addr1 = "Xac5gVppKcKCNtkj92sUgcHQyZfCPn9qcJ";
+static const std::string addr2 = "XRSCvNRrc8qGL8mP1cgEwt44F6Yhaz5iN2";
+static const std::string addr1C = "XZ9YhxEVCuw2zhkQ8zRxez3K4MjyRXqsn1";
+static const std::string addr2C = "XNmxsSKxFjHEKnd2AsscdkPgtCmtsyhXqm";
 
-static const std::string strAddressBad = "1HV9Lc3sNHZxwj4Zk6fB38tEmBryq2cBiF";
+// A valid BTQ P2PKH address, which must still not decode as a private key. Kept
+// as an address rather than arbitrary text so this keeps testing what it did
+// upstream: that DecodeSecret rejects a well-formed address of the same chain.
+static const std::string strAddressBad = "XTqPBkQUcpKgHEX4aZe5QYJEy2Bj9QUtff";
 
 
 BOOST_FIXTURE_TEST_SUITE(key_tests, BasicTestingSetup)
