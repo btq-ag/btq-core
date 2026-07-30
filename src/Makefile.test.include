@@ -424,6 +424,10 @@ univalue_test_object_CPPFLAGS = -I$(srcdir)/$(UNIVALUE_INCLUDE_DIR_INT)
 univalue_test_object_LDFLAGS = -static $(LIBTOOL_APP_LDFLAGS)
 endif
 
+# The suite names are joined with commas below because Boost's -t takes one
+# comma-separated list. Newline-separated it reads the whole thing as a single
+# name, matches nothing, and reports "no test cases matching filter" -- which is
+# what wallet/test/spend_tests.cpp, the only file here declaring two suites, did.
 %.cpp.test: %.cpp
 	@echo Running tests: $$(\
 	  cat $< | \
@@ -436,7 +440,8 @@ endif
 	$(TEST_BINARY) --catch_system_errors=no -l test_suite -t "$$(\
 	  cat $< | \
 	  grep -E "(BOOST_FIXTURE_TEST_SUITE\\(|BOOST_AUTO_TEST_SUITE\\()" | \
-	  cut -d '(' -f 2 | cut -d ',' -f 1 | cut -d ')' -f 1\
+	  cut -d '(' -f 2 | cut -d ',' -f 1 | cut -d ')' -f 1 | \
+	  paste -sd, -\
 	)" -- DEBUG_LOG_OUT > "$$TEST_LOGFILE" 2>&1 || (cat "$$TEST_LOGFILE" && false)
 
 %.json.h: %.json
