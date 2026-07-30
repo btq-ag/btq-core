@@ -8,8 +8,10 @@
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/tx_verify.h>
+#include <chainparams.h>
 #include <node/miner.h>
 #include <policy/policy.h>
+#include <pow.h>
 #include <test/util/random.h>
 #include <test/util/txmempool.h>
 #include <timedata.h>
@@ -58,6 +60,11 @@ BOOST_FIXTURE_TEST_SUITE(miner_tests, MinerTestingSetup)
 
 static CFeeRate blockMinFeeRate = CFeeRate(DEFAULT_BLOCK_MIN_TX_FEE);
 
+// Value of the txFirst coinbases these tests spend. BTQ pays 5 BTQ per block
+// where upstream Bitcoin pays 50, so the inherited 5000000000 literals spend ten
+// times what the input holds and fail with bad-txns-in-belowout.
+static constexpr CAmount COINBASE_VALUE = 5 * COIN;
+
 BlockAssembler MinerTestingSetup::AssemblerForTest(CTxMemPool& tx_mempool)
 {
     BlockAssembler::Options options;
@@ -67,28 +74,43 @@ BlockAssembler MinerTestingSetup::AssemblerForTest(CTxMemPool& tx_mempool)
     return BlockAssembler{m_node.chainman->ActiveChainstate(), &tx_mempool, options};
 }
 
+// Nonces valid under BTQ chain params. The inherited upstream values could not
+// work here: BTQ has its own genesis, so every block hash in this chain differs
+// and none of Bitcoin's nonces satisfy the target.
+//
+// To regenerate after any change to the block contents below (coinbase layout,
+// nTime pacing, nBits derivation) — temporarily insert this after nNonce is set
+// and paste the emitted table back here:
+//
+//     while (!CheckProofOfWork(pblock->GetHash(), pblock->nBits, Params().GetConsensus())) {
+//         ++pblock->nNonce;
+//     }
+//     std::cerr << "{" << (unsigned)bi.extranonce << ", " << pblock->nNonce << "}," << std::endl;
+//
+// Mining these is only cheap while difficulty stays at powLimit, which depends
+// on the nTime pacing below — see the comment there before changing it.
 constexpr static struct {
     unsigned char extranonce;
     unsigned int nonce;
-} BLOCKINFO[]{{8, 582909131},  {0, 971462344},  {2, 1169481553}, {6, 66147495},  {7, 427785981},  {8, 80538907},
-              {8, 207348013},  {2, 1951240923}, {4, 215054351},  {1, 491520534}, {8, 1282281282}, {4, 639565734},
-              {3, 248274685},  {8, 1160085976}, {6, 396349768},  {5, 393780549}, {5, 1096899528}, {4, 965381630},
-              {0, 728758712},  {5, 318638310},  {3, 164591898},  {2, 274234550}, {2, 254411237},  {7, 561761812},
-              {2, 268342573},  {0, 402816691},  {1, 221006382},  {6, 538872455}, {7, 393315655},  {4, 814555937},
-              {7, 504879194},  {6, 467769648},  {3, 925972193},  {2, 200581872}, {3, 168915404},  {8, 430446262},
-              {5, 773507406},  {3, 1195366164}, {0, 433361157},  {3, 297051771}, {0, 558856551},  {2, 501614039},
-              {3, 528488272},  {2, 473587734},  {8, 230125274},  {2, 494084400}, {4, 357314010},  {8, 60361686},
-              {7, 640624687},  {3, 480441695},  {8, 1424447925}, {4, 752745419}, {1, 288532283},  {6, 669170574},
-              {5, 1900907591}, {3, 555326037},  {3, 1121014051}, {0, 545835650}, {8, 189196651},  {5, 252371575},
-              {0, 199163095},  {6, 558895874},  {6, 1656839784}, {6, 815175452}, {6, 718677851},  {5, 544000334},
-              {0, 340113484},  {6, 850744437},  {4, 496721063},  {8, 524715182}, {6, 574361898},  {6, 1642305743},
-              {6, 355110149},  {5, 1647379658}, {8, 1103005356}, {7, 556460625}, {3, 1139533992}, {5, 304736030},
-              {2, 361539446},  {2, 143720360},  {6, 201939025},  {7, 423141476}, {4, 574633709},  {3, 1412254823},
-              {4, 873254135},  {0, 341817335},  {6, 53501687},   {3, 179755410}, {5, 172209688},  {8, 516810279},
-              {4, 1228391489}, {8, 325372589},  {6, 550367589},  {0, 876291812}, {7, 412454120},  {7, 717202854},
-              {2, 222677843},  {6, 251778867},  {7, 842004420},  {7, 194762829}, {4, 96668841},   {1, 925485796},
-              {0, 792342903},  {6, 678455063},  {6, 773251385},  {5, 186617471}, {6, 883189502},  {7, 396077336},
-              {8, 254702874},  {0, 455592851}};
+} BLOCKINFO[]{{8, 583986564}, {0, 971818701}, {2, 1182969874}, {6, 77605472}, {7, 431216615}, {8, 85963646},
+              {8, 208878592}, {2, 1951680346}, {4, 227694790}, {1, 495577699}, {8, 1284928742}, {4, 641308365},
+              {3, 257560507}, {8, 1165895598}, {6, 398368463}, {5, 398954207}, {5, 1098255934}, {4, 968300686},
+              {0, 729258192}, {5, 322925133}, {3, 170322531}, {2, 275309933}, {2, 256302129}, {7, 568515944},
+              {2, 270428205}, {0, 405493115}, {1, 221993384}, {6, 552704690}, {7, 394700627}, {4, 817153241},
+              {7, 507041144}, {6, 474817181}, {3, 929476932}, {2, 201485933}, {3, 170635715}, {8, 438493686},
+              {5, 776314307}, {3, 1197821852}, {0, 442235841}, {3, 305228177}, {0, 567932474}, {2, 502702275},
+              {3, 534971213}, {2, 475660844}, {8, 238346341}, {2, 496391573}, {4, 358509591}, {8, 62884806},
+              {7, 658645439}, {3, 492035378}, {8, 1426710294}, {4, 760844026}, {1, 296071444}, {6, 672253319},
+              {5, 1904530670}, {3, 568009936}, {3, 1144913664}, {0, 547354688}, {8, 189320045}, {5, 278373322},
+              {0, 201683859}, {6, 560626090}, {6, 1660226597}, {6, 815947006}, {6, 718946879}, {5, 546439923},
+              {0, 341692534}, {6, 855395197}, {4, 505659315}, {8, 533575893}, {6, 575531577}, {6, 1645312554},
+              {6, 355967891}, {5, 1658326019}, {8, 1116212004}, {7, 558335162}, {3, 1140651819}, {5, 319617557},
+              {2, 363607879}, {2, 143927901}, {6, 204394317}, {7, 423157888}, {4, 574929488}, {3, 1412447109},
+              {4, 875051634}, {0, 351525838}, {6, 54492876}, {3, 182109028}, {5, 172598806}, {8, 526213763},
+              {4, 1237716361}, {8, 336136692}, {6, 560036366}, {0, 876573958}, {7, 417165531}, {7, 719154743},
+              {2, 227841981}, {6, 251802625}, {7, 846610631}, {7, 200776565}, {4, 103305597}, {1, 936052457},
+              {0, 792539619}, {6, 679733700}, {6, 774054183}, {5, 190177011}, {6, 883558464}, {7, 398432121},
+              {8, 255101987}, {0, 461311301}};
 
 static std::unique_ptr<CBlockIndex> CreateBlockIndex(int nHeight, CBlockIndex* active_chain_tip) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 {
@@ -116,20 +138,20 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     tx.vin[0].prevout.hash = txFirst[0]->GetHash();
     tx.vin[0].prevout.n = 0;
     tx.vout.resize(1);
-    tx.vout[0].nValue = 5000000000LL - 1000;
+    tx.vout[0].nValue = COINBASE_VALUE - 1000;
     // This tx has a low fee: 1000 satoshis
     uint256 hashParentTx = tx.GetHash(); // save this txid for later use
     tx_mempool.addUnchecked(entry.Fee(1000).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx));
 
     // This tx has a medium fee: 10000 satoshis
     tx.vin[0].prevout.hash = txFirst[1]->GetHash();
-    tx.vout[0].nValue = 5000000000LL - 10000;
+    tx.vout[0].nValue = COINBASE_VALUE - 10000;
     uint256 hashMediumFeeTx = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(10000).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx));
 
     // This tx has a high fee, but depends on the first transaction
     tx.vin[0].prevout.hash = hashParentTx;
-    tx.vout[0].nValue = 5000000000LL - 1000 - 50000; // 50k satoshi fee
+    tx.vout[0].nValue = COINBASE_VALUE - 1000 - 50000; // 50k satoshi fee
     uint256 hashHighFeeTx = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(50000).Time(Now<NodeSeconds>()).SpendsCoinbase(false).FromTx(tx));
 
@@ -141,7 +163,7 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
 
     // Test that a package below the block min tx fee doesn't get included
     tx.vin[0].prevout.hash = hashHighFeeTx;
-    tx.vout[0].nValue = 5000000000LL - 1000 - 50000; // 0 fee
+    tx.vout[0].nValue = COINBASE_VALUE - 1000 - 50000; // 0 fee
     uint256 hashFreeTx = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(0).FromTx(tx));
     size_t freeTxSize = ::GetSerializeSize(tx, PROTOCOL_VERSION);
@@ -151,7 +173,7 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     CAmount feeToUse = blockMinFeeRate.GetFee(2*freeTxSize) - 1;
 
     tx.vin[0].prevout.hash = hashFreeTx;
-    tx.vout[0].nValue = 5000000000LL - 1000 - 50000 - feeToUse;
+    tx.vout[0].nValue = COINBASE_VALUE - 1000 - 50000 - feeToUse;
     uint256 hashLowFeeTx = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(feeToUse).FromTx(tx));
     pblocktemplate = AssemblerForTest(tx_mempool).CreateNewBlock(scriptPubKey);
@@ -178,7 +200,7 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     // Add a 0-fee transaction that has 2 outputs.
     tx.vin[0].prevout.hash = txFirst[2]->GetHash();
     tx.vout.resize(2);
-    tx.vout[0].nValue = 5000000000LL - 100000000;
+    tx.vout[0].nValue = COINBASE_VALUE - 100000000;
     tx.vout[1].nValue = 100000000; // 1BTC output
     uint256 hashFreeTx2 = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(0).SpendsCoinbase(true).FromTx(tx));
@@ -187,7 +209,7 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     tx.vin[0].prevout.hash = hashFreeTx2;
     tx.vout.resize(1);
     feeToUse = blockMinFeeRate.GetFee(freeTxSize);
-    tx.vout[0].nValue = 5000000000LL - 100000000 - feeToUse;
+    tx.vout[0].nValue = COINBASE_VALUE - 100000000 - feeToUse;
     uint256 hashLowFeeTx2 = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(feeToUse).SpendsCoinbase(false).FromTx(tx));
     pblocktemplate = AssemblerForTest(tx_mempool).CreateNewBlock(scriptPubKey);
@@ -221,6 +243,26 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
     const CAmount HIGHFEE = COIN;
     const CAmount HIGHERFEE = 4 * COIN;
 
+    // The sigop-limit cases below chain one transaction per iteration, each
+    // carrying a CHECKMULTISIG preceded by OP_NOP so GetLegacySigOpCount charges
+    // the maximum 20 sigops. Derive the count from consensus rather than hardcode
+    // it: CheckBlock rejects when nSigOps * WITNESS_SCALE_FACTOR exceeds
+    // MAX_BLOCK_SIGOPS_COST, and both constants differ from upstream's (BTQ runs
+    // WITNESS_SCALE_FACTOR 16 against Bitcoin's 4). Upstream's hardcoded 1001 was
+    // calibrated for Bitcoin's limit and is wrong here in both directions -- it
+    // no longer sits at the boundary, and 1001 * LOWFEE overdraws BTQ's 5 BTQ
+    // subsidy, driving the chained outputs negative from iteration 500 and
+    // failing with bad-txns-vout-negative long before any sigop limit is reached.
+    static constexpr unsigned int SIGOPS_PER_TX = 20;
+    const unsigned int max_legacy_sigops = MAX_BLOCK_SIGOPS_COST / WITNESS_SCALE_FACTOR;
+    // Smallest count that trips the limit.
+    const unsigned int sigop_tx_count = max_legacy_sigops / SIGOPS_PER_TX + 1;
+    // The cost a correctly-accounted entry declares, so the assembler's budget
+    // agrees with what validation recomputes. Upstream's literal 80 is 20 * 4.
+    const int64_t sigops_cost_per_tx = int64_t{SIGOPS_PER_TX} * WITNESS_SCALE_FACTOR;
+    // Chained fees must stay inside the subsidy or the outputs go negative.
+    assert(sigop_tx_count * LOWFEE < BLOCKSUBSIDY);
+
     {
         CTxMemPool& tx_mempool{MakeMempool()};
         LOCK(tx_mempool.cs);
@@ -237,7 +279,7 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
         tx.vin[0].prevout.n = 0;
         tx.vout.resize(1);
         tx.vout[0].nValue = BLOCKSUBSIDY;
-        for (unsigned int i = 0; i < 1001; ++i) {
+        for (unsigned int i = 0; i < sigop_tx_count; ++i) {
             tx.vout[0].nValue -= LOWFEE;
             hash = tx.GetHash();
             bool spendsCoinbase = i == 0; // only first tx spends coinbase
@@ -255,12 +297,12 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
 
         tx.vin[0].prevout.hash = txFirst[0]->GetHash();
         tx.vout[0].nValue = BLOCKSUBSIDY;
-        for (unsigned int i = 0; i < 1001; ++i) {
+        for (unsigned int i = 0; i < sigop_tx_count; ++i) {
             tx.vout[0].nValue -= LOWFEE;
             hash = tx.GetHash();
             bool spendsCoinbase = i == 0; // only first tx spends coinbase
             // If we do set the # of sig ops in the CTxMemPoolEntry, template creation passes
-            tx_mempool.addUnchecked(entry.Fee(LOWFEE).Time(Now<NodeSeconds>()).SpendsCoinbase(spendsCoinbase).SigOpsCost(80).FromTx(tx));
+            tx_mempool.addUnchecked(entry.Fee(LOWFEE).Time(Now<NodeSeconds>()).SpendsCoinbase(spendsCoinbase).SigOpsCost(sigops_cost_per_tx).FromTx(tx));
             tx.vin[0].prevout.hash = hash;
         }
         BOOST_CHECK(AssemblerForTest(tx_mempool).CreateNewBlock(scriptPubKey));
@@ -435,7 +477,11 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
     tx.vout[0].scriptPubKey = CScript() << OP_1;
     tx.nLockTime = 0;
     hash = tx.GetHash();
-    tx_mempool.addUnchecked(entry.Fee(HIGHFEE).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx));
+    // Held back rather than added now -- see the note at the first CreateNewBlock
+    // below. The entry is still configured here so the absolute-locktime entries
+    // added further down inherit exactly the state they did before.
+    entry.Fee(HIGHFEE).Time(Now<NodeSeconds>()).SpendsCoinbase(true);
+    const CMutableTransaction tx_relative_height_locked{tx};
     BOOST_CHECK(CheckFinalTxAtTip(*Assert(m_node.chainman->ActiveChain().Tip()), CTransaction{tx})); // Locktime passes
     BOOST_CHECK(!TestSequenceLocks(CTransaction{tx}, tx_mempool)); // Sequence locks fail
 
@@ -446,10 +492,21 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
 
     // relative time locked
     tx.vin[0].prevout.hash = txFirst[1]->GetHash();
-    tx.vin[0].nSequence = CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG | (((m_node.chainman->ActiveChain().Tip()->GetMedianTimePast()+1-m_node.chainman->ActiveChain()[1]->GetMedianTimePast()) >> CTxIn::SEQUENCE_LOCKTIME_GRANULARITY) + 1); // txFirst[1] is the 3rd block
+    // Number of 512-second granularity units this input must age before it is
+    // BIP68-final. Upstream leaves this implicit because its blocks here are one
+    // second apart, making it exactly one unit; BTQ paces them at
+    // nPowTargetSpacing to keep LWMA at steady state (see CreateNewBlock_validity),
+    // so the span is larger and this lands well above one unit. Capture it so the
+    // MedianTimePast advance further down can be sized to match -- advancing by a
+    // single SEQUENCE_LOCK_TIME would leave the input still locked and the block
+    // would fail TestBlockValidity with bad-txns-nonfinal.
+    const uint32_t relative_lock_units{static_cast<uint32_t>(
+        ((m_node.chainman->ActiveChain().Tip()->GetMedianTimePast() + 1 - m_node.chainman->ActiveChain()[1]->GetMedianTimePast()) >> CTxIn::SEQUENCE_LOCKTIME_GRANULARITY) + 1)};
+    tx.vin[0].nSequence = CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG | relative_lock_units; // txFirst[1] is the 3rd block
     prevheights[0] = baseheight + 2;
     hash = tx.GetHash();
-    tx_mempool.addUnchecked(entry.Time(Now<NodeSeconds>()).FromTx(tx));
+    entry.Time(Now<NodeSeconds>());
+    const CMutableTransaction tx_relative_time_locked{tx}; // also held back, see below
     BOOST_CHECK(CheckFinalTxAtTip(*Assert(m_node.chainman->ActiveChain().Tip()), CTransaction{tx})); // Locktime passes
     BOOST_CHECK(!TestSequenceLocks(CTransaction{tx}, tx_mempool)); // Sequence locks fail
 
@@ -505,15 +562,36 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
     auto pblocktemplate = AssemblerForTest(tx_mempool).CreateNewBlock(scriptPubKey);
     BOOST_CHECK(pblocktemplate);
 
-    // None of the of the absolute height/time locked tx should have made
-    // it into the template because we still check IsFinalTx in CreateNewBlock,
-    // but relative locked txs will if inconsistently added to mempool.
-    // For now these will still generate a valid template until BIP68 soft fork
-    BOOST_CHECK_EQUAL(pblocktemplate->block.vtx.size(), 3U);
+    // None of the absolute height/time locked tx should have made it into the
+    // template, because CreateNewBlock still checks IsFinalTx. Only the coinbase
+    // remains.
+    //
+    // Upstream also holds the two relative-locked transactions in the mempool at
+    // this point and asserts a size of 3, on the reasoning that "these will still
+    // generate a valid template until BIP68 soft fork" -- true there, where CSV
+    // activates at height 419328 and is therefore inactive across these heights.
+    // BTQ sets consensus.CSVHeight = 1, so BIP68 is enforced from the first block
+    // and a template carrying a non-BIP68-final input is not merely inconsistent
+    // but invalid: TestBlockValidity inside CreateNewBlock rejects the whole
+    // template with bad-txns-nonfinal, and the assembler does not filter by
+    // sequence locks because addUnchecked bypassed the mempool checks that
+    // normally would. Those two are therefore added below instead, once the chain
+    // has aged enough for them to be final, which is the only point at which a
+    // template containing them can be valid here.
+    BOOST_CHECK_EQUAL(pblocktemplate->block.vtx.size(), 1U);
+
+    tx_mempool.addUnchecked(entry.Fee(HIGHFEE).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx_relative_height_locked));
+    tx_mempool.addUnchecked(entry.Fee(HIGHFEE).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx_relative_time_locked));
+
     // However if we advance height by 1 and time by SEQUENCE_LOCK_TIME, all of them should be mined
+    // Advance MedianTimePast past the relative lock captured above, not by a
+    // single SEQUENCE_LOCK_TIME. Those coincide upstream because the span there
+    // is one granularity unit; under BTQ's block pacing it is several, and
+    // under-advancing leaves the input non-BIP68-final.
+    const int64_t mtp_advance{int64_t{relative_lock_units} * SEQUENCE_LOCK_TIME};
     for (int i = 0; i < CBlockIndex::nMedianTimeSpan; ++i) {
         CBlockIndex* ancestor{Assert(m_node.chainman->ActiveChain().Tip()->GetAncestor(m_node.chainman->ActiveChain().Tip()->nHeight - i))};
-        ancestor->nTime += SEQUENCE_LOCK_TIME; // Trick the MedianTimePast
+        ancestor->nTime += mtp_advance; // Trick the MedianTimePast
     }
     m_node.chainman->ActiveChain().Tip()->nHeight++;
     SetMockTime(m_node.chainman->ActiveChain().Tip()->GetMedianTimePast() + 1);
@@ -536,28 +614,28 @@ void MinerTestingSetup::TestPrioritisedMining(const CScript& scriptPubKey, const
     tx.vin[0].prevout.n = 0;
     tx.vin[0].scriptSig = CScript() << OP_1;
     tx.vout.resize(1);
-    tx.vout[0].nValue = 5000000000LL; // 0 fee
+    tx.vout[0].nValue = COINBASE_VALUE; // 0 fee
     uint256 hashFreePrioritisedTx = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(0).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx));
     tx_mempool.PrioritiseTransaction(hashFreePrioritisedTx, 5 * COIN);
 
     tx.vin[0].prevout.hash = txFirst[1]->GetHash();
     tx.vin[0].prevout.n = 0;
-    tx.vout[0].nValue = 5000000000LL - 1000;
+    tx.vout[0].nValue = COINBASE_VALUE - 1000;
     // This tx has a low fee: 1000 satoshis
     uint256 hashParentTx = tx.GetHash(); // save this txid for later use
     tx_mempool.addUnchecked(entry.Fee(1000).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx));
 
     // This tx has a medium fee: 10000 satoshis
     tx.vin[0].prevout.hash = txFirst[2]->GetHash();
-    tx.vout[0].nValue = 5000000000LL - 10000;
+    tx.vout[0].nValue = COINBASE_VALUE - 10000;
     uint256 hashMediumFeeTx = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(10000).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx));
     tx_mempool.PrioritiseTransaction(hashMediumFeeTx, -5 * COIN);
 
     // This tx also has a low fee, but is prioritised
     tx.vin[0].prevout.hash = hashParentTx;
-    tx.vout[0].nValue = 5000000000LL - 1000 - 1000; // 1000 satoshi fee
+    tx.vout[0].nValue = COINBASE_VALUE - 1000 - 1000; // 1000 satoshi fee
     uint256 hashPrioritsedChild = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(1000).Time(Now<NodeSeconds>()).SpendsCoinbase(false).FromTx(tx));
     tx_mempool.PrioritiseTransaction(hashPrioritsedChild, 2 * COIN);
@@ -569,19 +647,19 @@ void MinerTestingSetup::TestPrioritisedMining(const CScript& scriptPubKey, const
     // FreeParent's prioritisation should not be included in that entry.
     // When FreeChild is included, FreeChild's prioritisation should also not be included.
     tx.vin[0].prevout.hash = txFirst[3]->GetHash();
-    tx.vout[0].nValue = 5000000000LL; // 0 fee
+    tx.vout[0].nValue = COINBASE_VALUE; // 0 fee
     uint256 hashFreeParent = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(0).SpendsCoinbase(true).FromTx(tx));
     tx_mempool.PrioritiseTransaction(hashFreeParent, 10 * COIN);
 
     tx.vin[0].prevout.hash = hashFreeParent;
-    tx.vout[0].nValue = 5000000000LL; // 0 fee
+    tx.vout[0].nValue = COINBASE_VALUE; // 0 fee
     uint256 hashFreeChild = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(0).SpendsCoinbase(false).FromTx(tx));
     tx_mempool.PrioritiseTransaction(hashFreeChild, 1 * COIN);
 
     tx.vin[0].prevout.hash = hashFreeChild;
-    tx.vout[0].nValue = 5000000000LL; // 0 fee
+    tx.vout[0].nValue = COINBASE_VALUE; // 0 fee
     uint256 hashFreeGrandchild = tx.GetHash();
     tx_mempool.addUnchecked(entry.Fee(0).SpendsCoinbase(false).FromTx(tx));
 
@@ -621,12 +699,36 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
         {
             LOCK(cs_main);
             pblock->nVersion = VERSIONBITS_TOP_BITS;
-            pblock->nTime = m_node.chainman->ActiveChain().Tip()->GetMedianTimePast()+1;
+            // Space blocks at the target interval rather than MedianTimePast+1.
+            // Upstream can use MTP+1 because difficulty is fixed across these
+            // heights; under BTQ's per-block LWMA a 1-second solve time is read
+            // as the chain running ~60x too fast, so difficulty ramps until the
+            // nonce search below becomes infeasible (it stalls around block 45).
+            // Pacing at nPowTargetSpacing keeps LWMA at steady state, which holds
+            // difficulty at powLimit and keeps these blocks cheap to mine.
+            pblock->nTime = m_node.chainman->ActiveChain().Tip()->nTime + Params().GetConsensus().nPowTargetSpacing;
+            // BTQ runs LWMA from height 1 (consensus.nLWMAHeight = 1), so the
+            // difficulty retargets on *every* block. Upstream Bitcoin only
+            // retargets once per 2016-block interval, which is why it can reuse
+            // one template's nBits for all of these blocks. Here the height-1
+            // value goes stale as the chain advances and ContextualCheckBlockHeader
+            // rejects with bad-diffbits, so recompute it per block.
+            pblock->nBits = GetNextWorkRequired(m_node.chainman->ActiveChain().Tip(), pblock, Params().GetConsensus());
             CMutableTransaction txCoinbase(*pblock->vtx[0]);
             txCoinbase.nVersion = 1;
             txCoinbase.vin[0].scriptSig = CScript{} << (m_node.chainman->ActiveChain().Height() + 1) << bi.extranonce;
             txCoinbase.vout.resize(1); // Ignore the (optional) segwit commitment added by CreateNewBlock (as the hardcoded nonces don't account for this)
             txCoinbase.vout[0].scriptPubKey = CScript();
+            // BTQ activates segwit at height 1 (consensus.SegwitHeight = 1) where
+            // upstream Bitcoin activates it at 481824, so CreateNewBlock adds a
+            // witness commitment output *and* the coinbase witness reserved value
+            // at these heights, which it does not upstream. Dropping the commitment
+            // output above without also dropping the witness leaves a block that
+            // carries witness data while committing to none -- ContextualCheckBlock
+            // rejects that as unexpected-witness, and every later block then fails
+            // prev-blk-not-found. Upstream never hits this because there is no
+            // commitment to strip in the first place.
+            txCoinbase.vin[0].scriptWitness.SetNull();
             pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
             if (txFirst.size() == 0)
                 baseheight = m_node.chainman->ActiveChain().Height();
