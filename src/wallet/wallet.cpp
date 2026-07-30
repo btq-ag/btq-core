@@ -2208,6 +2208,41 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
         }
     }
 
+    // Tracked P2MR scriptPubKeys are owned via wallet metadata rather than by a
+    // ScriptPubKeyMan, so the loop above never sees them and would leave the
+    // input untouched — complete=false with no indication of which input failed.
+    // GetSolvingProvider() has the same fallback for the raw signing path; this
+    // is what keeps walletprocesspsbt in step with signrawtransactionwithwallet.
+    for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
+        PSBTInput& input = psbtx.inputs.at(i);
+        if (PSBTInputSigned(input)) continue;
+
+        const CScript* script{nullptr};
+        if (!input.witness_utxo.IsNull()) {
+            script = &input.witness_utxo.scriptPubKey;
+        } else if (input.non_witness_utxo) {
+            const uint32_t n{psbtx.tx->vin[i].prevout.n};
+            if (n >= input.non_witness_utxo->vout.size()) continue;
+            script = &input.non_witness_utxo->vout[n].scriptPubKey;
+        } else {
+            continue;
+        }
+
+        const auto entry{GetP2MRByScript(*this, *script)};
+        if (!entry) continue;
+
+        if (sign && input.sighash_type && *input.sighash_type != sighash_type) {
+            return TransactionError::SIGHASH_MISMATCH;
+        }
+
+        const FlatSigningProvider provider{BuildP2MRSigningProvider(*this, entry->id)};
+        if (SignPSBTInput(HidingSigningProvider(&provider, /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs),
+                          psbtx, i, &txdata, sighash_type, /*out_sigdata=*/nullptr, finalize) &&
+            n_signed) {
+            (*n_signed)++;
+        }
+    }
+
     RemoveUnnecessaryTransactions(psbtx, sighash_type);
 
     // Complete if every input is now signed
