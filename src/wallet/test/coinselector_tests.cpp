@@ -1194,7 +1194,11 @@ BOOST_AUTO_TEST_CASE(check_max_weight)
             },
             m_node);
 
-        BOOST_CHECK(result);
+        // REQUIRE, not CHECK: the dereference below aborts the process on an
+        // empty Result, and an abort here leaves the wallet fixture standing so
+        // CCheckQueue's destructor then trips on its worker threads and wedges
+        // the binary rather than exiting.
+        BOOST_REQUIRE(result);
         // Verify that only the 50 BTQ UTXO was selected
         const auto& selection_res = result->GetInputSet();
         BOOST_CHECK(selection_res.size() == 1);
@@ -1222,6 +1226,7 @@ BOOST_AUTO_TEST_CASE(check_max_weight)
             },
             m_node);
 
+        BOOST_REQUIRE(result);
         BOOST_CHECK(has_coin(result->GetInputSet(), CAmount(0.0625 * COIN)));
         BOOST_CHECK(has_coin(result->GetInputSet(), CAmount(0.025 * COIN)));
     }

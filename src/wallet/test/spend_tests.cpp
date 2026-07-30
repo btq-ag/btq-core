@@ -49,7 +49,11 @@ BOOST_FIXTURE_TEST_CASE(SubtractFee, TestChain100Setup)
         // We need to use a change type with high cost of change so that the leftover amount will be dropped to fee instead of added as a change output
         coin_control.m_change_type = OutputType::LEGACY;
         auto res = CreateTransaction(*wallet, {recipient}, RANDOM_CHANGE_POSITION, coin_control);
-        BOOST_CHECK(res);
+        // REQUIRE, not CHECK: *res aborts the process when transaction creation
+        // failed, and an abort here leaves the wallet fixture standing so
+        // CCheckQueue's destructor then trips on its worker threads and wedges
+        // the binary rather than exiting.
+        BOOST_REQUIRE_MESSAGE(res, "CreateTransaction failed: " << util::ErrorString(res).original);
         const auto& txr = *res;
         BOOST_CHECK_EQUAL(txr.tx->vout.size(), 1);
         BOOST_CHECK_EQUAL(txr.tx->vout[0].nValue, recipient.nAmount + leftover_input_amount - txr.fee);
@@ -186,18 +190,30 @@ BOOST_AUTO_TEST_CASE(mixed_wallet_input_fee_estimation)
         BOOST_CHECK_MESSAGE(input_vsize > 0, strprintf("fee estimate failed for %s", c.label));
     }
 
-    // Dilithium shares LEGACY/BECH32 spk managers (see rpc/dilithium.cpp).
-    for (const auto& [spkm_type, dil_type, label] : {
-             std::make_tuple(OutputType::LEGACY, OutputType::DILITHIUM_LEGACY, "dilithium-legacy"),
-             std::make_tuple(OutputType::BECH32, OutputType::DILITHIUM_BECH32, "dilithium-bech32"),
-         }) {
-        ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(spkm_type, /*internal=*/false);
+    // Dilithium shares the LEGACY spk manager (see rpc/dilithium.cpp).
+    {
+        ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false);
         BOOST_REQUIRE(spk_man != nullptr);
-        const CTxDestination dest = *Assert(spk_man->GetNewDestination(dil_type));
-        const CScript script = GetScriptForDestination(dest);
-        const CTxOut out(COIN, script);
+        // Not Assert(): a failure here should fail this case, not abort the binary.
+        const auto dest_res = spk_man->GetNewDestination(OutputType::DILITHIUM_LEGACY);
+        BOOST_REQUIRE_MESSAGE(dest_res, strprintf("GetNewDestination failed for dilithium-legacy: %s",
+                                                  util::ErrorString(dest_res).original));
+        const CTxOut out(COIN, GetScriptForDestination(*dest_res));
         const int input_vsize = CalculateMaximumSignedInputSize(out, wallet.get(), /*coin_control=*/nullptr);
-        BOOST_CHECK_MESSAGE(input_vsize > 0, strprintf("fee estimate failed for %s", label));
+        BOOST_CHECK_MESSAGE(input_vsize > 0, "fee estimate failed for dilithium-legacy");
+    }
+
+    // dilithium-bech32 is refused by design: a witness v0 keyhash program is
+    // indistinguishable from ECDSA P2WPKH and would not be spendable with a
+    // Dilithium key, so handing one out would create unspendable funds. The
+    // refusal is what gets asserted here, in all three places that implement it
+    // (scriptpubkeyman.cpp for both spk manager kinds, dilithium_wallet_manager
+    // .cpp for the manager). This case previously asked for the address and so
+    // contradicted the decision rather than covering it.
+    {
+        ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(OutputType::BECH32, /*internal=*/false);
+        BOOST_REQUIRE(spk_man != nullptr);
+        BOOST_CHECK(!spk_man->GetNewDestination(OutputType::DILITHIUM_BECH32));
     }
 }
 
