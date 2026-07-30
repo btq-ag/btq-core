@@ -21,6 +21,7 @@
 #include <util/time.h>
 #include <validation.h>
 
+#include <algorithm>
 #include <array>
 #include <stdint.h>
 
@@ -153,7 +154,13 @@ BOOST_AUTO_TEST_CASE(stale_tip_peer_management)
 
     const auto time_init{GetTime<std::chrono::seconds>()};
     SetMockTime(time_init);
-    const auto time_later{time_init + 3 * std::chrono::seconds{m_node.chainman->GetConsensus().nPowTargetSpacing} + 1s};
+    // The mocked jump has to clear two separate thresholds: TipMayBeStale()'s
+    // 3 * nPowTargetSpacing, and the STALE_CHECK_INTERVAL (10 minutes, net_processing.cpp)
+    // that gates how often CheckForStaleTipAndEvictPeers() looks at the tip at all.
+    // Upstream's 10-minute blocks clear both with 3 * spacing + 1s. BTQ mines every
+    // minute, so that is only 181s and the check never runs.
+    constexpr auto stale_tip_check_interval{10min};
+    const auto time_later{time_init + std::max(3 * std::chrono::seconds{m_node.chainman->GetConsensus().nPowTargetSpacing} + 1s, stale_tip_check_interval + 1s)};
     connman->Init(options);
     std::vector<CNode *> vNodes;
 
