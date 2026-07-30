@@ -4,6 +4,8 @@
 
 #include <test/data/bip341_wallet_vectors.json.h>
 
+#include <bech32.h>
+#include <chainparams.h>
 #include <key.h>
 #include <key_io.h>
 #include <script/script.h>
@@ -18,6 +20,23 @@
 
 
 BOOST_FIXTURE_TEST_SUITE(script_standard_tests, BasicTestingSetup)
+
+//! Re-encode an upstream bech32m address under this chain's HRP.
+//!
+//! BTQ uses 'qbtc' on mainnet where Bitcoin uses 'bc', so every taproot address
+//! inherited from upstream differs here in HRP and checksum. The witness version
+//! and program do not differ, and those are what the BIP341 vectors actually pin
+//! down -- the scriptPubKey check alongside each use of this asserts them
+//! directly against the unmodified vector. Swapping the HRP here rather than
+//! rewriting the addresses keeps test/data/bip341_wallet_vectors.json byte
+//! identical to the file published with the BIP, so it stays diffable.
+static std::string ToLocalHRP(const std::string& upstream_address)
+{
+    const auto dec{bech32::Decode(upstream_address)};
+    BOOST_REQUIRE(dec.encoding == bech32::Encoding::BECH32M);
+    BOOST_REQUIRE_EQUAL(dec.hrp, "bc");
+    return bech32::Encode(bech32::Encoding::BECH32M, Params().Bech32HRP(), dec.data);
+}
 
 BOOST_AUTO_TEST_CASE(dest_default_is_no_dest)
 {
@@ -383,7 +402,7 @@ BOOST_AUTO_TEST_CASE(script_standard_taproot_builder)
     BOOST_CHECK(builder.IsValid() && builder.IsComplete());
     builder.Finalize(key_inner);
     BOOST_CHECK(builder.IsValid() && builder.IsComplete());
-    BOOST_CHECK_EQUAL(EncodeDestination(builder.GetOutput()), "bc1pj6gaw944fy0xpmzzu45ugqde4rz7mqj5kj0tg8kmr5f0pjq8vnaqgynnge");
+    BOOST_CHECK_EQUAL(EncodeDestination(builder.GetOutput()), ToLocalHRP("bc1pj6gaw944fy0xpmzzu45ugqde4rz7mqj5kj0tg8kmr5f0pjq8vnaqgynnge"));
 }
 
 BOOST_AUTO_TEST_CASE(bip341_spk_test_vectors)
@@ -414,7 +433,7 @@ BOOST_AUTO_TEST_CASE(bip341_spk_test_vectors)
         parse_tree(vec["given"]["scriptTree"], 0);
         spktest.Finalize(XOnlyPubKey(ParseHex(vec["given"]["internalPubkey"].get_str())));
         BOOST_CHECK_EQUAL(HexStr(GetScriptForDestination(spktest.GetOutput())), vec["expected"]["scriptPubKey"].get_str());
-        BOOST_CHECK_EQUAL(EncodeDestination(spktest.GetOutput()), vec["expected"]["bip350Address"].get_str());
+        BOOST_CHECK_EQUAL(EncodeDestination(spktest.GetOutput()), ToLocalHRP(vec["expected"]["bip350Address"].get_str()));
         auto spend_data = spktest.GetSpendData();
         BOOST_CHECK_EQUAL(vec["intermediary"]["merkleRoot"].isNull(), spend_data.merkle_root.IsNull());
         if (!spend_data.merkle_root.IsNull()) {

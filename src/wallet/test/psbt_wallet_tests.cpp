@@ -21,7 +21,9 @@ static void import_descriptor(CWallet& wallet, const std::string& descriptor)
     FlatSigningProvider provider;
     std::string error;
     std::unique_ptr<Descriptor> desc = Parse(descriptor, provider, error, /* require_checksum=*/ false);
-    assert(desc);
+    // Not assert(): a descriptor that stops parsing (stale key material, say)
+    // would otherwise abort the whole test binary rather than fail this case.
+    BOOST_REQUIRE_MESSAGE(desc, "failed to parse descriptor: " << error);
     WalletDescriptor w_desc(std::move(desc), 0, 0, 10, 0);
     wallet.AddWalletDescriptor(w_desc, provider, "", false);
 }
@@ -43,9 +45,9 @@ BOOST_AUTO_TEST_CASE(psbt_updater_test)
     m_wallet.mapWallet.emplace(std::piecewise_construct, std::forward_as_tuple(prev_tx2->GetHash()), std::forward_as_tuple(prev_tx2, TxStateInactive{}));
 
     // Import descriptors for keys and scripts
-    import_descriptor(m_wallet, "sh(multi(2,xprv9s21ZrQH143K2LE7W4Xf3jATf9jECxSb7wj91ZnmY4qEJrS66Qru9RFqq8xbkgT32ya6HqYJweFdJUEDf5Q6JFV7jMiUws7kQfe6Tv4RbfN/0h/0h/0h,xprv9s21ZrQH143K2LE7W4Xf3jATf9jECxSb7wj91ZnmY4qEJrS66Qru9RFqq8xbkgT32ya6HqYJweFdJUEDf5Q6JFV7jMiUws7kQfe6Tv4RbfN/0h/0h/1h))");
-    import_descriptor(m_wallet, "sh(wsh(multi(2,xprv9s21ZrQH143K2LE7W4Xf3jATf9jECxSb7wj91ZnmY4qEJrS66Qru9RFqq8xbkgT32ya6HqYJweFdJUEDf5Q6JFV7jMiUws7kQfe6Tv4RbfN/0h/0h/2h,xprv9s21ZrQH143K2LE7W4Xf3jATf9jECxSb7wj91ZnmY4qEJrS66Qru9RFqq8xbkgT32ya6HqYJweFdJUEDf5Q6JFV7jMiUws7kQfe6Tv4RbfN/0h/0h/3h)))");
-    import_descriptor(m_wallet, "wpkh(xprv9s21ZrQH143K2LE7W4Xf3jATf9jECxSb7wj91ZnmY4qEJrS66Qru9RFqq8xbkgT32ya6HqYJweFdJUEDf5Q6JFV7jMiUws7kQfe6Tv4RbfN/0h/0h/*h)");
+    import_descriptor(m_wallet, "sh(multi(2,xprvJAihJkudK4AghKBSHgfF5zsqg9QfxpueL2QKVhRTQ16eGYMiBGNEn7ZE9zsjGp1xTSaDuKSRKPVsXoB5viuPNdfpGKFUy33w5XV5nFqpqoN/0h/0h/0h,xprvJAihJkudK4AghKBSHgfF5zsqg9QfxpueL2QKVhRTQ16eGYMiBGNEn7ZE9zsjGp1xTSaDuKSRKPVsXoB5viuPNdfpGKFUy33w5XV5nFqpqoN/0h/0h/1h))");
+    import_descriptor(m_wallet, "sh(wsh(multi(2,xprvJAihJkudK4AghKBSHgfF5zsqg9QfxpueL2QKVhRTQ16eGYMiBGNEn7ZE9zsjGp1xTSaDuKSRKPVsXoB5viuPNdfpGKFUy33w5XV5nFqpqoN/0h/0h/2h,xprvJAihJkudK4AghKBSHgfF5zsqg9QfxpueL2QKVhRTQ16eGYMiBGNEn7ZE9zsjGp1xTSaDuKSRKPVsXoB5viuPNdfpGKFUy33w5XV5nFqpqoN/0h/0h/3h)))");
+    import_descriptor(m_wallet, "wpkh(xprvJAihJkudK4AghKBSHgfF5zsqg9QfxpueL2QKVhRTQ16eGYMiBGNEn7ZE9zsjGp1xTSaDuKSRKPVsXoB5viuPNdfpGKFUy33w5XV5nFqpqoN/0h/0h/*h)");
 
     // Call FillPSBT
     PartiallySignedTransaction psbtx;
