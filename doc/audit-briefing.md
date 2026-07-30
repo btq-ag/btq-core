@@ -209,19 +209,22 @@ for this fork.
 | `src/test/test_btq` | 733 cases, no errors | Four consecutive full runs |
 | `test/util/data` | 95 of 95 cases | `test/util/test_runner.py`, via `make check` |
 | `src/qt/test/test_btq-qt` | 21 cases, no failures | Built with `--with-gui=qt5`, run headless |
-| `test/functional` | Not green, and not addressed | Sampled, not migrated |
+| `test/functional` | 177 of 304 pass, 127 fail | One full sequential run, 25 minutes |
 
-The functional suite is the known gap. It fails for the same reason the unit
-suite did: inherited constants that no longer describe this chain.
-`rpc_blockchain.py` asserts a UTXO total of 8725 BTC, which is Bitcoin's
-50-per-block subsidy over the test chain, against the 1000 that BTQ's subsidy
-produces. That is a stale expectation rather than a defect, but until the suite
-is migrated it cannot distinguish between the two, and neither can a reviewer
-reading its output.
+The functional suite is the known gap, and the 127 failures have **not** been
+triaged. Do not read them as 127 defects, and do not read them as 127 stale
+expectations either; nobody has looked.
 
-Run it with a single job. Under parallel jobs most tests fail within a second on
-node startup contention, which produces a failure list that has nothing to do
-with the code.
+What is known is that the suite fails for at least some of the same reasons the
+unit suite did. `rpc_blockchain.py` asserts a UTXO total of 8725 BTC, which is
+Bitcoin's 50-per-block subsidy over the test chain, against the 1000 that BTQ's
+subsidy produces. That particular one is a stale expectation rather than a
+defect. Until the suite is migrated it cannot distinguish between the two
+categories, and neither can a reviewer reading its output.
+
+Run it with a single job. Under parallel jobs almost everything fails within a
+second on node startup contention, producing a failure list that has nothing to
+do with the code — the run above took 25 minutes at `--jobs=1`.
 
 Two further notes on the tests:
 
