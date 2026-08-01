@@ -34,8 +34,20 @@ else
     exit 1
 fi
 
-NETWORK="-regtest"
 WALLET_NAME="dilithium_test_wallet"
+
+# Run against a throwaway datadir, never the user's default ~/.btq.
+# Every $BTQD/$BTQCLI call below routes through $NETWORK, so setting it here
+# isolates the whole script. Removed on exit, including on failure.
+BTQ_TEST_DATADIR="$(mktemp -d "${TMPDIR:-/tmp}/btq-dilithium-test.XXXXXX")"
+NETWORK="-regtest -datadir=$BTQ_TEST_DATADIR"
+
+cleanup() {
+    "$BTQCLI" $NETWORK stop >/dev/null 2>&1 || true
+    sleep 1
+    rm -rf "$BTQ_TEST_DATADIR"
+}
+trap cleanup EXIT
 
 # Print header
 clear
@@ -56,13 +68,7 @@ echo ""
 echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
 echo -e "${CYAN}│${NC} ${BOLD}Step 1/12:${NC} Preparing Test Environment                       ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
-echo -e "  ${ARROW} Stopping any running btqd..."
-$BTQCLI $NETWORK stop 2>/dev/null || true
-sleep 2
-
-# Step 2: Clean up regtest data directory
-echo -e "  ${ARROW} Cleaning up regtest data directory..."
-rm -rf ~/.btq/regtest
+echo -e "  ${ARROW} Using isolated datadir: ${BTQ_TEST_DATADIR}"
 
 # Step 3: Start btqd in regtest mode
 echo -e "  ${ARROW} Starting btqd in regtest mode..."
