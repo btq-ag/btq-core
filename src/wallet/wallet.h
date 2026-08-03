@@ -189,8 +189,10 @@ static const std::map<std::string,WalletFlags> WALLET_FLAG_MAP{
 class ReserveDestination
 {
 protected:
-    //! The wallet to reserve from
-    const CWallet* const pwallet;
+    //! The wallet to reserve from. Non-const because OutputType::P2MR
+    //! destinations are minted rather than drawn from a keypool, which writes
+    //! the script tree to the wallet database.
+    CWallet* const pwallet;
     //! The ScriptPubKeyMan to reserve from. Based on type when GetReservedDestination is called
     ScriptPubKeyMan* m_spk_man{nullptr};
     OutputType const type;

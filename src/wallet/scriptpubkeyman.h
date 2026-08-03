@@ -260,6 +260,15 @@ public:
     boost::signals2::signal<void (const ScriptPubKeyMan* spkm, int64_t new_birth_time)> NotifyFirstKeyTimeChanged;
 };
 
+/**
+ * Error returned wherever a legacy Base58 Dilithium destination is requested on
+ * a chain that has activated DEPLOYMENT_DILITHIUM_P2MR. Such an output is not a
+ * valid payment destination there (IsValidDestination rejects it) and the wallet
+ * cannot size or sign a spend of it, so handing one out strands whatever is paid
+ * to it. Mirrors the dilithium-bech32 guard.
+ */
+bilingual_str DilithiumLegacyDisabledError();
+
 /** OutputTypes supported by the LegacyScriptPubKeyMan */
 static const std::unordered_set<OutputType> LEGACY_OUTPUT_TYPES {
     OutputType::LEGACY,
@@ -623,6 +632,9 @@ private:
     // Override IsMine to handle Dilithium keys
     isminetype IsMine(const CScript& script) const override;
 
+    //! Body of GenerateNewDilithiumKey(), for callers that already hold cs_desc_man.
+    util::Result<CDilithiumPubKey> GenerateNewDilithiumKeyLocked() EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+
     KeyMap GetKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     std::map<DilithiumPKHash, CDilithiumKey> GetDilithiumKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
@@ -652,6 +664,16 @@ public:
     mutable RecursiveMutex cs_desc_man;
 
     util::Result<CTxDestination> GetNewDestination(const OutputType type) override;
+
+    /**
+     * Derive, store and return the next Dilithium key for this descriptor.
+     *
+     * Deliberately separate from GetNewDestination(DILITHIUM_LEGACY): the key
+     * is needed to build P2MR receive destinations on every chain, whereas a
+     * legacy Base58 Dilithium *destination* may only be handed out where it is
+     * still a valid payment destination (see LegacyDilithiumBase58PaymentsAllowed).
+     */
+    util::Result<CDilithiumPubKey> GenerateNewDilithiumKey() EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
 
     // Dilithium key management
     bool AddDilithiumKeyPubKey(const CDilithiumKey& key, const CPubKey& pubkey);

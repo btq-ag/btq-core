@@ -25,7 +25,7 @@ RPCHelpMan getnewaddress()
                 "so payments received with the address will be associated with 'label'.\n",
                 {
                     {"label", RPCArg::Type::STR, RPCArg::Default{""}, "The label name for the address to be linked to. It can also be set to the empty string \"\" to represent the default label. The label does not need to exist, it will be created if there is no label by the given name."},
-                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -addresstype"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", \"bech32\", \"bech32m\", \"dilithium-legacy\", and \"dilithium-bech32\"."},
+                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -addresstype"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", \"bech32\", \"bech32m\", \"p2mr\", \"dilithium-legacy\", and \"dilithium-bech32\". \"p2mr\" is the quantum-safe type; \"dilithium-legacy\" is refused on chains where Dilithium spends must be P2MR, and \"dilithium-bech32\" is always refused."},
                 },
                 RPCResult{
                     RPCResult::Type::STR, "address", "The new btq address"
@@ -75,7 +75,7 @@ RPCHelpMan getrawchangeaddress()
                 "\nReturns a new BTQ address, for receiving change.\n"
                 "This is for use with raw transactions, NOT normal use.\n",
                 {
-                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", \"bech32\", and \"bech32m\"."},
+                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", \"bech32\", \"bech32m\", and \"p2mr\"."},
                 },
                 RPCResult{
                     RPCResult::Type::STR, "address", "The address"

@@ -209,6 +209,15 @@ using CTxDestination = std::variant<CNoDestination, PubKeyDestination, PKHash, S
 bool IsValidDestination(const CTxDestination& dest);
 
 /**
+ * True while DEPLOYMENT_DILITHIUM_P2MR remains unscheduled on the active chain
+ * (testnet today). Legacy Dilithium Base58 P2PKH/P2SH outputs are still
+ * consensus-spendable there; on chains that activate P2MR-only from
+ * genesis/height 1 they are neither valid payment destinations nor spendable,
+ * so nothing should hand one out.
+ */
+bool LegacyDilithiumBase58PaymentsAllowed();
+
+/**
  * Parse a scriptPubKey for the destination.
  *
  * For standard scripts that have addresses (and P2PK as an exception), a corresponding CTxDestination

@@ -133,17 +133,22 @@ std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDe
  */
 std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest);
 
-/** Create and persist a new P2MR destination. */
+/** Create and persist a new P2MR destination.
+ *  Pass add_to_address_book=false for change destinations: an address book
+ *  entry is what makes CWallet::IsChange treat an output as a receive. */
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
-                                     const std::string& label);
+                                     const std::string& label,
+                                     bool add_to_address_book = true);
 
 /**
  * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR
  * receive destination whose leaf is `<pubkey> OP_CHECKSIGDILITHIUM`.
  * This is the only consensus-valid Dilithium receive path.
  */
-util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet, const std::string& label);
+util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
+                                                     const std::string& label,
+                                                     bool add_to_address_book = true);
 
 /**
  * Import an existing Dilithium key and create a matching single-leaf P2MR

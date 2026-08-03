@@ -51,7 +51,12 @@ void ReadRegTestArgs(const ArgsManager& args, CChainParams::RegTestOptions& opti
 
         const auto value{arg.substr(found + 1)};
         int32_t height;
-        if (!ParseInt32(value, &height) || height < 0 || height >= std::numeric_limits<int>::max()) {
+        // int max is admitted rather than rejected: chainparams uses it as the
+        // "never scheduled" sentinel (testnet's nDilithiumP2MRHeight), and
+        // reproducing that configuration on regtest is the only way to cover the
+        // branches that behave differently on a chain where a deployment is not
+        // merely far away but absent.
+        if (!ParseInt32(value, &height) || height < 0) {
             throw std::runtime_error(strprintf("Invalid height value (%s) for -testactivationheight=name@height.", arg));
         }
 

@@ -204,36 +204,36 @@ BOOST_AUTO_TEST_CASE(mixed_wallet_input_fee_estimation)
         BOOST_CHECK_MESSAGE(input_vsize > 0, strprintf("fee estimate failed for %s", c.label));
     }
 
-    // Dilithium shares the LEGACY spk manager (see rpc/dilithium.cpp).
+    // P2MR is the wallet's quantum-safe output type and the only Dilithium
+    // destination it will issue on a P2MR-only chain. It must be fee-estimable
+    // for the same reason as the four above: coin selection can pick it, and
+    // TransactionChangeType now returns it for Dilithium sends.
+    {
+        const auto dest = wallet->GetNewDestination(OutputType::P2MR, "p2mr");
+        BOOST_REQUIRE_MESSAGE(dest, strprintf("GetNewDestination failed for p2mr: %s",
+                                              util::ErrorString(dest).original));
+        BOOST_CHECK(std::holds_alternative<WitnessV2P2MR>(*dest));
+        BOOST_CHECK(IsValidDestination(*dest));
+
+        const CTxOut out(COIN, GetScriptForDestination(*dest));
+        const int input_vsize = CalculateMaximumSignedInputSize(out, wallet.get(), /*coin_control=*/nullptr);
+        BOOST_CHECK_MESSAGE(input_vsize > 0, "fee estimate failed for p2mr");
+    }
+
+    // This case used to record the #97 defect instead of the property it is
+    // named for: the wallet issued a dilithium-legacy destination on a chain
+    // where such an output is neither a valid payment destination nor sizeable,
+    // and the two halves were asserted so the defect stayed visible. Both are
+    // now unreachable, because generation is refused. What remains is the
+    // refusal, in both spk manager kinds.
     //
-    // What follows records present behaviour rather than desired behaviour, and
-    // the behaviour is a defect: see issue #97. The wallet hands out a
-    // dilithium-legacy destination on a chain where that destination is not
-    // valid and which it could not spend from in any case. Both halves are
-    // asserted so the defect is visible from the suite instead of only from the
-    // tracker, and so that whichever half gets fixed first fails here and
-    // prompts this case to be turned back into the positive assertion it wants
-    // to be -- that every output type the wallet issues can be fee-estimated.
+    // This chain sets nDilithiumP2MRHeight, so Dilithium is P2MR-only here.
+    BOOST_REQUIRE(!LegacyDilithiumBase58PaymentsAllowed());
     {
         ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false);
         BOOST_REQUIRE(spk_man != nullptr);
-        // Not Assert(): a failure here should fail this case, not abort the binary.
-        const auto dest_res = spk_man->GetNewDestination(OutputType::DILITHIUM_LEGACY);
-        BOOST_REQUIRE_MESSAGE(dest_res, strprintf("GetNewDestination failed for dilithium-legacy: %s",
-                                                  util::ErrorString(dest_res).original));
-
-        // Half one. This chain sets nDilithiumP2MRHeight, so Dilithium is
-        // P2MR-only and base58 Dilithium payments are not accepted. The wallet
-        // issues the address regardless.
-        BOOST_CHECK(!IsValidDestination(*dest_res));
-
-        // Half two. No descriptor models a Dilithium P2PKH, and the dummy
-        // signing fallback only sizes witness satisfactions, so the size comes
-        // back unknown. AvailableCoins turns that into solvable=false, which is
-        // what makes such an output unspendable by this wallet.
-        const CTxOut out(COIN, GetScriptForDestination(*dest_res));
-        const int input_vsize = CalculateMaximumSignedInputSize(out, wallet.get(), /*coin_control=*/nullptr);
-        BOOST_CHECK_EQUAL(input_vsize, -1);
+        BOOST_CHECK(!spk_man->GetNewDestination(OutputType::DILITHIUM_LEGACY));
+        BOOST_CHECK(!wallet->GetNewDestination(OutputType::DILITHIUM_LEGACY, "dilithium-legacy"));
     }
 
     // dilithium-bech32 is refused by design: a witness v0 keyhash program is
