@@ -68,10 +68,31 @@ No other file differs, including every file that performs arithmetic:
 
 The one upstream change not reflected here is `d35ba3f` itself, a stricter
 infinity-norm check added for upstream issue #113. It touches `avx2/sign.c`
-only. Our `ref/` already performs that check, and BTQ does not build `avx2/`,
-so it does not apply. (The `avx2/` tree in this directory is dead: 15 of its 43
-files are zero bytes, including `params.h`, so it has never compiled and cannot.
-Nothing in the build references it.)
+only, and BTQ does not vendor that tree; our `ref/` already performs the check.
+
+## The AVX2 tree was removed
+
+Upstream also ships an AVX2-optimised implementation. BTQ vendored it at some
+point but never in a usable state: 15 of its 43 files were zero bytes, including
+`params.h`, so it had never compiled and could not. Nothing in the build
+referenced it. It has been deleted.
+
+Deleting it rather than repairing it was deliberate. AVX2 was evaluated and
+declined on its merits — roughly a 2x gain on verification against no
+performance problem, since worst-case block verification is 0.23 s, or 0.38% of
+a 60-second block interval. A second implementation of a consensus-critical
+primitive is a second thing that has to agree with the standard, and a place for
+the two to disagree. Carrying a broken copy of one bought nothing and read, to
+anyone reviewing the tree, as capability we had.
+
+Note that `README.md` and the `Dilithium*_META.yml` files in this directory
+still describe AVX2. Those are upstream's own files, kept verbatim as part of
+the vendored snapshot; they document upstream's repository, not BTQ's build.
+
+If AVX2 is ever wanted, the way back is to re-vendor it intact from upstream at
+a pinned commit, wire it into the build, and hold it to the same two known-answer
+tests described below — including `d35ba3f`, which the previously vendored copy
+predated.
 
 ## Deterministic signing, not hedged
 
