@@ -335,6 +335,7 @@ BASE_SCRIPTS = [
     'wallet_fallbackfee.py --legacy-wallet',
     'wallet_fallbackfee.py --descriptors',
     'rpc_dumptxoutset.py',
+    'feature_dilithium_p2mr_activation.py',
     'feature_minchainwork.py',
     'rpc_estimatefee.py',
     'rpc_getblockstats.py',
