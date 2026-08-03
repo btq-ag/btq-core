@@ -3,6 +3,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <crypto/dilithium_key.h>
 #include <hash.h>
 #include <key.h>
 #include <key_io.h>
@@ -22,6 +23,12 @@
  * inadvertently signing a transaction.
  */
 const std::string MESSAGE_MAGIC = "BTQ Signed Message:\n";
+
+/**
+ * As above, for Dilithium. Distinct from MESSAGE_MAGIC so the two schemes'
+ * signatures cannot be presented for one another either.
+ */
+const std::string DILITHIUM_MESSAGE_MAGIC = "BTQ Dilithium Signed Message:\n";
 
 MessageVerificationResult MessageVerify(
     const std::string& address,
@@ -76,6 +83,55 @@ uint256 MessageHash(const std::string& message)
     hasher << MESSAGE_MAGIC << message;
 
     return hasher.GetHash();
+}
+
+const std::vector<unsigned char>& DilithiumMessageContext()
+{
+    static const std::string ctx{"BTQ-DILITHIUM-MSG-V1"};
+    static const std::vector<unsigned char> bytes{ctx.begin(), ctx.end()};
+    return bytes;
+}
+
+uint256 DilithiumMessageHash(const std::string& message)
+{
+    HashWriter hasher{};
+    hasher << DILITHIUM_MESSAGE_MAGIC << message;
+
+    return hasher.GetHash();
+}
+
+bool DilithiumMessageSign(
+    const CDilithiumKey& privkey,
+    const std::string& message,
+    std::string& signature)
+{
+    const uint256 hash{DilithiumMessageHash(message)};
+
+    std::vector<unsigned char> signature_bytes;
+    if (!privkey.SignMessage(Span<const unsigned char>(hash.begin(), hash.size()),
+                             signature_bytes, DilithiumMessageContext())) {
+        return false;
+    }
+
+    signature = EncodeBase64(signature_bytes);
+
+    return true;
+}
+
+bool DilithiumMessageVerify(
+    const CDilithiumPubKey& pubkey,
+    const std::string& message,
+    const std::string& signature)
+{
+    const auto signature_bytes = DecodeBase64(signature);
+    if (!signature_bytes) {
+        return false;
+    }
+
+    const uint256 hash{DilithiumMessageHash(message)};
+
+    return pubkey.VerifyMessage(Span<const unsigned char>(hash.begin(), hash.size()),
+                                *signature_bytes, DilithiumMessageContext());
 }
 
 std::string SigningResultString(const SigningResult res)
