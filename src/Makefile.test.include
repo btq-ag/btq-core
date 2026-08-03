@@ -89,6 +89,7 @@ BTQ_TESTS =\
   test/compress_tests.cpp \
   test/crypto_tests.cpp \
   test/dilithium_key_tests.cpp \
+  test/dilithium_kat_tests.cpp \
   test/dilithium_address_script_tests.cpp \
   test/address_all_chains_tests.cpp \
   test/dilithium_descriptor_tests.cpp \
@@ -225,8 +226,12 @@ BTQ_TEST_SUITE += \
   wallet/test/init_test_fixture.h
 endif # ENABLE_WALLET
 
-test_test_btq_SOURCES = $(BTQ_TEST_SUITE) $(BTQ_TESTS) $(JSON_TEST_FILES) $(RAW_TEST_FILES)
-test_test_btq_CPPFLAGS = $(AM_CPPFLAGS) $(BTQ_INCLUDES) $(TESTDEFS) $(BOOST_CPPFLAGS) $(EVENT_CFLAGS)
+test_test_btq_SOURCES = $(BTQ_TEST_SUITE) $(BTQ_TESTS) $(JSON_TEST_FILES) $(RAW_TEST_FILES) $(DILITHIUM_KAT_FILES)
+DILITHIUM_KAT_FILES = \
+  crypto/dilithium/ref/nistkat/PQCsignKAT_Dilithium2.rsp
+
+test_test_btq_CPPFLAGS = $(AM_CPPFLAGS) $(BTQ_INCLUDES) $(TESTDEFS) $(BOOST_CPPFLAGS) $(EVENT_CFLAGS) \
+  -DDILITHIUM_KAT_RSP_PATH=\"$(abs_top_srcdir)/src/crypto/dilithium/ref/nistkat/PQCsignKAT_Dilithium2.rsp\"
 test_test_btq_LDADD = $(LIBTEST_UTIL)
 if ENABLE_WALLET
 test_test_btq_LDADD += $(LIBBTQ_WALLET)

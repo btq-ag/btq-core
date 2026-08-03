@@ -4,8 +4,8 @@ claimed-nist-level: 2
 length-public-key: 1312
 length-secret-key: 2560
 length-signature: 2420
-nistkat-sha256: 9a196e7fb32fbc93757dc2d8dc1924460eab66303c0c08aeb8b798fb8d8f8cf3
-testvectors-sha256: 5f0d135c0f7fd43f3fb9727265fcd6ec3651eb8c67c04ea5f3d8dfa1d99740d2
+nistkat-sha256: 14f92c48abc0d63ea263cce3c83183c8360c6ede7cbd5b65bd7c6f31e38f0ea5
+testvectors-sha256: de6e62b7bfc5d5f0c13d640958edf4890555a25637fd87365ae25289f5aed509
 principal-submitters:
   - Vadim Lyubashevsky
 auxiliary-submitters:
