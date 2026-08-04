@@ -177,6 +177,16 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
 */
 bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs);
 
+/**
+ * Whether this transaction spends any witness program, including versions not
+ * yet defined and P2SH-wrapped ones.
+ *
+ * Used to tell a stripped witness apart from an ordinary script failure
+ * without re-running every input script to find out. May return false early
+ * for transactions that are already invalid by consensus.
+ */
+bool SpendsWitnessProgram(const CTransaction& tx, const CCoinsViewCache& prevouts);
+
 /** Compute the virtual transaction size (weight reinterpreted as bytes). */
 int64_t GetVirtualTransactionSize(int64_t nWeight, int64_t nSigOpCost, unsigned int bytes_per_sigop);
 int64_t GetVirtualTransactionSize(const CTransaction& tx, int64_t nSigOpCost, unsigned int bytes_per_sigop);
