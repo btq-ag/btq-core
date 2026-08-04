@@ -177,6 +177,7 @@ BTQ_TESTS =\
   test/versionbits_tests.cpp \
   test/xoroshiro128plusplus_tests.cpp \
   test/chainparams_genesis_tests.cpp \
+  test/chainparams_seeds_tests.cpp \
   test/pow_lwma_tests.cpp
 
 if ENABLE_WALLET
