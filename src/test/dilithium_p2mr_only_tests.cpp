@@ -60,6 +60,43 @@ BOOST_AUTO_TEST_CASE(chainparams_dilithium_p2mr_heights)
                       std::numeric_limits<int>::max());
 }
 
+BOOST_AUTO_TEST_CASE(testnet_dilithium_p2mr_height_is_settable)
+{
+    // Testnet ships unscheduled, which is what leaves the rule mainnet launches
+    // with unvalidated by any live chain (issue #102). Scheduling it is a
+    // coordinated decision rather than a release, so the height is a config
+    // option; the default must stay unscheduled.
+    // A local ArgsManager, because m_node.args is shared and a leaked override
+    // here would silently reconfigure testnet for every later test.
+    ArgsManager args;
+    auto params_with = [&](const char* value, ChainType chain) {
+        args.ForceSetArg("-testnetdilithiump2mrheight", value);
+        return CreateChainParams(args, chain);
+    };
+
+    BOOST_CHECK_EQUAL(CreateChainParams(args, ChainType::BTQTEST)->GetConsensus().nDilithiumP2MRHeight,
+                      std::numeric_limits<int>::max());
+
+    BOOST_CHECK_EQUAL(params_with("250", ChainType::BTQTEST)->GetConsensus().nDilithiumP2MRHeight, 250);
+    BOOST_CHECK_EQUAL(params_with("1", ChainType::BTQTEST)->GetConsensus().nDilithiumP2MRHeight, 1);
+    BOOST_CHECK_EQUAL(params_with("2147483647", ChainType::BTQTEST)->GetConsensus().nDilithiumP2MRHeight,
+                      std::numeric_limits<int>::max());
+
+    for (const char* rejected : {"0", "-1", "2147483648"}) {
+        args.ForceSetArg("-testnetdilithiump2mrheight", rejected);
+        BOOST_CHECK_THROW(CreateChainParams(args, ChainType::BTQTEST), std::runtime_error);
+    }
+
+    // The option is testnet-shaped and must not disturb the chains that
+    // already ship the rule at height 1.
+    BOOST_CHECK_EQUAL(params_with("250", ChainType::BTQMAIN)->GetConsensus().nDilithiumP2MRHeight, 1);
+    BOOST_CHECK_EQUAL(params_with("250", ChainType::BTQREGTEST)->GetConsensus().nDilithiumP2MRHeight, 1);
+
+    // And it must not have leaked into the shared manager.
+    BOOST_CHECK_EQUAL(CreateChainParams(*m_node.args, ChainType::BTQTEST)->GetConsensus().nDilithiumP2MRHeight,
+                      std::numeric_limits<int>::max());
+}
+
 BOOST_AUTO_TEST_CASE(dilithium_opcodes_rejected_outside_p2mr_when_flag_set)
 {
     CDilithiumKey key;
