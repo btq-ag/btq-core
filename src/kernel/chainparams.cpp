@@ -148,6 +148,9 @@ public:
         bech32_hrp = "qbtc";
         dilithium_bech32_hrp = "dbtc";
 
+        // Currently empty: no fixed seeds have been provisioned for mainnet
+        // (issue #114). The assignment is kept so that populating
+        // chainparams_seed_main is the only step needed.
         vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
 
         fDefaultConsistencyChecks = false;
