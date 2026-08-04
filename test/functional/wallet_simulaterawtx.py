@@ -6,7 +6,10 @@
 """
 
 from decimal import Decimal
-from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.blocktools import (
+    COINBASE_MATURITY,
+    block_subsidy,
+)
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_approx,
@@ -41,7 +44,7 @@ class SimulateTxTest(BTQTestFramework):
         w2 = node.get_wallet_rpc('w2')
 
         self.generatetoaddress(node, COINBASE_MATURITY + 1, w0.getnewaddress())
-        assert_equal(w0.getbalance(), 50.0)
+        assert_equal(w0.getbalance(), block_subsidy(1))
         assert_equal(w1.getbalance(), 0.0)
 
         address1 = w1.getnewaddress()
@@ -50,22 +53,22 @@ class SimulateTxTest(BTQTestFramework):
         # Add address1 as watch-only to w2
         w2.importpubkey(pubkey=w1.getaddressinfo(address1)["pubkey"])
 
-        tx1 = node.createrawtransaction([], [{address1: 5.0}])
-        tx2 = node.createrawtransaction([], [{address2: 10.0}])
+        tx1 = node.createrawtransaction([], [{address1: 0.5}])
+        tx2 = node.createrawtransaction([], [{address2: 1.0}])
 
-        # w0 should be unaffected, w2 should see +5 for tx1
+        # w0 should be unaffected, w2 should see +0.5 for tx1
         assert_equal(w0.simulaterawtransaction([tx1])["balance_change"], 0.0)
-        assert_equal(w2.simulaterawtransaction([tx1])["balance_change"], 5.0)
+        assert_equal(w2.simulaterawtransaction([tx1])["balance_change"], 0.5)
 
-        # w1 should see +5 balance for tx1
-        assert_equal(w1.simulaterawtransaction([tx1])["balance_change"], 5.0)
+        # w1 should see +0.5 balance for tx1
+        assert_equal(w1.simulaterawtransaction([tx1])["balance_change"], 0.5)
 
-        # w0 should be unaffected, w2 should see +5 for both transactions
+        # w0 should be unaffected, w2 should see +0.5 for both transactions
         assert_equal(w0.simulaterawtransaction([tx1, tx2])["balance_change"], 0.0)
-        assert_equal(w2.simulaterawtransaction([tx1, tx2])["balance_change"], 5.0)
+        assert_equal(w2.simulaterawtransaction([tx1, tx2])["balance_change"], 0.5)
 
-        # w1 should see +15 balance for both transactions
-        assert_equal(w1.simulaterawtransaction([tx1, tx2])["balance_change"], 15.0)
+        # w1 should see +1.5 balance for both transactions
+        assert_equal(w1.simulaterawtransaction([tx1, tx2])["balance_change"], 1.5)
 
         # w0 funds transaction; it should now see a decrease in (tx fee and payment), and w1 should see the same as above
         funding = w0.fundrawtransaction(tx1)
@@ -73,12 +76,12 @@ class SimulateTxTest(BTQTestFramework):
         tx1changepos = funding["changepos"]
         btq_fee = Decimal(funding["fee"])
 
-        # w0 sees fee + 5 btc decrease, w2 sees + 5 btc
-        assert_approx(w0.simulaterawtransaction([tx1])["balance_change"], -(Decimal("5") + btq_fee))
-        assert_approx(w2.simulaterawtransaction([tx1])["balance_change"], Decimal("5"))
+        # w0 sees fee + 0.5 btq decrease, w2 sees + 0.5 btq
+        assert_approx(w0.simulaterawtransaction([tx1])["balance_change"], -(Decimal("0.5") + btq_fee))
+        assert_approx(w2.simulaterawtransaction([tx1])["balance_change"], Decimal("0.5"))
 
         # w1 sees same as before
-        assert_equal(w1.simulaterawtransaction([tx1])["balance_change"], 5.0)
+        assert_equal(w1.simulaterawtransaction([tx1])["balance_change"], 0.5)
 
         # same inputs (tx) more than once should error
         assert_raises_rpc_error(-8, "Transaction(s) are spending the same output more than once", w0.simulaterawtransaction, [tx1,tx1])
@@ -87,9 +90,9 @@ class SimulateTxTest(BTQTestFramework):
         tx1hex = tx1ob["txid"]
         tx1vout = 1 - tx1changepos
         # tx3 spends new w1 UTXO paying to w0
-        tx3 = node.createrawtransaction([{"txid": tx1hex, "vout": tx1vout}], {w0.getnewaddress(): 4.9999})
+        tx3 = node.createrawtransaction([{"txid": tx1hex, "vout": tx1vout}], {w0.getnewaddress(): 0.49999})
         # tx4 spends new w1 UTXO paying to w1
-        tx4 = node.createrawtransaction([{"txid": tx1hex, "vout": tx1vout}], {w1.getnewaddress(): 4.9999})
+        tx4 = node.createrawtransaction([{"txid": tx1hex, "vout": tx1vout}], {w1.getnewaddress(): 0.49999})
 
         # on their own, both should fail due to missing input(s)
         assert_raises_rpc_error(-8, "One or more transaction inputs are missing or have been spent already", w0.simulaterawtransaction, [tx3])
@@ -99,12 +102,12 @@ class SimulateTxTest(BTQTestFramework):
 
         # they should succeed when including tx1:
         #       wallet                  tx3                             tx4
-        #       w0                      -5 - btq_fee + 4.9999       -5 - btq_fee
-        #       w1                      0                               +4.9999
-        assert_approx(w0.simulaterawtransaction([tx1, tx3])["balance_change"], -Decimal("5") - btq_fee + Decimal("4.9999"))
+        #       w0                      -0.5 - btq_fee + 0.49999    -0.5 - btq_fee
+        #       w1                      0                               +0.49999
+        assert_approx(w0.simulaterawtransaction([tx1, tx3])["balance_change"], -Decimal("0.5") - btq_fee + Decimal("0.49999"))
         assert_approx(w1.simulaterawtransaction([tx1, tx3])["balance_change"], 0)
-        assert_approx(w0.simulaterawtransaction([tx1, tx4])["balance_change"], -Decimal("5") - btq_fee)
-        assert_approx(w1.simulaterawtransaction([tx1, tx4])["balance_change"], Decimal("4.9999"))
+        assert_approx(w0.simulaterawtransaction([tx1, tx4])["balance_change"], -Decimal("0.5") - btq_fee)
+        assert_approx(w1.simulaterawtransaction([tx1, tx4])["balance_change"], Decimal("0.49999"))
 
         # they should fail if attempting to include both tx3 and tx4
         assert_raises_rpc_error(-8, "Transaction(s) are spending the same output more than once", w0.simulaterawtransaction, [tx1, tx3, tx4])
@@ -119,8 +122,8 @@ class SimulateTxTest(BTQTestFramework):
         funding = w0.fundrawtransaction(tx2)
         tx2 = funding["hex"]
         btq_fee2 = Decimal(funding["fee"])
-        assert_approx(w0.simulaterawtransaction([tx2])["balance_change"], -(Decimal("10") + btq_fee2))
-        assert_approx(w1.simulaterawtransaction([tx2])["balance_change"], +(Decimal("10")))
+        assert_approx(w0.simulaterawtransaction([tx2])["balance_change"], -(Decimal("1") + btq_fee2))
+        assert_approx(w1.simulaterawtransaction([tx2])["balance_change"], +(Decimal("1")))
         assert_approx(w2.simulaterawtransaction([tx2])["balance_change"], 0)
 
         # w0-w2 error due to tx1 already being mined
