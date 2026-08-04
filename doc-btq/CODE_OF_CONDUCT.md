@@ -101,7 +101,7 @@ This Code of Conduct applies within all community spaces, including:
 
 If you experience or witness unacceptable behavior, please report it to:
 
-- **Primary Contact**: oscar@btq.org or barney@btq.org
+- **Primary Contact**: conduct@btq.tech
 - **GitHub**: Use the "Report content" feature on GitHub
 - **Telegram**: Contact administrators directly
 
@@ -134,7 +134,7 @@ If you experience or witness unacceptable behavior, please report it to:
 
 Any person subject to enforcement action may appeal the decision by:
 
-1. **Submitting Appeal**: Email conduct@btq.org within 30 days
+1. **Submitting Appeal**: Email conduct@btq.tech within 30 days
 2. **Provide Rationale**: Explain why the decision should be reconsidered
 3. **Review Process**: Independent review by uninvolved moderators
 4. **Final Decision**: Communicated within 14 days

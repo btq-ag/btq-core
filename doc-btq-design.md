@@ -473,7 +473,7 @@ For security hotfixes, follow the embargo process (Section 11).
 
 11) Security & responsible disclosure (Core‑style)
 
-SECURITY.md: publish a security contact (e.g., security@btq.org), list PGP keys of security officers, describe severity categories & timelines. (Core documents this and maintains advisories.) 
+SECURITY.md: publish a security contact (e.g., security@btq.tech), list PGP keys of security officers, describe severity categories & timelines. (Core documents this and maintains advisories.) 
 Casey
 Bitcoin Core
 
