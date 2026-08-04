@@ -4,6 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Utilities for manipulating blocks and transactions."""
 
+from decimal import Decimal
 import struct
 import time
 import unittest
@@ -56,6 +57,14 @@ MAX_FUTURE_BLOCK_TIME = 15 * 60
 
 # Coinbase transaction outputs can only be spent after this number of new blocks (network rule)
 COINBASE_MATURITY = 100
+
+# BTQ pays 5 BTQ per block where Bitcoin pays 50, and on regtest halves every
+# 1500 blocks rather than 150 (consensus.nSubsidyHalvingInterval in
+# kernel/chainparams.cpp). Derive expected amounts from these instead of
+# writing upstream's numbers into tests: a bare 50 silently becomes a wrong
+# answer here rather than a failing import.
+INITIAL_BLOCK_SUBSIDY = 5
+SUBSIDY_HALVING_INTERVAL = 1500
 
 # From BIP141
 WITNESS_COMMITMENT_HEADER = b"\xaa\x21\xa9\xed"
@@ -122,22 +131,45 @@ def script_BIP34_coinbase_height(height):
     return CScript([CScriptNum(height)])
 
 
-def create_coinbase(height, pubkey=None, *, script_pubkey=None, extra_output_script=None, fees=0, nValue=5):
+def block_subsidy_sat(height, *, halving_interval=SUBSIDY_HALVING_INTERVAL):
+    """Consensus subsidy for the block at `height`, in satoshis."""
+    halvings = height // halving_interval
+    if halvings >= 64:
+        return 0
+    return (INITIAL_BLOCK_SUBSIDY * COIN) >> halvings
+
+
+def block_subsidy(height, *, halving_interval=SUBSIDY_HALVING_INTERVAL):
+    """Consensus subsidy for the block at `height`, in BTQ."""
+    return Decimal(block_subsidy_sat(height, halving_interval=halving_interval)) / COIN
+
+
+def cumulative_block_subsidy(first_height, last_height, *, halving_interval=SUBSIDY_HALVING_INTERVAL):
+    """Total subsidy paid by blocks `first_height` through `last_height`, inclusive, in BTQ."""
+    total = sum(block_subsidy_sat(h, halving_interval=halving_interval)
+                for h in range(first_height, last_height + 1))
+    return Decimal(total) / COIN
+
+
+def create_coinbase(height, pubkey=None, *, script_pubkey=None, extra_output_script=None, fees=0, nValue=None):
     """Create a coinbase transaction.
 
     If pubkey is passed in, the coinbase output will be a P2PK output;
     otherwise an anyone-can-spend output.
 
     If extra_output_script is given, make a 0-value output to that
-    script. This is useful to pad block weight/sigops as needed. """
+    script. This is useful to pad block weight/sigops as needed.
+
+    nValue overrides the payout (in BTQ) for tests that need a specific or
+    deliberately invalid amount; left unset, the block pays the consensus
+    subsidy for `height` plus `fees`."""
     coinbase = CTransaction()
     coinbase.vin.append(CTxIn(COutPoint(0, 0xffffffff), script_BIP34_coinbase_height(height), SEQUENCE_FINAL))
     coinbaseoutput = CTxOut()
-    coinbaseoutput.nValue = nValue * COIN
-    if nValue == 5:
-        halvings = int(height / 1500)  # regtest
-        coinbaseoutput.nValue >>= halvings
-        coinbaseoutput.nValue += fees
+    if nValue is None:
+        coinbaseoutput.nValue = block_subsidy_sat(height) + fees
+    else:
+        coinbaseoutput.nValue = nValue * COIN
     if pubkey is not None:
         coinbaseoutput.scriptPubKey = key_to_p2pk_script(pubkey)
     elif script_pubkey is not None:

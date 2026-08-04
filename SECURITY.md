@@ -2,19 +2,20 @@
 
 ## Supported Versions
 
-See our website for versions of BTQ Core that are currently supported with
-security updates: https://btqcore.org/en/lifecycle/#schedule
+BTQ Core has not launched mainnet. Releases are tagged `vX.Y.Z-testnet`, and
+only the most recent release line receives security fixes.
 
 ## Reporting a Vulnerability
 
-To report security issues send an email to security@btqcore.org (not for support).
+**Do not report security vulnerabilities through public GitHub issues.**
 
-The following keys may be used to communicate sensitive information to developers:
+Email **security@btq.tech**. This address is for security reports only, not
+for support.
 
-| Name | Fingerprint |
-|------|-------------|
-| Pieter Wuille | 133E AC17 9436 F14A 5CF1  B794 860F EB80 4E66 9320 |
-| Michael Ford | E777 299F C265 DD04 7930  70EB 944D 35F9 AC3D B76A |
-| Andrew Chow | 1528 1230 0785 C964 44D3  334D 1756 5732 E08E 5E41 |
+`doc-btq/SECURITY.md` documents the severity categories, response timelines
+and coordinated-disclosure process.
 
-You can import a key by running the following command with that individual’s fingerprint: `gpg --keyserver hkps://keys.openpgp.org --recv-keys "<fingerprint>"` Ensure that you put quotes around fingerprints containing spaces.
+## PGP keys
+
+BTQ Core does not yet publish PGP keys for its security contacts. If you need
+to encrypt a report before that changes, email the address above and ask.

@@ -37,11 +37,23 @@ void ApplyArgsManOptions(const ArgsManager& argsman, MemPoolLimits& mempool_limi
 }
 }
 
+util::Result<void> CheckMaxMempoolSize(int64_t mb, bool is_32bit)
+{
+    if (is_32bit && mb > MAX_32BIT_MEMPOOL_MB) {
+        return util::Error{Untranslated(strprintf(
+            "-maxmempool is set to %i but can't be over %i MB on 32-bit systems", mb, MAX_32BIT_MEMPOOL_MB))};
+    }
+    return {};
+}
+
 util::Result<void> ApplyArgsManOptions(const ArgsManager& argsman, const CChainParams& chainparams, MemPoolOptions& mempool_opts)
 {
     mempool_opts.check_ratio = argsman.GetIntArg("-checkmempool", mempool_opts.check_ratio);
 
-    if (auto mb = argsman.GetIntArg("-maxmempool")) mempool_opts.max_size_bytes = *mb * 1'000'000;
+    if (auto mb = argsman.GetIntArg("-maxmempool")) {
+        if (auto result{CheckMaxMempoolSize(*mb, sizeof(void*) == 4)}; !result) return result;
+        mempool_opts.max_size_bytes = *mb * 1'000'000;
+    }
 
     if (auto hours = argsman.GetIntArg("-mempoolexpiry")) mempool_opts.expiry = std::chrono::hours{*hours};
 

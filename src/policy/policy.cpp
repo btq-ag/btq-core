@@ -316,6 +316,44 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
     return true;
 }
 
+bool SpendsWitnessProgram(const CTransaction& tx, const CCoinsViewCache& prevouts)
+{
+    if (tx.IsCoinBase()) {
+        return false;
+    }
+
+    int version;
+    std::vector<unsigned char> program;
+    for (const auto& txin : tx.vin) {
+        const auto& prev_spk{prevouts.AccessCoin(txin.prevout).out.scriptPubKey};
+
+        // Covers every witness version, including v2 P2MR and versions not
+        // yet defined -- anything whose spend could need a witness.
+        if (prev_spk.IsWitnessProgram(version, program)) {
+            return true;
+        }
+
+        // P2SH-wrapped witness programs need the redeem script to tell.
+        // Calling EvalScript here is safe for the same reason
+        // AreInputsStandard and IsWitnessStandard may: this only runs after
+        // IsStandardTx, which has already required a push-only scriptSig.
+        if (prev_spk.IsPayToScriptHash()) {
+            // A scriptSig that fails to evaluate, or leaves nothing behind,
+            // belongs to a transaction that is invalid by consensus anyway.
+            std::vector<std::vector<unsigned char>> stack;
+            if (!EvalScript(stack, txin.scriptSig, SCRIPT_VERIFY_NONE, BaseSignatureChecker{}, SigVersion::BASE) || stack.empty()) {
+                continue;
+            }
+            const CScript redeem_script{stack.back().begin(), stack.back().end()};
+            if (redeem_script.IsWitnessProgram(version, program)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 int64_t GetVirtualTransactionSize(int64_t nWeight, int64_t nSigOpCost, unsigned int bytes_per_sigop)
 {
     return (std::max(nWeight, nSigOpCost * bytes_per_sigop) + WITNESS_SCALE_FACTOR - 1) / WITNESS_SCALE_FACTOR;

@@ -7,8 +7,20 @@ set -e
 
 BTQD="$(pwd)/src/btqd"
 BTQCLI="$(pwd)/src/btq-cli"
-NETWORK="-regtest"
 WALLET="test_dilithium_sendmany"
+
+# Run against a throwaway datadir, never the user's default ~/.btq.
+# Every $BTQD/$BTQCLI call below routes through $NETWORK, so setting it here
+# isolates the whole script. Removed on exit, including on failure.
+BTQ_TEST_DATADIR="$(mktemp -d "${TMPDIR:-/tmp}/btq-sendmany-test.XXXXXX")"
+NETWORK="-regtest -datadir=$BTQ_TEST_DATADIR"
+
+cleanup() {
+    "$BTQCLI" $NETWORK stop >/dev/null 2>&1 || true
+    sleep 1
+    rm -rf "$BTQ_TEST_DATADIR"
+}
+trap cleanup EXIT
 
 echo "=========================================="
 echo "Testing sendmany with Dilithium Addresses"
@@ -21,11 +33,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Step 1: Stop any running daemon
-echo "Step 1: Cleaning up..."
-$BTQCLI $NETWORK stop 2>/dev/null || true
-sleep 2
-rm -rf ~/.btq/regtest 2>/dev/null || true
+# Step 1: Confirm the throwaway datadir
+echo "Step 1: Preparing isolated datadir..."
+echo "  $BTQ_TEST_DATADIR"
 echo "✓ Clean state"
 echo ""
 

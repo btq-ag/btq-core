@@ -6,15 +6,18 @@
 #ifndef BTQ_LOGGING_H
 #define BTQ_LOGGING_H
 
+#include <crypto/siphash.h>
 #include <threadsafety.h>
 #include <tinyformat.h>
 #include <util/fs.h>
 #include <util/string.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <list>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -32,6 +35,37 @@ extern bool fLogIPs;
 struct LogCategory {
     std::string category;
     bool active;
+};
+
+/**
+ * Identifies the place in the source a log line came from.
+ *
+ * Upstream keys its rate limiter on std::source_location, which is C++20; this
+ * tree still builds as C++17 by default (--enable-c++20 is off). It does not
+ * need it: LogPrintf_ already receives __FILE__ and __LINE__ as arguments, so
+ * the same identity is available without the newer type. File and line alone
+ * are enough -- the function name adds nothing a line number does not already
+ * distinguish.
+ */
+struct LogSource {
+    std::string file;
+    int line;
+
+    bool operator==(const LogSource& other) const noexcept
+    {
+        return line == other.line && file == other.file;
+    }
+};
+
+struct LogSourceHasher {
+    size_t operator()(const LogSource& s) const noexcept
+    {
+        // CSipHasher(0, 0) purely as a cheap way to get a uniform spread.
+        return static_cast<size_t>(CSipHasher(0, 0)
+                                       .Write(std::hash<std::string>{}(s.file))
+                                       .Write(static_cast<uint64_t>(s.line))
+                                       .Finalize());
+    }
 };
 
 namespace BCLog {
@@ -81,6 +115,95 @@ namespace BCLog {
     };
     constexpr auto DEFAULT_LOG_LEVEL{Level::Debug};
 
+    //! Whether a log statement is subject to rate limiting.
+    //!
+    //! Scoped, rather than a bool, because this argument sits immediately
+    //! before the format string and a `const char*` converts to bool without
+    //! complaint. A caller who omits it would otherwise compile cleanly and
+    //! log nonsense -- which is exactly what happened to logging_LogPrintf_
+    //! while this was being written, with no diagnostic from the compiler.
+    enum class RateLimit {
+        No,
+        Yes,
+    };
+
+    //! Bytes a single source location may write to disk within one window.
+    constexpr uint64_t RATELIMIT_MAX_BYTES{1024 * 1024};
+    //! How often the per-location budgets are refilled.
+    constexpr auto RATELIMIT_WINDOW{std::chrono::hours{1}};
+
+    //! Budget for one source location within the current window.
+    class LogLimitStats
+    {
+    private:
+        //! Bytes still available in this window.
+        uint64_t m_available_bytes;
+        //! Bytes this location tried to log after running out.
+        uint64_t m_dropped_bytes{0};
+
+    public:
+        explicit LogLimitStats(uint64_t max_bytes) : m_available_bytes{max_bytes} {}
+
+        //! Deduct `bytes` if the budget covers it. Returns whether it did.
+        bool Consume(uint64_t bytes);
+
+        uint64_t GetAvailableBytes() const { return m_available_bytes; }
+        uint64_t GetDroppedBytes() const { return m_dropped_bytes; }
+    };
+
+    /**
+     * Fixed-window rate limiter for logging, keyed by source location.
+     *
+     * A peer that can make the node log unconditionally can otherwise fill the
+     * operator's disk: a spoofed self-connection (CVE-2025-54604) or a stream
+     * of invalid blocks (CVE-2025-54605) each reach a LogPrintf that has no
+     * cap on how often it fires. Limiting per location rather than per message
+     * is what makes this general -- it covers the next such log site too,
+     * without anyone having to notice it is one.
+     *
+     * Only writes to disk are suppressed. Console output and log callbacks are
+     * left alone, since neither consumes the resource under attack.
+     */
+    class LogRateLimiter
+    {
+    private:
+        mutable StdMutex m_mutex;
+
+        //! Per-location budgets for the current window.
+        std::unordered_map<LogSource, LogLimitStats, LogSourceHasher> m_source_locations GUARDED_BY(m_mutex);
+        //! Whether anything is currently suppressed. A cached view of
+        //! m_source_locations, so the common path need not take the lock.
+        std::atomic<bool> m_suppression_active{false};
+
+    public:
+        using SchedulerFunction = std::function<void(std::function<void()>, std::chrono::milliseconds)>;
+
+        /**
+         * @param scheduler_func Used to schedule the periodic window reset.
+         * @param max_bytes      Budget per source location per window.
+         * @param reset_window   How long a window lasts.
+         */
+        LogRateLimiter(SchedulerFunction scheduler_func, uint64_t max_bytes, std::chrono::seconds reset_window);
+
+        const uint64_t m_max_bytes;
+        const std::chrono::seconds m_reset_window;
+
+        enum class Status {
+            UNSUPPRESSED,     //!< within budget
+            NEWLY_SUPPRESSED, //!< this message is the one that exhausted it
+            STILL_SUPPRESSED, //!< already exhausted earlier in this window
+        };
+
+        //! Charge `str` against `source`'s budget and report the result.
+        [[nodiscard]] Status Consume(const LogSource& source, const std::string& str)
+            EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
+
+        //! Refill every budget. Called on the scheduler once per window.
+        void Reset() EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
+
+        bool SuppressionsActive() const { return m_suppression_active; }
+    };
+
     class Logger
     {
     private:
@@ -97,6 +220,10 @@ namespace BCLog {
          */
         std::atomic_bool m_started_new_line{true};
 
+        //! Rate limiter for unconditional log locations. Null until AppInitMain
+        //! installs one, so early startup logging is never suppressed.
+        std::unique_ptr<LogRateLimiter> m_limiter GUARDED_BY(m_cs);
+
         //! Category-specific log level. Overrides `m_log_level`.
         std::unordered_map<LogFlags, Level> m_category_log_levels GUARDED_BY(m_cs);
 
@@ -112,6 +239,9 @@ namespace BCLog {
         /** Slots that connect to the print signal */
         std::list<std::function<void(const std::string&)>> m_print_callbacks GUARDED_BY(m_cs) {};
 
+        /** Send a string to the log output, with m_cs already held. */
+        void LogPrintStr_(const std::string& str, const std::string& logging_function, const std::string& source_file, int source_line, BCLog::LogFlags category, BCLog::Level level, bool should_ratelimit) EXCLUSIVE_LOCKS_REQUIRED(m_cs);
+
     public:
         bool m_print_to_console = false;
         bool m_print_to_file = false;
@@ -125,7 +255,14 @@ namespace BCLog {
         std::atomic<bool> m_reopen_file{false};
 
         /** Send a string to the log output */
-        void LogPrintStr(const std::string& str, const std::string& logging_function, const std::string& source_file, int source_line, BCLog::LogFlags category, BCLog::Level level);
+        void LogPrintStr(const std::string& str, const std::string& logging_function, const std::string& source_file, int source_line, BCLog::LogFlags category, BCLog::Level level, bool should_ratelimit);
+
+        /** Install the rate limiter. Passing nullptr disables rate limiting. */
+        void SetRateLimiting(std::unique_ptr<LogRateLimiter>&& limiter)
+        {
+            StdLockGuard scoped_lock(m_cs);
+            m_limiter = std::move(limiter);
+        }
 
         /** Returns whether logs will be written to any output */
         bool Enabled() const
@@ -217,7 +354,7 @@ bool GetLogCategory(BCLog::LogFlags& flag, const std::string& str);
 // peer can fill up a user's disk with debug.log entries.
 
 template <typename... Args>
-static inline void LogPrintf_(const std::string& logging_function, const std::string& source_file, const int source_line, const BCLog::LogFlags flag, const BCLog::Level level, const char* fmt, const Args&... args)
+static inline void LogPrintf_(const std::string& logging_function, const std::string& source_file, const int source_line, const BCLog::LogFlags flag, const BCLog::Level level, const BCLog::RateLimit rate_limit, const char* fmt, const Args&... args)
 {
     if (LogInstance().Enabled()) {
         std::string log_msg;
@@ -227,35 +364,44 @@ static inline void LogPrintf_(const std::string& logging_function, const std::st
             /* Original format string will have newline so don't add one here */
             log_msg = "Error \"" + std::string(fmterr.what()) + "\" while formatting log message: " + fmt;
         }
-        LogInstance().LogPrintStr(log_msg, logging_function, source_file, source_line, flag, level);
+        LogInstance().LogPrintStr(log_msg, logging_function, source_file, source_line, flag, level, rate_limit == BCLog::RateLimit::Yes);
     }
 }
 
-#define LogPrintLevel_(category, level, ...) LogPrintf_(__func__, __FILE__, __LINE__, category, level, __VA_ARGS__)
+#define LogPrintLevel_(category, level, rate_limit, ...) LogPrintf_(__func__, __FILE__, __LINE__, category, level, rate_limit, __VA_ARGS__)
 
-// Log unconditionally.
-#define LogPrintf(...) LogPrintLevel_(BCLog::LogFlags::NONE, BCLog::Level::None, __VA_ARGS__)
+// Log unconditionally. Rate-limited per source location, because a caller here
+// cannot know whether a peer can drive it (see BCLog::LogRateLimiter).
+#define LogPrintf(...) LogPrintLevel_(BCLog::LogFlags::NONE, BCLog::Level::None, BCLog::RateLimit::Yes, __VA_ARGS__)
 
 // Log unconditionally, prefixing the output with the passed category name.
-#define LogPrintfCategory(category, ...) LogPrintLevel_(category, BCLog::Level::None, __VA_ARGS__)
+#define LogPrintfCategory(category, ...) LogPrintLevel_(category, BCLog::Level::None, BCLog::RateLimit::Yes, __VA_ARGS__)
 
 // Use a macro instead of a function for conditional logging to prevent
 // evaluating arguments when logging for the category is not enabled.
 
 // Log conditionally, prefixing the output with the passed category name.
-#define LogPrint(category, ...)                                        \
-    do {                                                               \
-        if (LogAcceptCategory((category), BCLog::Level::Debug)) {      \
-            LogPrintLevel_(category, BCLog::Level::None, __VA_ARGS__); \
-        }                                                              \
+// Not rate-limited: reaching this requires -debug, and an operator who asked
+// for debug output has accepted the volume that comes with it.
+#define LogPrint(category, ...)                                                              \
+    do {                                                                                     \
+        if (LogAcceptCategory((category), BCLog::Level::Debug)) {                            \
+            LogPrintLevel_(category, BCLog::Level::None, BCLog::RateLimit::No, __VA_ARGS__); \
+        }                                                                                    \
     } while (0)
 
 // Log conditionally, prefixing the output with the passed category name and severity level.
-#define LogPrintLevel(category, level, ...)               \
-    do {                                                  \
-        if (LogAcceptCategory((category), (level))) {     \
-            LogPrintLevel_(category, level, __VA_ARGS__); \
-        }                                                 \
+// Info and above pass the default log level without -debug, so they are
+// effectively unconditional and are rate-limited on the same reasoning as
+// LogPrintf. Below Info requires -debug and is not.
+#define LogPrintLevel(category, level, ...)                                       \
+    do {                                                                          \
+        if (LogAcceptCategory((category), (level))) {                             \
+            const auto rate_limit{(level) >= BCLog::Level::Info                   \
+                                      ? BCLog::RateLimit::Yes                     \
+                                      : BCLog::RateLimit::No};                    \
+            LogPrintLevel_(category, level, rate_limit, __VA_ARGS__);             \
+        }                                                                         \
     } while (0)
 
 template <typename... Args>
