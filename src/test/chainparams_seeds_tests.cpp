@@ -102,7 +102,7 @@ BOOST_AUTO_TEST_CASE(fixed_seeds_are_routable)
     const std::vector<std::pair<std::string, std::unique_ptr<const CChainParams>>> chains = [] {
         std::vector<std::pair<std::string, std::unique_ptr<const CChainParams>>> v;
         v.emplace_back("main", CChainParams::Main());
-        v.emplace_back("test", CChainParams::TestNet());
+        v.emplace_back("test", CChainParams::TestNet({}));
         v.emplace_back("signet", CChainParams::SigNet({}));
         v.emplace_back("regtest", CChainParams::RegTest({}));
         return v;
@@ -153,7 +153,7 @@ BOOST_AUTO_TEST_CASE(networks_have_a_bootstrap_source)
     for (const auto& [name, params] : [] {
              std::vector<std::pair<std::string, std::unique_ptr<const CChainParams>>> v;
              v.emplace_back("main", CChainParams::Main());
-             v.emplace_back("test", CChainParams::TestNet());
+             v.emplace_back("test", CChainParams::TestNet({}));
              return v;
          }()) {
         const bool has_dns{!params->DNSSeeds().empty()};
