@@ -2744,7 +2744,13 @@ static void UpdateTipLog(
 {
 
     AssertLockHeld(::cs_main);
-    LogPrintf("%s%s: new best=%s height=%d version=0x%08x log2_work=%f tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)%s\n",
+    // Exempt from rate limiting: this fires once per block, so during IBD it
+    // legitimately exceeds any per-window budget, and it is the single most
+    // useful line in the log to still have. Nothing an attacker controls
+    // reaches it -- a block has to connect first. BTQ's 60s spacing makes this
+    // ten times more frequent than upstream's, so the exemption matters more.
+    LogPrintLevel_(BCLog::LogFlags::NONE, BCLog::Level::None, BCLog::RateLimit::No,
+        "%s%s: new best=%s height=%d version=0x%08x log2_work=%f tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)%s\n",
         prefix, func_name,
         tip->GetBlockHash().ToString(), tip->nHeight, tip->nVersion,
         log(tip->nChainWork.getdouble()) / log(2.0), (unsigned long)tip->nChainTx,

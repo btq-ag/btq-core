@@ -1148,6 +1148,16 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         }
     }, std::chrono::minutes{5});
 
+    // Rate-limit unconditional logging from here on. It is installed only once
+    // a scheduler exists to reset the windows, which also means startup
+    // logging -- bounded, and useful in full -- is never suppressed.
+    LogInstance().SetRateLimiting(std::make_unique<BCLog::LogRateLimiter>(
+        [&scheduler = *node.scheduler](std::function<void()> func, std::chrono::milliseconds window) {
+            scheduler.scheduleEvery(std::move(func), window);
+        },
+        BCLog::RATELIMIT_MAX_BYTES,
+        BCLog::RATELIMIT_WINDOW));
+
     GetMainSignals().RegisterBackgroundSignalScheduler(*node.scheduler);
 
     // Create client interfaces for wallets that are supposed to be loaded
