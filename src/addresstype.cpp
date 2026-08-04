@@ -231,15 +231,6 @@ public:
     }
 };
 
-/** True while DEPLOYMENT_DILITHIUM_P2MR remains unscheduled (testnet today).
- *  Legacy Dilithium Base58 P2PKH/P2SH outputs are still consensus-spendable
- *  there; on chains that activate P2MR-only from genesis/height 1 they are not
- *  valid payment destinations. */
-bool LegacyDilithiumBase58PaymentsAllowed()
-{
-    return Params().GetConsensus().nDilithiumP2MRHeight == std::numeric_limits<int>::max();
-}
-
 class ValidDestinationVisitor
 {
 public:
@@ -263,6 +254,11 @@ public:
     bool operator()(const DilithiumWitnessV0ScriptHash& dest) const { return false; }
 };
 } // namespace
+
+bool LegacyDilithiumBase58PaymentsAllowed()
+{
+    return Params().GetConsensus().nDilithiumP2MRHeight == std::numeric_limits<int>::max();
+}
 
 CScript GetScriptForDestination(const CTxDestination& dest)
 {

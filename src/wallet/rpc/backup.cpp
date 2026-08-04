@@ -328,7 +328,8 @@ RPCHelpMan importaddress()
             if (fP2SH) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot use the p2sh flag with an address - use a script instead");
             }
-            if (OutputTypeFromDestination(dest) == OutputType::BECH32M) {
+            const auto dest_type{OutputTypeFromDestination(dest)};
+            if (dest_type == OutputType::BECH32M || dest_type == OutputType::P2MR) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Bech32m addresses cannot be imported into legacy wallets");
             }
 
@@ -1081,7 +1082,8 @@ static UniValue ProcessImportLegacy(ImportData& import_data, std::map<CKeyID, CP
         if (!IsValidDestination(dest)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address \"" + output + "\"");
         }
-        if (OutputTypeFromDestination(dest) == OutputType::BECH32M) {
+        const auto dest_type{OutputTypeFromDestination(dest)};
+        if (dest_type == OutputType::BECH32M || dest_type == OutputType::P2MR) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Bech32m addresses cannot be imported into legacy wallets");
         }
         script = GetScriptForDestination(dest);

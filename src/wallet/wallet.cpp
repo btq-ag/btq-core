@@ -2274,15 +2274,11 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
         return *change_type;
     }
 
-    // if m_default_address_type is legacy, use legacy address as change.
-    if (m_default_address_type == OutputType::LEGACY) {
-        return OutputType::LEGACY;
-    }
-
     bool any_tr{false};
     bool any_wpkh{false};
     bool any_sh{false};
     bool any_pkh{false};
+    bool any_quantum_safe{false};
 
     for (const auto& recipient : vecSend) {
         if (std::get_if<WitnessV1Taproot>(&recipient.dest)) {
@@ -2293,7 +2289,34 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
             any_sh = true;
         } else if (std::get_if<PKHash>(&recipient.dest)) {
             any_pkh = true;
+        } else if (std::get_if<WitnessV2P2MR>(&recipient.dest) ||
+                   std::get_if<DilithiumPKHash>(&recipient.dest)) {
+            any_quantum_safe = true;
         }
+    }
+
+    // A spend to a Dilithium destination must not return its change under a
+    // signature scheme this chain exists to replace. Neither branch below can
+    // reach a Dilithium type — every flag stays false for such a send and the
+    // has_bech32m_spkman fallback returns Taproot — so the balance drifts from
+    // quantum-safe to quantum-vulnerable with every spend, silently and by
+    // default (issue #76).
+    //
+    // This is checked ahead of the -addresstype=legacy shortcut below on
+    // purpose: that setting expresses a preference between classical types and
+    // was never a statement about post-quantum custody, whereas paying a
+    // Dilithium recipient is. An explicit -changetype still wins, above.
+    //
+    // Watch-only and blank wallets are excluded because P2MR change needs a
+    // Dilithium key the wallet can derive; without one they would lose the
+    // ability to fund a transaction at all.
+    if (any_quantum_safe && !IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) && !IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
+        return OutputType::P2MR;
+    }
+
+    // if m_default_address_type is legacy, use legacy address as change.
+    if (m_default_address_type == OutputType::LEGACY) {
+        return OutputType::LEGACY;
     }
 
     const bool has_bech32m_spkman(GetScriptPubKeyMan(OutputType::BECH32M, /*internal=*/true));
@@ -2521,7 +2544,23 @@ bool CWallet::TopUpKeyPool(unsigned int kpSize)
 util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, const std::string label)
 {
     LOCK(cs_wallet);
-    auto spk_man = GetScriptPubKeyMan(type, /*internal=*/false);
+    if (type == OutputType::P2MR) {
+        // Not spk-manager backed: mints a Dilithium key and persists the
+        // single-leaf script tree. CreateP2MR writes the address book entry.
+        auto created = CreateDilithiumP2MRReceive(*this, label);
+        if (!created) return util::Error{util::ErrorString(created)};
+        return created->dest;
+    }
+    // No spk manager is registered under the Dilithium types; the Dilithium
+    // destinations are minted by the manager of the matching classical type
+    // (see rpc/dilithium.cpp). Look that one up, so a refusal comes back as the
+    // reason the manager gives rather than as "no addresses available", which
+    // is neither true nor actionable.
+    OutputType spk_man_type = type;
+    if (type == OutputType::DILITHIUM_LEGACY) spk_man_type = OutputType::LEGACY;
+    if (type == OutputType::DILITHIUM_BECH32) spk_man_type = OutputType::BECH32;
+
+    auto spk_man = GetScriptPubKeyMan(spk_man_type, /*internal=*/false);
     if (!spk_man) {
         return util::Error{strprintf(_("Error: No %s addresses available."), FormatOutputType(type))};
     }
@@ -2614,6 +2653,21 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::optional<AddressPur
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool internal)
 {
+    if (type == OutputType::P2MR) {
+        // P2MR destinations are not keypool-backed: each is a freshly derived
+        // Dilithium key plus a script tree persisted as wallet metadata. There
+        // is nothing to hand back, so nIndex stays -1 and KeepDestination() /
+        // ReturnDestination() are no-ops for this type.
+        if (!IsValidDestination(address)) {
+            auto created = CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
+                                                      /*add_to_address_book=*/!internal);
+            if (!created) return util::Error{util::ErrorString(created)};
+            address = created->dest;
+            fInternal = internal;
+        }
+        return address;
+    }
+
     m_spk_man = pwallet->GetScriptPubKeyMan(type, internal);
     if (!m_spk_man) {
         return util::Error{strprintf(_("Error: No %s addresses available."), FormatOutputType(type))};
@@ -3669,9 +3723,13 @@ void CWallet::SetupDescriptorScriptPubKeyMans(const CExtKey& master_key)
 
     for (bool internal : {false, true}) {
         for (OutputType t : OUTPUT_TYPES) {
-            // Dilithium descriptor wallets generate Dilithium keys on demand in
-            // DescriptorScriptPubKeyMan::GetNewDestination; they reuse the LEGACY/BECH32 spk managers.
-            if (t == OutputType::DILITHIUM_LEGACY || t == OutputType::DILITHIUM_BECH32) {
+            // Dilithium descriptor wallets generate Dilithium keys on demand via
+            // DescriptorScriptPubKeyMan::GenerateNewDilithiumKey; they reuse the
+            // LEGACY/BECH32 spk managers. P2MR is not descriptor-backed at all —
+            // its destinations are minted in wallet/p2mr.cpp and stored as
+            // metadata, and CWallet routes both the receive and the change path
+            // there rather than through a spk manager.
+            if (t == OutputType::DILITHIUM_LEGACY || t == OutputType::DILITHIUM_BECH32 || t == OutputType::P2MR) {
                 continue;
             }
             auto spk_manager = std::unique_ptr<DescriptorScriptPubKeyMan>(new DescriptorScriptPubKeyMan(*this, m_keypool_size));

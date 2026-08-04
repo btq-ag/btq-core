@@ -75,6 +75,10 @@ bool DilithiumWalletManager::HaveDilithiumKeyLegacy(const DilithiumLegacyKeyID& 
 
 util::Result<CTxDestination> DilithiumWalletManager::GetNewDilithiumAddress(OutputType type)
 {
+    if (type == OutputType::DILITHIUM_LEGACY && !LegacyDilithiumBase58PaymentsAllowed()) {
+        return util::Error{DilithiumLegacyDisabledError()};
+    }
+
     // Generate a new Dilithium key
     CDilithiumKey dilithium_key;
     if (!dilithium_key.MakeNewKey() || !dilithium_key.IsValid()) {

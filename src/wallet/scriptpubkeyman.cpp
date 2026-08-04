@@ -28,6 +28,11 @@ namespace wallet {
 //! Value for the first BIP 32 hardened derivation. Can be used as a bit mask and as a value. See BIP 32 for more details.
 const uint32_t BIP32_HARDENED_KEY_LIMIT = 0x80000000;
 
+bilingual_str DilithiumLegacyDisabledError()
+{
+    return _("Error: dilithium-legacy is disabled on this network because Dilithium spends must use P2MR (witness v2); such an output is not a valid payment destination and the wallet cannot spend it. Use getnewdilithiumaddress instead.");
+}
+
 util::Result<CTxDestination> LegacyScriptPubKeyMan::GetNewDestination(const OutputType type)
 {
     if (LEGACY_OUTPUT_TYPES.count(type) == 0) {
@@ -37,6 +42,10 @@ util::Result<CTxDestination> LegacyScriptPubKeyMan::GetNewDestination(const Outp
         return util::Error{_("Error: Legacy wallets only support the \"legacy\", \"p2sh-segwit\", \"bech32\", and \"dilithium-legacy\" address types")};
     }
     assert(type != OutputType::BECH32M);
+
+    if (type == OutputType::DILITHIUM_LEGACY && !LegacyDilithiumBase58PaymentsAllowed()) {
+        return util::Error{DilithiumLegacyDisabledError()};
+    }
 
     // Fill-up keypool if needed
     TopUp();
@@ -2430,6 +2439,73 @@ bool LegacyScriptPubKeyMan::DeleteRecords()
     return batch.EraseRecords(DBKeys::LEGACY_TYPES);
 }
 
+util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKey()
+{
+    LOCK(cs_desc_man);
+    return GenerateNewDilithiumKeyLocked();
+}
+
+util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKeyLocked()
+{
+    AssertLockHeld(cs_desc_man);
+
+    if (m_storage.HasEncryptionKeys() && m_storage.IsLocked()) {
+        return util::Error{_("Error: Please enter the wallet passphrase with walletpassphrase first.")};
+    }
+
+    const KeyMap descriptor_private_keys = GetKeys();
+    if (descriptor_private_keys.empty()) {
+        return util::Error{_("Error: Descriptor private key is not available for Dilithium key generation")};
+    }
+
+    const CKey& descriptor_key = descriptor_private_keys.begin()->second;
+    if (!descriptor_key.IsValid()) {
+        return util::Error{_("Error: Descriptor private key is invalid for Dilithium key generation")};
+    }
+
+    // Deterministic Dilithium key from private descriptor material + descriptor identity + index.
+    static const unsigned char desc_ctx[] = {'D','i','l','i','t','h','i','u','m',' ','d','e','s','c',' ','s','e','c','r','e','t'};
+    CHMAC_SHA512 hmac(desc_ctx, sizeof(desc_ctx));
+    hmac.Write(descriptor_key.begin(), descriptor_key.size());
+    const uint256 desc_id = GetID();
+    hmac.Write(desc_id.begin(), desc_id.size());
+    const uint32_t idx_be = htobe32(m_wallet_descriptor.next_index);
+    hmac.Write(reinterpret_cast<const unsigned char*>(&idx_be), sizeof(idx_be));
+    // Retained for backwards compatibility of the derivation: keys generated
+    // before P2MR became its own OutputType committed to DILITHIUM_LEGACY here,
+    // and changing the byte would silently orphan every key already derived.
+    const unsigned char type_byte = static_cast<unsigned char>(OutputType::DILITHIUM_LEGACY);
+    hmac.Write(&type_byte, 1);
+    unsigned char I[64];
+    hmac.Finalize(I);
+    std::vector<unsigned char> seed(I, I + BTQ_DILITHIUM_SEED_SIZE);
+    memory_cleanse(I, sizeof(I));
+
+    CDilithiumKey dilithium_key;
+    const bool ok = dilithium_key.GenerateFromEntropy(seed);
+    memory_cleanse(seed.data(), seed.size());
+    if (!ok) {
+        return util::Error{_("Error: Failed to generate Dilithium key")};
+    }
+
+    const CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
+    const CKeyID keyid = CKeyID(dilithium_pubkey.GetID());
+
+    if (HaveDilithiumKey(keyid)) {
+        return util::Error{_("Error: Failed to generate unique Dilithium key")};
+    }
+
+    WalletBatch batch(m_storage.GetDatabase());
+    if (!AddDilithiumKeyWithDB(batch, dilithium_key, keyid)) {
+        return util::Error{_("Error: Failed to store Dilithium key")};
+    }
+
+    m_wallet_descriptor.next_index++;
+    batch.WriteDescriptor(GetID(), m_wallet_descriptor);
+
+    return dilithium_pubkey;
+}
+
 util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const OutputType type)
 {
     // Returns true if this descriptor supports getting new addresses. Conditions where we may be unable to fetch them (e.g. locked) are caught later
@@ -2448,71 +2524,15 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
         }
 
         if (type == OutputType::DILITHIUM_LEGACY) {
-            bool is_compatible = false;
-            if (type == OutputType::DILITHIUM_LEGACY && *desc_addr_type == OutputType::LEGACY) {
-                is_compatible = true;
-            }
-
-            if (!is_compatible) {
+            if (*desc_addr_type != OutputType::LEGACY) {
                 return util::Error{_("Error: Descriptor type is not compatible with requested Dilithium address type")};
             }
-
-            if (m_storage.HasEncryptionKeys() && m_storage.IsLocked()) {
-                return util::Error{_("Error: Please enter the wallet passphrase with walletpassphrase first.")};
+            if (!LegacyDilithiumBase58PaymentsAllowed()) {
+                return util::Error{DilithiumLegacyDisabledError()};
             }
-
-            const KeyMap descriptor_private_keys = GetKeys();
-            if (descriptor_private_keys.empty()) {
-                return util::Error{_("Error: Descriptor private key is not available for Dilithium key generation")};
-            }
-
-            CDilithiumKey dilithium_key;
-            const uint32_t child_index = m_wallet_descriptor.next_index;
-
-            // Deterministic Dilithium key from private descriptor material + descriptor identity + index.
-            static const unsigned char desc_ctx[] = {'D','i','l','i','t','h','i','u','m',' ','d','e','s','c',' ','s','e','c','r','e','t'};
-            CHMAC_SHA512 hmac(desc_ctx, sizeof(desc_ctx));
-            const CKey& descriptor_key = descriptor_private_keys.begin()->second;
-            if (!descriptor_key.IsValid()) {
-                return util::Error{_("Error: Descriptor private key is invalid for Dilithium key generation")};
-            }
-            hmac.Write(descriptor_key.begin(), descriptor_key.size());
-            const uint256 desc_id = GetID();
-            hmac.Write(desc_id.begin(), desc_id.size());
-            const uint32_t idx_be = htobe32(child_index);
-            hmac.Write(reinterpret_cast<const unsigned char*>(&idx_be), sizeof(idx_be));
-            const unsigned char type_byte = static_cast<unsigned char>(type);
-            hmac.Write(&type_byte, 1);
-            unsigned char I[64];
-            hmac.Finalize(I);
-            std::vector<unsigned char> seed(I, I + BTQ_DILITHIUM_SEED_SIZE);
-            memory_cleanse(I, sizeof(I));
-
-            const bool ok = dilithium_key.GenerateFromEntropy(seed);
-            memory_cleanse(seed.data(), seed.size());
-            if (!ok) {
-                return util::Error{_("Error: Failed to generate Dilithium key")};
-            }
-
-            CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
-            const CKeyID keyid = CKeyID(dilithium_pubkey.GetID());
-
-            WalletBatch batch(m_storage.GetDatabase());
-
-            if (HaveDilithiumKey(keyid)) {
-                return util::Error{_("Error: Failed to generate unique Dilithium key")};
-            }
-
-            if (!AddDilithiumKeyWithDB(batch, dilithium_key, keyid)) {
-                return util::Error{_("Error: Failed to store Dilithium key")};
-            }
-
-            m_wallet_descriptor.next_index++;
-            batch.WriteDescriptor(GetID(), m_wallet_descriptor);
-
-            CTxDestination dest;
-            dest = DilithiumPKHash(dilithium_pubkey);
-            return dest;
+            auto pubkey = GenerateNewDilithiumKeyLocked();
+            if (!pubkey) return util::Error{util::ErrorString(pubkey)};
+            return CTxDestination{DilithiumPKHash(*pubkey)};
         }
         
         if (type != *desc_addr_type) {
@@ -3057,9 +3077,12 @@ bool DescriptorScriptPubKeyMan::SetupDescriptorGeneration(const CExtKey& master_
         desc_prefix = "wpkh(" + xpub + "/1h";  // Use account 1 for Dilithium
         break;
     }
+    case OutputType::P2MR:
     case OutputType::UNKNOWN: {
-        // We should never have a DescriptorScriptPubKeyMan for an UNKNOWN OutputType,
-        // so if we get to this point something is wrong
+        // P2MR destinations are not descriptor-backed (the script tree lives in
+        // wallet metadata, see wallet/p2mr.cpp), and we should never have a
+        // DescriptorScriptPubKeyMan for an UNKNOWN OutputType, so if we get to
+        // this point something is wrong.
         assert(false);
     }
     } // no default case, so the compiler can warn about missing cases

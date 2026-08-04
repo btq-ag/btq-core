@@ -123,14 +123,50 @@ BOOST_AUTO_TEST_CASE(dilithium_getnewdestination_uses_hd_seed)
     keyman.LoadHDChain(hd_chain);
     batch.WriteHDChain(hd_chain);
 
-    const util::Result<CTxDestination> dest = keyman.GetNewDestination(OutputType::DILITHIUM_LEGACY);
-    BOOST_REQUIRE(dest);
-    BOOST_REQUIRE(std::holds_alternative<DilithiumPKHash>(*dest));
+    // Generate the key directly. GetNewDestination(DILITHIUM_LEGACY) is refused
+    // on a P2MR-only chain, and what this case is about is that the key comes
+    // from the wallet's HD seed rather than from anywhere else.
+    WalletBatch keygen_batch(wallet.GetDatabase());
+    CHDChain keygen_chain = keyman.GetHDChain();
+    const CDilithiumPubKey pubkey = keyman.GenerateNewDilithiumKey(keygen_batch, keygen_chain, /*internal=*/false);
+    BOOST_REQUIRE(pubkey.IsValid());
 
     CDilithiumKey wallet_key;
     BOOST_REQUIRE(keyman.GetDilithiumKey(expected_id, wallet_key));
     BOOST_CHECK(wallet_key == child0.key);
-    BOOST_CHECK(std::get<DilithiumPKHash>(*dest) == DilithiumPKHash(child0.key.GetPubKey().GetID()));
+    BOOST_CHECK(DilithiumPKHash(pubkey) == DilithiumPKHash(child0.key.GetPubKey().GetID()));
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_legacy_generation_disabled_on_p2mr_only_chain)
+{
+    // Regtest activates DEPLOYMENT_DILITHIUM_P2MR at height 1, so a base58
+    // Dilithium destination is not a valid payment destination here and the
+    // wallet could not size or sign a spend of one. Both spk manager kinds must
+    // refuse to mint one rather than stranding whatever is paid to it (#97).
+    BOOST_REQUIRE(!LegacyDilithiumBase58PaymentsAllowed());
+
+    CWallet legacy_wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    LegacyScriptPubKeyMan& legacy_keyman = *legacy_wallet.GetOrCreateLegacyScriptPubKeyMan();
+    {
+        LOCK(legacy_keyman.cs_KeyStore);
+        BOOST_REQUIRE(legacy_keyman.SetupGeneration(true));
+    }
+    BOOST_CHECK(!legacy_keyman.GetNewDestination(OutputType::DILITHIUM_LEGACY));
+
+    CWallet desc_wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    DescriptorScriptPubKeyMan* desc_keyman{nullptr};
+    {
+        LOCK(desc_wallet.cs_wallet);
+        desc_wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+        desc_wallet.SetupDescriptorScriptPubKeyMans();
+        desc_keyman = dynamic_cast<DescriptorScriptPubKeyMan*>(desc_wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+    }
+    BOOST_REQUIRE(desc_keyman);
+    BOOST_CHECK(!desc_keyman->GetNewDestination(OutputType::DILITHIUM_LEGACY));
+
+    // The refusal must not take Dilithium key generation with it: P2MR receive
+    // needs the same key on exactly the chains where the destination is refused.
+    BOOST_CHECK(desc_keyman->GenerateNewDilithiumKey());
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_bech32_generation_disabled)
@@ -199,10 +235,9 @@ BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
     }
     BOOST_REQUIRE(keyman);
 
-    const util::Result<CTxDestination> dest = keyman->GetNewDestination(OutputType::DILITHIUM_LEGACY);
-    BOOST_REQUIRE(dest);
-    BOOST_REQUIRE(std::holds_alternative<DilithiumPKHash>(*dest));
-    const CKeyID key_id{static_cast<uint160>(std::get<DilithiumPKHash>(*dest))};
+    const util::Result<CDilithiumPubKey> pubkey = keyman->GenerateNewDilithiumKey();
+    BOOST_REQUIRE(pubkey);
+    const CKeyID key_id{pubkey->GetID()};
 
     CDilithiumKey before_encrypt;
     {

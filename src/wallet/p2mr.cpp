@@ -576,7 +576,8 @@ namespace {
 
 util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
                                                         const CDilithiumPubKey& pubkey,
-                                                        const std::string& label)
+                                                        const std::string& label,
+                                                        bool add_to_address_book = true)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!pubkey.IsValid()) {
@@ -589,7 +590,7 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
         /*leaf_version=*/TAPROOT_LEAF_TAPSCRIPT,
         /*script=*/std::vector<unsigned char>{leaf_script.begin(), leaf_script.end()},
     });
-    return CreateP2MR(wallet, leaves, label);
+    return CreateP2MR(wallet, leaves, label, add_to_address_book);
 }
 
 bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
@@ -626,44 +627,31 @@ util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)
     }
 
     // Descriptor wallets: derive a deterministic Dilithium key from the active
-    // LEGACY descriptor's private material (same scheme as GetNewDestination).
+    // LEGACY descriptor's private material.
     ScriptPubKeyMan* spk_man = wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false);
     auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
     if (!desc) {
         return util::Error{Untranslated("No ScriptPubKeyMan available for Dilithium key generation")};
     }
 
-    auto dest = desc->GetNewDestination(OutputType::DILITHIUM_LEGACY);
-    if (!dest) {
-        // Do NOT fall back to an ephemeral (non-seed-derived) key here: such a key
-        // would not be recoverable from an HD seed backup and could silently lose
-        // funds. Fail so the caller surfaces the underlying error instead.
-        return util::Error{util::ErrorString(dest)};
-    }
-    // GetNewDestination(DILITHIUM_LEGACY) still returns DilithiumPKHash for key
-    // material bookkeeping; extract the pubkey from the wallet store.
-    if (!std::holds_alternative<DilithiumPKHash>(*dest)) {
-        return util::Error{Untranslated("Unexpected Dilithium destination type from key generation")};
-    }
-    const DilithiumPKHash& keyhash = std::get<DilithiumPKHash>(*dest);
-    CDilithiumKey key;
-    {
-        LOCK(desc->cs_desc_man);
-        if (!desc->GetDilithiumKey(CKeyID(static_cast<uint160>(keyhash)), key)) {
-            return util::Error{Untranslated("Generated Dilithium key not found in wallet")};
-        }
-    }
-    return key.GetPubKey();
+    // Ask for the key directly rather than for a legacy Dilithium destination:
+    // that destination is refused on P2MR-only chains (issue #97), and P2MR
+    // receive must keep working there. Do NOT fall back to an ephemeral
+    // (non-seed-derived) key on failure: such a key would not be recoverable
+    // from an HD seed backup and could silently lose funds.
+    return desc->GenerateNewDilithiumKey();
 }
 
 } // namespace
 
-util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet, const std::string& label)
+util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
+                                                     const std::string& label,
+                                                     bool add_to_address_book)
 {
     AssertLockHeld(wallet.cs_wallet);
     auto pubkey = GenerateWalletDilithiumPubKey(wallet);
     if (!pubkey) return util::Error{util::ErrorString(pubkey)};
-    return CreateSingleLeafDilithiumP2MR(wallet, *pubkey, label);
+    return CreateSingleLeafDilithiumP2MR(wallet, *pubkey, label, add_to_address_book);
 }
 
 util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
@@ -682,7 +670,8 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
 
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
-                                     const std::string& label)
+                                     const std::string& label,
+                                     bool add_to_address_book)
 {
     AssertLockHeld(wallet.cs_wallet);
     auto builder_res = BuildP2MRTreeChecked(leaves);
@@ -710,7 +699,7 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, label, leaves);
 
     WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
-    if (!wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
+    if (add_to_address_book && !wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
         return util::Error{Untranslated("failed to set P2MR address book entry")};
     }
     if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {

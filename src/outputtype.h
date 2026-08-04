@@ -21,6 +21,12 @@ enum class OutputType {
     BECH32M,
     DILITHIUM_LEGACY,
     DILITHIUM_BECH32,
+    //! BIP360 pay-to-merkle-root (witness v2). The only consensus-valid
+    //! Dilithium spend path once DEPLOYMENT_DILITHIUM_P2MR is active, and the
+    //! only quantum-safe type the wallet can hand out. Unlike the types above
+    //! it is not descriptor-backed: destinations come from wallet/p2mr.cpp,
+    //! which stores the script tree as wallet metadata.
+    P2MR,
     UNKNOWN,
 };
 
@@ -31,7 +37,14 @@ static constexpr auto OUTPUT_TYPES = std::array{
     OutputType::BECH32M,
     OutputType::DILITHIUM_LEGACY,
     OutputType::DILITHIUM_BECH32,
+    OutputType::P2MR,
 };
+
+/** Output types whose spends are authorised by a Dilithium key rather than ECDSA/Schnorr. */
+constexpr bool IsQuantumSafeOutputType(OutputType type)
+{
+    return type == OutputType::P2MR || type == OutputType::DILITHIUM_LEGACY || type == OutputType::DILITHIUM_BECH32;
+}
 
 std::optional<OutputType> ParseOutputType(const std::string& str);
 const std::string& FormatOutputType(OutputType type);
