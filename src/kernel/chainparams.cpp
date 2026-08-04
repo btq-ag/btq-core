@@ -148,6 +148,9 @@ public:
         bech32_hrp = "qbtc";
         dilithium_bech32_hrp = "dbtc";
 
+        // Currently empty: no fixed seeds have been provisioned for mainnet
+        // (issue #114). The assignment is kept so that populating
+        // chainparams_seed_main is the only step needed.
         vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
 
         fDefaultConsistencyChecks = false;
@@ -175,7 +178,7 @@ public:
  */
 class CTestNetParams : public CChainParams {
 public:
-    CTestNetParams() {
+    explicit CTestNetParams(const TestNetOptions& opts) {
         m_chain_type = ChainType::BTQTEST;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
@@ -196,17 +199,24 @@ public:
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.nLWMAHeight = 300000;
         consensus.nDilithiumHeight = 1;
-        // TODO(release): schedule DEPLOYMENT_DILITHIUM_P2MR on testnet. The running
-        // testnet has legacy BASE/witness-v0 Dilithium UTXOs that this restriction
-        // makes unspendable; activating without a coordinated height (or a chain
-        // reset) would fork upgraded nodes away from non-upgraded ones. Until a
-        // height is chosen the restriction is policy-only on testnet (non-standard
-        // to relay, refused by the wallet) but not yet enforced in blocks.
-        // Soft-reject classification relies on SCRIPT_VERIFY_DILITHIUM being
-        // mandatory while SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY stays non-mandatory
-        // — otherwise CheckInputScripts would Misbehave peers that relay still-
-        // consensus-valid legacy Dilithium spends (see policy.h).
-        consensus.nDilithiumP2MRHeight = std::numeric_limits<int>::max();
+        // DEPLOYMENT_DILITHIUM_P2MR is deliberately unscheduled here, so the
+        // restriction is policy-only on testnet (non-standard to relay, refused
+        // by the wallet) rather than enforced in blocks. Mainnet ships it at 1,
+        // so testnet is not validating the rules mainnet launches with; that
+        // gap is issue #102, and it is not closed by picking a height on this
+        // chain. Scanning the running testnet (issue #111) found ~719,045 BTQ
+        // across ~141,888 legacy Dilithium outputs, about three quarters of the
+        // chain's value, spread evenly over its whole history rather than
+        // concentrated in a few sweepable addresses. Activating here would
+        // destroy all of it, so closing #102 means a chain that never had them.
+        //
+        // -testnetdilithiump2mrheight overrides this for a rehearsal or a
+        // coordinated activation. Soft-reject classification relies on
+        // SCRIPT_VERIFY_DILITHIUM being mandatory while
+        // SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY stays non-mandatory — otherwise
+        // CheckInputScripts would Misbehave peers that relay still-consensus-
+        // valid legacy Dilithium spends (see policy.h).
+        consensus.nDilithiumP2MRHeight = opts.dilithium_p2mr_height.value_or(std::numeric_limits<int>::max());
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
@@ -508,7 +518,21 @@ public:
             }
         };
 
+        // Scaffolding for the assumeutxo tests, which mine to this height and
+        // then snapshot. Every chain shipped an empty table, so ActivateSnapshot
+        // rejected every snapshot as "height in snapshot metadata not
+        // recognized" and the whole feature went untested. These values are
+        // BTQ's own: the base block hash and the serialized UTXO hash both
+        // depend on the subsidy and chain parameters, so upstream's do not
+        // carry over. Regenerate with the dumptxoutset output logged by
+        // CreateAndActivateUTXOSnapshot if the test chain ever changes.
         m_assumeutxo_data = {
+            {
+                .height = 110,
+                .hash_serialized = AssumeutxoHash{uint256S("0x5d86a7f67e8bb0e146c206164dcc984c2af8b3449845a42dd72ef76f082e690a")},
+                .nChainTx = 111,
+                .blockhash = uint256S("0x100831e245415bda8a1b889280fd766c9a1e8a805e2c89c85ae4bc582b4f3efb"),
+            },
         };
 
         chainTxData = ChainTxData{
@@ -545,9 +569,9 @@ std::unique_ptr<const CChainParams> CChainParams::Main()
     return std::make_unique<const CMainParams>();
 }
 
-std::unique_ptr<const CChainParams> CChainParams::TestNet()
+std::unique_ptr<const CChainParams> CChainParams::TestNet(const TestNetOptions& options)
 {
-    return std::make_unique<const CTestNetParams>();
+    return std::make_unique<const CTestNetParams>(options);
 }
 
 void MineGenesisBlock(CBlock &genesis)

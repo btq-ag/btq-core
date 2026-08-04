@@ -6,11 +6,17 @@
 #include <logging.h>
 #include <logging/timer.h>
 #include <test/util/setup_common.h>
+#include <util/fs_helpers.h>
 #include <util/string.h>
 
 #include <chrono>
+#include <cstdint>
 #include <fstream>
+#include <functional>
+#include <ios>
 #include <iostream>
+#include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -83,10 +89,10 @@ BOOST_AUTO_TEST_CASE(logging_timer)
 BOOST_FIXTURE_TEST_CASE(logging_LogPrintf_, LogSetup)
 {
     LogInstance().m_log_sourcelocations = true;
-    LogPrintf_("fn1", "src1", 1, BCLog::LogFlags::NET, BCLog::Level::Debug, "foo1: %s\n", "bar1");
-    LogPrintf_("fn2", "src2", 2, BCLog::LogFlags::NET, BCLog::Level::None, "foo2: %s\n", "bar2");
-    LogPrintf_("fn3", "src3", 3, BCLog::LogFlags::NONE, BCLog::Level::Debug, "foo3: %s\n", "bar3");
-    LogPrintf_("fn4", "src4", 4, BCLog::LogFlags::NONE, BCLog::Level::None, "foo4: %s\n", "bar4");
+    LogPrintf_("fn1", "src1", 1, BCLog::LogFlags::NET, BCLog::Level::Debug, BCLog::RateLimit::No, "foo1: %s\n", "bar1");
+    LogPrintf_("fn2", "src2", 2, BCLog::LogFlags::NET, BCLog::Level::None, BCLog::RateLimit::No, "foo2: %s\n", "bar2");
+    LogPrintf_("fn3", "src3", 3, BCLog::LogFlags::NONE, BCLog::Level::Debug, BCLog::RateLimit::No, "foo3: %s\n", "bar3");
+    LogPrintf_("fn4", "src4", 4, BCLog::LogFlags::NONE, BCLog::Level::None, BCLog::RateLimit::No, "foo4: %s\n", "bar4");
     std::ifstream file{tmp_log_path};
     std::vector<std::string> log_lines;
     for (std::string log; std::getline(file, log);) {
@@ -249,6 +255,145 @@ BOOST_FIXTURE_TEST_CASE(logging_Conf, LogSetup)
         BOOST_CHECK(http_it != category_levels.end());
         BOOST_CHECK_EQUAL(http_it->second, BCLog::Level::Info);
     }
+}
+
+//! Budget arithmetic for a single source location.
+BOOST_AUTO_TEST_CASE(logging_log_limit_stats)
+{
+    BCLog::LogLimitStats counter{500};
+    BOOST_CHECK_EQUAL(counter.GetAvailableBytes(), 500ull);
+    BOOST_CHECK_EQUAL(counter.GetDroppedBytes(), 0ull);
+
+    BOOST_CHECK(counter.Consume(200));
+    BOOST_CHECK_EQUAL(counter.GetAvailableBytes(), 300ull);
+
+    // Exactly exhausting the budget still counts as a success: the bytes fit.
+    BOOST_CHECK(counter.Consume(300));
+    BOOST_CHECK_EQUAL(counter.GetAvailableBytes(), 0ull);
+    BOOST_CHECK_EQUAL(counter.GetDroppedBytes(), 0ull);
+
+    // One byte past, and everything after it, is accounted as dropped rather
+    // than silently discarded -- the reset message reports the total.
+    BOOST_CHECK(!counter.Consume(1));
+    BOOST_CHECK_EQUAL(counter.GetDroppedBytes(), 1ull);
+    BOOST_CHECK(!counter.Consume(500));
+    BOOST_CHECK_EQUAL(counter.GetDroppedBytes(), 501ull);
+}
+
+namespace {
+//! Each case is a distinct source location, so each gets its own budget.
+//! Cases 0 and 1 are deliberately identical statements in different places.
+void LogFromLocation(int location, const std::string& message)
+{
+    switch (location) {
+    case 0:
+        LogPrintf("%s\n", message);
+        break;
+    case 1:
+        LogPrintf("%s\n", message);
+        break;
+    case 2:
+        LogPrint(BCLog::NET, "%s\n", message);
+        break;
+    }
+}
+
+struct RateLimitSetup : public LogSetup {
+    //! Small enough to keep the test quick, large enough that a line fits.
+    static constexpr uint64_t BUDGET{16 * 1024};
+    //! Lines of exactly 1 KiB, so the budget is a line count.
+    static constexpr int LINES_IN_BUDGET{static_cast<int>(BUDGET / 1024)};
+
+    BCLog::LogRateLimiter* limiter{nullptr};
+
+    RateLimitSetup()
+    {
+        // No scheduler: the test calls Reset() itself rather than waiting an
+        // hour or mocking time.
+        auto owned{std::make_unique<BCLog::LogRateLimiter>(
+            [](std::function<void()>, std::chrono::milliseconds) {},
+            BUDGET, std::chrono::seconds{3600})};
+        limiter = owned.get();
+        LogInstance().SetRateLimiting(std::move(owned));
+        LogInstance().EnableCategory(BCLog::NET);
+    }
+
+    ~RateLimitSetup()
+    {
+        LogInstance().DisableCategory(BCLog::NET);
+        // Must happen before ~LogSetup, which logs a sentinel line.
+        LogInstance().SetRateLimiting(nullptr);
+        limiter = nullptr;
+    }
+
+    std::streamsize LogFileSize() const
+    {
+        return static_cast<std::streamsize>(GetFileSize(fs::PathToString(tmp_log_path).c_str()));
+    }
+
+    bool LogContains(const std::string& needle) const
+    {
+        std::ifstream file{tmp_log_path};
+        std::string line;
+        while (std::getline(file, line)) {
+            if (line.find(needle) != std::string::npos) return true;
+        }
+        return false;
+    }
+};
+} // namespace
+
+//! A single log location that a peer can drive must not be able to fill the
+//! disk, and must not take the rest of the log down with it.
+//!
+//! This is what closes CVE-2025-54604 (a spoofed self-connection reaching the
+//! unconditional "connected to self" LogPrintf) and CVE-2025-54605 (repeated
+//! invalid blocks reaching the unconditional failure logs). Both are the same
+//! defect -- an attacker-reachable log site with no ceiling -- so the fix is
+//! per-location rather than per-message, and covers the next such site too.
+BOOST_FIXTURE_TEST_CASE(logging_rate_limit, RateLimitSetup)
+{
+    // 1023 characters plus the newline the format string adds.
+    const std::string line(1023, 'a');
+
+    // A full budget's worth gets through untouched.
+    std::streamsize size{LogFileSize()};
+    for (int i = 0; i < LINES_IN_BUDGET; ++i) LogFromLocation(0, line);
+    BOOST_CHECK_MESSAGE(LogFileSize() > size, "a location within its budget must reach disk");
+
+    // The line that exceeds it is still written, and says why it is the last.
+    // Announcing the gap matters: a silently truncated log is worse to debug
+    // than a noisy one.
+    LogFromLocation(0, line);
+    BOOST_CHECK_MESSAGE(LogContains("Excessive logging detected"),
+                        "hitting the limit must be announced in the log");
+
+    // After which the location writes nothing further. This is the property
+    // the CVEs need.
+    size = LogFileSize();
+    for (int i = 0; i < LINES_IN_BUDGET * 2; ++i) LogFromLocation(0, line);
+    BOOST_CHECK_MESSAGE(LogFileSize() == size, "a suppressed location must stop reaching disk");
+
+    // An unrelated location keeps its own budget. Without this a single
+    // attacker-driven site would blind the operator to everything else.
+    LogFromLocation(1, line);
+    BOOST_CHECK_MESSAGE(LogFileSize() > size, "an unrelated location must keep logging");
+
+    // Debug logging is exempt: reaching it requires -debug, and an operator
+    // who asked for that has accepted the volume.
+    size = LogFileSize();
+    for (int i = 0; i < LINES_IN_BUDGET * 2; ++i) LogFromLocation(2, line);
+    BOOST_CHECK_MESSAGE(LogFileSize() > size, "-debug output must not be rate limited");
+
+    // Resetting the window restores the location and accounts for what was
+    // lost, so the gap in the log is quantified rather than merely implied.
+    limiter->Reset();
+    BOOST_CHECK_MESSAGE(LogContains("Restarting logging"), "the reset must be announced");
+    BOOST_CHECK_MESSAGE(LogContains("bytes were dropped"), "the reset must report the loss");
+
+    size = LogFileSize();
+    LogFromLocation(0, line);
+    BOOST_CHECK_MESSAGE(LogFileSize() > size, "the location must log again after a reset");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

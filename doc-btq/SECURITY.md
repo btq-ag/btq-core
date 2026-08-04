@@ -16,7 +16,7 @@ We provide security updates for the following BTQ versions:
 
 **DO NOT** report security vulnerabilities through public GitHub issues.
 
-Instead, please email us at: **oscar@btq.com** or **barney@btq.com** 
+Instead, please email us at: **security@btq.tech**
 
 Include the following information:
 - Description of the vulnerability
@@ -65,7 +65,7 @@ We are pretty responsive, so we will try to meet these timelines with regards to
 **Primary Security Contact**
 ```
 Name: BTQ Security Team
-Email: oscar@btq.org
+Email: security@btq.tech
 Fingerprint: [TO BE ADDED]
 ```
 
@@ -78,7 +78,7 @@ Fingerprint: [TO BE ADDED]
 
 ### Key Verification
 
-1. Download keys from our website: https://btq.org/security-keys.txt
+1. Download keys from our website: https://bitcoinquantum.com/security-keys.txt
 2. Verify fingerprints through multiple channels
 3. Import keys: `gpg --import security-keys.txt`
 
@@ -182,7 +182,7 @@ Fingerprint: [TO BE ADDED]
 
 For urgent security matters requiring immediate attention:
 
-- **Primary**: oscar@btq.org
+- **Primary**: security@btq.tech
 - **Backup**: [TO BE ADDED]
 - **Signal**: [TO BE ADDED] (for encrypted communication)
 

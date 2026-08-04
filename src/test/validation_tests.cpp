@@ -139,13 +139,21 @@ BOOST_AUTO_TEST_CASE(test_assumeutxo)
         BOOST_CHECK(!out);
     }
 
-    const auto out110 = *params->AssumeutxoForHeight(110);
-    BOOST_CHECK_EQUAL(out110.hash_serialized.ToString(), "6657b736d4fe4db0cbc796789e812d5dba7f5c143764b1b6905612f1830609d1");
-    BOOST_CHECK_EQUAL(out110.nChainTx, 111U);
+    // BTQ's own snapshot values, not the ones inherited from Bitcoin: both the
+    // base block hash and the serialized UTXO hash depend on the subsidy and
+    // chain parameters. REQUIRE rather than CHECK because these dereference an
+    // optional -- while the table was empty this read uninitialised stack and
+    // compared it against the expected hash, which is undefined behaviour that
+    // happened to surface as a plain assertion failure.
+    const auto out110{params->AssumeutxoForHeight(110)};
+    BOOST_REQUIRE(out110);
+    BOOST_CHECK_EQUAL(out110->hash_serialized.ToString(), "5d86a7f67e8bb0e146c206164dcc984c2af8b3449845a42dd72ef76f082e690a");
+    BOOST_CHECK_EQUAL(out110->nChainTx, 111U);
 
-    const auto out110_2 = *params->AssumeutxoForBlockhash(uint256S("0x696e92821f65549c7ee134edceeeeaaa4105647a3c4fd9f298c0aec0ab50425c"));
-    BOOST_CHECK_EQUAL(out110_2.hash_serialized.ToString(), "6657b736d4fe4db0cbc796789e812d5dba7f5c143764b1b6905612f1830609d1");
-    BOOST_CHECK_EQUAL(out110_2.nChainTx, 111U);
+    const auto out110_2{params->AssumeutxoForBlockhash(uint256S("0x100831e245415bda8a1b889280fd766c9a1e8a805e2c89c85ae4bc582b4f3efb"))};
+    BOOST_REQUIRE(out110_2);
+    BOOST_CHECK_EQUAL(out110_2->hash_serialized.ToString(), "5d86a7f67e8bb0e146c206164dcc984c2af8b3449845a42dd72ef76f082e690a");
+    BOOST_CHECK_EQUAL(out110_2->nChainTx, 111U);
 }
 
 

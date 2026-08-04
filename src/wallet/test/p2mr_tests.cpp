@@ -617,11 +617,13 @@ BOOST_FIXTURE_TEST_CASE(build_signing_provider_exports_descriptor_dilithium_p2mr
     }
     BOOST_REQUIRE(keyman);
 
-    const util::Result<CTxDestination> dest = keyman->GetNewDestination(OutputType::DILITHIUM_LEGACY);
-    BOOST_REQUIRE(dest);
-    BOOST_REQUIRE(std::holds_alternative<DilithiumPKHash>(*dest));
-    const DilithiumPKHash keyhash = std::get<DilithiumPKHash>(*dest);
-    const CScript leaf_script = GetScriptForDestination(*dest);
+    // Ask for the key rather than for a legacy Dilithium destination: the
+    // destination is refused on this (P2MR-only) chain, and this case is about
+    // the leaf built from the key, not about base58 Dilithium addresses.
+    const util::Result<CDilithiumPubKey> pubkey = keyman->GenerateNewDilithiumKey();
+    BOOST_REQUIRE(pubkey);
+    const DilithiumPKHash keyhash{*pubkey};
+    const CScript leaf_script = GetScriptForDestination(CTxDestination{keyhash});
 
     std::vector<std::vector<unsigned char>> solutions;
     BOOST_REQUIRE(Solver(leaf_script, solutions) == TxoutType::DILITHIUM_PUBKEYHASH);

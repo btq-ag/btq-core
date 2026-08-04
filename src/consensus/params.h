@@ -23,8 +23,8 @@ namespace Consensus {
 enum class SignatureAlgorithm {
     NONE,      // No specific algorithm enforced (legacy mode)
     DILITHIUM, // CRYSTALS-Dilithium post-quantum signature scheme
-    FALCON,    // Falcon post-quantum signature scheme  
-    SPHINCS    // SPHINCS+ post-quantum signature scheme
+    FALCON,    // Falcon post-quantum signature scheme (reserved, not implemented)
+    SPHINCS    // SPHINCS+ post-quantum signature scheme (reserved, not implemented)
 };
 
 /**
@@ -89,9 +89,16 @@ struct BIP9Deployment {
 struct Params {
     uint256 hashGenesisBlock;
     int nSubsidyHalvingInterval;
-    /** 
-     * Defines which post-quantum signature algorithm is enforced for transactions.
-     * Set to NONE initially to maintain compatibility while transitioning to PQ signatures.
+    /**
+     * Reserved. Never read.
+     *
+     * Every network sets this to NONE (kernel/chainparams.cpp) and nothing
+     * consumes it, so changing it has no effect on validation. No Falcon or
+     * SPHINCS+ implementation exists in the tree either -- the enum values are
+     * the only occurrences outside vendored directories.
+     *
+     * Dilithium is selected by script opcode and activation height
+     * (nDilithiumHeight / nDilithiumP2MRHeight), not by this field. See #116.
      */
     SignatureAlgorithm signature_algorithm{SignatureAlgorithm::NONE};
     /**
@@ -140,7 +147,20 @@ struct Params {
      *  Blocks at or above this height reject Dilithium opcodes outside P2MR
      *  tapscript and disable the legacy witness-v0 Dilithium keyhash routing. */
     int nDilithiumP2MRHeight{1};
-    static constexpr int LWMA_WINDOW = 45;
+    /** LWMA averaging window, in blocks.
+     *
+     *  Consensus-critical: changing it on a live chain is a hard fork.
+     *
+     *  Inherited as 45 from chains with ~10x longer block spacing, where it
+     *  covers 7.5 hours of history. At BTQ's 60-second spacing the same number
+     *  covers 45 minutes, which is short enough that a half-hour hashrate burst
+     *  dominates the weighted window (weights 1..N sum to N(N+1)/2, so the most
+     *  recent 30 blocks carry 88% of it at N=45 against 20% at N=288).
+     *
+     *  A field rather than a constant so the value can be swept in tests and
+     *  overridden on regtest; see issue #110 and pow_lwma_tests.cpp. Every
+     *  network currently sets 45, so this change is behaviour-preserving. */
+    int nLWMAWindow{45};
     std::chrono::seconds PowTargetSpacing() const
     {
         return std::chrono::seconds{nPowTargetSpacing};

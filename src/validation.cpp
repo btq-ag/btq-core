@@ -1042,13 +1042,18 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
     if (!CheckInputScripts(tx, state, m_view, scriptVerifyFlags, true, false, ws.m_precomputed_txdata)) {
-        // SCRIPT_VERIFY_CLEANSTACK requires SCRIPT_VERIFY_WITNESS, so we
-        // need to turn both off, and compare against just turning off CLEANSTACK
-        // to see if the failure is specifically due to witness validation.
-        TxValidationState state_dummy; // Want reported failures to be from first CheckInputScripts
-        if (!tx.HasWitness() && CheckInputScripts(tx, state_dummy, m_view, scriptVerifyFlags & ~(SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_CLEANSTACK), true, false, ws.m_precomputed_txdata) &&
-                !CheckInputScripts(tx, state_dummy, m_view, scriptVerifyFlags & ~SCRIPT_VERIFY_CLEANSTACK, true, false, ws.m_precomputed_txdata)) {
-            // Only the witness is missing, so the transaction itself may be fine.
+        // Detect a stripped witness, so p2p code knows not to cache the
+        // rejection against a txid that a witness would have made valid.
+        //
+        // This used to be established by re-running every input script twice
+        // more under relaxed flags. That made a rejected transaction cost up
+        // to three full script passes, which an attacker can repeat for free
+        // because a non-standard transaction is not a disconnection offence
+        // (CVE-2025-46598). The prevout script types say the same thing
+        // structurally, at no verification cost. Dilithium verification is
+        // far dearer than ECDSA, so the passes avoided are worth more here
+        // than upstream.
+        if (!tx.HasWitness() && SpendsWitnessProgram(tx, m_view)) {
             state.Invalid(TxValidationResult::TX_WITNESS_STRIPPED,
                     state.GetRejectReason(), state.GetDebugMessage());
         }
@@ -2380,10 +2385,16 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // Precomputed transaction data pointers must not be invalidated
     // until after `control` has run the script checks (potentially
     // in multiple threads). Preallocate the vector size so a new allocation
-    // doesn't invalidate pointers into the vector, and keep txsdata in scope
-    // for as long as `control`.
-    CCheckQueueControl<CScriptCheck> control(fScriptChecks && parallel_script_checks ? &scriptcheckqueue : nullptr);
+    // doesn't invalidate pointers into the vector.
+    //
+    // `txsdata` must also be declared *before* `control`: local objects are
+    // destroyed in reverse order of construction, so this is what guarantees
+    // the check queue is drained before the data its CScriptChecks point at
+    // goes away. Inverting these two lines reintroduces CVE-2024-52911, where
+    // an early return below unwinds through ~CCheckQueueControl and the
+    // background threads read freed memory.
     std::vector<PrecomputedTransactionData> txsdata(block.vtx.size());
+    CCheckQueueControl<CScriptCheck> control(fScriptChecks && parallel_script_checks ? &scriptcheckqueue : nullptr);
 
     std::vector<int> prevheights;
     CAmount nFees = 0;
@@ -2738,7 +2749,13 @@ static void UpdateTipLog(
 {
 
     AssertLockHeld(::cs_main);
-    LogPrintf("%s%s: new best=%s height=%d version=0x%08x log2_work=%f tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)%s\n",
+    // Exempt from rate limiting: this fires once per block, so during IBD it
+    // legitimately exceeds any per-window budget, and it is the single most
+    // useful line in the log to still have. Nothing an attacker controls
+    // reaches it -- a block has to connect first. BTQ's 60s spacing makes this
+    // ten times more frequent than upstream's, so the exemption matters more.
+    LogPrintLevel_(BCLog::LogFlags::NONE, BCLog::Level::None, BCLog::RateLimit::No,
+        "%s%s: new best=%s height=%d version=0x%08x log2_work=%f tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)%s\n",
         prefix, func_name,
         tip->GetBlockHash().ToString(), tip->nHeight, tip->nVersion,
         log(tip->nChainWork.getdouble()) / log(2.0), (unsigned long)tip->nChainTx,

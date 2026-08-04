@@ -40,8 +40,15 @@ BOOST_FIXTURE_TEST_CASE(SubtractFee, TestChain100Setup)
     // be uneconomical to add and spend the output), and make sure it pays the
     // leftover input amount which would have been change to the recipient
     // instead of the miner.
-    auto check_tx = [&wallet](CAmount leftover_input_amount) {
-        CRecipient recipient{PubKeyDestination({}), 50 * COIN - leftover_input_amount, /*subtract_fee=*/true};
+    // Every case below pays out the fixture's single mature coinbase less some
+    // leftover, so read what that coinbase is actually worth. The literal 50 BTQ
+    // this replaces is Bitcoin's subsidy; BTQ pays 5, so each case was asking
+    // for ten times the money the wallet held and failing on insufficient funds
+    // before it could test anything about subtracting the fee.
+    const CAmount coinbase_value{WITH_LOCK(wallet->cs_wallet, return AvailableCoins(*wallet).GetTotalAmount())};
+
+    auto check_tx = [&wallet, coinbase_value](CAmount leftover_input_amount) {
+        CRecipient recipient{PubKeyDestination({}), coinbase_value - leftover_input_amount, /*subtract_fee=*/true};
         constexpr int RANDOM_CHANGE_POSITION = -1;
         CCoinControl coin_control;
         coin_control.m_feerate.emplace(10000);
@@ -49,7 +56,11 @@ BOOST_FIXTURE_TEST_CASE(SubtractFee, TestChain100Setup)
         // We need to use a change type with high cost of change so that the leftover amount will be dropped to fee instead of added as a change output
         coin_control.m_change_type = OutputType::LEGACY;
         auto res = CreateTransaction(*wallet, {recipient}, RANDOM_CHANGE_POSITION, coin_control);
-        BOOST_CHECK(res);
+        // REQUIRE, not CHECK: *res aborts the process when transaction creation
+        // failed, and an abort here leaves the wallet fixture standing so
+        // CCheckQueue's destructor then trips on its worker threads and wedges
+        // the binary rather than exiting.
+        BOOST_REQUIRE_MESSAGE(res, "CreateTransaction failed: " << util::ErrorString(res).original);
         const auto& txr = *res;
         BOOST_CHECK_EQUAL(txr.tx->vout.size(), 1);
         BOOST_CHECK_EQUAL(txr.tx->vout[0].nValue, recipient.nAmount + leftover_input_amount - txr.fee);
@@ -80,36 +91,43 @@ BOOST_FIXTURE_TEST_CASE(wallet_duplicated_preset_inputs_test, TestChain100Setup)
 {
     // Verify that the wallet's Coin Selection process does not include pre-selected inputs twice in a transaction.
 
-    // Add 4 spendable UTXO, 50 BTQ each, to the wallet (total balance 200 BTQ)
+    // Add 4 spendable UTXO, 5 BTQ each, to the wallet (total balance 20 BTQ).
+    // Every amount below is upstream's divided by ten, because that is the
+    // ratio between Bitcoin's 50 BTC subsidy and BTQ's 5. Keeping the ratio
+    // matters: the case turns on the target exceeding the balance by roughly
+    // half the balance again, so that a wallet double-counting its preset
+    // inputs would appear able to fund it. Left at 299 BTQ against a 20 BTQ
+    // balance the shortfall is so wide that no double-count could close it,
+    // and the case would pass without exercising anything.
     for (int i = 0; i < 4; i++) CreateAndProcessBlock({}, GetScriptForRawPubKey(coinbaseKey.GetPubKey()));
     auto wallet = CreateSyncedWallet(*m_node.chain, WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain()), coinbaseKey);
 
     LOCK(wallet->cs_wallet);
     auto available_coins = AvailableCoins(*wallet);
     std::vector<COutput> coins = available_coins.All();
-    // Preselect the first 3 UTXO (150 BTQ total)
+    // Preselect the first 3 UTXO (15 BTQ total)
     std::set<COutPoint> preset_inputs = {coins[0].outpoint, coins[1].outpoint, coins[2].outpoint};
 
     // Try to create a tx that spends more than what preset inputs + wallet selected inputs are covering for.
-    // The wallet can cover up to 200 BTQ, and the tx target is 299 BTQ.
+    // The wallet can cover up to 20 BTQ, and the tx target is 29.9 BTQ.
     std::vector<CRecipient> recipients{{*Assert(wallet->GetNewDestination(OutputType::BECH32, "dummy")),
-                                           /*nAmount=*/299 * COIN, /*fSubtractFeeFromAmount=*/true}};
+                                           /*nAmount=*/2990 * CENT, /*fSubtractFeeFromAmount=*/true}};
     CCoinControl coin_control;
     coin_control.m_allow_other_inputs = true;
     for (const auto& outpoint : preset_inputs) {
         coin_control.Select(outpoint);
     }
 
-    // Attempt to send 299 BTQ from a wallet that only has 200 BTQ. The wallet should exclude
+    // Attempt to send 29.9 BTQ from a wallet that only has 20 BTQ. The wallet should exclude
     // the preset inputs from the pool of available coins, realize that there is not enough
-    // money to fund the 299 BTQ payment, and fail with "Insufficient funds".
+    // money to fund the 29.9 BTQ payment, and fail with "Insufficient funds".
     //
-    // Even with SFFO, the wallet can only afford to send 200 BTQ.
+    // Even with SFFO, the wallet can only afford to send 20 BTQ.
     // If the wallet does not properly exclude preset inputs from the pool of available coins
     // prior to coin selection, it may create a transaction that does not fund the full payment
     // amount or, through SFFO, incorrectly reduce the recipient's amount by the difference
-    // between the original target and the wrongly counted inputs (in this case 99 BTQ)
-    // so that the recipient's amount is no longer equal to the user's selected target of 299 BTQ.
+    // between the original target and the wrongly counted inputs (in this case 9.9 BTQ)
+    // so that the recipient's amount is no longer equal to the user's selected target of 29.9 BTQ.
 
     // First case, use 'subtract_fee_from_outputs=true'
     util::Result<CreatedTransactionResult> res_tx = CreateTransaction(*wallet, recipients, /*change_pos*/-1, coin_control);
@@ -186,18 +204,49 @@ BOOST_AUTO_TEST_CASE(mixed_wallet_input_fee_estimation)
         BOOST_CHECK_MESSAGE(input_vsize > 0, strprintf("fee estimate failed for %s", c.label));
     }
 
-    // Dilithium shares LEGACY/BECH32 spk managers (see rpc/dilithium.cpp).
-    for (const auto& [spkm_type, dil_type, label] : {
-             std::make_tuple(OutputType::LEGACY, OutputType::DILITHIUM_LEGACY, "dilithium-legacy"),
-             std::make_tuple(OutputType::BECH32, OutputType::DILITHIUM_BECH32, "dilithium-bech32"),
-         }) {
-        ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(spkm_type, /*internal=*/false);
-        BOOST_REQUIRE(spk_man != nullptr);
-        const CTxDestination dest = *Assert(spk_man->GetNewDestination(dil_type));
-        const CScript script = GetScriptForDestination(dest);
-        const CTxOut out(COIN, script);
+    // P2MR is the wallet's quantum-safe output type and the only Dilithium
+    // destination it will issue on a P2MR-only chain. It must be fee-estimable
+    // for the same reason as the four above: coin selection can pick it, and
+    // TransactionChangeType now returns it for Dilithium sends.
+    {
+        const auto dest = wallet->GetNewDestination(OutputType::P2MR, "p2mr");
+        BOOST_REQUIRE_MESSAGE(dest, strprintf("GetNewDestination failed for p2mr: %s",
+                                              util::ErrorString(dest).original));
+        BOOST_CHECK(std::holds_alternative<WitnessV2P2MR>(*dest));
+        BOOST_CHECK(IsValidDestination(*dest));
+
+        const CTxOut out(COIN, GetScriptForDestination(*dest));
         const int input_vsize = CalculateMaximumSignedInputSize(out, wallet.get(), /*coin_control=*/nullptr);
-        BOOST_CHECK_MESSAGE(input_vsize > 0, strprintf("fee estimate failed for %s", label));
+        BOOST_CHECK_MESSAGE(input_vsize > 0, "fee estimate failed for p2mr");
+    }
+
+    // This case used to record the #97 defect instead of the property it is
+    // named for: the wallet issued a dilithium-legacy destination on a chain
+    // where such an output is neither a valid payment destination nor sizeable,
+    // and the two halves were asserted so the defect stayed visible. Both are
+    // now unreachable, because generation is refused. What remains is the
+    // refusal, in both spk manager kinds.
+    //
+    // This chain sets nDilithiumP2MRHeight, so Dilithium is P2MR-only here.
+    BOOST_REQUIRE(!LegacyDilithiumBase58PaymentsAllowed());
+    {
+        ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false);
+        BOOST_REQUIRE(spk_man != nullptr);
+        BOOST_CHECK(!spk_man->GetNewDestination(OutputType::DILITHIUM_LEGACY));
+        BOOST_CHECK(!wallet->GetNewDestination(OutputType::DILITHIUM_LEGACY, "dilithium-legacy"));
+    }
+
+    // dilithium-bech32 is refused by design: a witness v0 keyhash program is
+    // indistinguishable from ECDSA P2WPKH and would not be spendable with a
+    // Dilithium key, so handing one out would create unspendable funds. The
+    // refusal is what gets asserted here, in all three places that implement it
+    // (scriptpubkeyman.cpp for both spk manager kinds, dilithium_wallet_manager
+    // .cpp for the manager). This case previously asked for the address and so
+    // contradicted the decision rather than covering it.
+    {
+        ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(OutputType::BECH32, /*internal=*/false);
+        BOOST_REQUIRE(spk_man != nullptr);
+        BOOST_CHECK(!spk_man->GetNewDestination(OutputType::DILITHIUM_BECH32));
     }
 }
 

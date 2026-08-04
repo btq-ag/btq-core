@@ -1668,7 +1668,13 @@ std::unique_ptr<DescriptorImpl> ParseScript(uint32_t& key_exp_index, Span<const 
             }
         }
         if (ctx == ParseScriptContext::P2SH) {
-            // This limits the maximum number of compressed pubkeys to 15.
+            // No input can reach this. multi() is capped at
+            // MAX_PUBKEYS_PER_MULTISIG (20) keys and the only pubkey providers
+            // are 33- and 65-byte ECDSA ones, so script_size tops out at
+            // 20 * (65 + 1) = 1320 against a MAX_SCRIPT_ELEMENT_SIZE of 15000.
+            // It did bite at Bitcoin's 520, where it capped a P2SH multisig at
+            // 15 compressed pubkeys -- which is what this comment used to say.
+            // Left in place so the bound still holds if either constant moves.
             if (script_size + 3 > MAX_SCRIPT_ELEMENT_SIZE) {
                 error = strprintf("P2SH script is too large, %d bytes is larger than %d bytes", script_size + 3, MAX_SCRIPT_ELEMENT_SIZE);
                 return nullptr;

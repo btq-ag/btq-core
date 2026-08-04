@@ -21,6 +21,28 @@
 #include <stdexcept>
 #include <vector>
 
+void ReadTestNetArgs(const ArgsManager& args, CChainParams::TestNetOptions& options)
+{
+    if (!args.IsArgSet("-testnetdilithiump2mrheight")) return;
+
+    const int64_t height{args.GetIntArg("-testnetdilithiump2mrheight", 0)};
+    if (height < 1 || height > std::numeric_limits<int>::max()) {
+        throw std::runtime_error(strprintf(
+            "-testnetdilithiump2mrheight=%d is out of range, expected 1..%d.",
+            height, std::numeric_limits<int>::max()));
+    }
+    options.dilithium_p2mr_height = int{static_cast<int>(height)};
+
+    // Loud on purpose. This changes consensus, so a node running it will fork
+    // away from one that is not, and every legacy Dilithium coin still unspent
+    // at that height stops being spendable for good.
+    LogPrintf("Warning: -testnetdilithiump2mrheight=%d overrides a consensus rule. "
+              "Nodes with a different value will fork from this one, and legacy "
+              "Dilithium outputs unspent at that height become permanently "
+              "unspendable. Only use this with a coordinated height, and scan "
+              "first (contrib/devtools/scan-legacy-dilithium-utxos.py).\n", height);
+}
+
 void ReadSigNetArgs(const ArgsManager& args, CChainParams::SigNetOptions& options)
 {
     if (args.IsArgSet("-signetseednode")) {
@@ -51,7 +73,12 @@ void ReadRegTestArgs(const ArgsManager& args, CChainParams::RegTestOptions& opti
 
         const auto value{arg.substr(found + 1)};
         int32_t height;
-        if (!ParseInt32(value, &height) || height < 0 || height >= std::numeric_limits<int>::max()) {
+        // int max is admitted rather than rejected: chainparams uses it as the
+        // "never scheduled" sentinel (testnet's nDilithiumP2MRHeight), and
+        // reproducing that configuration on regtest is the only way to cover the
+        // branches that behave differently on a chain where a deployment is not
+        // merely far away but absent.
+        if (!ParseInt32(value, &height) || height < 0) {
             throw std::runtime_error(strprintf("Invalid height value (%s) for -testactivationheight=name@height.", arg));
         }
 
@@ -111,8 +138,11 @@ std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, c
     switch (chain) {
     case ChainType::BTQMAIN:
         return CChainParams::Main();
-    case ChainType::BTQTEST:
-        return CChainParams::TestNet();
+    case ChainType::BTQTEST: {
+        auto opts = CChainParams::TestNetOptions{};
+        ReadTestNetArgs(args, opts);
+        return CChainParams::TestNet(opts);
+    }
     case ChainType::BTQSIGNET: {
         auto opts = CChainParams::SigNetOptions{};
         ReadSigNetArgs(args, opts);

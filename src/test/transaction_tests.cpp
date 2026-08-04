@@ -1045,4 +1045,91 @@ BOOST_AUTO_TEST_CASE(test_IsWitnessStandard_stack_item_size_limits)
     BOOST_CHECK(!check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE + 1)));
 }
 
+//! SpendsWitnessProgram must agree with what the interpreter would conclude,
+//! across every output type we define.
+//!
+//! It replaces two full re-runs of every input script that existed only to
+//! tell a stripped witness apart from an ordinary script failure
+//! (CVE-2025-46598). That substitution is only sound if the structural answer
+//! matches the executed one, so each output type is checked explicitly --
+//! including P2MR, which is a witness program at version 2 and which upstream
+//! has no equivalent of.
+BOOST_AUTO_TEST_CASE(spends_witness_program)
+{
+    CCoinsView coins_dummy;
+    CCoinsViewCache coins(&coins_dummy);
+    CKey key;
+    key.MakeNewKey(true);
+    const CPubKey pubkey{key.GetPubKey()};
+
+    CMutableTransaction tx_create{}, tx_spend{};
+    tx_create.vout.emplace_back(0, CScript{});
+    tx_spend.vin.emplace_back(uint256{}, 0);
+
+    // If a destination type is added, decide whether it is a witness program
+    // and extend this test rather than letting it pass by omission.
+    static_assert(std::variant_size_v<CTxDestination> == 14);
+
+    const auto verdict = [&]() { return ::SpendsWitnessProgram(CTransaction{tx_spend}, coins); };
+
+    // Funds tx_spend from an output with `spk` and reports the verdict.
+    const auto spends_from = [&](const CScript& spk) {
+        tx_create.vout[0].scriptPubKey = spk;
+        tx_spend.vin[0].prevout.hash = tx_create.GetHash();
+        AddCoins(coins, CTransaction{tx_create}, 0, false);
+        return verdict();
+    };
+
+    std::vector<std::vector<unsigned char>> sol_dummy;
+
+    // Non-witness outputs: a missing witness cannot be what went wrong.
+    BOOST_CHECK(!spends_from(GetScriptForDestination(PubKeyDestination{pubkey})));
+    BOOST_CHECK(!spends_from(GetScriptForDestination(PKHash{pubkey})));
+
+    // Bare P2SH over a non-witness redeem script is likewise not one.
+    const CScript plain_redeem{CScript{} << OP_1 << OP_CHECKSIG};
+    tx_spend.vin[0].scriptSig = CScript{} << ToByteVector(plain_redeem);
+    BOOST_CHECK(!spends_from(GetScriptForDestination(ScriptHash{plain_redeem})));
+    tx_spend.vin[0].scriptSig.clear();
+
+    // Every native witness version is one, defined or not.
+    const CScript witness_script{CScript{} << OP_12 << OP_HASH160 << OP_DUP << OP_EQUAL};
+    BOOST_CHECK(spends_from(GetScriptForDestination(WitnessV0KeyHash{pubkey})));
+    BOOST_CHECK(spends_from(GetScriptForDestination(WitnessV0ScriptHash{witness_script})));
+    BOOST_CHECK(spends_from(GetScriptForDestination(WitnessV1Taproot{XOnlyPubKey{pubkey}})));
+
+    // P2MR: BTQ's quantum-resistant output, witness version 2. The reason this
+    // test exists in this form -- the helper must not be limited to the
+    // versions upstream knows about.
+    const CScript p2mr{CScript{} << OP_2 << std::vector<unsigned char>(WITNESS_V2_P2MR_SIZE, 0x11)};
+    BOOST_CHECK_EQUAL(Solver(p2mr, sol_dummy), TxoutType::WITNESS_V2_P2MR);
+    BOOST_CHECK(spends_from(p2mr));
+
+    // An undefined future witness version too, since a witness it does not yet
+    // know how to check is still a witness that can be stripped.
+    const CScript witness_future{CScript{} << OP_16 << std::vector<unsigned char>(32, 0x22)};
+    BOOST_CHECK(spends_from(witness_future));
+
+    // P2SH-wrapped witness programs need the redeem script to see.
+    for (const CScript& wrapped : {GetScriptForDestination(WitnessV0KeyHash{pubkey}),
+                                   GetScriptForDestination(WitnessV0ScriptHash{witness_script}),
+                                   p2mr}) {
+        tx_spend.vin[0].scriptSig = CScript{} << ToByteVector(wrapped);
+        BOOST_CHECK(spends_from(GetScriptForDestination(ScriptHash{wrapped})));
+
+        // Without the redeem script revealed there is nothing to go on, and
+        // the transaction is unspendable anyway. Same coin, so re-evaluate
+        // rather than re-fund.
+        tx_spend.vin[0].scriptSig.clear();
+        BOOST_CHECK(!verdict());
+    }
+
+    // A coinbase has no prevouts to inspect.
+    CMutableTransaction coinbase{};
+    coinbase.vin.emplace_back(COutPoint{}, CScript{} << OP_1);
+    coinbase.vout.emplace_back(0, CScript{});
+    BOOST_CHECK(CTransaction{coinbase}.IsCoinBase());
+    BOOST_CHECK(!::SpendsWitnessProgram(CTransaction{coinbase}, coins));
+}
+
 BOOST_AUTO_TEST_SUITE_END()

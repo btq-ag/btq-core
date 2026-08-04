@@ -9,10 +9,14 @@
 #include <uint256.h>
 
 #include <string>
+#include <vector>
 
 class CKey;
+class CDilithiumKey;
+class CDilithiumPubKey;
 
 extern const std::string MESSAGE_MAGIC;
+extern const std::string DILITHIUM_MESSAGE_MAGIC;
 
 /** The result of a signed message verification.
  * Message verification takes as an input:
@@ -71,6 +75,51 @@ bool MessageSign(
  * inadvertently signing a transaction.
  */
 uint256 MessageHash(const std::string& message);
+
+/**
+ * Dilithium context string for message signing.
+ *
+ * Dilithium message signing and transaction signing use the same key and the
+ * same primitive, and a transaction signature is made over a bare 32-byte
+ * sighash under the empty context. Without separation, signing a message is
+ * signing a transaction, and anything offering "sign this to prove you own the
+ * address" becomes a spending oracle for the key behind a P2MR output.
+ *
+ * FIPS 204 prepends (0, len(ctx), ctx) to the message representative, so a
+ * signature made under this context cannot verify under the empty one whatever
+ * the payload -- including a payload an attacker ground to equal a sighash.
+ * The version is part of the string because changing it invalidates every
+ * signature previously made under it.
+ */
+const std::vector<unsigned char>& DilithiumMessageContext();
+
+/**
+ * Hashes a message for Dilithium signing and verification, committing to
+ * DILITHIUM_MESSAGE_MAGIC. Independent of, and redundant with, the context
+ * separation above: neither has to be trusted alone.
+ */
+uint256 DilithiumMessageHash(const std::string& message);
+
+/** Sign a message with a Dilithium key.
+ * @param[in] privkey Dilithium private key to sign with.
+ * @param[in] message The message to sign.
+ * @param[out] signature Signature, base64 encoded, only set if true is returned.
+ * @return true if signing was successful. */
+bool DilithiumMessageSign(
+    const CDilithiumKey& privkey,
+    const std::string& message,
+    std::string& signature);
+
+/** Verify a Dilithium signed message against a known public key.
+ * Paired with DilithiumMessageSign so the two cannot drift apart.
+ * @param[in] pubkey Signer's Dilithium public key.
+ * @param[in] message The message that was signed.
+ * @param[in] signature The signature in base64 format.
+ * @return true if the signature is valid for this key and message. */
+bool DilithiumMessageVerify(
+    const CDilithiumPubKey& pubkey,
+    const std::string& message,
+    const std::string& signature);
 
 std::string SigningResultString(const SigningResult res);
 

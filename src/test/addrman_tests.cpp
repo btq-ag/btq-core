@@ -17,8 +17,11 @@
 
 #include <boost/test/unit_test.hpp>
 
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
+#include <type_traits>
 
 using namespace std::literals;
 using node::NodeContext;
@@ -1115,6 +1118,35 @@ BOOST_AUTO_TEST_CASE(addrman_size)
     BOOST_CHECK_EQUAL(addrman->Size(/*net=*/NET_I2P, /*in_new=*/true), 1U);
     BOOST_CHECK_EQUAL(addrman->Size(/*net=*/std::nullopt, /*in_new=*/true), 2U);
     BOOST_CHECK_EQUAL(addrman->Size(/*net=*/std::nullopt, /*in_new=*/false), 1U);
+}
+
+//! The internal entry id must outlast a 32-bit insertion counter.
+//!
+//! nIdCount only ever increases, one per address inserted. At 32 bits it wraps
+//! to negative after 2^31 insertions, and -1 is the sentinel stored in vvNew
+//! and vvTried for "this bucket position is empty". The entry that lands on -1
+//! is therefore read back as an empty slot, and the node asserts. Rate
+//! limiting (one address per peer per ten seconds) made reaching that count
+//! expensive rather than impossible, which is why CVE-2024-52919 needed a
+//! second fix: widening the counter so it cannot be reached at all.
+//!
+//! Actually exhausting 2^31 insertions is not testable -- upstream measured it
+//! at over a year with a thousand attacking peers -- so what is pinned here is
+//! the property that makes it unreachable. This is the assertion that fails if
+//! someone narrows the type back.
+BOOST_AUTO_TEST_CASE(addrman_nid_outlasts_a_32bit_counter)
+{
+    static_assert(std::is_signed_v<nid_type>,
+                  "nid_type is compared against the -1 empty-bucket sentinel");
+    static_assert(std::numeric_limits<nid_type>::max() > std::numeric_limits<int32_t>::max(),
+                  "nid_type must be wider than 32 bits (CVE-2024-52919)");
+
+    // One past where the old counter wrapped: still positive, and still
+    // distinguishable from an empty bucket position.
+    nid_type id{std::numeric_limits<int32_t>::max()};
+    ++id;
+    BOOST_CHECK_GT(id, nid_type{std::numeric_limits<int32_t>::max()});
+    BOOST_CHECK_NE(id, nid_type{-1});
 }
 
 BOOST_AUTO_TEST_SUITE_END()

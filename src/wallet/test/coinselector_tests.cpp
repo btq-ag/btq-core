@@ -1047,6 +1047,21 @@ BOOST_AUTO_TEST_CASE(effective_value_test)
 }
 
 
+/** Weight the selector charges for one P2WPKH input, which is what every coin
+ *  the weight-limited cases below add.
+ *
+ *  CalculateMaximumSignedInputSize reports 48 vbytes for such an input here and
+ *  OutputGroup scales that by WITNESS_SCALE_FACTOR, so 768. Upstream it is 68
+ *  vbytes and 272, because the base bytes of an input are multiplied by the
+ *  scale factor and BTQ's is 16 rather than 4. A standard transaction therefore
+ *  holds about 519 inputs instead of about 1470.
+ *
+ *  The cases below inherited budgets and coin counts derived from 272, which no
+ *  longer describe anything on this chain. They are written against this
+ *  constant instead so the intent survives the next change to either the
+ *  satisfaction size or the scale factor. */
+static constexpr int P2WPKH_INPUT_WEIGHT{48 * WITNESS_SCALE_FACTOR};
+
 static util::Result<SelectionResult> SelectCoinsSRD(const CAmount& target,
                                                     const CoinSelectionParams& cs_params,
                                                     const node::NodeContext& m_node,
@@ -1084,7 +1099,7 @@ BOOST_AUTO_TEST_CASE(srd_tests)
         // 1) Insufficient funds, select all provided coins and fail
         // #########################################################
         CAmount target = 49.5L * COIN;
-        int max_weight = 10000; // high enough to not fail for this reason.
+        int max_weight = 20 * P2WPKH_INPUT_WEIGHT; // room for every coin, so weight cannot be the reason it fails
         const auto& res = SelectCoinsSRD(target, dummy_params, m_node, max_weight, [&](CWallet& wallet) {
             CoinsResult available_coins;
             for (int j = 0; j < 10; ++j) {
@@ -1102,7 +1117,7 @@ BOOST_AUTO_TEST_CASE(srd_tests)
         // 2) Test max weight exceeded
         // ###########################
         CAmount target = 49.5L * COIN;
-        int max_weight = 3000;
+        int max_weight = 11 * P2WPKH_INPUT_WEIGHT; // far short of the 25 inputs the target needs
         const auto& res = SelectCoinsSRD(target, dummy_params, m_node, max_weight, [&](CWallet& wallet) {
             CoinsResult available_coins;
             for (int j = 0; j < 10; ++j) {
@@ -1120,13 +1135,13 @@ BOOST_AUTO_TEST_CASE(srd_tests)
         // 3) Test selection when some coins surpass the max allowed weight while others not. --> must find a good solution
         // ################################################################################################################
         CAmount target = 25.33L * COIN;
-        int max_weight = 10000; // WU
+        int max_weight = 36 * P2WPKH_INPUT_WEIGHT; // fits the 27 inputs a solution needs, not all 70
         const auto& res = SelectCoinsSRD(target, dummy_params, m_node, max_weight, [&](CWallet& wallet) {
             CoinsResult available_coins;
-            for (int j = 0; j < 60; ++j) { // 60 UTXO --> 19,8 BTQ total --> 60 × 272 WU = 16320 WU
+            for (int j = 0; j < 60; ++j) { // 60 UTXO --> 19.8 BTQ total, more weight than the budget allows
                 add_coin(available_coins, wallet, CAmount(0.33 * COIN), CFeeRate(0), 144, false, 0, true);
             }
-            for (int i = 0; i < 10; i++) { // 10 UTXO --> 20 BTQ total --> 10 × 272 WU = 2720 WU
+            for (int i = 0; i < 10; i++) { // 10 UTXO --> 20 BTQ total, cheap enough to build on
                 add_coin(available_coins, wallet, CAmount(2 * COIN), CFeeRate(0), 144, false, 0, true);
             }
             return available_coins;
@@ -1143,7 +1158,7 @@ static util::Result<SelectionResult> select_coins(const CAmount& target, const C
     LOCK(wallet->cs_wallet);
     auto result = SelectCoins(*wallet, available_coins, /*pre_set_inputs=*/ {}, target, cc, cs_params);
     if (result) {
-        const auto signedTxSize = 10 + 34 + 68 * result->GetInputSet().size(); // static header size + output size + inputs size (P2WPKH)
+        const auto signedTxSize = 10 + 34 + (P2WPKH_INPUT_WEIGHT / WITNESS_SCALE_FACTOR) * result->GetInputSet().size(); // static header size + output size + inputs size (P2WPKH)
         BOOST_CHECK_LE(signedTxSize * WITNESS_SCALE_FACTOR, MAX_STANDARD_TX_WEIGHT);
 
         BOOST_CHECK_GE(result->GetSelectedValue(), target);
@@ -1194,7 +1209,11 @@ BOOST_AUTO_TEST_CASE(check_max_weight)
             },
             m_node);
 
-        BOOST_CHECK(result);
+        // REQUIRE, not CHECK: the dereference below aborts the process on an
+        // empty Result, and an abort here leaves the wallet fixture standing so
+        // CCheckQueue's destructor then trips on its worker threads and wedges
+        // the binary rather than exiting.
+        BOOST_REQUIRE(result);
         // Verify that only the 50 BTQ UTXO was selected
         const auto& selection_res = result->GetInputSet();
         BOOST_CHECK(selection_res.size() == 1);
@@ -1204,26 +1223,35 @@ BOOST_AUTO_TEST_CASE(check_max_weight)
     {
         // Scenario 2:
 
-        // The actor starts with 400x 0.0625 BTQ and 2000x 0.025 BTQ (75.0 BTQ total) unspent outputs
+        // The actor starts with 190x 0.25 BTQ and 1000x 0.07 BTQ (117.5 BTQ total) unspent outputs
         // Then tries to spend 49.5 BTQ
         // A combination of coins should be selected, such that the created transaction is not too large
-
-        // Perform selection
+        //
+        // The denominations differ from upstream's 0.0625 and 0.025 because the
+        // property under test is a relationship between the coins and the weight
+        // budget, and the budget here is 519 inputs rather than about 1470.
+        // What has to hold is that neither denomination can reach the target on
+        // its own: the large coins total 47.5 BTQ so they fall short, and the
+        // small ones would need 708 inputs so they exceed the budget. That
+        // leaves mixing as the only way to succeed, which is what the two
+        // checks below assert. Upstream got the same squeeze from 400x 0.0625
+        // (25 BTQ, short) against 2000x 0.025 (1980 inputs, too heavy).
         const auto result = select_coins(
             target, cs_params, cc, [&](CWallet& wallet) {
                 CoinsResult available_coins;
-                for (int j = 0; j < 400; ++j) {
-                    add_coin(available_coins, wallet, CAmount(0.0625 * COIN), CFeeRate(0), 144, false, 0, true);
+                for (int j = 0; j < 190; ++j) {
+                    add_coin(available_coins, wallet, CAmount(25 * CENT), CFeeRate(0), 144, false, 0, true);
                 }
-                for (int j = 0; j < 2000; ++j) {
-                    add_coin(available_coins, wallet, CAmount(0.025 * COIN), CFeeRate(0), 144, false, 0, true);
+                for (int j = 0; j < 1000; ++j) {
+                    add_coin(available_coins, wallet, CAmount(7 * CENT), CFeeRate(0), 144, false, 0, true);
                 }
                 return available_coins;
             },
             m_node);
 
-        BOOST_CHECK(has_coin(result->GetInputSet(), CAmount(0.0625 * COIN)));
-        BOOST_CHECK(has_coin(result->GetInputSet(), CAmount(0.025 * COIN)));
+        BOOST_REQUIRE(result);
+        BOOST_CHECK(has_coin(result->GetInputSet(), CAmount(25 * CENT)));
+        BOOST_CHECK(has_coin(result->GetInputSet(), CAmount(7 * CENT)));
     }
 
     {
@@ -1244,8 +1272,8 @@ BOOST_AUTO_TEST_CASE(check_max_weight)
             m_node);
 
         // No results
-        // 1515 inputs * 68 bytes = 103,020 bytes
-        // 103,020 bytes * 4 = 412,080 weight, which is above the MAX_STANDARD_TX_WEIGHT of 400,000
+        // 1515 inputs * 48 bytes = 72,720 bytes
+        // 72,720 bytes * 16 = 1,163,520 weight, which is above the MAX_STANDARD_TX_WEIGHT of 400,000
         BOOST_CHECK(!result);
     }
 }
@@ -1281,7 +1309,14 @@ BOOST_AUTO_TEST_CASE(SelectCoins_effective_value_test)
     CCoinControl cc;
     cc.m_allow_other_inputs = false;
     COutput output = available_coins.All().at(0);
-    cc.SetInputWeight(output.outpoint, 148);
+    // The case needs the input's fee to eat the 100 sat gap between the coin and
+    // the target, and that fee is charged per virtual byte. Upstream passes 148
+    // weight, which is 37 vbytes at a scale factor of 4 and so costs 111 sat at
+    // the 3000 sat/kvB feerate above. At BTQ's scale factor the same 148 weight
+    // is only 10 vbytes and 30 sat, which leaves the coin covering the target
+    // and the check below asserting the opposite of what it was written for.
+    // State the size in vbytes so the fee, and the case, mean what they did.
+    cc.SetInputWeight(output.outpoint, 37 * WITNESS_SCALE_FACTOR);
     cc.SelectExternal(output.outpoint, output.txout);
 
     LOCK(wallet->cs_wallet);
