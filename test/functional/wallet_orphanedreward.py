@@ -4,6 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test orphaned block rewards in the wallet."""
 
+from test_framework.blocktools import block_subsidy
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import assert_equal
 
@@ -29,13 +30,15 @@ class OrphanedBlockRewardTest(BTQTestFramework):
         # it later.
         self.sync_blocks()
         blk = self.generate(self.nodes[1], 1)[0]
+        reward = block_subsidy(self.nodes[1].getblock(blk)["height"])
 
         # Let the block reward mature and send coins including both
         # the existing balance and the block reward.
         self.generate(self.nodes[0], 150)
-        assert_equal(self.nodes[1].getbalance(), 10 + 25)
+        assert_equal(self.nodes[1].getbalance(), 10 + reward)
         pre_reorg_conf_bals = self.nodes[1].getbalances()
-        txid = self.nodes[1].sendtoaddress(self.nodes[0].getnewaddress(), 30)
+        # Spend more than the pre-existing balance, so the reward is drawn on too.
+        txid = self.nodes[1].sendtoaddress(self.nodes[0].getnewaddress(), 10 + reward / 2)
         orig_chain_tip = self.nodes[0].getbestblockhash()
         self.sync_mempools()
 
