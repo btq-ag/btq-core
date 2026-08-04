@@ -113,6 +113,7 @@ BASE_SCRIPTS = [
     'feature_p2mr_dilithium_multisig.py',
     'feature_p2mr_rpc.py --descriptors',
     'feature_block.py',
+    'feature_cve_2024_52911.py',
     'btq_regtest_mining.py',
     'btq_chain_identity.py',
     # vv Tests less than 2m vv
