@@ -23,8 +23,8 @@ namespace Consensus {
 enum class SignatureAlgorithm {
     NONE,      // No specific algorithm enforced (legacy mode)
     DILITHIUM, // CRYSTALS-Dilithium post-quantum signature scheme
-    FALCON,    // Falcon post-quantum signature scheme  
-    SPHINCS    // SPHINCS+ post-quantum signature scheme
+    FALCON,    // Falcon post-quantum signature scheme (reserved, not implemented)
+    SPHINCS    // SPHINCS+ post-quantum signature scheme (reserved, not implemented)
 };
 
 /**
@@ -89,9 +89,16 @@ struct BIP9Deployment {
 struct Params {
     uint256 hashGenesisBlock;
     int nSubsidyHalvingInterval;
-    /** 
-     * Defines which post-quantum signature algorithm is enforced for transactions.
-     * Set to NONE initially to maintain compatibility while transitioning to PQ signatures.
+    /**
+     * Reserved. Never read.
+     *
+     * Every network sets this to NONE (kernel/chainparams.cpp) and nothing
+     * consumes it, so changing it has no effect on validation. No Falcon or
+     * SPHINCS+ implementation exists in the tree either -- the enum values are
+     * the only occurrences outside vendored directories.
+     *
+     * Dilithium is selected by script opcode and activation height
+     * (nDilithiumHeight / nDilithiumP2MRHeight), not by this field. See #116.
      */
     SignatureAlgorithm signature_algorithm{SignatureAlgorithm::NONE};
     /**

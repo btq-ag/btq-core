@@ -35,6 +35,14 @@ enum class TxoutType {
     // Dilithium transaction types:
     DILITHIUM_PUBKEY,
     DILITHIUM_PUBKEYHASH,
+    //! Never produced by Solver(). A Dilithium script-hash output compiles to
+    //! OP_HASH160 <20> OP_EQUAL, which is byte-identical to P2SH, so
+    //! IsPayToScriptHash() matches first and SCRIPTHASH is returned instead
+    //! (solver.cpp, "it is always OP_HASH160 20 [20 byte hash] OP_EQUAL").
+    //! Unlike DILITHIUM_PUBKEYHASH there is no distinguishing opcode to key
+    //! off, because P2SH commits only to a hash. Consumers of this value in
+    //! policy.cpp, sign.cpp, descriptor.cpp and scriptpubkeyman.cpp are
+    //! therefore unreachable. See issue #112.
     DILITHIUM_SCRIPTHASH,
     DILITHIUM_MULTISIG,
     DILITHIUM_WITNESS_V0_KEYHASH,
