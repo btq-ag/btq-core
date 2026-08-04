@@ -1042,13 +1042,18 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
     if (!CheckInputScripts(tx, state, m_view, scriptVerifyFlags, true, false, ws.m_precomputed_txdata)) {
-        // SCRIPT_VERIFY_CLEANSTACK requires SCRIPT_VERIFY_WITNESS, so we
-        // need to turn both off, and compare against just turning off CLEANSTACK
-        // to see if the failure is specifically due to witness validation.
-        TxValidationState state_dummy; // Want reported failures to be from first CheckInputScripts
-        if (!tx.HasWitness() && CheckInputScripts(tx, state_dummy, m_view, scriptVerifyFlags & ~(SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_CLEANSTACK), true, false, ws.m_precomputed_txdata) &&
-                !CheckInputScripts(tx, state_dummy, m_view, scriptVerifyFlags & ~SCRIPT_VERIFY_CLEANSTACK, true, false, ws.m_precomputed_txdata)) {
-            // Only the witness is missing, so the transaction itself may be fine.
+        // Detect a stripped witness, so p2p code knows not to cache the
+        // rejection against a txid that a witness would have made valid.
+        //
+        // This used to be established by re-running every input script twice
+        // more under relaxed flags. That made a rejected transaction cost up
+        // to three full script passes, which an attacker can repeat for free
+        // because a non-standard transaction is not a disconnection offence
+        // (CVE-2025-46598). The prevout script types say the same thing
+        // structurally, at no verification cost. Dilithium verification is
+        // far dearer than ECDSA, so the passes avoided are worth more here
+        // than upstream.
+        if (!tx.HasWitness() && SpendsWitnessProgram(tx, m_view)) {
             state.Invalid(TxValidationResult::TX_WITNESS_STRIPPED,
                     state.GetRejectReason(), state.GetDebugMessage());
         }

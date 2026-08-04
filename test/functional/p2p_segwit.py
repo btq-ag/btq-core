@@ -709,6 +709,21 @@ class SegWitTest(BTQTestFramework):
                 expected_msgs=[spend_tx.hash, 'was not accepted: mandatory-script-verify-flag-failed (Witness program was passed an empty witness)']):
             test_transaction_acceptance(self.nodes[0], self.test_node, spend_tx, with_witness=False, accepted=False)
 
+        # The rejection above was recognised as a stripped witness, so it was
+        # not cached in the reject filter -- a witness would have made it
+        # valid, and caching it under a txid the witness does not commit to
+        # would block the real transaction. Resending must therefore be
+        # re-evaluated and produce the same error rather than being ignored.
+        #
+        # This is the observable consequence of detecting witness stripping
+        # structurally instead of by re-running every input script, so it is
+        # asserted for the p2sh-wrapped case specifically: that path reads the
+        # redeem script out of the scriptSig, which is where it could go wrong
+        # without anything else noticing.
+        with self.nodes[0].assert_debug_log(
+                expected_msgs=[spend_tx.hash, 'was not accepted: mandatory-script-verify-flag-failed (Witness program was passed an empty witness)']):
+            test_transaction_acceptance(self.nodes[0], self.test_node, spend_tx, with_witness=False, accepted=False)
+
         # Try to put the witness script in the scriptSig, should also fail.
         spend_tx.vin[0].scriptSig = CScript([p2wsh_pubkey, b'a'])
         spend_tx.rehash()
