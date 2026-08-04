@@ -113,6 +113,7 @@ BASE_SCRIPTS = [
     'feature_p2mr_dilithium_multisig.py',
     'feature_p2mr_rpc.py --descriptors',
     'feature_block.py',
+    'feature_cve_2024_52911.py',
     'btq_regtest_mining.py',
     'btq_chain_identity.py',
     # vv Tests less than 2m vv
@@ -128,6 +129,7 @@ BASE_SCRIPTS = [
     'wallet_fundrawtransaction.py --legacy-wallet',
     'wallet_fundrawtransaction.py --descriptors',
     'wallet_dilithium_send.py --descriptors',
+    'wallet_dilithium_signmessage.py --descriptors',
     'wallet_dilithium_psbt.py --descriptors',
     'wallet_bumpfee.py --legacy-wallet',
     'wallet_bumpfee.py --descriptors',
@@ -335,6 +337,7 @@ BASE_SCRIPTS = [
     'wallet_fallbackfee.py --legacy-wallet',
     'wallet_fallbackfee.py --descriptors',
     'rpc_dumptxoutset.py',
+    'feature_dilithium_p2mr_activation.py',
     'feature_minchainwork.py',
     'rpc_estimatefee.py',
     'rpc_getblockstats.py',

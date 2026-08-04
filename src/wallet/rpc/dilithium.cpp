@@ -18,6 +18,7 @@
 #include <script/interpreter.h>
 #include <core_io.h>
 #include <rpc/rawtransaction_util.h>
+#include <util/message.h>
 #include <util/strencodings.h>
 #include <util/string.h>
 
@@ -148,7 +149,10 @@ RPCHelpMan importdilithiumkey()
 RPCHelpMan signmessagewithdilithium()
 {
     return RPCHelpMan{"signmessagewithdilithium",
-        "\nSign a message with a Dilithium private key.\n",
+        "\nSign a message with a Dilithium private key.\n"
+        "\nThe signature covers a domain-separated hash of the message, not the message\n"
+        "bytes, so it can never be a valid transaction signature for the same key.\n"
+        "Signatures produced before this separation existed no longer verify.\n",
         {
             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Dilithium address to use for signing."},
             {"message", RPCArg::Type::STR, RPCArg::Optional::NO, "The message to create a signature of."},
@@ -216,14 +220,14 @@ RPCHelpMan signmessagewithdilithium()
                 throw JSONRPCError(RPC_WALLET_ERROR, "Dilithium key not found in wallet");
             }
             
-            // Sign the message
-            std::vector<unsigned char> vchSig;
-            std::vector<unsigned char> messageBytes(strMessage.begin(), strMessage.end());
-            if (!dilithium_key.SignMessage(messageBytes, vchSig)) {
+            // Domain-separated: signing a message must not be able to produce a
+            // signature that spends the same key's coins. See util/message.h.
+            std::string signature;
+            if (!DilithiumMessageSign(dilithium_key, strMessage, signature)) {
                 throw JSONRPCError(RPC_WALLET_ERROR, "Failed to sign message");
             }
-            
-            return EncodeBase64(vchSig);
+
+            return signature;
         },
     };
 }
@@ -304,24 +308,21 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
         throw JSONRPCError(RPC_WALLET_ERROR, "Invalid Dilithium public key");
     }
 
-    // Decode the signature
-    auto vchSig_opt = DecodeBase64(strSignature);
-    if (!vchSig_opt) {
+    if (!DecodeBase64(strSignature)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid signature encoding");
     }
-    std::vector<unsigned char> vchSig = *vchSig_opt;
 
-    // Convert message to bytes (same as signing)
-    std::vector<unsigned char> messageBytes(strMessage.begin(), strMessage.end());
-
-    // Verify the signature using the Dilithium verification function
-    return dilithium_pubkey.VerifyMessage(messageBytes, vchSig);
+    // Paired with DilithiumMessageSign, so the domain the signature is
+    // checked against is by construction the one it was made in.
+    return DilithiumMessageVerify(dilithium_pubkey, strMessage, strSignature);
 }
 
 RPCHelpMan verifydilithiumsignature()
 {
     return RPCHelpMan{"verifydilithiumsignature",
-        "\nVerify a Dilithium signature.\n"
+        "\nVerify a Dilithium signature produced by signmessagewithdilithium.\n"
+        "\nOnly message signatures verify here: a transaction signature made with the\n"
+        "same key belongs to a different domain and is rejected.\n"
         "\nDEPRECATED: use verifymessagewithdilithium, whose argument order mirrors\n"
         "verifymessage (address, signature, message). This form takes them in a\n"
         "different order and will be removed in a future release.\n",

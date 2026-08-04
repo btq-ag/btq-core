@@ -32,6 +32,7 @@ from test_framework.blocktools import (
     TIME_GENESIS_BLOCK,
     create_block,
     create_coinbase,
+    cumulative_block_subsidy,
 )
 from test_framework.messages import (
     CBlockHeader,
@@ -202,6 +203,11 @@ class BlockchainTest(BTQTestFramework):
             'bip65': {'type': 'buried', 'active': True, 'height': 4},
             'csv': {'type': 'buried', 'active': True, 'height': 5},
             'segwit': {'type': 'buried', 'active': True, 'height': 6},
+            # BTQ-specific deployments. LWMA is scheduled far past the heights
+            # this helper is called at, so it is always still inactive here.
+            'lwma': {'type': 'buried', 'active': False, 'height': 300000},
+            'dilithium': {'type': 'buried', 'active': True, 'height': 1},
+            'dilithium_p2mr': {'type': 'buried', 'active': True, 'height': 1},
             'testdummy': {
                 'type': 'bip9',
                 'bip9': {
@@ -330,7 +336,7 @@ class BlockchainTest(BTQTestFramework):
         node = self.nodes[0]
         res = node.gettxoutsetinfo()
 
-        assert_equal(res['total_amount'], Decimal('8725.00000000'))
+        assert_equal(res['total_amount'], cumulative_block_subsidy(1, HEIGHT))
         assert_equal(res['transactions'], HEIGHT)
         assert_equal(res['height'], HEIGHT)
         assert_equal(res['txouts'], HEIGHT)

@@ -1073,7 +1073,6 @@ CLEANFILES += consensus/*.gcda consensus/*.gcno
 CLEANFILES += crc32c/src/*.gcda crc32c/src/*.gcno
 CLEANFILES += crypto/*.gcda crypto/*.gcno
 CLEANFILES += crypto/dilithium/ref/*.gcda crypto/dilithium/ref/*.gcno
-# CLEANFILES += crypto/dilithium/avx2/*.gcda crypto/dilithium/avx2/*.gcno
 CLEANFILES += index/*.gcda index/*.gcno
 CLEANFILES += interfaces/*.gcda interfaces/*.gcno
 CLEANFILES += node/*.gcda node/*.gcno

@@ -16,8 +16,8 @@ BTQ follows a maintainer-led governance model similar to Bitcoin Core, emphasizi
 - Ensure CI requirements are met before merge
 
 **Current Maintainers:**
-- oscar@btq.com
-- barney@btq.com
+- oscar@btq.tech
+- barney@btq.tech
 
 **Becoming a Maintainer:**
 - Demonstrate consistent, high-quality contributions over 6+ months
@@ -35,8 +35,8 @@ BTQ follows a maintainer-led governance model similar to Bitcoin Core, emphasizi
 - Publish release notes and coordinate announcements
 
 **Current Release Manager:**
-- oscar@btq.com
-- barney@btq.com
+- oscar@btq.tech
+- barney@btq.tech
 
 **Term:** 1 year, renewable
 
@@ -49,9 +49,11 @@ BTQ follows a maintainer-led governance model similar to Bitcoin Core, emphasizi
 - Publish signed security advisories
 - Maintain security documentation and processes
 
+**Reports intake:** security@btq.tech (see `SECURITY.md`)
+
 **Current Security Officers:**
-- oscar@btq.com
-- barney@btq.com
+- oscar@btq.tech
+- barney@btq.tech
 
 **Requirements:**
 - Demonstrated expertise in cryptography or security
@@ -67,8 +69,8 @@ BTQ follows a maintainer-led governance model similar to Bitcoin Core, emphasizi
 - Update build dependencies and toolchains
 
 **Current CI Owners:**
-- oscar@btq.com
-- barney@btq.com
+- oscar@btq.tech
+- barney@btq.tech
 
 ### Triage Team
 
@@ -79,8 +81,8 @@ BTQ follows a maintainer-led governance model similar to Bitcoin Core, emphasizi
 - Help new contributors navigate the process
 
 **Current Triage Team:**
-- oscar@btq.com
-- barney@btq.com
+- oscar@btq.tech
+- barney@btq.tech
 
 ### Communication Leads
 
@@ -91,8 +93,8 @@ BTQ follows a maintainer-led governance model similar to Bitcoin Core, emphasizi
 - Moderate community channels
 
 **Current Communication Leads:**
-- oscar@btq.com
-- barney@btq.com
+- oscar@btq.tech
+- barney@btq.tech
 
 ## Decision-Making Process
 
