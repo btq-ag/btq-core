@@ -62,7 +62,7 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
 unsigned int LwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     const int64_t T = params.nPowTargetSpacing;
-    const int N = Consensus::Params::LWMA_WINDOW;
+    const int N = params.nLWMAWindow;
     const int64_t k = static_cast<int64_t>(N) * (N + 1) * T / 2;
     const int height = pindexLast->nHeight;
     const arith_uint256 powLimit = UintToArith256(params.powLimit);
