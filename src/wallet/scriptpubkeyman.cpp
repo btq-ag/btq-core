@@ -402,6 +402,11 @@ util::Result<CTxDestination> LegacyScriptPubKeyMan::GetReservedDestination(const
     if (LEGACY_OUTPUT_TYPES.count(type) == 0) {
         return util::Error{_("Error: Legacy wallets only support the \"legacy\", \"p2sh-segwit\", and \"bech32\" address types")};
     }
+    // Reserved destinations come out of the keypool, which holds ECDSA keys
+    // only; a Dilithium destination cannot be derived from one.
+    if (type == OutputType::DILITHIUM_LEGACY) {
+        return util::Error{_("Error: dilithium-legacy addresses cannot be reserved from the keypool")};
+    }
     assert(type != OutputType::BECH32M);
 
     LOCK(cs_KeyStore);
@@ -452,6 +457,10 @@ std::vector<WalletDestination> LegacyScriptPubKeyMan::MarkUnusedAddresses(const 
             for (const auto& keypool : MarkReserveKeysAsUsed(mi->second)) {
                 // derive all possible destinations as any of them could have been used
                 for (const auto& type : LEGACY_OUTPUT_TYPES) {
+                    // Keypool entries hold an ECDSA key. Dilithium destinations
+                    // come from separate Dilithium keys, so this key has none,
+                    // and asking for one would abort in GetDestinationForKey.
+                    if (type == OutputType::DILITHIUM_LEGACY) continue;
                     const auto& dest = GetDestinationForKey(keypool.vchPubKey, type);
                     result.push_back({dest, keypool.fInternal});
                 }

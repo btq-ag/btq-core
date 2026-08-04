@@ -2506,6 +2506,18 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
                 addrman.Add(seed_addrs, local);
                 add_fixed_seeds = false;
                 LogPrintf("Added %d fixed seeds from reachable networks.\n", seed_addrs.size());
+
+                // Fixed seeds are the last bootstrap mechanism, and this branch
+                // runs at most once. If it yielded nothing and we still know no
+                // peers, the node will sit at zero connections indefinitely with
+                // nothing further logged, which is indistinguishable from a
+                // network problem. Say so plainly instead.
+                if (seed_addrs.empty() && addrman.Size() == 0) {
+                    LogPrintf("Warning: no fixed seeds are configured for %s and no peers are known. "
+                              "If DNS seeding does not supply any either, this node cannot discover "
+                              "peers on its own; use -addnode or -seednode to connect manually.\n",
+                              m_params.GetChainTypeString());
+                }
             }
         }
 

@@ -52,6 +52,7 @@ Development
 The BTQ repo's [root README](/README.md) contains relevant information on the development process and automated testing.
 
 - [Developer Notes](developer-notes.md)
+- [External Audit Briefing](audit-briefing.md)
 - [Productivity Notes](productivity.md)
 - [Release Process](release-process.md)
 - [Source Code Documentation (External Link)](https://doxygen.btqcore.org/)

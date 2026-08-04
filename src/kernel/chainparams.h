@@ -162,10 +162,23 @@ public:
         bool fastprune{false};
     };
 
+    /**
+     * TestNetOptions holds configurations for creating a testnet CChainParams.
+     */
+    struct TestNetOptions {
+        /** Height at which DEPLOYMENT_DILITHIUM_P2MR activates.
+         *
+         * Unset means unscheduled, which is the shipped default. Setting it is
+         * a consensus change: nodes running different values will fork from
+         * each other, so it is only useful with a coordinated height, or on a
+         * private chain rehearsing one. See issue #102. */
+        std::optional<int> dilithium_p2mr_height{};
+    };
+
     static std::unique_ptr<const CChainParams> RegTest(const RegTestOptions& options);
     static std::unique_ptr<const CChainParams> SigNet(const SigNetOptions& options);
     static std::unique_ptr<const CChainParams> Main();
-    static std::unique_ptr<const CChainParams> TestNet();
+    static std::unique_ptr<const CChainParams> TestNet(const TestNetOptions& options);
 
 protected:
     CChainParams() {}
