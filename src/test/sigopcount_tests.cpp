@@ -285,10 +285,13 @@ BOOST_AUTO_TEST_CASE(dilithium_witness_v0_sigop_weighting)
     // Classical P2WPKH with compressed pubkey witness must remain weight 1.
     CKey ecdsa_key;
     ecdsa_key.MakeNewKey(true);
-    scriptPubKey = GetScriptForDestination(WitnessV0KeyHash(ecdsa_key.GetPubKey()));
+    // GetPubKey() returns by value, so calling it twice would take begin() and
+    // end() from two unrelated temporaries.
+    const CPubKey ecdsa_pubkey{ecdsa_key.GetPubKey()};
+    scriptPubKey = GetScriptForDestination(WitnessV0KeyHash(ecdsa_pubkey));
     scriptWitness.stack.clear();
     scriptWitness.stack.push_back(std::vector<unsigned char>(72, 0x01));
-    scriptWitness.stack.push_back(std::vector<unsigned char>(ecdsa_key.GetPubKey().begin(), ecdsa_key.GetPubKey().end()));
+    scriptWitness.stack.push_back(std::vector<unsigned char>(ecdsa_pubkey.begin(), ecdsa_pubkey.end()));
 
     BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, scriptWitness);
     BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
