@@ -32,7 +32,9 @@ static const DatabaseFormat DATABASE_FORMATS[] = {
 #endif
 };
 
-const std::string ADDRESS_BCRT1_UNSPENDABLE = "bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj";
+// Witness v0, 32-byte all-zero program, under regtest's "qcrt" prefix. The
+// upstream constant kept Bitcoin's "bcrt" prefix, which no BTQ chain decodes.
+const std::string ADDRESS_QCRT1_UNSPENDABLE = "qcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqen882c";
 
 std::unique_ptr<CWallet> CreateSyncedWallet(interfaces::Chain& chain, CChain& cchain, const CKey& key);
 
