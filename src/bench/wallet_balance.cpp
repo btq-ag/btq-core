@@ -20,7 +20,7 @@ static void WalletBalance(benchmark::Bench& bench, const bool set_dirty, const b
 {
     const auto test_setup = MakeNoLogFileContext<const TestingSetup>();
 
-    const auto& ADDRESS_WATCHONLY = ADDRESS_BCRT1_UNSPENDABLE;
+    const auto& ADDRESS_WATCHONLY = ADDRESS_QCRT1_UNSPENDABLE;
 
     // Set clock to genesis block, so the descriptors/keys creation time don't interfere with the blocks scanning process.
     // The reason is 'generatetoaddress', which creates a chain with deterministic timestamps in the past.
