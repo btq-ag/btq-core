@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(lwma_activation_height_configured)
     const auto testnet_params = CreateChainParams(*m_node.args, ChainType::BTQTEST);
     BOOST_CHECK_EQUAL(testnet_params->GetConsensus().nLWMAHeight, 300000);
     BOOST_CHECK(params->GetConsensus().nDilithiumHeight > 0);
-    BOOST_CHECK_EQUAL(params->GetConsensus().nLWMAWindow, 45);
+    BOOST_CHECK_EQUAL(params->GetConsensus().nLWMAWindow, 144);
 }
 
 BOOST_AUTO_TEST_CASE(lwma_before_activation_uses_legacy_path)
@@ -300,7 +300,14 @@ BOOST_AUTO_TEST_CASE(lwma_formula_reference_parity)
     const int64_t T = consensus.nPowTargetSpacing;
 
     const int64_t k = static_cast<int64_t>(N) * (N + 1) * T / 2;
-    BOOST_CHECK_EQUAL(k, 62100);
+    // Cross-check the closed form against a direct summation of the weights,
+    // rather than against a constant frozen at one N: k is T times the sum of
+    // weights 1..N. At the default N=144, T=60 that is 626,400.
+    int64_t weight_sum = 0;
+    for (int i = 1; i <= N; ++i) {
+        weight_sum += i;
+    }
+    BOOST_CHECK_EQUAL(k, weight_sum * T);
 
     struct Scenario {
         int64_t spacing;

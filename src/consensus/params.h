@@ -147,20 +147,33 @@ struct Params {
      *  Blocks at or above this height reject Dilithium opcodes outside P2MR
      *  tapscript and disable the legacy witness-v0 Dilithium keyhash routing. */
     int nDilithiumP2MRHeight{1};
-    /** LWMA averaging window, in blocks.
+    /** LWMA averaging window, in blocks. 144 blocks = 2.4 hours at 60s spacing.
      *
      *  Consensus-critical: changing it on a live chain is a hard fork.
      *
-     *  Inherited as 45 from chains with ~10x longer block spacing, where it
-     *  covers 7.5 hours of history. At BTQ's 60-second spacing the same number
-     *  covers 45 minutes, which is short enough that a half-hour hashrate burst
-     *  dominates the weighted window (weights 1..N sum to N(N+1)/2, so the most
-     *  recent 30 blocks carry 88% of it at N=45 against 20% at N=288).
+     *  Was 45, inherited from chains with ~10x longer block spacing where it
+     *  covers 7.5 hours. At BTQ's 60-second spacing it covered 45 minutes --
+     *  short enough that a half-hour burst dominates the weighted window
+     *  (weights 1..N sum to N(N+1)/2, so the most recent 30 blocks carry 88%
+     *  of it at N=45 against 20% at N=288).
+     *
+     *  Raised to 144 on the April 2026 testnet cliff, the only real profile
+     *  we have (recovered block headers; see issue #110). There a 164-block
+     *  burst drove difficulty 2,235x above baseline in ~2.5 hours, took ~56
+     *  hours to come back, and undershot to 9x BELOW baseline before settling.
+     *  That undershoot is the cheap-block window that makes on-off mining pay.
+     *
+     *  Replaying that event against this formula, driven by the hashrate the
+     *  headers imply: the undershoot collapses between N=120 and N=132 and is
+     *  flat above it, while recovery time grows roughly linearly in N. So 144
+     *  buys the whole of the undershoot protection, and 288 would cost a
+     *  further ~84 hours of recovery for none of it. Statistical jitter at
+     *  constant hashrate also falls from +/-17.1% at N=45 to +/-9.6% here.
+     *  This is where zawy's guidance lands for on-off-plagued coins.
      *
      *  A field rather than a constant so the value can be swept in tests and
-     *  overridden on regtest; see issue #110 and pow_lwma_tests.cpp. Every
-     *  network currently sets 45, so this change is behaviour-preserving. */
-    int nLWMAWindow{45};
+     *  overridden on regtest; see pow_lwma_tests.cpp. */
+    int nLWMAWindow{144};
     std::chrono::seconds PowTargetSpacing() const
     {
         return std::chrono::seconds{nPowTargetSpacing};

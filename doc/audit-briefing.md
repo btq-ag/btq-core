@@ -97,7 +97,7 @@ from a constant that moved sitting next to one that did not.
 | Block subsidy | 50 BTC | 5 BTQ | `validation.cpp` |
 | `nPowTargetSpacing` | 600s | 60s | `kernel/chainparams.cpp` |
 | `nSubsidyHalvingInterval` | 210,000 | 2,100,000 | `kernel/chainparams.cpp` |
-| Difficulty algorithm | 2016-block retarget | LWMA, window 45, every block | `pow.cpp`, `consensus/params.h` |
+| Difficulty algorithm | 2016-block retarget | LWMA, window 144, every block | `pow.cpp`, `consensus/params.h` |
 | `CSVHeight` / `SegwitHeight` | 419,328 / 481,824 | 1 / 1 | `kernel/chainparams.cpp` |
 | `nDilithiumP2MRHeight` | n/a | 1 on mainnet, signet, regtest; unscheduled on testnet | `kernel/chainparams.cpp` |
 | `MAX_MONEY` | 21,000,000 | 21,000,000 (unchanged) | `consensus/amount.h` |
