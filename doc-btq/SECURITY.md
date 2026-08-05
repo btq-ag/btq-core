@@ -16,7 +16,11 @@ We provide security updates for the following BTQ versions:
 
 **DO NOT** report security vulnerabilities through public GitHub issues.
 
-Instead, please email us at: **security@btq.com**
+Use either private channel, preferring the first:
+
+1. **GitHub private vulnerability reporting** — "Report a vulnerability" under
+   the repository's Security tab. Private, authenticated, no key management.
+2. **Email** — **security@btq.com**, unencrypted.
 
 Include the following information:
 - Description of the vulnerability
@@ -60,12 +64,10 @@ We are pretty responsive, so we will try to meet these timelines with regards to
 
 ## Encrypted reporting
 
-BTQ Core does not publish PGP keys and does not offer an encrypted intake
-channel. Send reports in plain email to **security@btq.com**.
-
-If a report is sensitive enough that plain email is unacceptable, say so in a
-first message containing no detail, and we will agree a channel before you
-send anything substantive.
+BTQ Core does not publish PGP keys. **Use GitHub private vulnerability
+reporting** when a report must stay confidential — it is private end to end,
+requires no key exchange, and carries the whole thread through to advisory
+publication. Email to security@btq.com is unencrypted and is the fallback.
 
 ## Disclosure Timeline
 
