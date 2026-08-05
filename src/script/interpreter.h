@@ -258,8 +258,41 @@ extern const HashWriter HASHER_TAPSIGHASH; //!< Hasher with tag "TapSighash" pre
 extern const HashWriter HASHER_TAPLEAF;    //!< Hasher with tag "TapLeaf" pre-fed to it.
 extern const HashWriter HASHER_TAPBRANCH;  //!< Hasher with tag "TapBranch" pre-fed to it.
 
+/** Caches SHA256 midstates for the non-taproot sighash calculations (bare, P2SH,
+ *  P2WPKH, P2WSH, and the Dilithium spends that share those paths).
+ *
+ *  Within a single input, the sighash depends only on the script code, the
+ *  signature hash type and the sig version. Legacy sighash re-serialises the
+ *  whole transaction each time, so a script that forces many sighashes over one
+ *  input -- via OP_CODESEPARATOR, or simply many signatures -- costs quadratic
+ *  work. Remembering the hash state from just before the type byte is appended
+ *  collapses that back to linear whenever the script code repeats.
+ *
+ *  Keyed on sig version as well as script code, which upstream does not do; see
+ *  the comment on CacheIndex. */
+class SigHashCache
+{
+    struct Entry {
+        CScript script_code;
+        SigVersion sigversion;
+        HashWriter writer;
+    };
+
+    /** One slot per sighash mode: ALL, NONE, SINGLE, and each with ANYONECANPAY. */
+    std::optional<Entry> m_cache_entries[6];
+
+    /** Which of the six slots a hash type belongs to. */
+    static int CacheIndex(int hash_type) noexcept;
+
+public:
+    /** Load the midstate for this key into writer, if one is cached. */
+    [[nodiscard]] bool Load(int hash_type, SigVersion sigversion, const CScript& script_code, HashWriter& writer) const;
+    /** Remember the midstate for this key. */
+    void Store(int hash_type, SigVersion sigversion, const CScript& script_code, const HashWriter& writer);
+};
+
 template <class T>
-uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CAmount& amount, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr);
+uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CAmount& amount, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr, SigHashCache* sighash_cache = nullptr);
 
 class BaseSignatureChecker
 {
@@ -313,6 +346,9 @@ private:
     unsigned int nIn;
     const CAmount amount;
     const PrecomputedTransactionData* txdata;
+    /** Scoped to this checker, so it lives exactly as long as one input's
+     *  script execution -- which is the span over which its key is valid. */
+    mutable SigHashCache m_sighash_cache;
 
 protected:
     virtual bool VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
