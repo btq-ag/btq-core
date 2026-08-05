@@ -551,20 +551,22 @@ bool LoadCryptedDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ss
             }
         }
 
-        for (auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
-            if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-                if (desc_spk_man->LoadCryptedDilithiumKey(keyID, vchCryptedSecret, checksum_valid)) {
+        // See LoadDilithiumKey for why the legacy side asks for its manager.
+        if (pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+            for (auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
+                auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+                if (desc_spk_man && desc_spk_man->LoadCryptedDilithiumKey(keyID, vchCryptedSecret, checksum_valid)) {
                     return true;
                 }
             }
-            if (auto* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
-                if (legacy_spk_man->LoadCryptedDilithiumKey(keyID, vchCryptedSecret, checksum_valid)) {
-                    return true;
-                }
-            }
+            strErr = "Error reading wallet database: no descriptor ScriptPubKeyMan accepted encrypted Dilithium key";
+            return false;
         }
-        strErr = "Error reading wallet database: no ScriptPubKeyMan accepted encrypted Dilithium key";
-        return false;
+        if (!pwallet->GetOrCreateLegacyScriptPubKeyMan()->LoadCryptedDilithiumKey(keyID, vchCryptedSecret, checksum_valid)) {
+            strErr = "Error reading wallet database: Failed to load encrypted Dilithium key into the legacy key manager";
+            return false;
+        }
+        return true;
     } catch (const std::exception& e) {
         if (strErr.empty()) {
             strErr = e.what();
@@ -595,28 +597,23 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         // Set the key data using the Set method
         dilithiumKey.Set(vchDilithiumKey.begin(), vchDilithiumKey.end());
         
-        // Try to load the key into all script pub key managers
-        bool loaded = false;
-        for (auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
-            // Try descriptor wallet first
-            DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
-            if (desc_spk_man) {
-                if (desc_spk_man->LoadDilithiumKey(dilithiumKey, CPubKey())) {
-                    loaded = true;
-                    break;
+        // A descriptor wallet has its managers built before records load, so
+        // searching them is safe. A legacy wallet creates its manager on demand, and
+        // an imported Dilithium key can be the first record to need one, so ask for
+        // the manager instead of searching whatever exists yet. Searching found
+        // nothing and reported corruption, failing the whole wallet over one record.
+        if (pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+            for (auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
+                auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+                if (desc_spk_man && desc_spk_man->LoadDilithiumKey(dilithiumKey, CPubKey())) {
+                    return true;
                 }
             }
-            LegacyScriptPubKeyMan* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man);
-            if (legacy_spk_man) {
-                if (legacy_spk_man->LoadDilithiumKey(dilithiumKey, CPubKey())) {
-                    loaded = true;
-                    break;
-                }
-            }
+            strErr = "Error reading wallet database: Failed to load Dilithium key into any descriptor key manager";
+            return false;
         }
-        
-        if (!loaded) {
-            strErr = "Error reading wallet database: Failed to load Dilithium key into any script pub key manager";
+        if (!pwallet->GetOrCreateLegacyScriptPubKeyMan()->LoadDilithiumKey(dilithiumKey, CPubKey())) {
+            strErr = "Error reading wallet database: Failed to load Dilithium key into the legacy key manager";
             return false;
         }
     } catch (const std::exception& e) {
