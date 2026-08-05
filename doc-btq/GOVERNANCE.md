@@ -49,7 +49,7 @@ BTQ follows a maintainer-led governance model similar to Bitcoin Core, emphasizi
 - Publish signed security advisories
 - Maintain security documentation and processes
 
-**Reports intake:** security@btq.tech (see `SECURITY.md`)
+**Reports intake:** security@btq.com (see `SECURITY.md`)
 
 **Current Security Officers:**
 - oscar@btq.tech
