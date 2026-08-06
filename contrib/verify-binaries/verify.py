@@ -5,8 +5,7 @@
 """Script for verifying BTQ Core release binaries.
 
 This script attempts to download the sum file SHA256SUMS and corresponding
-signature file SHA256SUMS.asc from btqcore.org and btq.org and
-compares them.
+signature file SHA256SUMS.asc from bitcoinquantum.com.
 
 The sum-signature file is signed by a number of builder keys. This script
 ensures that there is a minimum threshold of signatures from pubkeys that
@@ -46,8 +45,10 @@ from hashlib import sha256
 from pathlib import PurePath, Path
 
 # The primary host; this will fail if we can't retrieve files from here.
-HOST1 = "https://btqcore.org"
-HOST2 = "https://btq.org"
+# BTQ publishes from a single host, unlike upstream Bitcoin Core which mirrors
+# across two. The multi-host comparison below therefore degenerates to a single
+# fetch; it is kept so a second host can be added without restructuring.
+HOST1 = "https://bitcoinquantum.com"
 VERSIONPREFIX = "btq-core-"
 SUMS_FILENAME = 'SHA256SUMS'
 SIGNATUREFILENAME = f"{SUMS_FILENAME}.asc"
@@ -486,7 +487,7 @@ def verify_published_handler(args: argparse.Namespace) -> ReturnCode:
     os.makedirs(WORKINGDIR, exist_ok=True)
     os.chdir(WORKINGDIR)
 
-    hosts = [HOST1, HOST2]
+    hosts = [HOST1]
 
     got_sig_status = get_files_from_hosts_and_compare(
         hosts, remote_sigs_path, SIGNATUREFILENAME, args.require_all_hosts)
@@ -517,7 +518,7 @@ def verify_published_handler(args: argparse.Namespace) -> ReturnCode:
         log.error("no files matched the platform specified")
         return ReturnCode.NO_BINARIES_MATCH
 
-    # remove binaries that are known not to be hosted by btqcore.org
+    # remove binaries that are known not to be hosted by bitcoinquantum.com
     fragments_to_remove = ['-unsigned', '-debug', '-codesignatures']
     for fragment in fragments_to_remove:
         nobinaries = [i for i in hashes_to_verify if fragment in i[1]]
@@ -689,8 +690,8 @@ def main():
         '--require-all-hosts', action='store_true',
         default=bool_from_env('BINVERIFY_REQUIRE_ALL_HOSTS'),
         help=(
-            f'If set, require all hosts ({HOST1}, {HOST2}) to provide signatures. '
-            '(Sometimes btq.org lags behind btqcore.org.)')
+            f'If set, require all hosts ({HOST1}) to provide signatures. '
+            'BTQ currently publishes from one host, so this is a no-op.')
     )
 
     bin_parser = subparsers.add_parser("bin", help="Verify local binaries.")

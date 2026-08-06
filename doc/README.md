@@ -5,7 +5,7 @@ Setup
 ---------------------
 BTQ Core is the original BTQ client and it builds the backbone of the network. It downloads and, by default, stores the entire history of BTQ transactions, which requires a few hundred gigabytes of disk space. Depending on the speed of your computer and network connection, the synchronization process can take anywhere from a few hours to a day or more.
 
-To download BTQ Core, visit [btqcore.org](https://btqcore.org/en/download/).
+To download BTQ Core, visit [bitcoinquantum.com](https://bitcoinquantum.com/download/).
 
 Running
 ---------------------
@@ -55,7 +55,6 @@ The BTQ repo's [root README](/README.md) contains relevant information on the de
 - [External Audit Briefing](audit-briefing.md)
 - [Productivity Notes](productivity.md)
 - [Release Process](release-process.md)
-- [Source Code Documentation (External Link)](https://doxygen.btqcore.org/)
 - [Translation Process](translation_process.md)
 - [Translation Strings Policy](translation_strings_policy.md)
 - [JSON-RPC Interface](JSON-RPC-interface.md)

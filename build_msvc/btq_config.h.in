@@ -125,7 +125,7 @@
 #define PACKAGE_STRING $
 
 /* Define to the home page for this package. */
-#define PACKAGE_URL "https://btqcore.org/"
+#define PACKAGE_URL "https://bitcoinquantum.com/"
 
 /* Define to the version of this package. */
 #define PACKAGE_VERSION $
