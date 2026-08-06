@@ -1159,8 +1159,8 @@ stack[4] = control_block
 
 **Size estimate (single input, 2 partial sigs):**
 
-- Binary partial data ≈ 2 × (1344 + 2421) ≈ 7.5 MB
-- Base64 ≈ 10 MB — **file transfer only**, not QR
+- Binary partial data ≈ 2 × (1344 + 2421) ≈ 7.5 KB
+- Base64 ≈ 10 KB — **file transfer only**, not QR
 
 ---
 
