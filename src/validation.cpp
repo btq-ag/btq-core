@@ -132,7 +132,8 @@ const CBlockIndex* Chainstate::FindForkInGlobalIndex(const CBlockLocator& locato
 bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
                        const CCoinsViewCache& inputs, unsigned int flags, bool cacheSigStore,
                        bool cacheFullScriptStore, PrecomputedTransactionData& txdata,
-                       std::vector<CScriptCheck>* pvChecks = nullptr)
+                       std::vector<CScriptCheck>* pvChecks = nullptr,
+                       bool policy_flags = false)
                        EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
 bool CheckFinalTxAtTip(const CBlockIndex& active_chain_tip, const CTransaction& tx)
@@ -1041,7 +1042,8 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
 
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
-    if (!CheckInputScripts(tx, state, m_view, scriptVerifyFlags, true, false, ws.m_precomputed_txdata)) {
+    if (!CheckInputScripts(tx, state, m_view, scriptVerifyFlags, true, false, ws.m_precomputed_txdata,
+                           /*pvChecks=*/nullptr, /*policy_flags=*/true)) {
         // Detect a stripped witness, so p2p code knows not to cache the
         // rejection against a txid that a witness would have made valid.
         //
@@ -1857,15 +1859,18 @@ bool InitScriptExecutionCache(size_t max_size_bytes)
  * which are matched. This is useful for checking blocks where we will likely never need the cache
  * entry again.
  *
- * Note that we may set state.reason to NOT_STANDARD for extra soft-fork flags in flags, block-checking
- * callers should probably reset it to CONSENSUS in such cases.
+ * Set policy_flags when flags carry mempool policy on top of consensus, so that a
+ * failure is reported as TX_NOT_STANDARD rather than TX_CONSENSUS. Do not infer this
+ * from flags: SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY is standard-but-not-mandatory and yet
+ * blocks enforce it once DEPLOYMENT_DILITHIUM_P2MR activates, so the presence of a
+ * standard-not-mandatory flag does not by itself mean we are validating for the mempool.
  *
  * Non-static (and re-declared) in src/test/txvalidationcache_tests.cpp
  */
 bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
                        const CCoinsViewCache& inputs, unsigned int flags, bool cacheSigStore,
                        bool cacheFullScriptStore, PrecomputedTransactionData& txdata,
-                       std::vector<CScriptCheck>* pvChecks)
+                       std::vector<CScriptCheck>* pvChecks, bool policy_flags)
 {
     if (tx.IsCoinBase()) return true;
 
@@ -1913,36 +1918,21 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
         if (pvChecks) {
             pvChecks->emplace_back(std::move(check));
         } else if (!check()) {
-            if (flags & STANDARD_NOT_MANDATORY_VERIFY_FLAGS) {
-                // Check whether the failure was caused by a
-                // non-mandatory script verification check, such as
-                // non-standard DER encodings or non-null dummy
-                // arguments; if so, ensure we return NOT_STANDARD
-                // instead of CONSENSUS to avoid downstream users
-                // splitting the network between upgraded and
-                // non-upgraded nodes by banning CONSENSUS-failing
-                // data providers.
-                //
-                // BTQ: SCRIPT_VERIFY_DILITHIUM is in MANDATORY_SCRIPT_VERIFY_FLAGS
-                // so it survives this mask. That is required for the testnet
-                // policy-ahead SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY regime: a
-                // consensus-valid legacy Dilithium spend must soft-fail as
-                // TX_NOT_STANDARD here, not lose Dilithium on the retry and
-                // come back as TX_CONSENSUS (Misbehaving).
-                CScriptCheck check2(txdata.m_spent_outputs[i], tx, i,
-                        flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheSigStore, &txdata);
-                if (check2())
-                    return state.Invalid(TxValidationResult::TX_NOT_STANDARD, strprintf("non-mandatory-script-verify-flag (%s)", ScriptErrorString(check.GetScriptError())));
+            // A failing script used to be re-run with the non-mandatory flags
+            // masked off, purely to tell a policy failure from a consensus one
+            // so that peers relaying the latter could be discouraged. Nothing
+            // discourages peers over transactions any more, so that second run
+            // buys nothing and doubles the CPU an attacker can make us spend on
+            // a transaction we are going to reject regardless.
+            //
+            // Dropping it also removes a trap for BTQ's testnet policy-ahead
+            // Dilithium regime, which relied on SCRIPT_VERIFY_DILITHIUM being
+            // mandatory so the retry could not reclassify a policy-only failure
+            // as TX_CONSENSUS. Mempool failures are now unconditionally
+            // TX_NOT_STANDARD, so that no longer rests on flag placement.
+            if (policy_flags) {
+                return state.Invalid(TxValidationResult::TX_NOT_STANDARD, strprintf("mempool-script-verify-flag-failed (%s)", ScriptErrorString(check.GetScriptError())));
             }
-            // MANDATORY flag failures correspond to
-            // TxValidationResult::TX_CONSENSUS. Because CONSENSUS
-            // failures are the most serious case of validation
-            // failures, we may need to consider using
-            // RECENT_CONSENSUS_CHANGE for any script failure that
-            // could be due to non-upgraded nodes which we may want to
-            // support, to avoid splitting the network (but this
-            // depends on the details of how net_processing handles
-            // such errors).
             return state.Invalid(TxValidationResult::TX_CONSENSUS, strprintf("mandatory-script-verify-flag-failed (%s)", ScriptErrorString(check.GetScriptError())));
         }
     }

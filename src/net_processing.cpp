@@ -557,14 +557,6 @@ private:
                                  bool via_compact_block, const std::string& message = "")
         EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
 
-    /**
-     * Potentially disconnect and discourage a node based on the contents of a TxValidationState object
-     *
-     * @return Returns true if the peer was punished (probably disconnected)
-     */
-    bool MaybePunishNodeForTx(NodeId nodeid, const TxValidationState& state)
-        EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex);
-
     /** Maybe disconnect a peer and discourage future connections from its address.
      *
      * @param[in]   pnode     The node to check.
@@ -1799,32 +1791,6 @@ bool PeerManagerImpl::MaybePunishNodeForBlock(NodeId nodeid, const BlockValidati
     return false;
 }
 
-bool PeerManagerImpl::MaybePunishNodeForTx(NodeId nodeid, const TxValidationState& state)
-{
-    PeerRef peer{GetPeerRef(nodeid)};
-    switch (state.GetResult()) {
-    case TxValidationResult::TX_RESULT_UNSET:
-        break;
-    // The node is providing invalid data:
-    case TxValidationResult::TX_CONSENSUS:
-        if (peer) Misbehaving(*peer, 100, "");
-        return true;
-    // Conflicting (but not necessarily invalid) data or different policy:
-    case TxValidationResult::TX_RECENT_CONSENSUS_CHANGE:
-    case TxValidationResult::TX_INPUTS_NOT_STANDARD:
-    case TxValidationResult::TX_NOT_STANDARD:
-    case TxValidationResult::TX_MISSING_INPUTS:
-    case TxValidationResult::TX_PREMATURE_SPEND:
-    case TxValidationResult::TX_WITNESS_MUTATED:
-    case TxValidationResult::TX_WITNESS_STRIPPED:
-    case TxValidationResult::TX_CONFLICT:
-    case TxValidationResult::TX_MEMPOOL_POLICY:
-    case TxValidationResult::TX_NO_MEMPOOL:
-        break;
-    }
-    return false;
-}
-
 bool PeerManagerImpl::BlockRequestAllowed(const CBlockIndex* pindex)
 {
     AssertLockHeld(cs_main);
@@ -3032,8 +2998,6 @@ bool PeerManagerImpl::ProcessOrphanTx(Peer& peer)
                     orphan_wtxid.ToString(),
                     peer.m_id,
                     state.ToString());
-                // Maybe punish peer that gave us an invalid orphan tx
-                MaybePunishNodeForTx(peer.m_id, state);
             }
             // Has inputs but not accepted to mempool
             // Probably non-standard or insufficient fee
@@ -4365,7 +4329,6 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 tx.GetWitnessHash().ToString(),
                 pfrom.GetId(),
                 state.ToString());
-            MaybePunishNodeForTx(pfrom.GetId(), state);
         }
         return;
     }

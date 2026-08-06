@@ -206,4 +206,83 @@ BOOST_AUTO_TEST_CASE(sighash_from_data)
         BOOST_CHECK_MESSAGE(sh.GetHex() == sigHashHex, strTest);
     }
 }
+
+//! The cache must key on everything the midstate depends on. Upstream omits the
+//! sig version, on the grounds that no input can reach both the BASE and the
+//! WITNESS_V0 path; that does not hold here, because CheckDilithiumSignature
+//! dispatches on sigversion within a single input, so we key on it too. A cache
+//! that ignored it would hand a BASE midstate to a WITNESS_V0 signature and
+//! validate a signature over the wrong message.
+BOOST_AUTO_TEST_CASE(sighash_cache_keying)
+{
+    const CScript script_a = CScript() << OP_1;
+    const CScript script_b = CScript() << OP_2;
+
+    HashWriter stored{};
+    stored << uint256::ONE;
+    const uint256 expected{HashWriter{stored}.GetHash()};
+
+    SigHashCache cache;
+    cache.Store(SIGHASH_ALL, SigVersion::BASE, script_a, stored);
+
+    HashWriter out{};
+    BOOST_CHECK(cache.Load(SIGHASH_ALL, SigVersion::BASE, script_a, out));
+    BOOST_CHECK_EQUAL(out.GetHash().GetHex(), expected.GetHex());
+
+    // The midstate stops short of the type byte, so any type in the same mode is
+    // a hit. That is the whole point: one entry serves all 256 of them.
+    out = HashWriter{};
+    BOOST_CHECK(cache.Load(SIGHASH_ALL | 0x40, SigVersion::BASE, script_a, out));
+    BOOST_CHECK_EQUAL(out.GetHash().GetHex(), expected.GetHex());
+
+    // Anything else must miss.
+    BOOST_CHECK(!cache.Load(SIGHASH_ALL, SigVersion::BASE, script_b, out));
+    BOOST_CHECK(!cache.Load(SIGHASH_ALL, SigVersion::WITNESS_V0, script_a, out));
+    BOOST_CHECK(!cache.Load(SIGHASH_NONE, SigVersion::BASE, script_a, out));
+    BOOST_CHECK(!cache.Load(SIGHASH_SINGLE, SigVersion::BASE, script_a, out));
+    BOOST_CHECK(!cache.Load(SIGHASH_ALL | SIGHASH_ANYONECANPAY, SigVersion::BASE, script_a, out));
+}
+
+//! A cached run must produce byte-identical sighashes to an uncached one.
+BOOST_AUTO_TEST_CASE(sighash_caching)
+{
+    for (int i = 0; i < 300; i++) {
+        CMutableTransaction tx;
+        RandomTransaction(tx, /*fSingle=*/InsecureRandBool());
+        const unsigned int nIn = InsecureRandRange(tx.vin.size());
+        const CAmount amount{InsecureRandMoneyAmount()};
+
+        std::vector<CScript> script_codes(3);
+        for (auto& script_code : script_codes) RandomScript(script_code);
+
+        // One cache per input, matching the lifetime the checker gives it.
+        SigHashCache cache;
+
+        auto check = [&](const CScript& script_code, int nHashType, SigVersion sigversion) {
+            const uint256 uncached{SignatureHash(script_code, tx, nIn, nHashType, amount, sigversion, nullptr, nullptr)};
+            const uint256 cached{SignatureHash(script_code, tx, nIn, nHashType, amount, sigversion, nullptr, &cache)};
+            BOOST_CHECK_EQUAL(uncached.GetHex(), cached.GetHex());
+        };
+
+        for (const SigVersion sigversion : {SigVersion::BASE, SigVersion::WITNESS_V0}) {
+            // Walk every mode with a fixed script code, varying only the bits
+            // that do not select the mode. Every call after the first in each
+            // group is a guaranteed hit, so this exercises reuse rather than
+            // just repeatedly missing.
+            for (const int base : {int{SIGHASH_ALL}, int{SIGHASH_NONE}, int{SIGHASH_SINGLE}}) {
+                for (const int acp : {0, int{SIGHASH_ANYONECANPAY}}) {
+                    for (const int spare : {0x00, 0x20, 0x40, 0x60}) {
+                        check(script_codes[0], base | acp | spare, sigversion);
+                    }
+                }
+            }
+        }
+
+        // Now churn the key so entries are evicted and refilled out of order.
+        for (int round = 0; round < 20; round++) {
+            const SigVersion sigversion{InsecureRandBool() ? SigVersion::BASE : SigVersion::WITNESS_V0};
+            check(script_codes[InsecureRandRange(script_codes.size())], int(InsecureRand32()), sigversion);
+        }
+    }
+}
 BOOST_AUTO_TEST_SUITE_END()
