@@ -16,7 +16,11 @@ We provide security updates for the following BTQ versions:
 
 **DO NOT** report security vulnerabilities through public GitHub issues.
 
-Instead, please email us at: **security@btq.tech**
+Use either private channel, preferring the first:
+
+1. **GitHub private vulnerability reporting** — "Report a vulnerability" under
+   the repository's Security tab. Private, authenticated, no key management.
+2. **Email** — **security@btq.tech**, unencrypted.
 
 Include the following information:
 - Description of the vulnerability
@@ -58,29 +62,12 @@ We are pretty responsive, so we will try to meet these timelines with regards to
 - Minor bugs with limited impact
 - **Response**: Public issue after fix is ready
 
-## PGP Keys
+## Encrypted reporting
 
-### Security Officers
-
-**Primary Security Contact**
-```
-Name: BTQ Security Team
-Email: security@btq.tech
-Fingerprint: [TO BE ADDED]
-```
-
-**Release Manager**
-```
-Name: [TO BE ADDED]
-Email: [TO BE ADDED]
-Fingerprint: [TO BE ADDED]
-```
-
-### Key Verification
-
-1. Download keys from our website: https://bitcoinquantum.com/security-keys.txt
-2. Verify fingerprints through multiple channels
-3. Import keys: `gpg --import security-keys.txt`
+BTQ Core does not publish PGP keys. **Use GitHub private vulnerability
+reporting** when a report must stay confidential — it is private end to end,
+requires no key exchange, and carries the whole thread through to advisory
+publication. Email to security@btq.tech is unencrypted and is the fallback.
 
 ## Disclosure Timeline
 
@@ -135,9 +122,6 @@ Fingerprint: [TO BE ADDED]
 - YYYY-MM-DD: Fix developed
 - YYYY-MM-DD: Release published
 - YYYY-MM-DD: Public disclosure
-
-## Signatures
-[PGP signatures from security officers]
 ```
 
 ### Publication Channels
@@ -180,11 +164,10 @@ Fingerprint: [TO BE ADDED]
 
 ## Emergency Contacts
 
-For urgent security matters requiring immediate attention:
-
-- **Primary**: security@btq.tech
-- **Backup**: [TO BE ADDED]
-- **Signal**: [TO BE ADDED] (for encrypted communication)
+For urgent security matters requiring immediate attention, email
+**security@btq.tech** and put `URGENT` in the subject line. The address is
+monitored by more than one person, so it does not depend on any individual
+being available.
 
 ## Security Audit History
 
