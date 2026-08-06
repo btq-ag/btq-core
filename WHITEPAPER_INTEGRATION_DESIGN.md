@@ -1441,7 +1441,7 @@ Merge Requirements:
 - Public review on GitHub (no private approvals)
 
 Security Policy:
-- Responsible disclosure via security@btq.com
+- Responsible disclosure via security@btq.tech
 - Embargo period for critical vulnerabilities
 - Signed security advisories published after fix deployment
 

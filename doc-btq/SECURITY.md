@@ -20,7 +20,7 @@ Use either private channel, preferring the first:
 
 1. **GitHub private vulnerability reporting** — "Report a vulnerability" under
    the repository's Security tab. Private, authenticated, no key management.
-2. **Email** — **security@btq.com**, unencrypted.
+2. **Email** — **security@btq.tech**, unencrypted.
 
 Include the following information:
 - Description of the vulnerability
@@ -67,7 +67,7 @@ We are pretty responsive, so we will try to meet these timelines with regards to
 BTQ Core does not publish PGP keys. **Use GitHub private vulnerability
 reporting** when a report must stay confidential — it is private end to end,
 requires no key exchange, and carries the whole thread through to advisory
-publication. Email to security@btq.com is unencrypted and is the fallback.
+publication. Email to security@btq.tech is unencrypted and is the fallback.
 
 ## Disclosure Timeline
 
@@ -165,7 +165,7 @@ publication. Email to security@btq.com is unencrypted and is the fallback.
 ## Emergency Contacts
 
 For urgent security matters requiring immediate attention, email
-**security@btq.com** and put `URGENT` in the subject line. The address is
+**security@btq.tech** and put `URGENT` in the subject line. The address is
 monitored by more than one person, so it does not depend on any individual
 being available.
 

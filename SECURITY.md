@@ -15,7 +15,7 @@ Two private channels, in order of preference:
    button under this repository's Security tab. Preferred: the report stays
    private, the thread is authenticated, and the advisory and CVE are issued
    from the same place.
-2. **Email security@btq.com** — for security reports only, not support.
+2. **Email security@btq.tech** — for security reports only, not support.
 
 `doc-btq/SECURITY.md` documents the severity categories, response timelines
 and coordinated-disclosure process.
