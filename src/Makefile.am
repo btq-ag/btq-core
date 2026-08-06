@@ -249,6 +249,7 @@ BTQ_CORE_H = \
   pow.h \
   protocol.h \
   psbt.h \
+  psbt_dilithium.h \
   random.h \
   randomenv.h \
   rest.h \
@@ -266,6 +267,7 @@ BTQ_CORE_H = \
   rpc/util.h \
   scheduler.h \
   script/descriptor.h \
+  script/dilithium_leaf.h \
   script/keyorigin.h \
   script/miniscript.h \
   script/sigcache.h \
@@ -734,12 +736,14 @@ libbtq_common_a_SOURCES = \
   policy/policy.cpp \
   protocol.cpp \
   psbt.cpp \
+  psbt_dilithium.cpp \
   rpc/external_signer.cpp \
   rpc/rawtransaction_util.cpp \
   rpc/request.cpp \
   rpc/util.cpp \
   scheduler.cpp \
   script/descriptor.cpp \
+  script/dilithium_leaf.cpp \
   script/miniscript.cpp \
   script/sign.cpp \
   script/signingprovider.cpp \

@@ -133,6 +133,9 @@ std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDe
  */
 std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest);
 
+/** Whether any ScriptPubKeyMan in the wallet holds this Dilithium private key. */
+bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid);
+
 /** Create and persist a new P2MR destination.
  *  Pass add_to_address_book=false for change destinations: an address book
  *  entry is what makes CWallet::IsChange treat an output as a receive. */

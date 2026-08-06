@@ -2142,6 +2142,21 @@ uint256 ComputeTaprootMerkleRoot(Span<const unsigned char> control, const uint25
     return k;
 }
 
+uint256 ComputeP2MRMerkleRoot(Span<const unsigned char> control, const uint256& tapleaf_hash)
+{
+    assert(control.size() >= P2MR_CONTROL_BASE_SIZE);
+    assert(control.size() <= P2MR_CONTROL_MAX_SIZE);
+    assert((control.size() - P2MR_CONTROL_BASE_SIZE) % P2MR_CONTROL_NODE_SIZE == 0);
+
+    const int path_len = (control.size() - P2MR_CONTROL_BASE_SIZE) / P2MR_CONTROL_NODE_SIZE;
+    uint256 k = tapleaf_hash;
+    for (int i = 0; i < path_len; ++i) {
+        Span node{Span{control}.subspan(P2MR_CONTROL_BASE_SIZE + P2MR_CONTROL_NODE_SIZE * i, P2MR_CONTROL_NODE_SIZE)};
+        k = ComputeTapbranchHash(k, node);
+    }
+    return k;
+}
+
 static bool VerifyTaprootCommitment(const std::vector<unsigned char>& control, const std::vector<unsigned char>& program, const uint256& tapleaf_hash)
 {
     assert(control.size() >= TAPROOT_CONTROL_BASE_SIZE);
@@ -2163,13 +2178,7 @@ static bool VerifyP2MRCommitment(const std::vector<unsigned char>& control, cons
     assert(control.size() >= P2MR_CONTROL_BASE_SIZE);
     assert(program.size() >= uint256::size());
 
-    const int path_len = (control.size() - P2MR_CONTROL_BASE_SIZE) / P2MR_CONTROL_NODE_SIZE;
-    uint256 k = tapleaf_hash;
-    for (int i = 0; i < path_len; ++i) {
-        Span node{Span{control}.subspan(P2MR_CONTROL_BASE_SIZE + P2MR_CONTROL_NODE_SIZE * i, P2MR_CONTROL_NODE_SIZE)};
-        k = ComputeTapbranchHash(k, node);
-    }
-    return k == uint256(Span{program});
+    return ComputeP2MRMerkleRoot(control, tapleaf_hash) == uint256(Span{program});
 }
 
 static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, const std::vector<unsigned char>& program, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* serror, bool is_p2sh)

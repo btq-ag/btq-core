@@ -46,6 +46,13 @@ static constexpr uint8_t PSBT_IN_TAP_LEAF_SCRIPT = 0x15;
 static constexpr uint8_t PSBT_IN_TAP_BIP32_DERIVATION = 0x16;
 static constexpr uint8_t PSBT_IN_TAP_INTERNAL_KEY = 0x17;
 static constexpr uint8_t PSBT_IN_TAP_MERKLE_ROOT = 0x18;
+// BTQ: Dilithium signing on BIP360 P2MR (witness v2) inputs. Dilithium material
+// does not fit PSBT_IN_PARTIAL_SIG (key length and algorithm both differ), so it
+// gets its own types, following the BIP371 precedent for Taproot.
+static constexpr uint8_t PSBT_IN_P2MR_LEAF_SCRIPT = 0x19;
+static constexpr uint8_t PSBT_IN_P2MR_MERKLE_ROOT = 0x1A;
+static constexpr uint8_t PSBT_IN_P2MR_DILITHIUM_SCRIPT_SIG = 0x1B;
+// 0x1C and 0x1D are reserved for Dilithium BIP32 derivation and pubkey hints.
 static constexpr uint8_t PSBT_IN_PROPRIETARY = 0xFC;
 
 // Output types
@@ -67,6 +74,14 @@ const std::streamsize MAX_FILE_SIZE_PSBT = 100000000; // 100 MB
 
 // PSBT version number
 static constexpr uint32_t PSBT_HIGHEST_VERSION = 0;
+
+// Bounds on the BTQ Dilithium/P2MR input fields, enforced while parsing so a
+// hostile PSBT cannot make us allocate unboundedly. These match consensus
+// rather than tightening it: a PSBT must be able to carry any spend the chain
+// would accept.
+static constexpr size_t MAX_DILITHIUM_PARTIAL_SIG_VALUE_SIZE = CDilithiumPubKey::SIGNATURE_SIZE + 1;
+static constexpr size_t MAX_DILITHIUM_PARTIAL_SIGS_PER_INPUT = MAX_PUBKEYS_PER_MULTISIG;
+static constexpr size_t MAX_P2MR_LEAF_SCRIPT_SIZE = MAX_SCRIPT_SIZE;
 
 /** A structure for PSBT proprietary types */
 struct PSBTProprietary
@@ -211,6 +226,14 @@ struct PSBTInput
     XOnlyPubKey m_tap_internal_key;
     uint256 m_tap_merkle_root;
 
+    // BTQ Dilithium / P2MR fields. Laid out like their Taproot counterparts:
+    // m_p2mr_scripts mirrors m_tap_scripts, and m_p2mr_dilithium_script_sigs
+    // mirrors m_tap_script_sigs. Keeping the shapes identical means the bridge
+    // to SignatureData::p2mr_spenddata is a copy rather than a translation.
+    std::map<std::pair<std::vector<unsigned char>, int>, std::set<std::vector<unsigned char>, ShortestVectorFirstComparator>> m_p2mr_scripts;
+    uint256 m_p2mr_merkle_root;
+    std::map<std::pair<DilithiumPKHash, uint256>, std::pair<CDilithiumPubKey, std::vector<unsigned char>>> m_p2mr_dilithium_script_sigs;
+
     std::map<std::vector<unsigned char>, std::vector<unsigned char>> unknown;
     std::set<PSBTProprietary> m_proprietary;
     std::optional<int> sighash_type;
@@ -331,6 +354,31 @@ struct PSBTInput
             if (!m_tap_merkle_root.IsNull()) {
                 SerializeToVector(s, PSBT_IN_TAP_MERKLE_ROOT);
                 SerializeToVector(s, m_tap_merkle_root);
+            }
+
+            // Write P2MR leaf scripts
+            for (const auto& [leaf, control_blocks] : m_p2mr_scripts) {
+                const auto& [script, leaf_ver] = leaf;
+                for (const auto& control_block : control_blocks) {
+                    SerializeToVector(s, PSBT_IN_P2MR_LEAF_SCRIPT, Span{control_block});
+                    std::vector<unsigned char> value_v(script.begin(), script.end());
+                    value_v.push_back((uint8_t)leaf_ver);
+                    s << value_v;
+                }
+            }
+
+            // Write P2MR merkle root
+            if (!m_p2mr_merkle_root.IsNull()) {
+                SerializeToVector(s, PSBT_IN_P2MR_MERKLE_ROOT);
+                SerializeToVector(s, m_p2mr_merkle_root);
+            }
+
+            // Write P2MR Dilithium script signatures. The wire key carries the
+            // full 1312-byte pubkey; the map is keyed by its hash internally.
+            for (const auto& [keyid_leaf, pubkey_sig] : m_p2mr_dilithium_script_sigs) {
+                const auto& [pubkey, sig] = pubkey_sig;
+                SerializeToVector(s, PSBT_IN_P2MR_DILITHIUM_SCRIPT_SIG, pubkey, keyid_leaf.second);
+                s << sig;
             }
         }
 
@@ -666,6 +714,68 @@ struct PSBTInput
                         throw std::ios_base::failure("Input Taproot merkle root key is more than one byte type");
                     }
                     UnserializeFromVector(s, m_tap_merkle_root);
+                    break;
+                }
+                case PSBT_IN_P2MR_LEAF_SCRIPT:
+                {
+                    if (!key_lookup.emplace(key).second) {
+                        throw std::ios_base::failure("Duplicate Key, input P2MR leaf script already provided");
+                    } else if (key.size() < 1 + P2MR_CONTROL_BASE_SIZE) {
+                        throw std::ios_base::failure("Input P2MR leaf script key is too short to hold a control block");
+                    } else if (key.size() > 1 + P2MR_CONTROL_MAX_SIZE) {
+                        throw std::ios_base::failure("Input P2MR leaf script key's control block is too large");
+                    } else if ((key.size() - 1 - P2MR_CONTROL_BASE_SIZE) % P2MR_CONTROL_NODE_SIZE != 0) {
+                        throw std::ios_base::failure("Input P2MR leaf script key's control block size is not valid");
+                    }
+                    std::vector<unsigned char> script_v;
+                    s >> script_v;
+                    if (script_v.empty()) {
+                        throw std::ios_base::failure("Input P2MR leaf script must be at least 1 byte");
+                    }
+                    if (script_v.size() - 1 > MAX_P2MR_LEAF_SCRIPT_SIZE) {
+                        throw std::ios_base::failure("Input P2MR leaf script is too large");
+                    }
+                    uint8_t leaf_ver = script_v.back();
+                    script_v.pop_back();
+                    const auto leaf_script = std::make_pair(script_v, (int)leaf_ver);
+                    m_p2mr_scripts[leaf_script].insert(std::vector<unsigned char>(key.begin() + 1, key.end()));
+                    break;
+                }
+                case PSBT_IN_P2MR_MERKLE_ROOT:
+                {
+                    if (!key_lookup.emplace(key).second) {
+                        throw std::ios_base::failure("Duplicate Key, input P2MR merkle root already provided");
+                    } else if (key.size() != 1) {
+                        throw std::ios_base::failure("Input P2MR merkle root key is more than one byte type");
+                    }
+                    UnserializeFromVector(s, m_p2mr_merkle_root);
+                    break;
+                }
+                case PSBT_IN_P2MR_DILITHIUM_SCRIPT_SIG:
+                {
+                    if (!key_lookup.emplace(key).second) {
+                        throw std::ios_base::failure("Duplicate Key, input P2MR Dilithium script signature already provided");
+                    } else if (key.size() != 1 + CDilithiumPubKey::SIZE + uint256::size()) {
+                        throw std::ios_base::failure("Input P2MR Dilithium script signature key is not the expected size");
+                    }
+                    if (m_p2mr_dilithium_script_sigs.size() >= MAX_DILITHIUM_PARTIAL_SIGS_PER_INPUT) {
+                        throw std::ios_base::failure("Too many P2MR Dilithium partial signatures for one input");
+                    }
+                    SpanReader s_key{s.GetVersion(), Span{key}.subspan(1)};
+                    CDilithiumPubKey pubkey;
+                    uint256 leaf_hash;
+                    s_key >> pubkey;
+                    s_key >> leaf_hash;
+                    if (!pubkey.IsFullyValid()) {
+                        throw std::ios_base::failure("Invalid Dilithium pubkey");
+                    }
+                    std::vector<unsigned char> sig;
+                    s >> sig;
+                    if (sig.size() != MAX_DILITHIUM_PARTIAL_SIG_VALUE_SIZE) {
+                        throw std::ios_base::failure("Input P2MR Dilithium partial signature has an invalid length");
+                    }
+                    m_p2mr_dilithium_script_sigs.emplace(std::make_pair(DilithiumPKHash(pubkey), leaf_hash),
+                                                         std::make_pair(pubkey, std::move(sig)));
                     break;
                 }
                 case PSBT_IN_PROPRIETARY:

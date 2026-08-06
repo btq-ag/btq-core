@@ -409,6 +409,10 @@ uint256 ComputeTapbranchHash(Span<const unsigned char> a, Span<const unsigned ch
 /** Compute the BIP341 taproot script tree Merkle root from control block and leaf hash.
  *  Requires control block to have valid length (33 + k*32, with k in {0,1,..,128}). */
 uint256 ComputeTaprootMerkleRoot(Span<const unsigned char> control, const uint256& tapleaf_hash);
+/** Compute the BIP360 P2MR script tree Merkle root from control block and leaf hash.
+ *  Unlike Taproot there is no internal key, so the root is the witness program itself.
+ *  Requires control block to have valid length (1 + k*32, with k in {0,1,..,128}). */
+uint256 ComputeP2MRMerkleRoot(Span<const unsigned char> control, const uint256& tapleaf_hash);
 
 bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& script, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* error = nullptr);
 bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& script, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptError* error = nullptr);

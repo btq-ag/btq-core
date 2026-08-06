@@ -13,6 +13,7 @@
 #include <rpc/protocol.h>
 #include <rpc/request.h>
 #include <rpc/util.h>
+#include <script/dilithium_leaf.h>
 #include <script/interpreter.h>
 #include <script/script.h>
 #include <script/sign.h>
@@ -32,6 +33,19 @@
 #include <set>
 
 namespace wallet {
+
+bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid)
+{
+    for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
+        if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+            LOCK(desc_spk_man->cs_desc_man);
+            if (desc_spk_man->HaveDilithiumKey(keyid)) return true;
+        } else if (auto legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
+            if (legacy_spk_man->HaveDilithiumKey(keyid)) return true;
+        }
+    }
+    return false;
+}
 
 namespace {
 constexpr const char* P2MR_STATE_CREATED{"created"};
@@ -132,8 +146,16 @@ std::set<CKeyID> GetP2MRDilithiumKeyIDs(const std::vector<P2MRTreeLeaf>& leaves)
                 AddDilithiumKeyIDFromPubKey(pubkey, key_ids);
             }
             break;
-        default:
+        default: {
+            // Threshold accumulator leaves spell out their key checks opcode by
+            // opcode, so Solver does not recognize them as a template.
+            const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
+            if (policy.type != P2MRLeafTemplate::THRESHOLD_ACCUMULATOR) break;
+            for (const CDilithiumPubKey& pubkey : policy.pubkeys) {
+                AddDilithiumKeyIDFromPubKey(pubkey, key_ids);
+            }
             break;
+        }
         }
     }
     return key_ids;
@@ -168,19 +190,6 @@ P2MRKeyRequirements GetP2MRKeyRequirements(const std::vector<P2MRTreeLeaf>& leav
         AddP2MRXOnlyKeys(CScript{leaf.script.begin(), leaf.script.end()}, out.xonly_pubkeys);
     }
     return out;
-}
-
-bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid)
-{
-    for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
-        if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-            LOCK(desc_spk_man->cs_desc_man);
-            if (desc_spk_man->HaveDilithiumKey(keyid)) return true;
-        } else if (auto legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
-            if (legacy_spk_man->HaveDilithiumKey(keyid)) return true;
-        }
-    }
-    return false;
 }
 
 bool WalletHaveXOnlyKey(const CWallet& wallet, const XOnlyPubKey& pubkey)
