@@ -309,7 +309,10 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "sendtop2mr", 5, "subtractfeefromamount" },
     { "createp2mrspend", 2, "amount" },
     { "createp2mrspend", 3, "fee" },
-    { "signp2mrtransaction", 2, "witness_args" },
+    // Dilithium wallet RPCs
+    { "importdilithiumkey", 2, "rescan" },
+    { "signtransactionwithdilithium", 1, "prevtxs" },
+    { "signtransactionwithdilithium", 3, "force_dilithium" },
 };
 // clang-format on
 
