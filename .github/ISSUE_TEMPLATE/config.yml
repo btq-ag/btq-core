@@ -1,7 +1,7 @@
 blank_issues_enabled: true
 contact_links:
   - name: BTQ Core Security Policy
-    url: https://github.com/btq/btq/blob/master/SECURITY.md
+    url: https://github.com/btq-ag/btq-core/blob/master/SECURITY.md
     about: View security policy
   - name: BTQ Core Developers
     url: https://bitcoinquantum.com
