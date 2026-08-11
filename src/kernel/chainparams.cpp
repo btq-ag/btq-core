@@ -115,7 +115,7 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
         // Pre-launch floor: tied to the remined genesis block (see assert below).
-        // Rotate both values at each tagged release (see doc/release-process.md).
+        // Rotate both values at each tagged release.
         // 0x49d414 is GetBlockProof(genesis) for nBits 0x1e0377ae; the previous
         // 0x10002 predated the genesis remine and was below one block's work.
         consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000000000049d414");

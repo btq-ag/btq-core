@@ -54,7 +54,6 @@ The BTQ repo's [root README](/README.md) contains relevant information on the de
 - [Developer Notes](developer-notes.md)
 - [External Audit Briefing](audit-briefing.md)
 - [Productivity Notes](productivity.md)
-- [Release Process](release-process.md)
 - [Translation Process](translation_process.md)
 - [Translation Strings Policy](translation_strings_policy.md)
 - [JSON-RPC Interface](JSON-RPC-interface.md)
