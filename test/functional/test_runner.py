@@ -134,6 +134,7 @@ BASE_SCRIPTS = [
     'wallet_dilithium_signmessage.py --descriptors',
     'wallet_dilithium_psbt.py --descriptors',
     'wallet_dilithium_psbt_multisig.py --descriptors',
+    'tool_dilithium_psbt.py --descriptors',
     'wallet_bumpfee.py --legacy-wallet',
     'wallet_bumpfee.py --descriptors',
     'wallet_import_rescan.py --legacy-wallet',

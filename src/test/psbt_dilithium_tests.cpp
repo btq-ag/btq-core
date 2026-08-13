@@ -350,4 +350,50 @@ BOOST_AUTO_TEST_CASE(duplicate_wire_keys_are_rejected)
     BOOST_CHECK_MESSAGE(error.find("Duplicate Key") != std::string::npos, error);
 }
 
+// The PSBT parse cap on control blocks must be the consensus cap, not an
+// independent value. Anything smaller would leave outputs that are spendable
+// on-chain but unspendable through a PSBT.
+BOOST_AUTO_TEST_CASE(control_blocks_up_to_the_consensus_limit_round_trip)
+{
+    for (const int depth : {1, 16, 17, 32, (int)P2MR_CONTROL_MAX_NODE_COUNT}) {
+        // A degenerate tree, so the first leaf sits at `depth` and therefore
+        // carries a merkle path of `depth` nodes.
+        P2MRBuilder builder;
+        builder.Add(depth, CScript() << OP_1, TAPROOT_LEAF_TAPSCRIPT);
+        builder.Add(depth, CScript() << OP_2, TAPROOT_LEAF_TAPSCRIPT);
+        for (int d = depth - 1; d >= 1; --d) {
+            builder.Add(d, CScript() << OP_1 << d << OP_EQUAL, TAPROOT_LEAF_TAPSCRIPT);
+        }
+        builder.Finalize();
+        BOOST_REQUIRE_MESSAGE(builder.IsComplete(), "tree incomplete at depth " << depth);
+
+        const P2MRSpendData spenddata = builder.GetSpendData();
+        size_t widest = 0;
+        for (const auto& [leaf, controls] : spenddata.scripts) {
+            for (const auto& control : controls) widest = std::max(widest, control.size());
+        }
+        BOOST_CHECK_EQUAL(widest, P2MR_CONTROL_BASE_SIZE + P2MR_CONTROL_NODE_SIZE * depth);
+
+        CMutableTransaction tx;
+        tx.nVersion = 2;
+        tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+        tx.vout.emplace_back(90000, CScript() << OP_TRUE);
+
+        PartiallySignedTransaction psbt{tx};
+        CTxOut prevout;
+        prevout.nValue = 100000;
+        prevout.scriptPubKey = GetScriptForDestination(builder.GetOutput());
+        psbt.inputs[0].witness_utxo = prevout;
+        psbt.inputs[0].m_p2mr_merkle_root = spenddata.merkle_root;
+        for (const auto& [leaf, controls] : spenddata.scripts) {
+            psbt.inputs[0].m_p2mr_scripts[leaf] = controls;
+        }
+
+        const PartiallySignedTransaction before = psbt;
+        Roundtrip(psbt);
+        BOOST_CHECK_MESSAGE(psbt.inputs[0].m_p2mr_scripts == before.inputs[0].m_p2mr_scripts,
+                            "control blocks lost at depth " << depth);
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()

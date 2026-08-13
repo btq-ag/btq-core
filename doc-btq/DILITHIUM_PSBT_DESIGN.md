@@ -317,7 +317,7 @@ REQUIRE stream consumed exactly value_len bytes
 
 | Component | Content |
 |-----------|---------|
-| PSBT key | `[type=0x19] \|\| control_block` (raw bytes, 1–513 bytes) |
+| PSBT key | `[type=0x19] \|\| control_block` (raw bytes, `P2MR_CONTROL_BASE_SIZE`–`P2MR_CONTROL_MAX_SIZE`, i.e. 1–4097 bytes) |
 | PSBT value | `leaf_script_bytes \|\| leaf_version` (version is **last** byte of value) |
 
 **v1 cardinality:** Exactly **one** `(leaf_script, leaf_version)` pair per distinct `control_block` key. If the same `control_block` key appears twice (duplicate PSBT key) → **REJECT** at parse.
@@ -419,11 +419,13 @@ For input `i` spending P2MR via script path:
 | `MAX_DILITHIUM_PARTIAL_SIG_VALUE_SIZE` | 2421 | PSBT value: `sig_raw + sighash_type` |
 | `MAX_DILITHIUM_PARTIAL_SIGS_PER_INPUT` | 20 | Count of `PSBT_IN_P2MR_DILITHIUM_SCRIPT_SIG` entries |
 | `MAX_DILITHIUM_PARTIAL_SIG_PAYLOAD_PER_INPUT` | 1_500_000 bytes (~1.5 MB) | Sum of partial sig value sizes |
-| `MAX_P2MR_LEAF_SCRIPT_SIZE` | 10000 | Leaf script bytes |
-| `MAX_CONTROL_BLOCK_SIZE` | 513 | `P2MR_CONTROL_MAX_SIZE` |
+| `MAX_P2MR_LEAF_SCRIPT_SIZE` | 100000 (`MAX_SCRIPT_SIZE`) | Leaf script bytes |
+| `P2MR_CONTROL_MAX_SIZE` | 4097 | Control block bytes; the consensus limit, reused verbatim |
 | `MAX_PSBT_SIZE` | 100 MB | Entire PSBT blob |
 
 Per-input partial-sig payload is the sum over all `PSBT_IN_P2MR_DILITHIUM_SCRIPT_SIG` value sizes on that input. Exceeding any limit → reject entire PSBT load.
+
+**The control block cap MUST be the consensus constant itself, never an independent value.** A PSBT parse cap below `P2MR_CONTROL_MAX_SIZE` would reject control blocks for leaves at depth 17 and beyond, which are consensus-valid and reachable through `createp2mr`. That would make an on-chain-spendable output unspendable through any conformant implementation, and would split interop against implementations that use the consensus bound. Derive this limit from `P2MR_CONTROL_BASE_SIZE`, `P2MR_CONTROL_NODE_SIZE` and `P2MR_CONTROL_MAX_NODE_COUNT` so the two cannot drift apart.
 
 ### 4.6 Sighash type matrix (v1)
 
@@ -450,7 +452,7 @@ ValidatePSBTInput(i):
   1. Resolve utxo = witness_utxo or non_witness_utxo prevout output
   2. Assert utxo.scriptPubKey classifies as WITNESS_V2_P2MR; extract program (32-byte root)
   3. For each PSBT_IN_P2MR_LEAF_SCRIPT (control_block → leaf_script, leaf_version):
-       a. control_block size ∈ [P2MR_CONTROL_BASE_SIZE, MAX_CONTROL_BLOCK_SIZE]
+       a. control_block size ∈ [P2MR_CONTROL_BASE_SIZE, P2MR_CONTROL_MAX_SIZE]
        b. (control_block.size - P2MR_CONTROL_BASE_SIZE) % P2MR_CONTROL_NODE_SIZE == 0
        c. (control_block[0] & 1) == 1   // parity bit MUST be set (BIP360)
        d. leaf_script size ≤ MAX_P2MR_LEAF_SCRIPT_SIZE
@@ -489,8 +491,7 @@ Proves that `(leaf_script, leaf_version)` commits to the P2MR `program` (32-byte
 P2MR_CONTROL_BASE_SIZE       = 1
 P2MR_CONTROL_NODE_SIZE       = 32
 P2MR_CONTROL_MAX_NODE_COUNT  = 128
-P2MR_CONTROL_MAX_SIZE        = 1 + 32 * 128 = 4129   // consensus maximum
-MAX_CONTROL_BLOCK_SIZE       = 513                    // PSBT v1 parse cap (§4.5)
+P2MR_CONTROL_MAX_SIZE        = 1 + 32 * 128 = 4097   // consensus maximum, and the PSBT parse cap (§4.5)
 TAPROOT_LEAF_MASK            = 0xFE
 TAPROOT_LEAF_TAPSCRIPT       = 0xC0
 ```
@@ -979,6 +980,10 @@ Dilithium PSBT to any caller.
 | `createdilithiummultisig <nrequired> <pubkeys> [label]` | Register an m-of-n threshold accumulator P2MR destination. Co-signers passing the same arguments derive the same address. |
 | `getdilithiumpubkey <p2mr_id>` | Report the Dilithium pubkeys a wallet destination names, and which of them the wallet can sign for. This is how a co-signer publishes its key. |
 
+**CLI recipe:** `doc/psbt.md` (section “Dilithium P2MR”) is the copy-paste
+`btq-cli` flow. `contrib/btq/dilithium-psbt.sh` wraps those same RPCs so the
+~16 KB PSBT does not have to be pasted as a shell argument.
+
 **Deferred:** `btqconvertpsbt <btqms-file>` (§16.3).
 
 ### 7.2 Descriptor alignment
@@ -1211,6 +1216,7 @@ RPC layer maps to `RPC_DESERIALIZATION_ERROR` (parse) or `RPC_INVALID_PARAMETER`
 | §10.1 unit tests | `src/test/psbt_dilithium_tests.cpp` |
 | §10.2 functional tests | `test/functional/wallet_dilithium_psbt_multisig.py` |
 | Live-chain proof | `contrib/btq/testnet_dilithium_psbt_proof.sh` |
+| Operator CLI wrapper | `contrib/btq/dilithium-psbt.sh`; recipe in `doc/psbt.md` |
 
 ### 16.2 Deviations from the draft
 
@@ -1277,12 +1283,27 @@ Witness stack on the confirmed input, byte lengths in push order:
 
 ```
 [0, 2421, 2421, 3960, 1]
- │   │     │     │     └─ control block (leaf version only; single-leaf tree)
+ │   │     │     │     └─ control block, single-leaf tree, the byte 0xc1
  │   │     │     └─────── leaf script
  │   │     └───────────── alice's signature (key 0)
  │   └─────────────────── bob's signature  (key 1)
  └─────────────────────── empty slot for carol (key 2, did not sign)
 ```
+
+Cross-checked against the public block explorer, which shows the same five items in the same
+order and both signatures ending in the `0x01` `SIGHASH_ALL` byte. Its reported serialized
+size of 8 930 bytes reconciles exactly, leaving nothing unaccounted for in the witness:
+
+| Part | Bytes |
+|------|-------|
+| Base transaction (version, 1 input, 2 outputs, locktime) | 113 |
+| Segwit marker and flag | 2 |
+| Witness: stack count, 2×(3 + 2421) sigs, 3 + 3960 leaf, 1 + 1 control, 1 empty | 8 815 |
+| **Total** | **8 930** |
+
+The explorer also reports 665 vB and a fee of 816 satoshis, so the witness is being discounted
+well below the BIP141 rate. That discount is pre-existing BTQ policy, not something this change
+introduces, but it is the reason a 2-of-3 post-quantum spend is affordable at all.
 
 This matches Appendix A: slots are pushed in reverse key order, so key 0 ends up on top,
 and a non-signing key contributes an empty push rather than being omitted.
@@ -1395,8 +1416,12 @@ stack[4] = control_block
 Roughly 12 KB binary, 16 KB base64 — comfortable for a file, an email attachment or a
 paste, but far too large for a QR code (§13 non-goal 3).
 
-A P2MR control block has no internal key, so for a single-leaf tree it is one byte (the
-leaf version); each additional merkle path node adds 32 bytes.
+A P2MR control block has no internal key, so for a single-leaf tree it is one byte and each
+additional merkle path node adds 32 bytes. That byte is the leaf version with BIP360's
+parity bit set, which is always 1 in the absence of an internal key: `0xc0 | 1 = 0xc1`
+(`P2MRBuilder::GetSpendData` in `src/script/signingprovider.cpp`). Note the asymmetry — the
+`PSBT_IN_P2MR_LEAF_SCRIPT` *value* ends with the bare leaf version `0xc0`, while its *key*
+is the control block beginning `0xc1`.
 
 ---
 
