@@ -64,4 +64,4 @@ Forgery is caught when the PSBT is *read*, so a co-signer never wastes time revi
 
 Both payments are permanently recorded on the public BTQ test network. Each is 8,930 bytes on the wire, yet the fee was **816 satoshis**, so quantum-safe group approval is not expensive to send. No consensus rules were changed: the same validation code that already governed these addresses accepted these payments.
 
-*Technical specification:* `design/DILITHIUM_PSBT_DESIGN.md`. The implementation, its live-chain proof section and the re-runnable proof script accompany the implementation pull request.
+*Technical specification:* `doc-btq/DILITHIUM_PSBT_DESIGN.md`. The implementation, its live-chain proof section and the re-runnable proof script accompany the implementation pull request.
