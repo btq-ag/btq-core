@@ -69,14 +69,11 @@ jobs:
       - name: Unit tests (make check)
         run: make check
 
-      # Bitcoin Core's script oracle, pinned. Do not use /main — it moves.
-      # Last commit that touched this JSON: 2025-07-23.
-      # Intended long-term home: btq-ag/qa-assets (TBD).
+      # Bitcoin Core's script oracle. SHA lives in contrib/qa-assets.pin.
       - name: script_assets_test (pinned bitcoin-core/qa-assets)
-        env:
-          SCRIPT_ASSETS_COMMIT: b33d85102d169b54d966ea315ad81a636680aefa
         run: |
           set -euo pipefail
+          SCRIPT_ASSETS_COMMIT=$(grep -E '^[0-9a-f]{40}$' contrib/qa-assets.pin)
           ASSETS_DIR="$RUNNER_TEMP/qa-assets-unit"
           mkdir -p "$ASSETS_DIR"
           curl --location --fail \

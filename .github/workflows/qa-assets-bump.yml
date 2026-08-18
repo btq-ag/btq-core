@@ -1,0 +1,88 @@
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Watch bitcoin-core/qa-assets for commits that touch script_assets_test.json.
+# If that path moved, open a pin PR. Do not follow repo main (fuzz corpora).
+#
+# GITHUB_TOKEN pushes do not start other workflows. The pin PR will not run
+# lean CI unless QA_ASSETS_BUMP_TOKEN (a PAT with workflow + contents) is set.
+
+name: qa-assets pin bump
+
+on:
+  schedule:
+    - cron: "27 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    if: github.repository == 'btq-ag/btq-core'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve latest JSON-touching commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          NEW=$(gh api \
+            "repos/bitcoin-core/qa-assets/commits?path=unit_test_data/script_assets_test.json&per_page=1" \
+            --jq '.[0].sha')
+          CUR=$(grep -E '^[0-9a-f]{40}$' contrib/qa-assets.pin)
+          echo "new=$NEW" >> "$GITHUB_ENV"
+          echo "cur=$CUR" >> "$GITHUB_ENV"
+          echo "remote $NEW"
+          echo "pin    $CUR"
+
+      - name: Open pin PR
+        if: env.new != env.cur
+        env:
+          GH_TOKEN: ${{ secrets.QA_ASSETS_BUMP_TOKEN || secrets.GITHUB_TOKEN }}
+          NEW: ${{ env.new }}
+        run: |
+          set -euo pipefail
+          SHORT="${NEW:0:12}"
+          BRANCH="ci/qa-assets-pin-${SHORT}"
+          if gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' | grep -q '[0-9]'; then
+            echo "PR already open for $BRANCH"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          python3 -c "
+          from pathlib import Path
+          import os
+          Path('contrib/qa-assets.pin').write_text(
+              '# bitcoin-core/qa-assets commit that last touched\n'
+              '# unit_test_data/script_assets_test.json\n'
+              '# Bumped by .github/workflows/qa-assets-bump.yml — do not track main.\n'
+              '# Long-term home: btq-ag/qa-assets (TBD).\n'
+              + os.environ['NEW'] + '\n'
+          )
+          "
+          git add contrib/qa-assets.pin
+          git commit -m "ci: bump script_assets corpus pin
+
+          Update contrib/qa-assets.pin to ${NEW}.
+
+          Refs #147"
+          git push -u origin "$BRANCH"
+          gh pr create --base master --head "$BRANCH" \
+            --title "ci: bump script_assets corpus pin" \
+            --body "Weekly inherit of Bitcoin Core \`script_assets_test.json\`.
+
+          Pin moved from \`${{ env.cur }}\` to \`${NEW}\`.
+
+          This is only the last commit that touched that path, not qa-assets main.
+
+          Lean CI on this PR should run \`script_assets_test\`. If it is red, a new Bitcoin case disagrees with us — add a skip or fix the interpreter. Do not auto-merge.
+
+          Refs #147"

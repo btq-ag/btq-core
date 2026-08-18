@@ -83,13 +83,12 @@ $ FUZZ=address_deserialize_v2 src/test/fuzz/fuzz -runs=1 fuzz_seed_corpus/addres
 ## Fuzzing corpora
 
 BTQ has no qa-assets fork yet (`btq-ag/qa-assets` is TBD). Until then, pin
-[`bitcoin-core/qa-assets`](https://github.com/bitcoin-core/qa-assets) at
-`b33d85102d169b54d966ea315ad81a636680aefa` (last change to
-`script_assets_test.json`). Do not track `main`.
+[`bitcoin-core/qa-assets`](https://github.com/bitcoin-core/qa-assets) at the
+commit in `contrib/qa-assets.pin`. Do not track `main`.
 
 ```sh
 $ git clone https://github.com/bitcoin-core/qa-assets
-$ git -C qa-assets checkout --detach b33d85102d169b54d966ea315ad81a636680aefa
+$ git -C qa-assets checkout --detach "$(grep -E '^[0-9a-f]{40}$' contrib/qa-assets.pin)"
 $ FUZZ=process_message src/test/fuzz/fuzz qa-assets/fuzz_seed_corpus/process_message/
 INFO: Seed: 1346407872
 INFO: Loaded 1 modules   (424174 inline 8-bit counters): 424174 [0x55d8a9004ab8, 0x55d8a906c3a6),

@@ -56,8 +56,9 @@ index 65e31724bc..f61b471953 100644
 if [ "$RUN_FUZZ_TESTS" = "true" ]; then
   export DIR_FUZZ_IN=${DIR_QA_ASSETS}/fuzz_seed_corpus/
   if [ ! -d "$DIR_FUZZ_IN" ]; then
+    SCRIPT_ASSETS_COMMIT=$(grep -E '^[0-9a-f]{40}$' "${BASE_ROOT_DIR}/contrib/qa-assets.pin")
     ${CI_RETRY_EXE} git clone https://github.com/bitcoin-core/qa-assets "${DIR_QA_ASSETS}"
-    git -C "${DIR_QA_ASSETS}" checkout --detach "${SCRIPT_ASSETS_COMMIT:-b33d85102d169b54d966ea315ad81a636680aefa}"
+    git -C "${DIR_QA_ASSETS}" checkout --detach "${SCRIPT_ASSETS_COMMIT}"
   fi
   (
     cd "${DIR_QA_ASSETS}"
@@ -68,8 +69,9 @@ elif [ "$RUN_UNIT_TESTS" = "true" ] || [ "$RUN_UNIT_TESTS_SEQUENTIAL" = "true" ]
   export DIR_UNIT_TEST_DATA=${DIR_QA_ASSETS}/unit_test_data/
   if [ ! -d "$DIR_UNIT_TEST_DATA" ]; then
     mkdir -p "$DIR_UNIT_TEST_DATA"
+    SCRIPT_ASSETS_COMMIT=$(grep -E '^[0-9a-f]{40}$' "${BASE_ROOT_DIR}/contrib/qa-assets.pin")
     ${CI_RETRY_EXE} curl --location --fail \
-      "https://raw.githubusercontent.com/bitcoin-core/qa-assets/${SCRIPT_ASSETS_COMMIT:-b33d85102d169b54d966ea315ad81a636680aefa}/unit_test_data/script_assets_test.json" \
+      "https://raw.githubusercontent.com/bitcoin-core/qa-assets/${SCRIPT_ASSETS_COMMIT}/unit_test_data/script_assets_test.json" \
       -o "${DIR_UNIT_TEST_DATA}/script_assets_test.json"
   fi
 fi
