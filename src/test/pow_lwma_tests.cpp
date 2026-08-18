@@ -7,9 +7,16 @@
 #include <chainparams.h>
 #include <consensus/params.h>
 #include <pow.h>
+#include <primitives/block.h>
+#include <protocol.h>
+#include <streams.h>
+#include <test/data/testnet_lwma_activation.json.h>
 #include <test/util/setup_common.h>
+#include <uint256.h>
+#include <util/strencodings.h>
 
 #include <boost/test/unit_test.hpp>
+#include <univalue.h>
 
 #include <algorithm>
 #include <vector>
@@ -330,6 +337,111 @@ BOOST_AUTO_TEST_CASE(lwma_formula_reference_parity)
         const uint32_t reference = ReferenceLwmaNextWork(&blocks[N], &header, consensus);
         BOOST_CHECK_EQUAL(impl, reference);
     }
+}
+
+BOOST_AUTO_TEST_CASE(lwma_testnet_activation_window_divergence)
+{
+    UniValue root;
+    BOOST_REQUIRE_MESSAGE(root.read(json_tests::testnet_lwma_activation) && root.isObject(),
+                          "could not parse testnet_lwma_activation.json");
+    BOOST_REQUIRE_EQUAL(root["schema_version"].getInt<int>(), 1);
+
+    const UniValue& range{root["range"]};
+    BOOST_REQUIRE(range.isObject());
+    BOOST_REQUIRE_EQUAL(range["start_height"].getInt<int>(), 299855);
+    BOOST_REQUIRE_EQUAL(range["end_height"].getInt<int>(), 300000);
+    BOOST_REQUIRE_EQUAL(range["lwma_activation_height"].getInt<int>(), 300000);
+
+    const UniValue& context{root["consensus_context"]};
+    BOOST_REQUIRE(context.isObject());
+    BOOST_REQUIRE_EQUAL(context["target_spacing_seconds"].getInt<int>(), 60);
+    BOOST_REQUIRE_EQUAL(context["pow_limit_bits"].get_str(), "1e0377ae");
+
+    const UniValue& expected{root["expected"]};
+    BOOST_REQUIRE(expected.isObject());
+    BOOST_REQUIRE_EQUAL(expected["n45"]["weighted_solvetime"].getInt<int>(), 4423);
+    BOOST_REQUIRE_EQUAL(expected["n45"]["next_bits"].get_str(), "1c04675d");
+    BOOST_REQUIRE_EQUAL(expected["n144"]["weighted_solvetime"].getInt<int>(), 54294);
+    BOOST_REQUIRE_EQUAL(expected["n144"]["next_bits"].get_str(), "1c055bf4");
+    BOOST_REQUIRE_EQUAL(expected["activation_bits"].get_str(), "1c04675d");
+
+    const UniValue& rows{root["headers"]};
+    BOOST_REQUIRE(rows.isArray());
+    BOOST_REQUIRE_EQUAL(rows.size(), 146U);
+
+    const auto chain_params{CreateChainParams(*m_node.args, ChainType::BTQTEST)};
+    Consensus::Params consensus{chain_params->GetConsensus()};
+    BOOST_REQUIRE_EQUAL(consensus.nLWMAHeight, 300000);
+    BOOST_REQUIRE_EQUAL(consensus.nLWMAWindow, 144);
+    BOOST_REQUIRE_EQUAL(consensus.nPowTargetSpacing, 60);
+    BOOST_REQUIRE_EQUAL(UintToArith256(consensus.powLimit).GetCompact(), 0x1e0377aeU);
+    BOOST_REQUIRE(!consensus.fPowNoRetargeting);
+
+    // The final row is the observed activation block. The preceding 145 rows
+    // are enough history for both disputed windows, including the timestamp
+    // immediately before each window.
+    std::vector<CBlockIndex> blocks(rows.size() - 1);
+    CBlockHeader previous_header;
+    CBlockHeader activation_header;
+    arith_uint256 previous_chainwork;
+    int previous_height{0};
+
+    for (size_t i = 0; i < rows.size(); ++i) {
+        const UniValue& row{rows[i]};
+        BOOST_REQUIRE(row.isObject());
+        const int height{row["height"].getInt<int>()};
+        const std::vector<unsigned char> raw{ParseHex(row["header_hex"].get_str())};
+        BOOST_REQUIRE_EQUAL(raw.size(), 80U);
+
+        CDataStream stream(raw, SER_NETWORK, PROTOCOL_VERSION);
+        CBlockHeader header;
+        stream >> header;
+        BOOST_REQUIRE(stream.empty());
+
+        BOOST_CHECK_EQUAL(header.GetHash().GetHex(), row["hash"].get_str());
+        BOOST_CHECK(CheckProofOfWork(header.GetHash(), header.nBits, consensus));
+        const arith_uint256 chainwork{UintToArith256(uint256S(row["chainwork"].get_str()))};
+        if (i > 0) {
+            BOOST_CHECK_EQUAL(height, previous_height + 1);
+            BOOST_CHECK(header.hashPrevBlock == previous_header.GetHash());
+            const CBlockIndex work_index{header};
+            BOOST_CHECK(chainwork == previous_chainwork + GetBlockProof(work_index));
+        }
+
+        if (i + 1 < rows.size()) {
+            CBlockIndex& index{blocks[i]};
+            index.pprev = i == 0 ? nullptr : &blocks[i - 1];
+            index.nHeight = height;
+            index.nVersion = header.nVersion;
+            index.hashMerkleRoot = header.hashMerkleRoot;
+            index.nTime = header.nTime;
+            index.nBits = header.nBits;
+            index.nNonce = header.nNonce;
+            index.nChainWork = chainwork;
+        } else {
+            activation_header = header;
+        }
+
+        previous_header = header;
+        previous_chainwork = chainwork;
+        previous_height = height;
+    }
+
+    BOOST_REQUIRE_EQUAL(blocks.back().nHeight + 1, consensus.nLWMAHeight);
+    BOOST_REQUIRE_EQUAL(activation_header.GetHash().GetHex(), expected["activation_hash"].get_str());
+    BOOST_REQUIRE_EQUAL(activation_header.nBits, 0x1c04675dU);
+
+    consensus.nLWMAWindow = 45;
+    const uint32_t n45{GetNextWorkRequired(&blocks.back(), &activation_header, consensus)};
+    consensus.nLWMAWindow = 144;
+    const uint32_t n144{GetNextWorkRequired(&blocks.back(), &activation_header, consensus)};
+
+    // These are fixture-pinned explorer observations, not values produced by
+    // the in-tree reference implementation above. The offline Python lint
+    // supplies the structurally independent arbitrary-precision oracle.
+    BOOST_CHECK_EQUAL(n45, 0x1c04675dU);
+    BOOST_CHECK_EQUAL(n144, 0x1c055bf4U);
+    BOOST_CHECK_NE(n45, n144);
 }
 
 namespace {
