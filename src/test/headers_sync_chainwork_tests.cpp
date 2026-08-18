@@ -57,6 +57,41 @@ void HeadersGeneratorSetup::GenerateHeaders(std::vector<CBlockHeader>& headers,
 
 BOOST_FIXTURE_TEST_SUITE(headers_sync_chainwork_tests, HeadersGeneratorSetup)
 
+BOOST_AUTO_TEST_CASE(anti_dos_work_threshold)
+{
+    struct ThresholdVector {
+        arith_uint256 tip_chain_work;
+        arith_uint256 tip_block_work;
+        arith_uint256 minimum_chain_work;
+        arith_uint256 expected;
+    };
+
+    const std::vector<ThresholdVector> vectors{
+        // No active tip: the configured floor is authoritative.
+        {0, 0, 37, 37},
+        // The near-tip subtraction saturates instead of underflowing.
+        {100, 2, 0, 0},
+        // Constant-work tip, with and without a dominating configured floor.
+        {1000, 2, 0, 712},
+        {1000, 2, 800, 800},
+        // The current tip's work, not an average of recent blocks, sets the buffer.
+        {100000, 500, 0, 28000},
+        {100000, 5, 0, 99280},
+        // A configured floor may be above the local tip's chain work.
+        {1000, 2, 1200, 1200},
+    };
+
+    for (size_t i = 0; i < vectors.size(); ++i) {
+        const auto& test = vectors[i];
+        BOOST_TEST_CONTEXT("threshold vector " << i) {
+            BOOST_CHECK(CalculateAntiDoSWorkThreshold(
+                test.tip_chain_work,
+                test.tip_block_work,
+                test.minimum_chain_work) == test.expected);
+        }
+    }
+}
+
 // In this test, we construct two sets of headers from genesis, one with
 // sufficient proof of work and one without.
 // 1. We deliver the first set of headers and verify that the headers sync state

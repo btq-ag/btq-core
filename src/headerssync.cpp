@@ -9,6 +9,11 @@
 #include <util/check.h>
 #include <util/vector.h>
 
+#include <algorithm>
+
+//! Number of tip-work-equivalent blocks kept as a near-tip relay buffer.
+constexpr uint32_t ANTI_DOS_HEADER_WORK_BUFFER{144};
+
 // The two constants below are computed using the simulation script in
 // contrib/devtools/headerssync-params.py.
 
@@ -22,6 +27,17 @@ constexpr size_t REDOWNLOAD_BUFFER_SIZE{14441}; // 14441/606 = ~23.8 commitments
 // Our memory analysis assumes 48 bytes for a CompressedHeader (so we should
 // re-calculate parameters if we compress further)
 static_assert(sizeof(CompressedHeader) == 48);
+
+arith_uint256 CalculateAntiDoSWorkThreshold(
+    const arith_uint256& tip_chain_work,
+    const arith_uint256& tip_block_work,
+    const arith_uint256& minimum_chain_work)
+{
+    const arith_uint256 buffered_work = std::min<arith_uint256>(
+        tip_block_work * ANTI_DOS_HEADER_WORK_BUFFER,
+        tip_chain_work);
+    return std::max<arith_uint256>(tip_chain_work - buffered_work, minimum_chain_work);
+}
 
 HeadersSyncState::HeadersSyncState(NodeId id, const Consensus::Params& consensus_params,
         const CBlockIndex* chain_start, const arith_uint256& minimum_required_work) :

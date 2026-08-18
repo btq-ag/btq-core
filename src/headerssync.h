@@ -52,6 +52,18 @@ struct CompressedHeader {
     };
 };
 
+/**
+ * Calculate the minimum chain work required before headers may be stored.
+ *
+ * The 144-block buffer count is header-relay policy inherited from Bitcoin
+ * Core; the resulting work threshold still scales with the current tip's
+ * block work.
+ */
+arith_uint256 CalculateAntiDoSWorkThreshold(
+    const arith_uint256& tip_chain_work,
+    const arith_uint256& tip_block_work,
+    const arith_uint256& minimum_chain_work);
+
 /** HeadersSyncState:
  *
  * We wish to download a peer's headers chain in a DoS-resistant way.
