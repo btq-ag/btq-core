@@ -79,6 +79,8 @@ from a constant that moved sitting next to one that did not.
 | `MAX_OPS_PER_SCRIPT` | 201 | 201 (unchanged) | `script/script.h` |
 | `MAX_STACK_SIZE` | 1,000 | 1,000 (unchanged) | `script/script.h` |
 
+Dilithium reclaims BIP342 OP_SUCCESS bytes `0xbb`–`0xbf` (`IsOpSuccess` in `src/script/script.cpp`). Upstream `script_assets_test` cases are skipped when a GetOp walk of the success or failure executed scripts finds those opcodes, or when the comment starts with `tapscript/inputmaxlimit` / `tapscript/pushmaxlimit` (Bitcoin’s 520-byte element limit; BTQ allows 15000). This is intentional and there are no unexplained corpus divergences. The JSON is fetched from `bitcoin-core/qa-assets` at pin `b33d85102d169b54d966ea315ad81a636680aefa`, not `main`. `btq-ag/qa-assets` is TBD.
+
 ### Mempool policy
 
 | Constant | Bitcoin | BTQ | Defined in |

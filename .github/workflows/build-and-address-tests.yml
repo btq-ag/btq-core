@@ -69,6 +69,21 @@ jobs:
       - name: Unit tests (make check)
         run: make check
 
+      # Bitcoin Core's script oracle, pinned. Do not use /main — it moves.
+      # Last commit that touched this JSON: 2025-07-23.
+      # Intended long-term home: btq-ag/qa-assets (TBD).
+      - name: script_assets_test (pinned bitcoin-core/qa-assets)
+        env:
+          SCRIPT_ASSETS_COMMIT: b33d85102d169b54d966ea315ad81a636680aefa
+        run: |
+          set -euo pipefail
+          ASSETS_DIR="$RUNNER_TEMP/qa-assets-unit"
+          mkdir -p "$ASSETS_DIR"
+          curl --location --fail \
+            "https://raw.githubusercontent.com/bitcoin-core/qa-assets/${SCRIPT_ASSETS_COMMIT}/unit_test_data/script_assets_test.json" \
+            -o "$ASSETS_DIR/script_assets_test.json"
+          DIR_UNIT_TEST_DATA="$ASSETS_DIR" src/test/test_btq --run_test=script_tests/script_assets_test
+
       - name: Smoke test - wallet + address generation (regtest)
         # Self-contained smoke test, on purpose NOT using the upstream
         # functional-test framework:
