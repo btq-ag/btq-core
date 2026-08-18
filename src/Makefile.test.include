@@ -24,6 +24,7 @@ JSON_TEST_FILES = \
   test/data/mldsa44_acvp.json \
   test/data/script_tests.json \
   test/data/sighash.json \
+  test/data/testnet_lwma_activation.json \
   test/data/tx_invalid.json \
   test/data/tx_valid.json
 
