@@ -238,11 +238,12 @@ BOOST_AUTO_TEST_CASE(mixed_wallet_input_fee_estimation)
 
     // dilithium-bech32 is refused by design: a witness v0 keyhash program is
     // indistinguishable from ECDSA P2WPKH and would not be spendable with a
-    // Dilithium key, so handing one out would create unspendable funds. The
-    // refusal is what gets asserted here, in all three places that implement it
-    // (scriptpubkeyman.cpp for both spk manager kinds, dilithium_wallet_manager
-    // .cpp for the manager). This case previously asked for the address and so
-    // contradicted the decision rather than covering it.
+    // Dilithium key, so handing one out would create unspendable funds. Both
+    // LegacyScriptPubKeyMan::GetNewDestination and
+    // DescriptorScriptPubKeyMan::GetNewDestination refuse it. This wallet is
+    // descriptor-only, so the descriptor one is what gets asserted here. This
+    // case previously asked for the address and so contradicted the decision
+    // rather than covering it.
     {
         ScriptPubKeyMan* spk_man = wallet->GetScriptPubKeyMan(OutputType::BECH32, /*internal=*/false);
         BOOST_REQUIRE(spk_man != nullptr);
