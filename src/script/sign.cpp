@@ -525,6 +525,10 @@ static bool SignP2MR(const SigningProvider& provider, const BaseSignatureCreator
     std::vector<std::vector<unsigned char>> smallest_result_stack;
     for (const auto& [key, control_blocks] : sigdata.p2mr_spenddata.scripts) {
         const auto& [script, leaf_ver] = key;
+        // Spend data merged from a PSBT can carry a leaf with no control block.
+        // Such a leaf cannot produce a witness, so skip it rather than
+        // dereference an empty set below.
+        if (control_blocks.empty()) continue;
         std::vector<std::vector<unsigned char>> result_stack;
         if (SignTaprootScript(provider, creator, sigdata, leaf_ver, script, SigVersion::P2MR_TAPSCRIPT, result_stack)) {
             result_stack.emplace_back(std::begin(script), std::end(script)); // Push the script

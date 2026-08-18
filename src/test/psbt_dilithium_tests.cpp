@@ -396,4 +396,69 @@ BOOST_AUTO_TEST_CASE(control_blocks_up_to_the_consensus_limit_round_trip)
     }
 }
 
+BOOST_AUTO_TEST_CASE(a_leaf_with_no_control_block_is_rejected)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    // No control block means nothing proves the leaf belongs to the output. The
+    // wire cannot carry this, because a leaf with no control block serializes no
+    // record, but a merge or an in-process build can still produce it.
+    f.psbt.inputs[0].m_p2mr_scripts[{std::vector<unsigned char>(leaf.begin(), leaf.end()), TAPROOT_LEAF_TAPSCRIPT}] = {};
+
+    const PrecomputedTransactionData txdata = PrecomputePSBTData(f.psbt);
+    std::string error;
+    BOOST_CHECK(!ValidateP2MRDilithiumInput(f.psbt, 0, &txdata, error));
+    BOOST_CHECK_MESSAGE(error.find("no control block") != std::string::npos, error);
+
+    // A signer that holds the key but not the tree takes the leaf straight from
+    // the PSBT, so nothing fills the empty set in. Signing must decline the leaf
+    // instead of reading the first control block of an empty set.
+    FlatSigningProvider keys_only;
+    const DilithiumPKHash id(signer.pubkey);
+    keys_only.dilithium_pubkeys.emplace(id, signer.pubkey);
+    keys_only.dilithium_keys.emplace(id, signer.key);
+    BOOST_CHECK(!SignPSBTInput(keys_only, f.psbt, 0, &txdata, SIGHASH_ALL, nullptr, /*finalize=*/true));
+    BOOST_CHECK(f.psbt.inputs[0].final_script_witness.IsNull());
+    BOOST_CHECK(f.psbt.inputs[0].m_p2mr_dilithium_script_sigs.empty());
+    BOOST_CHECK(InspectP2MRInput(f.psbt, 0).status == P2MRInputStatus::UNKNOWN_LEAF);
+}
+
+BOOST_AUTO_TEST_CASE(merging_does_not_let_an_empty_set_discard_a_control_block)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    const auto spenddata = f.builder.GetSpendData();
+    BOOST_REQUIRE_EQUAL(spenddata.scripts.size(), 1U);
+    const auto& [leaf_key, real_controls] = *spenddata.scripts.begin();
+    BOOST_REQUIRE(!real_controls.empty());
+
+    PSBTInput empty_leaf;
+    empty_leaf.m_p2mr_scripts[leaf_key] = {};
+
+    PSBTInput real_leaf;
+    real_leaf.m_p2mr_scripts[leaf_key] = real_controls;
+
+    // Empty destination must pick up the real control block.
+    PSBTInput merged = empty_leaf;
+    merged.Merge(real_leaf);
+    BOOST_CHECK(merged.m_p2mr_scripts[leaf_key] == real_controls);
+
+    // Real destination must keep its control block when the incoming set is empty.
+    merged = real_leaf;
+    merged.Merge(empty_leaf);
+    BOOST_CHECK(merged.m_p2mr_scripts[leaf_key] == real_controls);
+
+    SignatureData sigdata;
+    sigdata.p2mr_spenddata.scripts[leaf_key] = real_controls;
+    PSBTInput from_sig = empty_leaf;
+    from_sig.FromSignatureData(sigdata);
+    BOOST_CHECK(from_sig.m_p2mr_scripts[leaf_key] == real_controls);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
