@@ -7,7 +7,7 @@ Under the **pre-P2MR** regime, Dilithium opcodes were valid in legacy scripts, P
 witness-v0 scripts, and a Dilithium-sized public key on a witness-v0 keyhash program routed to the
 Dilithium verifier. That regime remains in force on the public testnet.
 
-Under the **P2MR-only** regime — the mainnet parameter set, from genesis — Dilithium opcodes are
+Under the **P2MR-only** regime (the mainnet parameter set, from genesis) Dilithium opcodes are
 consensus-valid only inside P2MR tapscript leaves. None of the output types below are spendable
 there.
 
@@ -21,12 +21,12 @@ The quantum analogue of P2PK. The public key is committed on-chain at output cre
 unlocking data need only supply a valid signature.
 
 Not suitable for long-held funds: the public key is visible in the UTXO set from the moment the
-output is created, which meets the Weak Address definition under the Aggarwal–Babbush
+output is created, which meets the Weak Address definition under the Aggarwal-Babbush
 classification. A sufficiently capable quantum adversary can derive the private key before the
 output is spent.
 
-The same script survives as a **P2MR leaf** — a single-key leaf committing one Dilithium public
-key — where the Merkle root hides it until the spend and the exposure does not arise. Single-key
+The same script survives as a **P2MR leaf**, a single-key leaf committing one Dilithium public
+key, where the Merkle root hides it until the spend and the exposure does not arise. Single-key
 P2MR, not bare P2DPK, is the recommended coinbase payout target.
 
 ## Dilithium public-key-hash
@@ -54,7 +54,7 @@ P2MR-only rule the same multi-key policies are expressed as P2MR leaf scripts, e
 `OP_CHECKMULTISIGDILITHIUM` directly or as a threshold accumulator built from
 `OP_CHECKSIGDILITHIUM` and `OP_ADD`.
 
-## P2DWPKH (witness-v0 keyhash) — withdrawn
+## P2DWPKH (witness-v0 keyhash), withdrawn
 
 A 20-byte witness program committing to the HASH160 of a public key, with the spending key
 supplied on the witness stack.
