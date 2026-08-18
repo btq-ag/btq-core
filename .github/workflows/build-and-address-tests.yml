@@ -69,6 +69,9 @@ jobs:
       - name: Unit tests (make check)
         run: make check
 
+      - name: Testnet LWMA activation oracle
+        run: python3 test/lint/lint-btq-lwma-activation.py
+
       - name: Smoke test - wallet + address generation (regtest)
         # Self-contained smoke test, on purpose NOT using the upstream
         # functional-test framework:
