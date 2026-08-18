@@ -82,13 +82,13 @@ et al. §III.A recommend for Weak Address. Neither addresses whether a scheme's 
 confined to one script version. That confinement is a BTQ decision, on three grounds:
 
 1. **Retroactivity.** Routing a witness-v0 keyhash spend to Dilithium by key size did not add an
-   output type. It changed the spending rules of a witness program that already existed, so outputs created
-   before the change became subject to rules they were not created under. A new witness version
-   has no prior outputs whose semantics can change.
+   output type. It changed the spending rules of a witness program that already existed, so
+   outputs created before the change became subject to rules they were not created under. A new
+   witness version has no prior outputs whose semantics can change.
 2. **No inference.** After activation, no consensus rule determines which signature scheme governs
-   an output from the data supplied to spend it. In practice Dilithium and ECDSA
-   witness programs proved easy to confuse, and one destination type gives wallets, miners, and
-   explorers a single format to agree on.
+   an output from the data supplied to spend it. In practice Dilithium and ECDSA witness programs
+   proved easy to confuse, and one destination type gives wallets, miners, and explorers a single
+   format to agree on.
 3. **At-rest exposure.** A bare public-key output places the key on-chain at creation. A P2MR
    commitment withholds it until the spend.
 
