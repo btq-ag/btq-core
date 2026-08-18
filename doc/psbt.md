@@ -144,3 +144,82 @@ separately. They can then all invoke `walletprocesspsbt "P"`, and end up with
 their individually-signed PSBT structures. They then all send those back to
 Carol (or anyone) who can combine them using `combinepsbt`. The last two steps
 (`finalizepsbt` and `sendrawtransaction`) remain unchanged.
+
+## Dilithium P2MR (BTQ)
+
+ECDSA `addmultisigaddress` cannot describe a Dilithium spend. Dilithium
+multisig lives in a P2MR (witness v2) leaf, and the partial signatures are too
+large for `PSBT_IN_PARTIAL_SIG`. BTQ-PSBT adds typed input fields for the leaf,
+the merkle root and the Dilithium signatures; `walletcreatefundedpsbt` /
+`walletprocesspsbt` / `combinepsbt` / `finalizepsbt` are otherwise the same
+roles as above.
+
+A 2-of-3 is about 12 KB binary, 16 KB base64 — a file, not a QR code.
+`analyzepsbt` does not yet report Dilithium progress; use `decodepsbt` (or the
+wrapper's `status` command) and look at `inputs[0].p2mr_dilithium`.
+
+### Raw `btq-cli` recipe (2-of-3)
+
+Each co-signer has their own wallet. Replace `-rpcwallet=` and the `-datadir` /
+`-testnet` flags to match the node.
+
+```sh
+# 1. Each co-signer publishes one Dilithium pubkey
+btq-cli -rpcwallet=alice getnewdilithiumaddress
+# { "address": "...", "p2mr_id": "..." }
+btq-cli -rpcwallet=alice getdilithiumpubkey "<alice_p2mr_id>"
+# { "pubkeys": [ { "pubkey": "<hex>", "ismine": true } ] }
+# Repeat for bob and carol. Call the three pubkeys Kalice, Kbob, Kcarol.
+
+# 2. Every co-signer registers the same m and the same pubkey list, in the same order
+btq-cli -rpcwallet=alice createdilithiummultisig 2 '["Kalice","Kbob","Kcarol"]'
+btq-cli -rpcwallet=bob   createdilithiummultisig 2 '["Kalice","Kbob","Kcarol"]'
+btq-cli -rpcwallet=carol createdilithiummultisig 2 '["Kalice","Kbob","Kcarol"]'
+# All three must report the same "address". Each reports "signers_available": 1.
+
+# 3. Fund that address, then one co-signer builds the unsigned PSBT
+btq-cli -rpcwallet=alice walletcreatefundedpsbt \
+  '[{"txid":"<txid>","vout":0}]' '{"<destination>":0.0005}'
+# Save the "psbt" field to unsigned.psbt (it is ~16 KB).
+
+# 4a. Sequential: alice signs, hands the file to bob
+btq-cli -rpcwallet=alice walletprocesspsbt "$(cat unsigned.psbt)"
+btq-cli -rpcwallet=bob   walletprocesspsbt "<psbt from alice>"
+# bob's result has "complete": true once two signatures are present.
+
+# 4b. Parallel: alice and carol each sign the *unsigned* PSBT, then merge
+btq-cli -rpcwallet=alice walletprocesspsbt "$(cat unsigned.psbt)"   # -> alice.psbt
+btq-cli -rpcwallet=carol walletprocesspsbt "$(cat unsigned.psbt)"   # -> carol.psbt
+btq-cli combinepsbt '["<alice.psbt>","<carol.psbt>"]'
+
+# 5. Inspect, extract, broadcast
+btq-cli decodepsbt "<psbt>"   # inputs[0].p2mr_dilithium.status, .signatures, .required
+btq-cli finalizepsbt "<psbt>"
+btq-cli sendrawtransaction "<hex>"
+```
+
+`createdilithiummultisig` is what makes the leaf and control block travel with
+the PSBT: without it, `walletcreatefundedpsbt` has no P2MR metadata to attach
+and the next wallet cannot sign.
+
+### Wrapper
+
+`contrib/btq/dilithium-psbt.sh` is the same recipe with less JSON quoting.
+PSBT payloads stay on stdout so they can be redirected to a file:
+
+```sh
+CLI="btq-cli -testnet"
+contrib/btq/dilithium-psbt.sh --cli="$CLI" pubkey alice
+contrib/btq/dilithium-psbt.sh --cli="$CLI" register alice 2 "$PK_A" "$PK_B" "$PK_C"
+contrib/btq/dilithium-psbt.sh --cli="$CLI" create alice "$TXID:0" "$DEST" 0.0005 > unsigned.psbt
+contrib/btq/dilithium-psbt.sh --cli="$CLI" sign alice unsigned.psbt > alice.psbt
+contrib/btq/dilithium-psbt.sh --cli="$CLI" sign carol unsigned.psbt > carol.psbt
+contrib/btq/dilithium-psbt.sh --cli="$CLI" combine alice.psbt carol.psbt > combined.psbt
+contrib/btq/dilithium-psbt.sh --cli="$CLI" status combined.psbt
+contrib/btq/dilithium-psbt.sh --cli="$CLI" finalize combined.psbt > spend.hex
+contrib/btq/dilithium-psbt.sh --cli="$CLI" broadcast spend.hex
+```
+
+The live-chain proof against public testnet is
+`contrib/btq/testnet_dilithium_psbt_proof.sh`. The wire format and the two
+confirmed spends are recorded in `doc-btq/DILITHIUM_PSBT_DESIGN.md` §16–§17.

@@ -9,6 +9,7 @@
 #include <key.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
+#include <script/dilithium_leaf.h>
 #include <script/keyorigin.h>
 #include <script/miniscript.h>
 #include <script/script.h>
@@ -403,6 +404,27 @@ struct TapSatisfier: Satisfier<XOnlyPubKey> {
 static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator& creator, const CScript& scriptPubKey,
                      std::vector<valtype>& ret, TxoutType& whichTypeRet, SigVersion sigversion, SignatureData& sigdata, const uint256* leaf_hash = nullptr);
 
+/**
+ * Sign a threshold accumulator leaf, one empty-able slot per key.
+ *
+ * Every key is always attempted so that a signer contributes everything it can
+ * in one pass: signatures land in sigdata even when the threshold is not met
+ * yet, which is what lets a later signer finish the input.
+ */
+static bool SignDilithiumAccumulatorLeaf(const SigningProvider& provider, const BaseSignatureCreator& creator, SignatureData& sigdata,
+                                         const P2MRDilithiumLeafPolicy& policy, const CScript& script, const uint256& leaf_hash,
+                                         std::vector<valtype>& result)
+{
+    std::vector<std::vector<unsigned char>> sigs_by_key_index(policy.pubkeys.size());
+    for (size_t i = 0; i < policy.pubkeys.size(); ++i) {
+        std::vector<unsigned char> sig;
+        if (CreateDilithiumSig(creator, sigdata, provider, sig, policy.pubkeys[i], script, SigVersion::P2MR_TAPSCRIPT, &leaf_hash)) {
+            sigs_by_key_index[i] = std::move(sig);
+        }
+    }
+    return BuildDilithiumLeafWitness(policy, sigs_by_key_index, result);
+}
+
 static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatureCreator& creator, SignatureData& sigdata, int leaf_version, Span<const unsigned char> script_bytes, SigVersion sigversion, std::vector<valtype>& result)
 {
     // Only BIP342 tapscript signing is supported for now.
@@ -419,6 +441,12 @@ static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatu
     // permits those opcodes, so let the ordinary solver sign directly
     // recognized Dilithium leaf scripts such as <pubkey> OP_CHECKSIGDILITHIUM.
     if (sigversion == SigVersion::P2MR_TAPSCRIPT && result.empty()) {
+        // The threshold accumulator leaf is not a Solver-recognized template,
+        // because its per-key checks are spelled out opcode by opcode.
+        const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
+        if (policy.type == P2MRLeafTemplate::THRESHOLD_ACCUMULATOR) {
+            return SignDilithiumAccumulatorLeaf(provider, creator, sigdata, policy, script, leaf_hash, result);
+        }
         TxoutType which_type;
         return SignStep(provider, creator, script, result, which_type, sigversion, sigdata, &leaf_hash);
     }

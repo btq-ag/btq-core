@@ -21,6 +21,7 @@
 #include <policy/rbf.h>
 #include <primitives/transaction.h>
 #include <psbt.h>
+#include <psbt_dilithium.h>
 #include <random.h>
 #include <rpc/blockchain.h>
 #include <rpc/rawtransaction_util.h>
@@ -939,6 +940,40 @@ const RPCResult decodepsbt_inputs{
             }},
             {RPCResult::Type::STR_HEX, "taproot_internal_key", /*optional=*/ true, "The hex-encoded Taproot x-only internal key"},
             {RPCResult::Type::STR_HEX, "taproot_merkle_root", /*optional=*/ true, "The hex-encoded Taproot merkle root"},
+            {RPCResult::Type::ARR, "p2mr_scripts", /*optional=*/ true, "",
+            {
+                {RPCResult::Type::OBJ, "", "",
+                {
+                    {RPCResult::Type::STR_HEX, "script", "A P2MR leaf script"},
+                    {RPCResult::Type::NUM, "leaf_ver", "The version number for the leaf script"},
+                    {RPCResult::Type::ARR, "control_blocks", "The control blocks for this script",
+                    {
+                        {RPCResult::Type::STR_HEX, "control_block", "A hex-encoded control block for this script"},
+                    }},
+                    {RPCResult::Type::STR, "dilithium_policy", /*optional=*/ true, "The recognised Dilithium leaf template"},
+                    {RPCResult::Type::NUM, "dilithium_required", /*optional=*/ true, "Signatures the leaf requires"},
+                    {RPCResult::Type::NUM, "dilithium_total", /*optional=*/ true, "Keys the leaf names"},
+                }},
+            }},
+            {RPCResult::Type::STR_HEX, "p2mr_merkle_root", /*optional=*/ true, "The hex-encoded P2MR merkle root"},
+            {RPCResult::Type::ARR, "p2mr_dilithium_script_path_sigs", /*optional=*/ true, "",
+            {
+                {RPCResult::Type::OBJ, "", "",
+                {
+                    {RPCResult::Type::STR_HEX, "pubkey", "The Dilithium pubkey for this signature"},
+                    {RPCResult::Type::STR_HEX, "pubkey_hash", "The hash of that pubkey"},
+                    {RPCResult::Type::STR_HEX, "leaf_hash", "The leaf hash for this signature"},
+                    {RPCResult::Type::STR_HEX, "sig", "The signature itself"},
+                }},
+            }},
+            {RPCResult::Type::OBJ, "p2mr_dilithium", /*optional=*/ true, "Signing progress for a Dilithium P2MR input",
+            {
+                {RPCResult::Type::STR, "status", "One of unsigned, partially_signed, finalizable, finalized, unknown_leaf"},
+                {RPCResult::Type::STR, "policy", /*optional=*/ true, "The recognised Dilithium leaf template"},
+                {RPCResult::Type::STR_HEX, "leaf_hash", /*optional=*/ true, "The leaf being spent"},
+                {RPCResult::Type::NUM, "signatures", /*optional=*/ true, "Signatures collected so far"},
+                {RPCResult::Type::NUM, "required", /*optional=*/ true, "Signatures the leaf requires"},
+            }},
             {RPCResult::Type::OBJ_DYN, "unknown", /*optional=*/ true, "The unknown input fields",
             {
                 {RPCResult::Type::STR_HEX, "key", "(key-value pair) An unknown key-value pair"},
@@ -1325,6 +1360,66 @@ static RPCHelpMan decodepsbt()
         // Write taproot merkle root
         if (!input.m_tap_merkle_root.IsNull()) {
             in.pushKV("taproot_merkle_root", HexStr(input.m_tap_merkle_root));
+        }
+
+        // P2MR leaf scripts
+        if (!input.m_p2mr_scripts.empty()) {
+            UniValue p2mr_scripts(UniValue::VARR);
+            for (const auto& [leaf, control_blocks] : input.m_p2mr_scripts) {
+                const auto& [script, leaf_ver] = leaf;
+                UniValue script_info(UniValue::VOBJ);
+                script_info.pushKV("script", HexStr(script));
+                script_info.pushKV("leaf_ver", leaf_ver);
+                UniValue control_blocks_univ(UniValue::VARR);
+                for (const auto& control_block : control_blocks) {
+                    control_blocks_univ.push_back(HexStr(control_block));
+                }
+                script_info.pushKV("control_blocks", control_blocks_univ);
+                const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(CScript{script.begin(), script.end()});
+                if (policy.IsValid()) {
+                    script_info.pushKV("dilithium_policy", P2MRLeafTemplateName(policy.type));
+                    script_info.pushKV("dilithium_required", policy.m);
+                    script_info.pushKV("dilithium_total", policy.n());
+                }
+                p2mr_scripts.push_back(script_info);
+            }
+            in.pushKV("p2mr_scripts", p2mr_scripts);
+        }
+
+        // P2MR merkle root
+        if (!input.m_p2mr_merkle_root.IsNull()) {
+            in.pushKV("p2mr_merkle_root", HexStr(input.m_p2mr_merkle_root));
+        }
+
+        // P2MR Dilithium script path signatures
+        if (!input.m_p2mr_dilithium_script_sigs.empty()) {
+            UniValue script_sigs(UniValue::VARR);
+            for (const auto& [keyid_leaf, pubkey_sig] : input.m_p2mr_dilithium_script_sigs) {
+                const auto& [pubkey, sig] = pubkey_sig;
+                UniValue sigobj(UniValue::VOBJ);
+                sigobj.pushKV("pubkey", HexStr(pubkey));
+                sigobj.pushKV("pubkey_hash", HexStr(keyid_leaf.first));
+                sigobj.pushKV("leaf_hash", HexStr(keyid_leaf.second));
+                sigobj.pushKV("sig", HexStr(sig));
+                script_sigs.push_back(sigobj);
+            }
+            in.pushKV("p2mr_dilithium_script_path_sigs", script_sigs);
+        }
+
+        // Aggregate Dilithium/P2MR signing status for this input
+        {
+            const P2MRInputInfo info = InspectP2MRInput(psbtx, i);
+            if (info.status != P2MRInputStatus::NOT_P2MR) {
+                UniValue status(UniValue::VOBJ);
+                status.pushKV("status", P2MRInputStatusName(info.status));
+                if (info.policy.IsValid()) {
+                    status.pushKV("policy", P2MRLeafTemplateName(info.policy.type));
+                    status.pushKV("leaf_hash", HexStr(info.leaf_hash));
+                    status.pushKV("signatures", info.sigs_present);
+                    status.pushKV("required", info.sigs_required);
+                }
+                in.pushKV("p2mr_dilithium", status);
+            }
         }
 
         // Proprietary

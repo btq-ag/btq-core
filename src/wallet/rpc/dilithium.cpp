@@ -12,6 +12,7 @@
 #include <wallet/walletdb.h>
 #include <crypto/dilithium_key.h>
 #include <key_io.h>
+#include <script/dilithium_leaf.h>
 #include <script/script.h>
 #include <script/solver.h>
 #include <script/sign.h>
@@ -380,6 +381,169 @@ RPCHelpMan verifymessagewithdilithium()
                                           /*strSignature=*/request.params[1].get_str(),
                                           /*strMessage=*/request.params[2].get_str(),
                                           "verifymessagewithdilithium \"address\" \"signature\" \"message\"");
+        },
+    };
+}
+
+RPCHelpMan getdilithiumpubkey()
+{
+    return RPCHelpMan{"getdilithiumpubkey",
+        "\nReturn the Dilithium public keys named by a wallet P2MR destination.\n"
+        "Share the pubkey of a single-key destination with your co-signers to build\n"
+        "a multisig with createdilithiummultisig.\n",
+        {
+            {"p2mr_id", RPCArg::Type::STR, RPCArg::Optional::NO, "P2MR metadata id, as returned by getnewdilithiumaddress"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "address", "The P2MR address"},
+                {RPCResult::Type::ARR, "pubkeys", "Dilithium public keys in leaf order",
+                {
+                    {RPCResult::Type::OBJ, "", "",
+                    {
+                        {RPCResult::Type::STR_HEX, "pubkey", "The Dilithium public key"},
+                        {RPCResult::Type::BOOL, "ismine", "Whether this wallet holds the private key"},
+                    }},
+                }},
+            }
+        },
+        RPCExamples{HelpExampleCli("getdilithiumpubkey", "\"abcd1234\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
+            if (!wallet) return UniValue::VNULL;
+
+            LOCK(wallet->cs_wallet);
+            auto entry = GetP2MR(*wallet, request.params[0].get_str());
+            if (!entry) throw JSONRPCError(RPC_INVALID_PARAMETER, "unknown p2mr_id");
+
+            UniValue pubkeys(UniValue::VARR);
+            for (const P2MRTreeLeaf& leaf : entry->tree) {
+                const CScript script{leaf.script.begin(), leaf.script.end()};
+                const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
+                for (const CDilithiumPubKey& pubkey : policy.pubkeys) {
+                    CKeyID keyid;
+                    const uint160 id = pubkey.GetID();
+                    std::copy(id.begin(), id.end(), keyid.begin());
+                    UniValue obj(UniValue::VOBJ);
+                    obj.pushKV("pubkey", HexStr(pubkey));
+                    obj.pushKV("ismine", WalletHaveDilithiumKey(*wallet, keyid));
+                    pubkeys.push_back(std::move(obj));
+                }
+            }
+            if (pubkeys.empty()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "destination names no Dilithium public keys");
+            }
+
+            UniValue result(UniValue::VOBJ);
+            result.pushKV("address", entry->address);
+            result.pushKV("pubkeys", std::move(pubkeys));
+            return result;
+        },
+    };
+}
+
+RPCHelpMan createdilithiummultisig()
+{
+    return RPCHelpMan{"createdilithiummultisig",
+        "\nRegister an m-of-n Dilithium multisig P2MR destination in this wallet.\n"
+        "\nEvery co-signer must call this with the same m and the same pubkey list in the\n"
+        "same order; they then all derive the same address. Funds sent to it are spent by\n"
+        "passing a PSBT between the co-signers with walletprocesspsbt until m signatures\n"
+        "have accumulated.\n",
+        {
+            {"nrequired", RPCArg::Type::NUM, RPCArg::Optional::NO, "Number of signatures required"},
+            {"pubkeys", RPCArg::Type::ARR, RPCArg::Optional::NO, "Dilithium public keys, hex encoded",
+                {
+                    {"pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "A Dilithium public key"},
+                },
+            },
+            {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "address", "The multisig P2MR address"},
+                {RPCResult::Type::STR, "p2mr_id", "Wallet-local P2MR metadata id"},
+                {RPCResult::Type::STR_HEX, "scriptPubKey", "P2MR scriptPubKey"},
+                {RPCResult::Type::STR_HEX, "merkle_root", "P2MR merkle root"},
+                {RPCResult::Type::STR_HEX, "leaf_script", "The Dilithium threshold leaf script"},
+                {RPCResult::Type::NUM, "signers_available", "How many of the n keys this wallet can sign with"},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("createdilithiummultisig", "2 '[\"pubkeyhex1\",\"pubkeyhex2\",\"pubkeyhex3\"]'")
+            + HelpExampleRpc("createdilithiummultisig", "2, [\"pubkeyhex1\",\"pubkeyhex2\",\"pubkeyhex3\"]")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
+            if (!wallet) return UniValue::VNULL;
+
+            const int required = request.params[0].getInt<int>();
+            const UniValue& keys = request.params[1].get_array();
+            const std::string label = request.params[2].isNull() ? "" : LabelFromValue(request.params[2]);
+
+            if (keys.empty()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "pubkeys must not be empty");
+            }
+            if (keys.size() > MAX_PUBKEYS_PER_MULTISIG) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER,
+                    strprintf("Number of keys involved in the multisignature address creation > %d", MAX_PUBKEYS_PER_MULTISIG));
+            }
+            if (required < 1 || required > (int)keys.size()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER,
+                    strprintf("wrong number of keys, nrequired must be between 1 and %d", (int)keys.size()));
+            }
+
+            std::vector<CDilithiumPubKey> pubkeys;
+            for (size_t i = 0; i < keys.size(); ++i) {
+                const auto bytes = TryParseHex<unsigned char>(keys[i].get_str());
+                if (!bytes || bytes->size() != CDilithiumPubKey::SIZE) {
+                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
+                        strprintf("pubkey %d is not a %d-byte hex Dilithium public key", (int)i, (int)CDilithiumPubKey::SIZE));
+                }
+                const CDilithiumPubKey pubkey{*bytes};
+                if (!pubkey.IsFullyValid()) {
+                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("pubkey %d is not a valid Dilithium public key", (int)i));
+                }
+                // Duplicates would silently lower the effective threshold, since
+                // one private key could then fill several accumulator slots.
+                if (std::find(pubkeys.begin(), pubkeys.end(), pubkey) != pubkeys.end()) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("pubkey %d is a duplicate", (int)i));
+                }
+                pubkeys.push_back(pubkey);
+            }
+
+            const CScript leaf_script = GetScriptForDilithiumThreshold(required, pubkeys);
+            P2MRTreeLeaf leaf;
+            leaf.depth = 0;
+            leaf.leaf_version = TAPROOT_LEAF_TAPSCRIPT;
+            leaf.script.assign(leaf_script.begin(), leaf_script.end());
+
+            LOCK(wallet->cs_wallet);
+            auto created = CreateP2MR(*wallet, {leaf}, label);
+            if (!created) {
+                throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+            }
+
+            int available = 0;
+            for (const CDilithiumPubKey& pubkey : pubkeys) {
+                CKeyID keyid;
+                const uint160 id = pubkey.GetID();
+                std::copy(id.begin(), id.end(), keyid.begin());
+                if (WalletHaveDilithiumKey(*wallet, keyid)) ++available;
+            }
+
+            UniValue result(UniValue::VOBJ);
+            result.pushKV("address", created->address);
+            result.pushKV("p2mr_id", created->id);
+            result.pushKV("scriptPubKey", HexStr(created->script_pub_key));
+            result.pushKV("merkle_root", HexStr(created->merkle_root));
+            result.pushKV("leaf_script", HexStr(leaf_script));
+            result.pushKV("signers_available", available);
+            return result;
         },
     };
 }

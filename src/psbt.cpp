@@ -5,6 +5,7 @@
 #include <psbt.h>
 
 #include <policy/policy.h>
+#include <psbt_dilithium.h>
 #include <script/signingprovider.h>
 #include <util/check.h>
 #include <util/strencodings.h>
@@ -130,6 +131,15 @@ void PSBTInput::FillSignatureData(SignatureData& sigdata) const
     for (const auto& [leaf_script, control_block] : m_tap_scripts) {
         sigdata.tr_spenddata.scripts.emplace(leaf_script, control_block);
     }
+    if (!m_p2mr_merkle_root.IsNull()) {
+        sigdata.p2mr_spenddata.merkle_root = m_p2mr_merkle_root;
+    }
+    for (const auto& [leaf_script, control_blocks] : m_p2mr_scripts) {
+        sigdata.p2mr_spenddata.scripts.emplace(leaf_script, control_blocks);
+    }
+    for (const auto& [keyid_leaf, pubkey_sig] : m_p2mr_dilithium_script_sigs) {
+        sigdata.p2mr_dilithium_script_sigs.emplace(keyid_leaf, pubkey_sig);
+    }
     for (const auto& [pubkey, leaf_origin] : m_tap_bip32_paths) {
         sigdata.taproot_misc_pubkeys.emplace(pubkey, leaf_origin);
         sigdata.tap_pubkeys.emplace(Hash160(pubkey), pubkey);
@@ -155,6 +165,11 @@ void PSBTInput::FromSignatureData(const SignatureData& sigdata)
         hd_keypaths.clear();
         redeem_script.clear();
         witness_script.clear();
+        // The finalized witness supersedes the P2MR spend path and its partial
+        // signatures, which together dwarf the rest of the input.
+        m_p2mr_scripts.clear();
+        m_p2mr_dilithium_script_sigs.clear();
+        m_p2mr_merkle_root.SetNull();
 
         if (!sigdata.scriptSig.empty()) {
             final_script_sig = sigdata.scriptSig;
@@ -193,6 +208,15 @@ void PSBTInput::FromSignatureData(const SignatureData& sigdata)
     for (const auto& [pubkey, leaf_origin] : sigdata.taproot_misc_pubkeys) {
         m_tap_bip32_paths.emplace(pubkey, leaf_origin);
     }
+    if (!sigdata.p2mr_spenddata.merkle_root.IsNull()) {
+        m_p2mr_merkle_root = sigdata.p2mr_spenddata.merkle_root;
+    }
+    for (const auto& [leaf_script, control_blocks] : sigdata.p2mr_spenddata.scripts) {
+        m_p2mr_scripts.emplace(leaf_script, control_blocks);
+    }
+    for (const auto& [keyid_leaf, pubkey_sig] : sigdata.p2mr_dilithium_script_sigs) {
+        m_p2mr_dilithium_script_sigs.emplace(keyid_leaf, pubkey_sig);
+    }
 }
 
 void PSBTInput::Merge(const PSBTInput& input)
@@ -212,6 +236,8 @@ void PSBTInput::Merge(const PSBTInput& input)
     m_tap_script_sigs.insert(input.m_tap_script_sigs.begin(), input.m_tap_script_sigs.end());
     m_tap_scripts.insert(input.m_tap_scripts.begin(), input.m_tap_scripts.end());
     m_tap_bip32_paths.insert(input.m_tap_bip32_paths.begin(), input.m_tap_bip32_paths.end());
+    m_p2mr_scripts.insert(input.m_p2mr_scripts.begin(), input.m_p2mr_scripts.end());
+    m_p2mr_dilithium_script_sigs.insert(input.m_p2mr_dilithium_script_sigs.begin(), input.m_p2mr_dilithium_script_sigs.end());
 
     if (redeem_script.empty() && !input.redeem_script.empty()) redeem_script = input.redeem_script;
     if (witness_script.empty() && !input.witness_script.empty()) witness_script = input.witness_script;
@@ -220,6 +246,7 @@ void PSBTInput::Merge(const PSBTInput& input)
     if (m_tap_key_sig.empty() && !input.m_tap_key_sig.empty()) m_tap_key_sig = input.m_tap_key_sig;
     if (m_tap_internal_key.IsNull() && !input.m_tap_internal_key.IsNull()) m_tap_internal_key = input.m_tap_internal_key;
     if (m_tap_merkle_root.IsNull() && !input.m_tap_merkle_root.IsNull()) m_tap_merkle_root = input.m_tap_merkle_root;
+    if (m_p2mr_merkle_root.IsNull() && !input.m_p2mr_merkle_root.IsNull()) m_p2mr_merkle_root = input.m_p2mr_merkle_root;
 }
 
 void PSBTOutput::FillSignatureData(SignatureData& sigdata) const
@@ -554,6 +581,13 @@ bool DecodeRawPSBT(PartiallySignedTransaction& psbt, Span<const std::byte> tx_da
         }
     } catch (const std::exception& e) {
         error = e.what();
+        return false;
+    }
+    // Dilithium/P2MR material cannot be checked field by field while parsing --
+    // verifying a partial signature needs the unsigned transaction and every
+    // input amount. Do it here so no caller can act on an unvalidated PSBT.
+    if (!ValidateP2MRDilithiumPSBT(psbt, error)) {
+        psbt = PartiallySignedTransaction{};
         return false;
     }
     return true;

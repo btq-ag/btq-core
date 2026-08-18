@@ -97,6 +97,7 @@ BTQ_TESTS =\
   test/dilithium_descriptor_tests.cpp \
   test/dilithium_basic_tests.cpp \
   test/dilithium_p2mr_only_tests.cpp \
+  test/psbt_dilithium_tests.cpp \
   test/dilithium_mixed_mode_tests.cpp \
   test/dilithium_network_policy_tests.cpp \
   test/cuckoocache_tests.cpp \
