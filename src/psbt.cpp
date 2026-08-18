@@ -212,7 +212,7 @@ void PSBTInput::FromSignatureData(const SignatureData& sigdata)
         m_p2mr_merkle_root = sigdata.p2mr_spenddata.merkle_root;
     }
     for (const auto& [leaf_script, control_blocks] : sigdata.p2mr_spenddata.scripts) {
-        m_p2mr_scripts.emplace(leaf_script, control_blocks);
+        m_p2mr_scripts[leaf_script].insert(control_blocks.begin(), control_blocks.end());
     }
     for (const auto& [keyid_leaf, pubkey_sig] : sigdata.p2mr_dilithium_script_sigs) {
         m_p2mr_dilithium_script_sigs.emplace(keyid_leaf, pubkey_sig);
@@ -236,7 +236,9 @@ void PSBTInput::Merge(const PSBTInput& input)
     m_tap_script_sigs.insert(input.m_tap_script_sigs.begin(), input.m_tap_script_sigs.end());
     m_tap_scripts.insert(input.m_tap_scripts.begin(), input.m_tap_scripts.end());
     m_tap_bip32_paths.insert(input.m_tap_bip32_paths.begin(), input.m_tap_bip32_paths.end());
-    m_p2mr_scripts.insert(input.m_p2mr_scripts.begin(), input.m_p2mr_scripts.end());
+    for (const auto& [leaf, controls] : input.m_p2mr_scripts) {
+        m_p2mr_scripts[leaf].insert(controls.begin(), controls.end());
+    }
     m_p2mr_dilithium_script_sigs.insert(input.m_p2mr_dilithium_script_sigs.begin(), input.m_p2mr_dilithium_script_sigs.end());
 
     if (redeem_script.empty() && !input.redeem_script.empty()) redeem_script = input.redeem_script;

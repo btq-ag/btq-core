@@ -396,4 +396,34 @@ BOOST_AUTO_TEST_CASE(control_blocks_up_to_the_consensus_limit_round_trip)
     }
 }
 
+BOOST_AUTO_TEST_CASE(a_leaf_with_no_control_block_is_rejected)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    // No control block means nothing proves the leaf belongs to the output. The
+    // wire cannot carry this, because a leaf with no control block serializes no
+    // record, but a merge or an in-process build can still produce it.
+    f.psbt.inputs[0].m_p2mr_scripts[{std::vector<unsigned char>(leaf.begin(), leaf.end()), TAPROOT_LEAF_TAPSCRIPT}] = {};
+
+    const PrecomputedTransactionData txdata = PrecomputePSBTData(f.psbt);
+    std::string error;
+    BOOST_CHECK(!ValidateP2MRDilithiumInput(f.psbt, 0, &txdata, error));
+    BOOST_CHECK_MESSAGE(error.find("no control block") != std::string::npos, error);
+
+    // A signer that holds the key but not the tree takes the leaf straight from
+    // the PSBT, so nothing fills the empty set in. Signing must decline the leaf
+    // instead of reading the first control block of an empty set.
+    FlatSigningProvider keys_only;
+    const DilithiumPKHash id(signer.pubkey);
+    keys_only.dilithium_pubkeys.emplace(id, signer.pubkey);
+    keys_only.dilithium_keys.emplace(id, signer.key);
+    BOOST_CHECK(!SignPSBTInput(keys_only, f.psbt, 0, &txdata, SIGHASH_ALL, nullptr, /*finalize=*/true));
+    BOOST_CHECK(f.psbt.inputs[0].final_script_witness.IsNull());
+    BOOST_CHECK(f.psbt.inputs[0].m_p2mr_dilithium_script_sigs.empty());
+    BOOST_CHECK(InspectP2MRInput(f.psbt, 0).status == P2MRInputStatus::UNKNOWN_LEAF);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

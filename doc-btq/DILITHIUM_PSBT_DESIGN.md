@@ -181,11 +181,9 @@ execdata.m_tapleaf_hash         = ComputeTapleafHash(leaf_version, leaf_script)
 
 ```
 // Input: partial sig value OR PSBT_IN_SIGHASH
-hashtype_wire = sighash_type_byte from partial sig value (last byte)
-              OR PSBT_IN_SIGHASH if no per-sig byte yet
-
-// Normalize for sighash computation (MUST):
-hashtype = (hashtype_wire == 0x00) ? 0x01 : hashtype_wire   // DEFAULT → ALL
+hashtype = sighash_type_byte from partial sig value (last byte)
+         OR PSBT_IN_SIGHASH if no per-sig byte yet
+REJECT if hashtype != 0x01
 
 // Call:
 SignatureHashSchnorr(sighash, execdata, tx, input_index,
@@ -204,7 +202,7 @@ SignatureHashSchnorr(sighash, execdata, tx, input_index,
 
 The hash uses tagged SHA256 with tag `"TapSighash"` (BIP341). Full field order matches BIP341 §Common signature message + BIP342 §Common signature message extension.
 
-**Unsupported hash types:** Reject `hashtype` not in `{0x01}` after normalization (v1). See §4.6.
+**Unsupported hash types:** Reject `hashtype` not in `{0x01}`. See §4.6.
 
 #### 2.5.5 sig_raw vs sig_with_hashtype (MUST)
 
@@ -218,12 +216,12 @@ The hash uses tagged SHA256 with tag `"TapSighash"` (BIP341). Full field order m
 ```
 sig_raw   = partial_sig_value[0:2420]
 hashtype  = partial_sig_value[2420]
-hashtype_for_sighash = (hashtype == 0x00) ? 0x01 : hashtype
-sighash   = SignatureHashSchnorr(..., hashtype_for_sighash, ...)
+REJECT if hashtype != 0x01
+sighash   = SignatureHashSchnorr(..., hashtype, ...)
 ACCEPT iff pubkey.Verify(sighash, sig_raw) == true
 ```
 
-**On-chain note:** Consensus `CheckDilithiumSignature` for `P2MR_TAPSCRIPT` **rejects** `SIGHASH_DEFAULT` (`0x00`) in the witness sighash byte. Finalizers MUST ensure finalized witness signatures use `0x01`, not `0x00`. PSBT parsers MAY accept `0x00` at parse time (normalized for sighash verification) but SHOULD warn; finalizer MUST rewrite to `0x01`.
+**On-chain note:** Consensus `CheckDilithiumSignature` for `P2MR_TAPSCRIPT` **rejects** `SIGHASH_DEFAULT` (`0x00`) in the witness sighash byte, so a partial signature carrying `0x00` could never be spent. Parsers therefore reject `0x00` when the PSBT is read, as §4.6 states, rather than normalizing it to `0x01` and hiding the mistake until broadcast.
 
 #### 2.5.6 ComputeTapleafHash (MUST)
 
@@ -452,6 +450,8 @@ ValidatePSBTInput(i):
   1. Resolve utxo = witness_utxo or non_witness_utxo prevout output
   2. Assert utxo.scriptPubKey classifies as WITNESS_V2_P2MR; extract program (32-byte root)
   3. For each PSBT_IN_P2MR_LEAF_SCRIPT (control_block → leaf_script, leaf_version):
+       0. A leaf with no control block MUST be rejected. The wire cannot encode
+          that state; Merge and in-process construction still can.
        a. control_block size ∈ [P2MR_CONTROL_BASE_SIZE, P2MR_CONTROL_MAX_SIZE]
        b. (control_block.size - P2MR_CONTROL_BASE_SIZE) % P2MR_CONTROL_NODE_SIZE == 0
        c. (control_block[0] & 1) == 1   // parity bit MUST be set (BIP360)
@@ -663,7 +663,7 @@ Applies to `PSBTInput::Merge`, `CombinePSBTs`, and `PartiallySignedTransaction::
 |-------|------|
 | `PSBT_IN_P2MR_LEAF_SCRIPT` | Merge by `control_block` key. Same key + different `(script, version)` → **REJECT**. New keys → union. Re-run tie-break (§4.2.3). |
 | `PSBT_IN_P2MR_MERKLE_ROOT` | Both present and differ → **REJECT**. One present → take it. |
-| `PSBT_IN_SIGHASH` | Both present and differ (after DEFAULT norm) → **REJECT** |
+| `PSBT_IN_SIGHASH` | Both present and differ → **REJECT**. Either value that is not `0x01` is also **REJECT**. |
 
 After merge, run `ValidatePSBTInput(i)` (§4.7).
 
@@ -711,7 +711,7 @@ A partial signature entry is **valid** iff ALL of the following hold:
 
 1. Pubkey is valid Dilithium2 (1312 bytes, passes `IsFullyValid()`).
 2. Value length is exactly 2421 bytes.
-3. Sighash type byte is supported per §4.6 (after DEFAULT→ALL normalization for checks).
+3. Sighash type byte is supported per §4.6 (`0x01` only).
 4. `leaf_hash` matches a validated `PSBT_IN_P2MR_LEAF_SCRIPT` entry.
 5. Pubkey is authorized by the leaf policy (`IsAuthorizedPartialSig`, §5.5).
 6. **Cryptographic verify:** `pubkey.Verify(sighash, sig_raw) == true` where `sighash` is computed per §2.5.
@@ -859,7 +859,7 @@ For P2MR input `i`:
 7. For each wallet key K authorized by policy:
      sig_raw = Sign(K, sighash)   // 2420 bytes
      assert K.Verify(sighash, sig_raw)
-     sighash_byte = PSBT_IN_SIGHASH or 0x01 (prefer 0x01 over 0x00)
+     sighash_byte = PSBT_IN_SIGHASH or 0x01; reject if present and not 0x01
      sig_with_hashtype = sig_raw || sighash_byte
      insert PSBT_IN_P2MR_DILITHIUM_SCRIPT_SIG (wire key uses full pubkey)
 8. Do not set final_script_witness unless explicitly finalizing AND FINALIZABLE
@@ -872,7 +872,7 @@ VerifyPartialSig(input, i, pubkey, leaf_hash, sig_with_hashtype):
   sig_raw = sig_with_hashtype[0:2420]
   hashtype = sig_with_hashtype[2420]
   reject if hashtype unsupported (§4.6)
-  reject if hashtype conflicts with PSBT_IN_SIGHASH (after DEFAULT norm)
+  reject if hashtype is not 0x01 or conflicts with PSBT_IN_SIGHASH
   recompute sighash per §2.5 (PrecomputedTransactionData + ScriptExecutionData)
   reject if !pubkey.Verify(sighash, sig_raw)
   reject if !IsAuthorizedPartialSig(policy, pubkey)
@@ -920,7 +920,7 @@ FinalizeP2MRInput(input, tx, index, utxo):
     UNKNOWN:
       return INVALID_PSBT
 
-  Normalize sighash bytes in stack sigs: 0x00 → 0x01
+  Reject any stack sighash byte that is not 0x01 (do not rewrite 0x00)
   VerifyScript(..., STANDARD_SCRIPT_VERIFY_FLAGS) MUST succeed
   set final_script_witness; clear partial Dilithium fields
 ```

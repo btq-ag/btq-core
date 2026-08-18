@@ -90,6 +90,7 @@ P2MRInputInfo InspectP2MRInput(const PartiallySignedTransaction& psbt, unsigned 
     int candidates = 0;
     for (const auto& [leaf, control_blocks] : input.m_p2mr_scripts) {
         const auto& [script, leaf_ver] = leaf;
+        if (control_blocks.empty()) continue;
         const uint256 leaf_hash = ComputeTapleafHash(static_cast<uint8_t>(leaf_ver), script);
         if (!sig_leaf_hashes.empty() && sig_leaf_hashes.count(leaf_hash) == 0) continue;
         ++candidates;
@@ -157,6 +158,12 @@ bool ValidateP2MRDilithiumInput(const PartiallySignedTransaction& psbt, unsigned
     std::map<uint256, CScript> leaves;
     for (const auto& [leaf, control_blocks] : input.m_p2mr_scripts) {
         const auto& [script, leaf_ver] = leaf;
+        // A leaf with no control block proves nothing, because the commitment
+        // check below runs per control block and would not run at all. Reject
+        // it here so the leaf never reaches the signer as an accepted leaf.
+        if (control_blocks.empty()) {
+            return fail("P2MR leaf script has no control block");
+        }
         const uint256 leaf_hash = ComputeTapleafHash(static_cast<uint8_t>(leaf_ver), script);
         for (const auto& control : control_blocks) {
             if (control.size() < P2MR_CONTROL_BASE_SIZE || control.size() > P2MR_CONTROL_MAX_SIZE ||
