@@ -69,6 +69,9 @@ jobs:
       - name: Unit tests (make check)
         run: make check
 
+      - name: Header-work P2P regression
+        run: python3 test/functional/test_runner.py p2p_headers_sync_with_minchainwork.py --jobs=1
+
       - name: Smoke test - wallet + address generation (regtest)
         # Self-contained smoke test, on purpose NOT using the upstream
         # functional-test framework:
