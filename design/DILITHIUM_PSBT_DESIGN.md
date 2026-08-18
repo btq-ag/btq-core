@@ -310,7 +310,7 @@ REQUIRE stream consumed exactly value_len bytes
 
 | Component | Content |
 |-----------|---------|
-| PSBT key | `[type=0x19] \|\| control_block` (raw bytes, 1–513 bytes) |
+| PSBT key | `[type=0x19] \|\| control_block` (raw bytes, `P2MR_CONTROL_BASE_SIZE`–`P2MR_CONTROL_MAX_SIZE`, i.e. 1–4097 bytes) |
 | PSBT value | `leaf_script_bytes \|\| leaf_version` (version is **last** byte of value) |
 
 **v1 cardinality:** Exactly **one** `(leaf_script, leaf_version)` pair per distinct `control_block` key. If the same `control_block` key appears twice (duplicate PSBT key) → **REJECT** at parse.
@@ -412,11 +412,15 @@ For input `i` spending P2MR via script path:
 | `MAX_DILITHIUM_PARTIAL_SIG_VALUE_SIZE` | 2421 | PSBT value: `sig_raw + sighash_type` |
 | `MAX_DILITHIUM_PARTIAL_SIGS_PER_INPUT` | 20 | Count of `PSBT_IN_P2MR_DILITHIUM_SCRIPT_SIG` entries |
 | `MAX_DILITHIUM_PARTIAL_SIG_PAYLOAD_PER_INPUT` | 1_500_000 bytes (~1.5 MB) | Sum of partial sig value sizes |
-| `MAX_P2MR_LEAF_SCRIPT_SIZE` | 10000 | Leaf script bytes |
-| `MAX_CONTROL_BLOCK_SIZE` | 513 | `P2MR_CONTROL_MAX_SIZE` |
+| `MAX_P2MR_LEAF_SCRIPT_SIZE` | 100000 (`MAX_SCRIPT_SIZE`) | Leaf script bytes; a parser bound, not a consensus mirror (see below) |
+| `P2MR_CONTROL_MAX_SIZE` | 4097 | Control block bytes; the consensus limit, reused verbatim |
 | `MAX_PSBT_SIZE` | 100 MB | Entire PSBT blob |
 
 Per-input partial-sig payload is the sum over all `PSBT_IN_P2MR_DILITHIUM_SCRIPT_SIG` value sizes on that input. Exceeding any limit → reject entire PSBT load.
+
+**The control block cap MUST be the consensus constant itself, never an independent value.** A parse cap below `P2MR_CONTROL_MAX_SIZE` would reject control blocks for leaves at depth 17 and deeper, which are consensus-valid and reachable through `createp2mr`. Such a cap would leave an output that is spendable on-chain but unspendable through any implementation honouring the cap, and would split interop against implementations that use the consensus bound. Derive this limit from `P2MR_CONTROL_BASE_SIZE`, `P2MR_CONTROL_NODE_SIZE` and `P2MR_CONTROL_MAX_NODE_COUNT` so the two cannot drift apart.
+
+**The leaf script limit has no consensus counterpart to mirror.** `MAX_SCRIPT_SIZE` is enforced only for `SigVersion::BASE` and `SigVersion::WITNESS_V0` (`script/interpreter.cpp:481`), so P2MR tapscript leaves are unbounded at the script level, as in BIP342. `MAX_SCRIPT_ELEMENT_SIZE` does not bind them either: the leaf script is popped from the witness stack (`script/interpreter.cpp:2268`) before the element-size loop in `ExecuteWitnessScript` runs, so that loop only sees the remaining argument elements. Leaf size is therefore bounded in consensus only by transaction and block weight. v1 reuses `MAX_SCRIPT_SIZE` as a deliberate parser-memory bound, which is permissive rather than restrictive and so cannot render an output unspendable. The binding constraint on key count is `MAX_DILITHIUM_PARTIAL_SIGS_PER_INPUT` (20, tracking `MAX_PUBKEYS_PER_MULTISIG`), not the leaf script size.
 
 ### 4.6 Sighash type matrix (v1)
 
@@ -443,7 +447,7 @@ ValidatePSBTInput(i):
   1. Resolve utxo = witness_utxo or non_witness_utxo prevout output
   2. Assert utxo.scriptPubKey classifies as WITNESS_V2_P2MR; extract program (32-byte root)
   3. For each PSBT_IN_P2MR_LEAF_SCRIPT (control_block → leaf_script, leaf_version):
-       a. control_block size ∈ [P2MR_CONTROL_BASE_SIZE, MAX_CONTROL_BLOCK_SIZE]
+       a. control_block size ∈ [P2MR_CONTROL_BASE_SIZE, P2MR_CONTROL_MAX_SIZE]
        b. (control_block.size - P2MR_CONTROL_BASE_SIZE) % P2MR_CONTROL_NODE_SIZE == 0
        c. (control_block[0] & 1) == 1   // parity bit MUST be set (BIP360)
        d. leaf_script size ≤ MAX_P2MR_LEAF_SCRIPT_SIZE
@@ -482,8 +486,7 @@ Proves that `(leaf_script, leaf_version)` commits to the P2MR `program` (32-byte
 P2MR_CONTROL_BASE_SIZE       = 1
 P2MR_CONTROL_NODE_SIZE       = 32
 P2MR_CONTROL_MAX_NODE_COUNT  = 128
-P2MR_CONTROL_MAX_SIZE        = 1 + 32 * 128 = 4129   // consensus maximum
-MAX_CONTROL_BLOCK_SIZE       = 513                    // PSBT v1 parse cap (§4.5)
+P2MR_CONTROL_MAX_SIZE        = 1 + 32 * 128 = 4097   // consensus maximum, and the PSBT parse cap (§4.5)
 TAPROOT_LEAF_MASK            = 0xFE
 TAPROOT_LEAF_TAPSCRIPT       = 0xC0
 ```
@@ -1159,8 +1162,8 @@ stack[4] = control_block
 
 **Size estimate (single input, 2 partial sigs):**
 
-- Binary partial data ≈ 2 × (1344 + 2421) ≈ 7.5 MB
-- Base64 ≈ 10 MB — **file transfer only**, not QR
+- Binary partial data ≈ 2 × (1344 + 2421) ≈ 7.5 KB
+- Base64 ≈ 10 KB — **file transfer only**, not QR
 
 ---
 
