@@ -5,9 +5,10 @@ node that syncs that chain has to validate them, so they are recorded here.
 
 Under the **pre-P2MR** regime, Dilithium opcodes were valid in legacy scripts, P2SH, and
 witness-v0 scripts, and a Dilithium-sized public key on a witness-v0 keyhash program routed to the
-Dilithium verifier. That regime remains in force on the public testnet.
+Dilithium verifier. That regime remains in force on the public testnet, where the P2MR-only
+deployment is left unscheduled in `src/kernel/chainparams.cpp`.
 
-Under the **P2MR-only** regime (the mainnet parameter set, from genesis) Dilithium opcodes are
+Under the **P2MR-only** regime (the mainnet parameter set, from height 1) Dilithium opcodes are
 consensus-valid only inside P2MR tapscript leaves. None of the output types below are spendable
 there.
 
@@ -21,13 +22,14 @@ The quantum analogue of P2PK. The public key is committed on-chain at output cre
 unlocking data need only supply a valid signature.
 
 Not suitable for long-held funds: the public key is visible in the UTXO set from the moment the
-output is created, which meets the Weak Address definition under the Aggarwal-Babbush
-classification. A sufficiently capable quantum adversary can derive the private key before the
-output is spent.
+output is created, so a sufficiently capable quantum adversary can derive the private key before
+the output is spent. That is the weak-address case: an output that withholds the key until the
+spend does not have it.
 
 The same script survives as a **P2MR leaf**, a single-key leaf committing one Dilithium public
-key, where the Merkle root hides it until the spend and the exposure does not arise. Single-key
-P2MR, not bare P2DPK, is the recommended coinbase payout target.
+key, where the Merkle root hides it until the spend and the exposure does not arise. A coinbase
+paid to a single-key P2MR leaf carries the same spending policy as bare P2DPK without the at-rest
+exposure.
 
 ## Dilithium public-key-hash
 
@@ -75,11 +77,11 @@ Under the P2MR-only rule the size heuristic is disabled: a Dilithium-sized key i
 keyhash spend falls through to the ECDSA path and the spend is rejected. An output of this type
 can still be paid to; it cannot be spent under Dilithium.
 
-## Why the rule is exclusivity, not merely P2MR
+## Why the rule is exclusivity
 
-BIP-360 specifies a Taproot-style output with no key-path spend, which is the mitigation Babbush
-et al. §III.A recommend for Weak Address. Neither addresses whether a scheme's opcodes should be
-confined to one script version. That confinement is a BTQ decision, on three grounds:
+BIP360 specifies a Taproot-style output with no key-path spend, which is the standard mitigation
+for the weak-address case. It does not address whether a scheme's opcodes should be confined to
+one script version. That confinement is a BTQ decision, on three grounds:
 
 1. **Retroactivity.** Routing a witness-v0 keyhash spend to Dilithium by key size did not add an
    output type. It changed the spending rules of a witness program that already existed, so
@@ -91,10 +93,3 @@ confined to one script version. That confinement is a BTQ decision, on three gro
    format to agree on.
 3. **At-rest exposure.** A bare public-key output places the key on-chain at creation. A P2MR
    commitment withholds it until the spend.
-
-## Provenance
-
-The transaction field guide dated 2026-07-28, describing the public testnet at release
-`v0.4.2-testnet`, records that the witness-v0 Dilithium format was withdrawn because Dilithium and
-ECDSA witness programs proved too easy to confuse. That note is a snapshot of the format set
-deployed at that release, not a specification.
