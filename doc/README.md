@@ -65,6 +65,7 @@ The BTQ repo's [root README](/README.md) contains relevant information on the de
 - [Dnsseed Policy](dnsseed-policy.md)
 - [Benchmarking](benchmarking.md)
 - [Internal Design Docs](design/)
+- [Protocol Notes](protocol/)
 
 ### Resources
 * Discuss on the [BTQTalk](https://btqtalk.org/) forums, in the [Development & Technical Discussion board](https://btqtalk.org/index.php?board=6.0).
