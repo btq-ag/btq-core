@@ -642,4 +642,135 @@ BOOST_AUTO_TEST_CASE(lwma_window_departure_cost_to_honest_miners)
     }
 }
 
+namespace {
+
+// Must match PeerManagerImpl::GetAntiDoSWorkThreshold in net_processing.cpp.
+// Intentionally not tied to nLWMAWindow even though both happen to be 144.
+constexpr unsigned ANTIDOS_WORK_BUFFER_BLOCKS = 144;
+
+//! Local replica of PeerManagerImpl::GetAntiDoSWorkThreshold arithmetic
+//! (minus LOCK / ChainstateManager). Used to characterize issue #168 without
+//! friending PeerManagerImpl or driving P2P.
+arith_uint256 ReplicatedAntiDoSWorkThreshold(const CBlockIndex* tip,
+                                            const arith_uint256& minimum_chain_work)
+{
+    arith_uint256 near_chaintip_work = 0;
+    if (tip != nullptr) {
+        near_chaintip_work = tip->nChainWork
+            - std::min<arith_uint256>(ANTIDOS_WORK_BUFFER_BLOCKS * GetBlockProof(*tip), tip->nChainWork);
+    }
+    return std::max(near_chaintip_work, minimum_chain_work);
+}
+
+} // namespace
+
+//! Characterizes GetAntiDoSWorkThreshold under LWMA difficulty divergence
+//! (GitHub issue #168). A same-length fork is ignored as low-work when
+//!     D2/D1 < (H1 - 144) / H2
+//! For H1 = H2 = 450 that crossover is r < 306/450 ≈ 0.68. Upstream Bitcoin
+//! stays near r ≈ 1 across a 144-block window; BTQ per-block LWMA at 60s can
+//! produce r ≈ 0.005 (~40 vs ~7800 on testnet). Regtest cannot reproduce
+//! live swings (fPowNoRetargeting, nLWMAHeight = 300000); this test only
+//! exercises the tip-relative formula with synthetic arith_uint256 work.
+BOOST_AUTO_TEST_CASE(antidos_work_threshold_lwma_divergence)
+{
+    CBlockIndex local_stub;
+    local_stub.nBits = 0x1c00ffff; // mid-range compact; proof is large, ratio is stable
+    const arith_uint256 d_local = GetBlockProof(local_stub);
+
+    arith_uint256 local_target;
+    local_target.SetCompact(local_stub.nBits);
+    arith_uint256 peer_target = local_target * 200; // ~200x easier
+    const uint32_t peer_low_bits = peer_target.GetCompact();
+    CBlockIndex peer_stub;
+    peer_stub.nBits = peer_low_bits;
+    const arith_uint256 d_peer = GetBlockProof(peer_stub);
+
+    // Realized ratio r = d_peer / d_local ≈ 0.005 (integer bounds, no floats).
+    BOOST_CHECK(d_local / d_peer >= 150); // r <= 1/150 ≈ 0.0067
+    BOOST_CHECK(d_local / d_peer <= 250); // r >= 1/250 = 0.004
+
+    const arith_uint256 min_work_zero{0};
+
+    // 1. Fork length <= 144: the buffer absorbs a near-tip lower-diff fork.
+    // Shared prefix of 1000 blocks (not a tip-at-genesis construction, which
+    // would make near_chaintip_work = 0 and trivialize the assert).
+    {
+        const arith_uint256 local_work = d_local * 1144; // 1000 prefix + 144 local
+        const arith_uint256 peer_work = d_local * 1000 + d_peer * 144;
+
+        CBlockIndex tip;
+        tip.nBits = local_stub.nBits;
+        tip.nChainWork = local_work;
+        const arith_uint256 threshold = ReplicatedAntiDoSWorkThreshold(&tip, min_work_zero);
+
+        // threshold = 1144*d_local - 144*d_local = 1000*d_local
+        BOOST_CHECK(threshold == d_local * 1000);
+        BOOST_CHECK(peer_work >= threshold);
+        // Peer is strictly weaker per block; without the buffer, peer_work <
+        // local_work and would look like a low-work attack.
+        BOOST_CHECK(144 * d_peer < 144 * d_local);
+        BOOST_CHECK(peer_work < local_work);
+    }
+
+    // 2. Fork length 450, r ≈ 0.005 (issue #168 shape): peer below threshold.
+    // Crossover for H1=H2=450 is r < 306/450 ≈ 0.68; observed r ≈ 0.005 << 0.68.
+    {
+        const arith_uint256 local_work = d_local * 450;
+        const arith_uint256 peer_work = d_peer * 450;
+
+        CBlockIndex tip;
+        tip.nBits = local_stub.nBits;
+        tip.nChainWork = local_work;
+        const arith_uint256 threshold = ReplicatedAntiDoSWorkThreshold(&tip, min_work_zero);
+
+        // threshold = (450 - 144) * d_local = 306 * d_local
+        BOOST_CHECK(threshold == d_local * 306);
+        BOOST_CHECK(peer_work < threshold);
+    }
+
+    // 3. Fork length 450, r ≈ 1.0 (Bitcoin-like equal difficulty): peer above.
+    {
+        const arith_uint256 local_work = d_local * 450;
+        const arith_uint256 peer_work = d_local * 450;
+
+        CBlockIndex tip;
+        tip.nBits = local_stub.nBits;
+        tip.nChainWork = local_work;
+        const arith_uint256 threshold = ReplicatedAntiDoSWorkThreshold(&tip, min_work_zero);
+
+        BOOST_CHECK(threshold == d_local * 306);
+        BOOST_CHECK(peer_work >= threshold);
+    }
+
+    // 4. nMinimumChainWork = 0 (testnet/regtest): max() does not floor the
+    // tip-relative term. Reuse the #168 shape; also check chainparams floors.
+    {
+        const arith_uint256 local_work = d_local * 450;
+        const arith_uint256 peer_work = d_peer * 450;
+        const arith_uint256 near_chaintip_work = local_work - std::min<arith_uint256>(
+            ANTIDOS_WORK_BUFFER_BLOCKS * d_local, local_work);
+
+        CBlockIndex tip;
+        tip.nBits = local_stub.nBits;
+        tip.nChainWork = local_work;
+        const arith_uint256 threshold = ReplicatedAntiDoSWorkThreshold(&tip, min_work_zero);
+
+        BOOST_CHECK(threshold == near_chaintip_work); // max(near, 0) == near
+        BOOST_CHECK(peer_work < threshold);
+
+        // lwma_activation_height_configured already checks nLWMAHeight
+        // (mainnet=1, testnet=300000). Here only the MinimumChainWork floor.
+        const auto testnet = CreateChainParams(*m_node.args, ChainType::BTQTEST);
+        const auto regtest = CreateChainParams(*m_node.args, ChainType::BTQREGTEST);
+        const auto mainnet = CreateChainParams(*m_node.args, ChainType::BTQMAIN);
+        BOOST_CHECK(testnet->GetConsensus().nMinimumChainWork == uint256{});
+        BOOST_CHECK(regtest->GetConsensus().nMinimumChainWork == uint256{});
+        // 0x49d414 = GetBlockProof(genesis) at nBits 0x1e0377ae (chainparams.cpp).
+        BOOST_CHECK(mainnet->GetConsensus().nMinimumChainWork ==
+                    uint256S("000000000000000000000000000000000000000000000000000000000049d414"));
+        BOOST_CHECK(mainnet->GetConsensus().nMinimumChainWork != uint256{});
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()
