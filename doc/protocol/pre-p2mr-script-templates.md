@@ -1,6 +1,6 @@
 # Pre-P2MR Dilithium script templates
 
-The public testnet contains Dilithium outputs in shapes that the P2MR-only rule withdrew. Any
+The public testnet contains Dilithium outputs of types that the P2MR-only rule withdrew. Any
 node that syncs that chain has to validate them, so they are recorded here.
 
 Under the **pre-P2MR** regime, Dilithium opcodes were valid in legacy scripts, P2SH, and
@@ -8,7 +8,7 @@ witness-v0 scripts, and a Dilithium-sized public key on a witness-v0 keyhash pro
 Dilithium verifier. That regime remains in force on the public testnet.
 
 Under the **P2MR-only** regime — the mainnet parameter set, from genesis — Dilithium opcodes are
-consensus-valid only inside P2MR tapscript leaves. None of the output shapes below are spendable
+consensus-valid only inside P2MR tapscript leaves. None of the output types below are spendable
 there.
 
 ## P2DPK (Pay-to-Dilithium-PubKey)
@@ -72,7 +72,7 @@ named, and an output script that does not say which algorithm governs it is too 
 with the classical P2WPKH it is byte-identical to.
 
 Under the P2MR-only rule the size heuristic is disabled: a Dilithium-sized key in a witness-v0
-keyhash spend falls through to the ECDSA path and the spend is rejected. An output of this shape
+keyhash spend falls through to the ECDSA path and the spend is rejected. An output of this type
 can still be paid to; it cannot be spent under Dilithium.
 
 ## Why the rule is exclusivity, not merely P2MR
@@ -82,11 +82,11 @@ et al. §III.A recommend for Weak Address. Neither addresses whether a scheme's 
 confined to one script version. That confinement is a BTQ decision, on three grounds:
 
 1. **Retroactivity.** Routing a witness-v0 keyhash spend to Dilithium by key size did not add an
-   output type. It changed the spending rules of a shape that already existed, so outputs created
+   output type. It changed the spending rules of a witness program that already existed, so outputs created
    before the change became subject to rules they were not created under. A new witness version
    has no prior outputs whose semantics can change.
 2. **No inference.** After activation, no consensus rule determines which signature scheme governs
-   an output from the shape of the data supplied to spend it. In practice Dilithium and ECDSA
+   an output from the data supplied to spend it. In practice Dilithium and ECDSA
    witness programs proved easy to confuse, and one destination type gives wallets, miners, and
    explorers a single format to agree on.
 3. **At-rest exposure.** A bare public-key output places the key on-chain at creation. A P2MR
