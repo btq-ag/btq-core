@@ -259,7 +259,7 @@ Each area below requires a **workpaper**: threat hypotheses, code references, te
 
 | Risk ID | Description | Review focus |
 |---------|-------------|--------------|
-| B-01 | Non-reproducible release binaries | Guix, `verify-binaries` |
+| B-01 | Non-reproducible release binaries | Guix, signed release artifacts (BTQ publishes none today) |
 | B-02 | Sanitizer-disabled CI merge | Required jobs for crypto PRs |
 | B-03 | Subtree updates without KAT re-run | `src/crypto/dilithium/` |
 | B-04 | Pre-commit or hook bypass culture | CONTRIBUTING enforcement |

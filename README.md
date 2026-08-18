@@ -4,7 +4,7 @@ BTQ Core integration/staging tree
 https://bitcoinquantum.com/
 
 For an immediately usable, binary version of the BTQ Core software, see
-https://btqcore.org/en/download/.
+https://bitcoinquantum.com/download.
 
 What is BTQ Core?
 ---------------------

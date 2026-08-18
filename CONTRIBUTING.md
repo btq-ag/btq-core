@@ -11,7 +11,7 @@ developers" in the sense of privileged people. Open source often naturally
 revolves around a meritocracy where contributors earn trust from the developer
 community over time. Nevertheless, some hierarchy is necessary for practical
 purposes. As such, there are repository maintainers who are responsible for
-merging pull requests, the [release cycle](/doc/release-process.md), and
+merging pull requests, the release cycle, and
 moderation.
 
 Getting Started

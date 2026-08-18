@@ -97,10 +97,6 @@ if [ -z "$NO_DEPENDS" ]; then
   fi
   bash -c "$SHELL_OPTS make $MAKEJOBS -C depends HOST=$HOST $DEP_OPTS LOG=1"
 fi
-if [ "$DOWNLOAD_PREVIOUS_RELEASES" = "true" ]; then
-  test/get_previous_releases.py -b -t "$PREVIOUS_RELEASES_DIR"
-fi
-
 BTQ_CONFIG_ALL="--disable-dependency-tracking"
 if [ -z "$NO_DEPENDS" ]; then
   BTQ_CONFIG_ALL="${BTQ_CONFIG_ALL} CONFIG_SITE=$DEPENDS_DIR/$HOST/share/config.site"
@@ -149,7 +145,6 @@ bash -c "${MAYBE_BEAR} ${MAYBE_TOKEN} make $MAKEJOBS $GOAL" || ( echo "Build fai
 
 bash -c "${PRINT_CCACHE_STATISTICS}"
 du -sh "${DEPENDS_DIR}"/*/
-du -sh "${PREVIOUS_RELEASES_DIR}"
 
 if [[ $HOST = *-mingw32 ]]; then
   # Generate all binaries, so that they can be wrapped

@@ -123,7 +123,6 @@ class WalletCrossChainAddresses(BTQTestFramework):
             timeout_factor=self.options.timeout_factor,
             btqd=self.options.btqd,
             btq_cli=self.options.btqcli,
-            version=None,
             coverage_dir=self.options.coveragedir,
             cwd=self.options.tmpdir,
             extra_conf=["bind=127.0.0.1"],

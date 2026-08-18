@@ -129,7 +129,7 @@ task:
     FILE_ENV: "./ci/test/00_setup_env_i686_centos.sh"
 
 task:
-  name: 'previous releases, qt5 dev package and depends packages, DEBUG'
+  name: 'qt5 dev package and depends packages, DEBUG'
   << : *GLOBAL_TASK_TEMPLATE
   persistent_worker:
     labels:

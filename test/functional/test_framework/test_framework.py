@@ -12,7 +12,6 @@ import os
 import platform
 import pdb
 import random
-import re
 import shutil
 import subprocess
 import sys
@@ -155,7 +154,6 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
             sys.exit(exit_code)
 
     def parse_args(self):
-        previous_releases_path = os.getenv("PREVIOUS_RELEASES_DIR") or os.getcwd() + "/releases"
         parser = argparse.ArgumentParser(usage="%(prog)s [options]")
         parser.add_argument("--nocleanup", dest="nocleanup", default=False, action="store_true",
                             help="Leave btqds and test.* datadir on exit or error")
@@ -170,9 +168,6 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
                             help="Print out all RPC calls as they are made")
         parser.add_argument("--portseed", dest="port_seed", default=os.getpid(), type=int,
                             help="The seed to use for assigning port numbers (default: current process id)")
-        parser.add_argument("--previous-releases", dest="prev_releases", action="store_true",
-                            default=os.path.isdir(previous_releases_path) and bool(os.listdir(previous_releases_path)),
-                            help="Force test of previous releases (default: %(default)s)")
         parser.add_argument("--coveragedir", dest="coveragedir",
                             help="Write tested RPC commands into this directory")
         parser.add_argument("--configfile", dest="configfile",
@@ -185,7 +180,7 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
         parser.add_argument("--perf", dest="perf", default=False, action="store_true",
                             help="profile running nodes with perf for the duration of the test")
         parser.add_argument("--valgrind", dest="valgrind", default=False, action="store_true",
-                            help="run nodes under the valgrind memory error detector: expect at least a ~10x slowdown. valgrind 3.14 or later required. Does not apply to previous release binaries.")
+                            help="run nodes under the valgrind memory error detector: expect at least a ~10x slowdown. valgrind 3.14 or later required.")
         parser.add_argument("--randomseed", type=int,
                             help="set a random seed for deterministically reproducing a previous test run")
         parser.add_argument("--timeout-factor", dest="timeout_factor", type=float, help="adjust test timeouts by a factor. Setting it to 0 disables all timeouts")
@@ -201,7 +196,6 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
         if self.options.timeout_factor == 0:
             self.options.timeout_factor = 99999
         self.options.timeout_factor = self.options.timeout_factor or (4 if self.options.valgrind else 1)
-        self.options.previous_releases_path = previous_releases_path
 
         config = configparser.ConfigParser()
         config.read_file(open(self.options.configfile))
@@ -460,49 +454,23 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
             group.add_argument("--legacy-wallet", action='store_const', const=False, **kwargs,
                                help="Run test using legacy wallets", dest='descriptors')
 
-    def add_nodes(self, num_nodes: int, extra_args=None, *, rpchost=None, binary=None, binary_cli=None, versions=None):
+    def add_nodes(self, num_nodes: int, extra_args=None, *, rpchost=None, binary=None, binary_cli=None):
         """Instantiate TestNode objects.
 
         Should only be called once after the nodes have been specified in
         set_test_params()."""
-        def get_bin_from_version(version, bin_name, bin_default):
-            if not version:
-                return bin_default
-            if version > 219999:
-                # Starting at client version 220000 the first two digits represent
-                # the major version, e.g. v22.0 instead of v0.22.0.
-                version *= 100
-            return os.path.join(
-                self.options.previous_releases_path,
-                re.sub(
-                    r'\.0$' if version <= 219999 else r'(\.0){1,2}$',
-                    '', # Remove trailing dot for point releases, after 22.0 also remove double trailing dot.
-                    'v{}.{}.{}.{}'.format(
-                        (version % 100000000) // 1000000,
-                        (version % 1000000) // 10000,
-                        (version % 10000) // 100,
-                        (version % 100) // 1,
-                    ),
-                ),
-                'bin',
-                bin_name,
-            )
-
         if self.bind_to_localhost_only:
             extra_confs = [["bind=127.0.0.1"]] * num_nodes
         else:
             extra_confs = [[]] * num_nodes
         if extra_args is None:
             extra_args = [[]] * num_nodes
-        if versions is None:
-            versions = [None] * num_nodes
         if binary is None:
-            binary = [get_bin_from_version(v, 'btqd', self.options.btqd) for v in versions]
+            binary = [self.options.btqd] * num_nodes
         if binary_cli is None:
-            binary_cli = [get_bin_from_version(v, 'btq-cli', self.options.btqcli) for v in versions]
+            binary_cli = [self.options.btqcli] * num_nodes
         assert_equal(len(extra_confs), num_nodes)
         assert_equal(len(extra_args), num_nodes)
-        assert_equal(len(versions), num_nodes)
         assert_equal(len(binary), num_nodes)
         assert_equal(len(binary_cli), num_nodes)
         for i in range(num_nodes):
@@ -518,7 +486,6 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
                 timeout_factor=self.options.timeout_factor,
                 btqd=binary[i],
                 btq_cli=binary_cli[i],
-                version=versions[i],
                 coverage_dir=self.options.coveragedir,
                 cwd=self.options.tmpdir,
                 extra_conf=extra_confs[i],
@@ -529,9 +496,6 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
                 descriptors=self.options.descriptors,
             )
             self.nodes.append(test_node_i)
-            if not test_node_i.version_is_at_least(170000):
-                # adjust conf for pre 17
-                test_node_i.replace_in_config([('[regtest]', '')])
 
     def start_node(self, i, *args, **kwargs):
         """Start a btqd"""
@@ -942,19 +906,6 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
         """Skip the running test if btq-cli has not been compiled."""
         if not self.is_cli_compiled():
             raise SkipTest("btq-cli has not been compiled.")
-
-    def skip_if_no_previous_releases(self):
-        """Skip the running test if previous releases are not available."""
-        if not self.has_previous_releases():
-            raise SkipTest("previous releases not available or disabled")
-
-    def has_previous_releases(self):
-        """Checks whether previous releases are present and enabled."""
-        if not os.path.isdir(self.options.previous_releases_path):
-            if self.options.prev_releases:
-                raise AssertionError("Force test of previous releases but releases missing: {}".format(
-                    self.options.previous_releases_path))
-        return self.options.prev_releases
 
     def skip_if_no_external_signer(self):
         """Skip the running test if external signer support has not been compiled."""
