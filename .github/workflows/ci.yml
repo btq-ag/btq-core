@@ -38,28 +38,37 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ env.FETCH_DEPTH }}
       - name: Determine commit range
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          # Checkout HEAD~ and find the test base commit
           # Checkout HEAD~ because it would be wasteful to rerun tests on the PR
           # head commit that are already run by other jobs.
           git checkout HEAD~
-          # Figure out test base commit by listing ancestors of HEAD, excluding
-          # ancestors of the most recent merge commit, limiting the list to the
-          # newest MAX_COUNT ancestors, ordering it from oldest to newest, and
-          # taking the first one.
+          # The test base is the commit where this branch diverged from the
+          # PR's base branch. Locate it with merge-base, deepening the shallow
+          # base-branch history until the divergence point is visible.
           #
-          # If the branch contains up to MAX_COUNT ancestor commits after the
-          # most recent merge commit, all of those commits will be tested. If it
+          # Scanning the shallow history for the most recent merge commit is
+          # not reliable here: a commit on the shallow boundary loses its
+          # parents, which hides that it is a merge, and the base branch tip
+          # is not required to be a merge commit. With a non-merge tip the
+          # test base resolves empty and the rebase below fails.
+          #
+          # If the branch contains up to MAX_COUNT commits after the
+          # divergence point, all of those commits will be tested. If it
           # contains more, only the most recent MAX_COUNT commits will be
           # tested.
-          #
-          # In the command below, the ^@ suffix is used to refer to all parents
-          # of the merge commit as described in:
-          # https://git-scm.com/docs/git-rev-parse#_other_rev_parent_shorthand_notations
-          # and the ^ prefix is used to exclude these parents and all their
-          # ancestors from the rev-list output as described in:
-          # https://git-scm.com/docs/git-rev-list
-          echo "TEST_BASE=$(git rev-list -n$((${{ env.MAX_COUNT }} + 1)) --reverse HEAD ^$(git rev-list -n1 --merges HEAD)^@ | head -1)" >> "$GITHUB_ENV"
+          git fetch --depth "$FETCH_DEPTH" origin "refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          attempts=0
+          until MERGE_BASE=$(git merge-base HEAD "origin/$BASE_REF" 2>/dev/null); do
+            attempts=$((attempts + 1))
+            if [ "$attempts" -eq 8 ]; then
+              echo "::error::could not locate the merge base of the pull request branch and $BASE_REF"
+              exit 1
+            fi
+            git fetch --depth $(( FETCH_DEPTH << (attempts + 1) )) origin "refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          done
+          echo "TEST_BASE=$(git rev-list -n$((${{ env.MAX_COUNT }} + 1)) --reverse HEAD "^$MERGE_BASE^" | head -1)" >> "$GITHUB_ENV"
       - run: |
           sudo apt-get update
           sudo apt-get install clang ccache build-essential libtool autotools-dev automake pkg-config bsdmainutils python3-zmq libevent-dev libboost-dev libsqlite3-dev libdb++-dev systemtap-sdt-dev libminiupnpc-dev libnatpmp-dev libqt5gui5 libqt5core5a libqt5dbus5 qttools5-dev qttools5-dev-tools qtwayland5 libqrencode-dev -y
