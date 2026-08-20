@@ -233,7 +233,7 @@ Establish comprehensive test suite for BTQ-specific functionality, including reg
 **Test Files Added/Modified:**
 - `test/functional/btq_regtest_mining.py` — Regtest mining tests
 - `test/functional/btq_chain_identity.py` — Chain identity verification
-- `test/functional/feature_taproot.py` — Skip Taproot (disabled in BTQ)
+- `test/functional/feature_taproot.py` — Runs in the base suite; skips itself only if the Taproot softfork reports inactive, which no parameter set does
 - `test/functional/feature_pruning.py` — Pruning with BTQ parameters
 - Test framework utilities for BTQ-specific operations
 
@@ -1989,29 +1989,29 @@ PR #13 (Phase 4, closed) mentioned "Mixed-mode transactions (ECDSA + Dilithium)"
 
 ---
 
-### 10. Taproot Compatibility — Explicitly Disabled
+### 10. Taproot Compatibility — Enabled (earlier analysis superseded)
 
-**Gap:**  
-PR #5 and chainparams show Taproot is marked `NEVER_ACTIVE`:
+**Status:**  
+The original analysis in this section recorded `DEPLOYMENT_TAPROOT` as `NEVER_ACTIVE` based on PR #5. That no longer reflects the code: the current chainparams mark Taproot `ALWAYS_ACTIVE` on mainnet, testnet, signet, and regtest (`src/kernel/chainparams.cpp`):
 
 ```cpp
 consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = 
-    Consensus::BIP9Deployment::NEVER_ACTIVE;
+    Consensus::BIP9Deployment::ALWAYS_ACTIVE;
 ```
 
-**Implications:**
-- No P2TR (Taproot) addresses in BTQ
-- No Schnorr signatures
-- No MAST (Merklized Alternative Script Trees)
-
-**Follow-up Required:**
-- Clarify rationale for disabling Taproot (incompatibility with Dilithium? Design choice?)
-- Document in whitepaper that BTQ does not support Taproot
-- Explain if alternative quantum-resistant Taproot is planned
+**Current state (verified against code):**
+- P2TR (Taproot) outputs are supported: `TxoutType::WITNESS_V1_TAPROOT` is recognised by `Solver` and is standard under `IsStandard` (`src/script/solver.cpp`, `src/policy/policy.cpp`)
+- Schnorr signatures (BIP-340) are implemented: key-path spends verify through `CheckSchnorrSignature` (`src/script/interpreter.cpp`)
+- Tapscript / MAST (BIP-341/342) is implemented: script-path spends verify through `VerifyTaprootCommitment` (`src/script/interpreter.cpp`)
+- The quantum-resistant analogue exists: P2MR (BIP360, witness v2) reuses the tapscript structure with no key-path spend, and Dilithium opcodes are consensus-valid only inside P2MR tapscript leaves
 
 **Whitepaper Impact:**
-- Section 5 should note: "BTQ does not implement Taproot (BIP-340-342) to maintain focus on Dilithium integration"
-- Discuss if quantum-resistant MAST or similar features are planned
+- Section 5 should state that BTQ retains the full Taproot stack (BIP-340/341/342) for ECDSA outputs and adds P2MR (BIP360) as the quantum-resistant output type
+- Any whitepaper text claiming BTQ does not implement or support Taproot must be removed
+
+**Superseded claims (do not carry into the whitepaper):**
+- "No P2TR (Taproot) addresses in BTQ"
+- "BTQ does not implement Taproot (BIP-340-342) to maintain focus on Dilithium integration"
 
 ---
 
@@ -2110,7 +2110,7 @@ cat test_dilithium_wallet.sh
 **Important Gaps (Needed for Accuracy):**
 4. Phase 5 Network & Mempool — completion status
 5. Mixed-mode transaction support
-6. Taproot incompatibility rationale
+6. Taproot incompatibility rationale (resolved — Taproot is enabled; see Section 10)
 7. Mainnet launch readiness
 
 **Nice-to-Have (Enhance Completeness):**
