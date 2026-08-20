@@ -2,6 +2,8 @@
 
 The public testnet contains Dilithium outputs of types that the P2MR-only rule withdrew. Any
 node that syncs that chain has to validate them, so they are recorded here.
+The associated sighash, wallet-recognition, and activation rules are in
+[`historical-validation.md`](historical-validation.md).
 
 Under the **pre-P2MR** regime, Dilithium opcodes were valid in legacy scripts, P2SH, and
 witness-v0 scripts, and a Dilithium-sized public key on a witness-v0 keyhash program routed to the
