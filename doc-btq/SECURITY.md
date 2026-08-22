@@ -2,13 +2,14 @@
 
 ## Supported Versions
 
-We provide security updates for the following BTQ versions:
+BTQ Core has not launched mainnet. Releases are tagged `vX.Y.Z-testnet`.
+Only the most recent release line receives security fixes.
 
-| Version | Supported          | End of Life |
-| ------- | ------------------ | ----------- |
-| 1.1.x   | ✅ Current         | TBD         |
-| 1.0.x   | ✅ Maintenance     | 2025-12-31  |
-| 0.1.x   | ⚠️ Critical only   | 2024-12-31  |
+| Version | Supported |
+| ------- | --------- |
+| `v0.4.4-testnet` | Current |
+| `v0.4.3-testnet` | Tag only; binaries were not published |
+| earlier `-testnet` | No |
 
 ## Reporting a Vulnerability
 
