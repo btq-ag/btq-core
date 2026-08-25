@@ -53,15 +53,10 @@ BOOST_FIXTURE_TEST_CASE(package_sanitization_tests, TestChain100Setup)
 
     // Packages can't have a total weight of more than MAX_PACKAGE_WEIGHT.
     //
-    // That ceiling is 40'000'000 WU here rather than upstream's 404'000, so the
-    // 150-in/150-out transaction this used to build needs far more than
-    // MAX_PACKAGE_COUNT copies to reach it and the package trips the count limit
-    // first, reporting package-too-many-transactions. Each transaction has to
-    // carry about 100 kB for 25 of them to clear 40'000'000 WU, and 700 inputs
-    // and outputs of the placeholder's shape comes to roughly 127 kB, so around
-    // 20 copies get there while staying inside the count limit. The assertion
-    // below is what pins that down: it fails if the package outgrows the count
-    // limit before the weight one, which is exactly how this case broke.
+    // The ceiling is one 8 MW block. A 700-in/700-out placeholder is large
+    // enough that a handful of copies exceed that while staying under
+    // MAX_PACKAGE_COUNT. The assertion below fails if the package outgrows the
+    // count limit before the weight one.
     CTransactionRef large_ptx = create_placeholder_tx(700, 700);
     Package package_too_large;
     auto size_large = GetTransactionWeight(*large_ptx);
@@ -137,7 +132,7 @@ BOOST_FIXTURE_TEST_CASE(package_validation_tests, TestChain100Setup)
     // premise needs. Upstream writes it as DEFAULT_ANCESTOR_SIZE_LIMIT_KVB
     // because the two land in the same place there, both near 100 kB. Here they
     // do not: a standard transaction stops at 25'000 vbytes once the weight is
-    // divided by a scale factor of 16, while the ancestor size limit is 2 MB.
+    // divided by a scale factor of 16, while the ancestor size limit is 500 kvB.
     // The inherited form therefore demanded a transaction eighty times larger
     // than the rule it was setting up, and this one is not that large.
     BOOST_CHECK(GetTransactionWeight(*giant_ptx) > MAX_STANDARD_TX_WEIGHT);
