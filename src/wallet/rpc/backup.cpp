@@ -19,6 +19,8 @@
 #include <util/fs.h>
 #include <util/time.h>
 #include <util/translation.h>
+#include <util/strencodings.h>
+#include <wallet/p2mr.h>
 #include <wallet/rpc/util.h>
 #include <wallet/wallet.h>
 
@@ -545,8 +547,10 @@ RPCHelpMan importwallet()
 {
     return RPCHelpMan{"importwallet",
                 "\nImports keys from a wallet dump file (see dumpwallet). Requires a new wallet backup to include imported keys.\n"
+                "Dilithium keys are imported as P2MR receive destinations. P2MR metadata lines (p2mr <time> <hexjson>)\n"
+                "restore custom trees that cannot be rebuilt from a key alone.\n"
                 "Note: Blockchain and Mempool will be rescanned after a successful import. Use \"getwalletinfo\" to query the scanning progress.\n"
-                "Note: This command is only compatible with legacy wallets.\n",
+                "Note: This command is only compatible with legacy wallets. Descriptor wallets should use importp2mr.\n",
                 {
                     {"filename", RPCArg::Type::STR, RPCArg::Optional::NO, "The wallet file"},
                 },
@@ -594,6 +598,7 @@ RPCHelpMan importwallet()
         std::vector<std::tuple<CKey, int64_t, bool, std::string>> keys;
         std::vector<std::tuple<CDilithiumKey, int64_t, bool, std::string>> dilithium_keys;
         std::vector<std::pair<CScript, int64_t>> scripts;
+        std::vector<UniValue> p2mr_metas;
         while (file.good()) {
             pwallet->chain().showProgress("", std::max(1, std::min(50, (int)(((double)file.tellg() / (double)nFilesize) * 100))), false);
             std::string line;
@@ -604,6 +609,18 @@ RPCHelpMan importwallet()
             std::vector<std::string> vstr = SplitString(line, ' ');
             if (vstr.size() < 2)
                 continue;
+            if (vstr[0] == "p2mr" && vstr.size() >= 3 && IsHex(vstr[2])) {
+                const int64_t nTime = ParseISO8601DateTime(vstr[1]);
+                if (nTime > 0) nTimeBegin = std::min(nTimeBegin, nTime);
+                const std::vector<unsigned char> raw = ParseHex(vstr[2]);
+                UniValue meta;
+                if (meta.read(std::string(raw.begin(), raw.end())) && meta.isObject()) {
+                    p2mr_metas.push_back(std::move(meta));
+                } else {
+                    fGood = false;
+                }
+                continue;
+            }
             CKey key = DecodeSecret(vstr[0]);
             if (key.IsValid()) {
                 int64_t nTime = ParseISO8601DateTime(vstr[1]);
@@ -656,7 +673,7 @@ RPCHelpMan importwallet()
             pwallet->chain().showProgress("", 100, false); // hide progress dialog in GUI
             throw JSONRPCError(RPC_WALLET_ERROR, "Importing wallets is disabled when private keys are disabled");
         }
-        double total = (double)(keys.size() + dilithium_keys.size() + scripts.size());
+        double total = (double)(keys.size() + dilithium_keys.size() + scripts.size() + p2mr_metas.size());
         double progress = 0;
         for (const auto& key_tuple : keys) {
             pwallet->chain().showProgress("", std::max(50, std::min(75, (int)((progress / total) * 100) + 50)), false);
@@ -692,20 +709,17 @@ RPCHelpMan importwallet()
             const CDilithiumPubKey pubkey = key.GetPubKey();
             const CKeyID keyid{pubkey.GetID()};
 
-            pwallet->WalletLogPrintf("Importing %s...\n", EncodeDestination(DilithiumPKHash(keyid)));
+            pwallet->WalletLogPrintf("Importing Dilithium key as P2MR...\n");
 
             {
                 LOCK(spk_man->cs_KeyStore);
                 spk_man->mapKeyMetadata[keyid].nCreateTime = time;
             }
-            if (!spk_man->AddDilithiumKeyPubKey(key, CPubKey(pubkey.begin(), pubkey.end()))) {
-                pwallet->WalletLogPrintf("Error importing Dilithium key for %s\n", EncodeDestination(DilithiumPKHash(keyid)));
+            auto created = ImportDilithiumKeyAsP2MR(*pwallet, key, has_label ? label : "");
+            if (!created) {
+                pwallet->WalletLogPrintf("Error importing Dilithium key: %s\n", util::ErrorString(created).original);
                 fGood = false;
                 continue;
-            }
-
-            if (has_label) {
-                pwallet->SetAddressBook(DilithiumPKHash(keyid), label, AddressPurpose::RECEIVE);
             }
             progress++;
         }
@@ -720,6 +734,27 @@ RPCHelpMan importwallet()
                 continue;
             }
 
+            progress++;
+        }
+        for (const auto& meta : p2mr_metas) {
+            pwallet->chain().showProgress("", std::max(50, std::min(75, (int)((progress / total) * 100) + 50)), false);
+            if (!meta.exists("tree")) {
+                fGood = false;
+                continue;
+            }
+            auto leaves = ParseP2MRTreeChecked(meta["tree"]);
+            if (!leaves) {
+                pwallet->WalletLogPrintf("Error importing P2MR tree: %s\n", util::ErrorString(leaves).original);
+                fGood = false;
+                continue;
+            }
+            const std::string label = meta.exists("label") && meta["label"].isStr() ? meta["label"].get_str() : "";
+            auto created = CreateP2MR(*pwallet, *leaves, label, /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+            if (!created) {
+                pwallet->WalletLogPrintf("Error importing P2MR metadata: %s\n", util::ErrorString(created).original);
+                fGood = false;
+                continue;
+            }
             progress++;
         }
         pwallet->chain().showProgress("", 100, false); // hide progress dialog in GUI
@@ -800,6 +835,8 @@ RPCHelpMan dumpwallet()
     return RPCHelpMan{"dumpwallet",
                 "\nDumps all wallet keys in a human-readable format to a server-side file. This does not allow overwriting existing files.\n"
                 "Imported scripts are included in the dumpfile, but corresponding BIP173 addresses, etc. may not be added automatically by importwallet.\n"
+                "P2MR metadata (custom multi-leaf trees) is written as p2mr records and restored by importwallet.\n"
+                "Descriptor wallets cannot use dumpwallet; use listp2mr / importp2mr or backupwallet.\n"
                 "Note that if your wallet contains keys which are not derived from your HD seed (e.g. imported keys), these are not covered by\n"
                 "only backing up the seed itself, and must be backed up too (e.g. ensure you back up the whole dumpfile).\n"
                 "Note: This command is only compatible with legacy wallets.\n",
@@ -942,6 +979,20 @@ RPCHelpMan dumpwallet()
             file << strprintf("%s %s script=1", HexStr(script), create_time);
             file << strprintf(" # addr=%s\n", address);
         }
+    }
+    file << "\n";
+    for (const auto& entry : ListP2MR(wallet)) {
+        UniValue meta(UniValue::VOBJ);
+        meta.pushKV("id", entry.id);
+        meta.pushKV("address", entry.address);
+        meta.pushKV("label", entry.label);
+        meta.pushKV("tree", P2MRTreeToUniValue(entry.tree));
+        const std::string json = meta.write();
+        file << strprintf("p2mr %s %s # id=%s addr=%s\n",
+                          FormatISO8601DateTime(entry.created_at),
+                          HexStr(json),
+                          entry.id,
+                          entry.address);
     }
     file << "\n";
     file << "# End of dump\n";
