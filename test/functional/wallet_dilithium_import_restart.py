@@ -100,6 +100,30 @@ class WalletDilithiumImportRestartTest(BTQTestFramework):
         self.generate(node, 1)
         assert_equal(target.gettransaction(txid)["confirmations"], 1)
 
+        self.log.info("rescan=true sees coins already on chain; rescan=false does not")
+        node.createwallet(wallet_name="hist_source", descriptors=False)
+        hist_source = node.get_wallet_rpc("hist_source")
+        hist_addr = hist_source.getnewdilithiumaddress()["address"]
+        source.sendtoaddress(hist_addr, 2)
+        self.generate(node, 1)
+        hist_secret = self.dilithium_secret_from_dump(
+            hist_source, self.nodes[0].datadir_path / "dump-rescan.txt")
+
+        node.createwallet(wallet_name="norescan", descriptors=False, blank=True)
+        norescan = node.get_wallet_rpc("norescan")
+        imported_nr = norescan.importdilithiumkey(hist_secret, "norescan", False)
+        assert_equal(imported_nr["address"], hist_addr)
+        assert_equal(norescan.getbalance(), 0)
+
+        node.createwallet(wallet_name="yesrescan", descriptors=False, blank=True)
+        yesrescan = node.get_wallet_rpc("yesrescan")
+        imported_yr = yesrescan.importdilithiumkey(hist_secret, "yesrescan", True)
+        assert_equal(imported_yr["address"], hist_addr)
+        assert yesrescan.getbalance() > 0
+
+        norescan.rescanblockchain()
+        assert norescan.getbalance() > 0
+
 
 if __name__ == "__main__":
     WalletDilithiumImportRestartTest().main()
