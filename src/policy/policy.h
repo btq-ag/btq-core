@@ -63,12 +63,15 @@ static constexpr unsigned int DUST_RELAY_TX_FEE{3000};
 static constexpr unsigned int DEFAULT_MIN_RELAY_TX_FEE{1000};
 /** Default for -limitancestorcount, max number of in-mempool ancestors */
 static constexpr unsigned int DEFAULT_ANCESTOR_LIMIT{25};
-/** Default for -limitancestorsize, maximum kilobytes of tx + all in-mempool ancestors */
-static constexpr unsigned int DEFAULT_ANCESTOR_SIZE_LIMIT_KVB{2000}; // 2 MB
+/** Default for -limitancestorsize, maximum kilobytes of tx + all in-mempool ancestors.
+ *  500 kvB is one 8 MW block at WSF=16, so an accepted ancestor set is mineable
+ *  in a single block. */
+static constexpr unsigned int DEFAULT_ANCESTOR_SIZE_LIMIT_KVB{500};
 /** Default for -limitdescendantcount, max number of in-mempool descendants */
 static constexpr unsigned int DEFAULT_DESCENDANT_LIMIT{25};
-/** Default for -limitdescendantsize, maximum kilobytes of in-mempool descendants */
-static constexpr unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT_KVB{2000}; // 2 MB
+/** Default for -limitdescendantsize, maximum kilobytes of in-mempool descendants.
+ *  Matched to the ancestor limit: one 8 MW block. */
+static constexpr unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT_KVB{500};
 /** Default for -datacarrier */
 static const bool DEFAULT_ACCEPT_DATACARRIER = true;
 /**

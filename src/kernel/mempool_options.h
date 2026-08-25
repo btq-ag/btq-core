@@ -18,12 +18,12 @@ class CBlockPolicyEstimator;
 /** Default for -maxmempool, maximum megabytes of mempool memory usage */
 static constexpr unsigned int DEFAULT_MAX_MEMPOOL_SIZE_MB{2000}; // 2 GB
 /** Default for -maxmempool when blocksonly is set.
- *  AppInitMain requires maxmempool >= descendant_size_vbytes * 40. BTQ raised
- *  DEFAULT_DESCENDANT_SIZE_LIMIT_KVB with MAX_BLOCK_WEIGHT, so that floor is
- *  80 MB here; the upstream 5 MB soft-set no longer starts the node (#146). */
+ *  AppInitMain requires maxmempool >= descendant_size_vbytes * 40. With
+ *  DEFAULT_DESCENDANT_SIZE_LIMIT_KVB at one block (500 kvB) that floor is
+ *  20 MB. */
 static constexpr unsigned int DEFAULT_BLOCKSONLY_MAX_MEMPOOL_SIZE_MB{
     (DEFAULT_DESCENDANT_SIZE_LIMIT_KVB * 1'000 * 40 + 999'999) / 1'000'000};
-static_assert(DEFAULT_BLOCKSONLY_MAX_MEMPOOL_SIZE_MB >= 80);
+static_assert(DEFAULT_BLOCKSONLY_MAX_MEMPOOL_SIZE_MB >= 20);
 /** Default for -mempoolexpiry, expiration time for mempool transactions in hours */
 static constexpr unsigned int DEFAULT_MEMPOOL_EXPIRY_HOURS{336};
 /** Default for -mempoolfullrbf, if the transaction replaceability signaling is ignored */

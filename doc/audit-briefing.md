@@ -86,9 +86,9 @@ from a constant that moved sitting next to one that did not.
 | `MAX_STANDARD_P2WSH_SCRIPT_SIZE` | 3,600 | 65,536 | `policy/policy.h` |
 | `MAX_STANDARD_SCRIPTSIG_SIZE` | 1,650 | 15,000 | `policy/policy.h` |
 | `MAX_STANDARD_P2WSH_STACK_ITEM_SIZE` | 80 | 15,000 | `policy/policy.h` |
-| `MAX_PACKAGE_WEIGHT` | 404,000 | 40,000,000 | `policy/packages.h` |
-| `DEFAULT_ANCESTOR_SIZE_LIMIT_KVB` | 101 | 2,000 | `policy/policy.h` |
-| `DEFAULT_DESCENDANT_SIZE_LIMIT_KVB` | 101 | 2,000 | `policy/policy.h` |
+| `MAX_PACKAGE_WEIGHT` | 404,000 | 8,000,000 (one block) | `policy/packages.h` |
+| `DEFAULT_ANCESTOR_SIZE_LIMIT_KVB` | 101 | 500 (one 8 MW block at WSF=16) | `policy/policy.h` |
+| `DEFAULT_DESCENDANT_SIZE_LIMIT_KVB` | 101 | 500 (one 8 MW block at WSF=16) | `policy/policy.h` |
 
 ### Chain
 
@@ -134,24 +134,19 @@ legacy non-witness Dilithium spend puts its signature in the scriptSig at 16
 weight units per byte, four times the upstream penalty, which caps such a
 transaction at about seven inputs.
 
-### The mempool's size limits are now larger than a block
+### Package and ancestor limits are one block
 
 A block holds 8,000,000 weight units, which at a scale factor of 16 is 500,000
-vbytes. Against that, `DEFAULT_ANCESTOR_SIZE_LIMIT_KVB` and
-`DEFAULT_DESCENDANT_SIZE_LIMIT_KVB` are 2,000 kvB, four times a block, and
-`MAX_PACKAGE_WEIGHT` is 40,000,000, five times `MAX_BLOCK_WEIGHT`. Upstream
-holds all three near a tenth of block capacity, which is what makes an accepted
-package always minable in one block. That ordering is inverted here.
-
-The 40,000,000 looks derived rather than chosen: `policy/packages.h` asserts
+vbytes. `DEFAULT_ANCESTOR_SIZE_LIMIT_KVB` and `DEFAULT_DESCENDANT_SIZE_LIMIT_KVB`
+are 500 kvB, and `MAX_PACKAGE_WEIGHT` is 8,000,000, so an accepted package is
+mineable in one block. `policy/packages.h` asserts
 `MAX_PACKAGE_WEIGHT >= DEFAULT_ANCESTOR_SIZE_LIMIT_KVB * WITNESS_SCALE_FACTOR *
-1000`, so the 2,000 kvB ancestor limit forced it. The ancestor limit is
-therefore the value to ask about.
+1000`; those values now match.
 
-Separately, `MAX_PACKAGE_COUNT` is still 25, and twenty-five transactions at the
-standard ceiling of 400,000 weight units total 10,000,000 — a quarter of the
-package weight limit. In ordinary operation the count limit always binds first
-and the weight limit is close to dead code.
+`MAX_PACKAGE_COUNT` is still 25. Twenty-five transactions at the standard
+ceiling of 400,000 weight units total 10,000,000, so the weight limit binds
+before the count limit for max-size standard txs. That is the intended envelope
+for issue #94's package/ancestor question.
 
 ### Per-input weight changes what a wallet can spend
 
