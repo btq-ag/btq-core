@@ -65,6 +65,13 @@ static constexpr int64_t VALIDATION_WEIGHT_PER_SIGOP_PASSED{50};
 
 // Validation weight per passing Dilithium signature (P2MR tapscript only).
 static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED{500};
+// Dilithium is charged 50 sigops against MAX_BLOCK_SIGOPS_COST (80000).
+// That is a conservative launch value, not a measured ratio. Measure with
+//   ./src/bench/bench_btq -filter='(P2MRDilithium|P2WPKHECDSA)Input'
+// and take ceil(ratio * 1.5). Keep 50 if that number is <= 50. Raise it
+// only if the input-level ratio is well above 50, and treat a change as a
+// consensus fork (pair with a testnet reset). Do not lower 50 without a
+// written DoS argument: under-weighting packs more PQ verifies per block.
 static constexpr unsigned int DILITHIUM_SIGOP_COST = 50;
 
 // How much weight budget is added to the witness size (Tapscript only, see BIP 342).

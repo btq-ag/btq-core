@@ -21,20 +21,21 @@
 // Signature verification cost, Dilithium against ECDSA, measured on the same
 // hardware over the same input.
 //
-// This exists because two consensus constants encode a ratio between the two
-// that has never been measured. DILITHIUM_SIGOP_COST (src/script/script.h)
-// charges a Dilithium check 50 sigops, asserting that one Dilithium
-// verification costs about fifty ECDSA verifications. The reasoning recorded
-// when that was chosen cited a figure closer to 10. Both cannot be right, and
-// the constant bounds how many post-quantum signatures a block can carry:
-// MAX_BLOCK_SIGOPS_COST / WITNESS_SCALE_FACTOR legacy sigops, divided by
-// whatever a Dilithium op is charged.
+// This exists because DILITHIUM_SIGOP_COST (src/script/script.h) charges a
+// Dilithium check 50 sigops. 50 is the conservative launch value: over-weight
+// wastes a bit of block space, under-weight is CPU DoS. The primitive pair
+// below overstates the ratio because script/Merkle overhead is shared.
+//
+// Use the input-level pair (P2MRDilithiumInput / P2WPKHECDSAInput) to decide
+// whether 50 still has margin. Keep 50 if ceil(ratio * 1.5) <= 50. A raise is
+// consensus and should ride with a testnet reset.
 //
 // Run both and divide the reported ns/op:
 //
 //     ./src/bench/bench_btq -filter='(Dilithium|ECDSA)Verify'
+//     ./src/bench/bench_btq -filter='(P2MRDilithium|P2WPKHECDSA)Input'
 //
-// The ratio is what DILITHIUM_SIGOP_COST should approximate. Verification is
+// The input-level ratio is what DILITHIUM_SIGOP_COST should approximate. Verification is
 // the operation to measure rather than signing, because validation cost is what
 // the sigop budget exists to bound -- every node verifies every signature in
 // every block, while signing happens once on the spending wallet.
