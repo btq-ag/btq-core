@@ -136,13 +136,19 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
 /** Whether any ScriptPubKeyMan in the wallet holds this Dilithium private key. */
 bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid);
 
+/** True if the leaf is empty or a lone OP_TRUE. Those trees are consensus-valid
+ *  anyone-can-spend outputs; the wallet refuses them unless the caller opts in. */
+bool IsTrivialP2MRLeaf(const P2MRTreeLeaf& leaf);
+
 /** Create and persist a new P2MR destination.
  *  Pass add_to_address_book=false for change destinations: an address book
- *  entry is what makes CWallet::IsChange treat an output as a receive. */
+ *  entry is what makes CWallet::IsChange treat an output as a receive.
+ *  Trivial anyone-can-spend leaves are rejected unless allow_trivial_leaves. */
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
-                                     bool add_to_address_book = true);
+                                     bool add_to_address_book = true,
+                                     bool allow_trivial_leaves = false);
 
 /**
  * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR
@@ -167,7 +173,8 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
                                   CAmount amount,
                                   const std::string& label,
                                   bool subtract_fee_from_amount,
-                                  const CCoinControl& coin_control);
+                                  const CCoinControl& coin_control,
+                                  bool allow_trivial_leaves = false);
 
 /** Build an unsigned spend of a tracked P2MR UTXO to a destination.
  *  Non-const because change address generation may extend the keypool. */

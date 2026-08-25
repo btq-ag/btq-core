@@ -36,11 +36,15 @@ class P2MRRPCTest(BTQTestFramework):
             "script": "51",  # OP_TRUE
         }]
 
+        self.log.info("Refuse OP_TRUE trees unless allow_trivial_leaves is set")
+        assert_raises_rpc_error(-4, "trivial anyone-can-spend", wallet.getnewp2mraddress, tree, "rpc-p2mr")
+        assert_raises_rpc_error(-4, "trivial anyone-can-spend", wallet.sendtop2mr, tree, Decimal("1.0"), "rpc-p2mr-fund")
+
         self.log.info("Create, persist, and list a P2MR address")
-        created = wallet.getnewp2mraddress(tree, "rpc-p2mr")
+        created = wallet.getnewp2mraddress(tree, "rpc-p2mr", True)
         assert created["address"]
         assert created["p2mr_id"]
-        duplicate = wallet.getnewp2mraddress(tree, "rpc-p2mr-duplicate")
+        duplicate = wallet.getnewp2mraddress(tree, "rpc-p2mr-duplicate", True)
         assert_equal(duplicate["address"], created["address"])
         assert_equal(duplicate["p2mr_id"], created["p2mr_id"])
         listed = wallet.listp2mr()
@@ -50,7 +54,7 @@ class P2MRRPCTest(BTQTestFramework):
         assert_raises_rpc_error(-8, "unknown p2mr_id", wallet.getp2mrinfo, "does-not-exist")
 
         self.log.info("Fund through convenience RPC")
-        funded = wallet.sendtop2mr(tree, Decimal("1.0"), "rpc-p2mr-fund")
+        funded = wallet.sendtop2mr(tree, Decimal("1.0"), "rpc-p2mr-fund", allow_trivial_leaves=True)
         assert funded["txid"]
         assert_equal(funded["p2mr_id"], created["p2mr_id"])
         self.generate(node, 1)
