@@ -42,10 +42,14 @@ RPCHelpMan getnewp2mraddress()
 {
     return RPCHelpMan{
         "getnewp2mraddress",
-        "\nCreate and store a new wallet-managed P2MR destination.\n",
+        "\nCreate and store a new wallet-managed P2MR destination.\n"
+        "The normal Dilithium receive path is getnewdilithiumaddress. This RPC is for custom trees.\n"
+        "A leaf whose script is empty or OP_TRUE (hex 51) is anyone-can-spend. Those trees are\n"
+        "rejected unless allow_trivial_leaves is true (regtest and tests only).\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
+            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow empty or OP_TRUE leaves (anyone-can-spend). Tests only."},
         },
         RPCResult{
             RPCResult::Type::OBJ, "", "",
@@ -55,7 +59,10 @@ RPCHelpMan getnewp2mraddress()
                 {RPCResult::Type::STR_HEX, "scriptPubKey", "P2MR scriptPubKey"},
                 {RPCResult::Type::STR_HEX, "merkle_root", "P2MR merkle root"},
             }},
-        RPCExamples{HelpExampleCli("getnewp2mraddress", "'[{\"depth\":0,\"leaf_version\":192,\"script\":\"51\"}]'")},
+        RPCExamples{
+            HelpExampleCli("getnewdilithiumaddress", "")
+            + HelpExampleCli("getnewp2mraddress", "'[{\"depth\":0,\"leaf_version\":192,\"script\":\"51\"}]' \"\" true")
+        },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
             std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
@@ -63,9 +70,10 @@ RPCHelpMan getnewp2mraddress()
 
             const auto leaves = ParseP2MRTreeFromUniValue(request.params[0]);
             const std::string label = request.params[1].isNull() ? "" : LabelFromValue(request.params[1]);
+            const bool allow_trivial = !request.params[2].isNull() && request.params[2].get_bool();
 
             LOCK(pwallet->cs_wallet);
-            auto created = CreateP2MR(*pwallet, leaves, label);
+            auto created = CreateP2MR(*pwallet, leaves, label, /*add_to_address_book=*/true, allow_trivial);
             if (!created) {
                 throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
             }
@@ -84,7 +92,9 @@ RPCHelpMan sendtop2mr()
 {
     return RPCHelpMan{
         "sendtop2mr",
-        "\nCreate a wallet-tracked P2MR destination and send funds to it.\n",
+        "\nCreate a wallet-tracked P2MR destination and send funds to it.\n"
+        "Trivial anyone-can-spend leaves (empty or OP_TRUE / hex 51) are rejected unless\n"
+        "allow_trivial_leaves is true. Prefer getnewdilithiumaddress for ordinary receive.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "Amount to send"},
@@ -92,13 +102,14 @@ RPCHelpMan sendtop2mr()
             {"comment", RPCArg::Type::STR, RPCArg::Default{""}, "Wallet comment"},
             {"comment_to", RPCArg::Type::STR, RPCArg::Default{""}, "Wallet comment-to"},
             {"subtractfeefromamount", RPCArg::Type::BOOL, RPCArg::Default{false}, "Subtract fee from amount"},
+            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow empty or OP_TRUE leaves (anyone-can-spend). Tests only."},
         },
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "txid", "Funding transaction id"},
             {RPCResult::Type::STR, "address", "P2MR destination"},
             {RPCResult::Type::STR, "p2mr_id", "Stored metadata id"},
         }},
-        RPCExamples{HelpExampleCli("sendtop2mr", "'[{\"depth\":0,\"leaf_version\":192,\"script\":\"51\"}]' 1.0")},
+        RPCExamples{HelpExampleCli("sendtop2mr", "'[{\"depth\":0,\"leaf_version\":192,\"script\":\"51\"}]' 1.0 \"\" \"\" \"\" false true")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
             std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
@@ -108,14 +119,19 @@ RPCHelpMan sendtop2mr()
             const CAmount amount = AmountFromValue(request.params[1]);
             const std::string label = request.params[2].isNull() ? "" : LabelFromValue(request.params[2]);
             const bool subtract_fee = request.params[5].isNull() ? false : request.params[5].get_bool();
+            const bool allow_trivial = !request.params[6].isNull() && request.params[6].get_bool();
 
             LOCK(pwallet->cs_wallet);
             EnsureWalletIsUnlocked(*pwallet);
 
             CCoinControl coin_control;
-            auto funded = FundP2MR(*pwallet, leaves, amount, label, subtract_fee, coin_control);
+            auto funded = FundP2MR(*pwallet, leaves, amount, label, subtract_fee, coin_control, allow_trivial);
             if (!funded) {
-                throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(funded).original);
+                const std::string msg = util::ErrorString(funded).original;
+                if (msg.find("trivial anyone-can-spend") != std::string::npos) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, msg);
+                }
+                throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, msg);
             }
 
             UniValue out(UniValue::VOBJ);
