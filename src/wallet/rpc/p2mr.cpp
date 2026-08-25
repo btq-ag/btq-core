@@ -348,6 +348,66 @@ RPCHelpMan signp2mrtransaction()
     };
 }
 
+RPCHelpMan importp2mr()
+{
+    return RPCHelpMan{
+        "importp2mr",
+        "\nImport P2MR metadata from listp2mr-shaped JSON so custom trees can be restored\n"
+        "on descriptor wallets (dumpwallet is legacy-only). Keys must already be in the wallet\n"
+        "if the tree needs them. Trivial anyone-can-spend leaves are allowed here because this\n"
+        "is a restore, not a new destination.\n",
+        {
+            {"entries", RPCArg::Type::ARR, RPCArg::Optional::NO, "Array of P2MR entries (listp2mr output or objects with a tree field)",
+                {
+                    {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
+                        {
+                            {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order"},
+                            {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
+                        }},
+                }},
+        },
+        RPCResult{
+            RPCResult::Type::ARR, "", "",
+            {{
+                RPCResult::Type::OBJ, "", "",
+                {
+                    {RPCResult::Type::STR, "address", "Restored P2MR address"},
+                    {RPCResult::Type::STR, "p2mr_id", "Wallet-local metadata id"},
+                }
+            }}
+        },
+        RPCExamples{HelpExampleCli("importp2mr", "'[{\"tree\":[{\"depth\":0,\"leaf_version\":192,\"script\":\"7551\"}]}]'")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+            if (!pwallet) return UniValue::VNULL;
+
+            if (!request.params[0].isArray()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "entries must be an array");
+            }
+
+            LOCK(pwallet->cs_wallet);
+            UniValue out(UniValue::VARR);
+            for (const UniValue& entry : request.params[0].getValues()) {
+                if (!entry.isObject() || !entry.exists("tree")) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "each entry must be an object with a tree field");
+                }
+                const auto leaves = ParseP2MRTreeFromUniValue(entry["tree"]);
+                const std::string label = entry.exists("label") && entry["label"].isStr() ? entry["label"].get_str() : "";
+                auto created = CreateP2MR(*pwallet, leaves, label, /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+                if (!created) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+                }
+                UniValue row(UniValue::VOBJ);
+                row.pushKV("address", created->address);
+                row.pushKV("p2mr_id", created->id);
+                out.push_back(std::move(row));
+            }
+            return out;
+        },
+    };
+}
+
 RPCHelpMan testp2mrtransaction()
 {
     return RPCHelpMan{

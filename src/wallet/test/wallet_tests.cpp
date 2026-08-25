@@ -15,6 +15,8 @@
 #include <node/blockstorage.h>
 #include <policy/policy.h>
 #include <rpc/server.h>
+#include <script/interpreter.h>
+#include <script/script.h>
 #include <script/solver.h>
 #include <test/util/logging.h>
 #include <test/util/random.h>
@@ -23,6 +25,7 @@
 #include <validation.h>
 #include <validationinterface.h>
 #include <wallet/coincontrol.h>
+#include <wallet/p2mr.h>
 #include <wallet/context.h>
 #include <wallet/receive.h>
 #include <wallet/spend.h>
@@ -409,9 +412,80 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, Walle
         BOOST_REQUIRE(spk_man);
         BOOST_REQUIRE(spk_man->GetDilithiumKey(keyid, recovered));
         BOOST_CHECK(recovered == key);
-        const auto* address_book_entry = wallet->FindAddressBookEntry(destination);
-        BOOST_REQUIRE(address_book_entry);
-        BOOST_CHECK_EQUAL(address_book_entry->GetLabel(), "dilithium backup");
+        LOCK(wallet->cs_wallet);
+        const auto p2mr_entries = ListP2MR(*wallet);
+        BOOST_REQUIRE_EQUAL(p2mr_entries.size(), 1U);
+        BOOST_CHECK_EQUAL(p2mr_entries[0].label, "dilithium backup");
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_p2mr_metadata, WalletTestingSetup)
+{
+    const fs::path backup_file_path = m_args.GetDataDirNet() / "p2mr-wallet.backup";
+    const std::string backup_file = fs::PathToString(backup_file_path);
+    std::string original_id;
+    std::string original_address;
+
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->GetOrCreateLegacyScriptPubKeyMan();
+        AddWallet(context, wallet);
+        {
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            LOCK(wallet->cs_wallet);
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+            P2MRTreeLeaf leaf;
+            leaf.depth = 0;
+            leaf.leaf_version = TAPROOT_LEAF_TAPSCRIPT;
+            leaf.script = {OP_TRUE};
+            auto created = CreateP2MR(*wallet, {leaf}, "custom vault", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+            BOOST_REQUIRE(created);
+            original_id = created->id;
+            original_address = created->address;
+        }
+
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+        wallet::dumpwallet().HandleRequest(request);
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+    }
+
+    {
+        std::ifstream dump_file{backup_file_path};
+        BOOST_REQUIRE(dump_file.is_open());
+        const std::string dump_contents{std::istreambuf_iterator<char>{dump_file}, std::istreambuf_iterator<char>{}};
+        BOOST_CHECK(dump_contents.find("p2mr ") != std::string::npos);
+        BOOST_CHECK(dump_contents.find(original_address) != std::string::npos);
+    }
+
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->SetupLegacyScriptPubKeyMan();
+        AddWallet(context, wallet);
+        {
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            LOCK(wallet->cs_wallet);
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+        }
+
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+        wallet::importwallet().HandleRequest(request);
+
+        LOCK(wallet->cs_wallet);
+        const auto entries = ListP2MR(*wallet);
+        BOOST_REQUIRE_EQUAL(entries.size(), 1U);
+        BOOST_CHECK_EQUAL(entries[0].address, original_address);
+        BOOST_CHECK_EQUAL(entries[0].label, "custom vault");
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
     }
 }
 
