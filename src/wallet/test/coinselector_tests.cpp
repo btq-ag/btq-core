@@ -187,6 +187,21 @@ static std::unique_ptr<CWallet> NewWallet(const node::NodeContext& m_node, const
     return wallet;
 }
 
+BOOST_AUTO_TEST_CASE(coingrinder_min_weight_test)
+{
+    std::vector<COutput> utxo_pool;
+    add_coin(1 * CENT, 1, utxo_pool);
+    add_coin(2 * CENT, 2, utxo_pool);
+    add_coin(3 * CENT, 3, utxo_pool);
+    add_coin(4 * CENT, 4, utxo_pool);
+
+    auto groups = GroupCoins(utxo_pool);
+    const auto result = CoinGrinder(groups, 3 * CENT, /*change_target=*/CENT / 10, MAX_STANDARD_TX_WEIGHT);
+    BOOST_CHECK(result);
+    BOOST_CHECK_EQUAL(result->GetAlgo(), SelectionAlgorithm::CG);
+    BOOST_CHECK_GE(result->GetSelectedValue(), 3 * CENT);
+}
+
 // Branch and bound coin selection tests
 BOOST_AUTO_TEST_CASE(bnb_search_test)
 {
