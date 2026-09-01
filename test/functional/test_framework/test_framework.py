@@ -567,12 +567,7 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
         if peer_advertises_v2 is None:
             peer_advertises_v2 = self.options.v2transport
 
-        if peer_advertises_v2:
-            from_connection.addnode(node=ip_port, command="onetry", v2transport=True)
-        else:
-            # skip the optional third argument (default false) for
-            # compatibility with older clients
-            from_connection.addnode(ip_port, "onetry")
+        from_connection.addnode(node=ip_port, command="onetry", v2transport=peer_advertises_v2)
 
         if not wait_for_connect:
             return

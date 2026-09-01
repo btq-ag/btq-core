@@ -1866,7 +1866,7 @@ bool CConnman::AddConnection(const std::string& address, ConnectionType conn_typ
     CSemaphoreGrant grant(*semOutbound, true);
     if (!grant) return false;
 
-    OpenNetworkConnection(CAddress(), false, std::move(grant), address.c_str(), conn_type, /*use_v2transport=*/false);
+    OpenNetworkConnection(CAddress(), false, std::move(grant), address.c_str(), conn_type, /*use_v2transport=*/bool(GetLocalServices() & NODE_P2P_V2));
     return true;
 }
 
@@ -2325,7 +2325,7 @@ void CConnman::ProcessAddrFetch()
     CAddress addr;
     CSemaphoreGrant grant(*semOutbound, /*fTry=*/true);
     if (grant) {
-        OpenNetworkConnection(addr, false, std::move(grant), strDest.c_str(), ConnectionType::ADDR_FETCH, /*use_v2transport=*/false);
+        OpenNetworkConnection(addr, false, std::move(grant), strDest.c_str(), ConnectionType::ADDR_FETCH, /*use_v2transport=*/bool(GetLocalServices() & NODE_P2P_V2));
     }
 }
 
@@ -2428,7 +2428,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             for (const std::string& strAddr : connect)
             {
                 CAddress addr(CService(), NODE_NONE);
-                OpenNetworkConnection(addr, false, {}, strAddr.c_str(), ConnectionType::MANUAL, /*use_v2transport=*/false);
+                OpenNetworkConnection(addr, false, {}, strAddr.c_str(), ConnectionType::MANUAL, /*use_v2transport=*/bool(GetLocalServices() & NODE_P2P_V2));
                 for (int i = 0; i < 10 && i < nLoop; i++)
                 {
                     if (!interruptNet.sleep_for(std::chrono::milliseconds(500)))
