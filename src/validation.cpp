@@ -2683,7 +2683,10 @@ bool Chainstate::FlushStateToDisk(
                 return FatalError(m_chainman.GetNotifications(), state, "Disk space is too low!", _("Disk space is too low!"));
             }
             // Flush the chainstate (which may refer to block index entries).
-            if (!CoinsTip().Flush())
+            // Prune and periodic writes Sync() so the dbcache stays warm.
+            // ALWAYS / cache-pressure still Flush() and wipe the cache.
+            const bool empty_cache{(mode == FlushStateMode::ALWAYS) || fCacheLarge || fCacheCritical};
+            if (empty_cache ? !CoinsTip().Flush() : !CoinsTip().Sync())
                 return FatalError(m_chainman.GetNotifications(), state, "Failed to write to coin database");
             m_last_flush = nNow;
             full_flush_completed = true;
