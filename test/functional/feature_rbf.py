@@ -33,9 +33,11 @@ class ReplaceByFeeTest(BTQTestFramework):
                 "-limitancestorsize=101",
                 "-limitdescendantcount=200",
                 "-limitdescendantsize=101",
+                "-mempoolfullrbf=0",
             ],
-            # second node has default mempool parameters
+            # second node keeps opt-in RBF so the signaling tests stay meaningful
             [
+                "-mempoolfullrbf=0",
             ],
         ]
         self.supports_cli = False

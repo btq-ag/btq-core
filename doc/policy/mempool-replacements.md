@@ -10,13 +10,13 @@ A transaction ("replacement transaction") may replace its directly conflicting t
 their in-mempool descendants (together, "original transactions") if, in addition to passing all
 other consensus and policy rules, each of the following conditions are met:
 
-1. The directly conflicting transactions all signal replaceability explicitly. A transaction is
-   signaling replaceability if any of its inputs have an nSequence number less than (0xffffffff - 1).
+1. The directly conflicting transactions all signal replaceability explicitly, unless
+   `-mempoolfullrbf` is enabled (the default). A transaction is signaling replaceability if any
+   of its inputs have an nSequence number less than (0xffffffff - 1).
 
    *Rationale*: See [BIP125
    explanation](https://github.com/btq/bips/blob/master/bip-0125.mediawiki#motivation).
-   Use the (`-mempoolfullrbf`) configuration option to allow transaction replacement without enforcement of the
-   opt-in signaling rule.
+   `-mempoolfullrbf=0` restores the opt-in signaling rule.
 
 2. The replacement transaction only include an unconfirmed input if that input was included in
    one of the directly conflicting transactions. An unconfirmed input spends an output from a
