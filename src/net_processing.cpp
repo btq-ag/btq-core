@@ -576,6 +576,9 @@ private:
      *                     If no meaningful work was done, then the work set for this peer
      *                     will be empty.
      */
+    void RequestOrphanParents(CNode& pfrom, Peer& peer, const CTransaction& tx)
+        EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+
     bool ProcessOrphanTx(Peer& peer)
         EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex, g_msgproc_mutex);
 
@@ -2959,6 +2962,27 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
     return;
 }
 
+void PeerManagerImpl::RequestOrphanParents(CNode& pfrom, Peer& peer, const CTransaction& tx)
+{
+    AssertLockHeld(::cs_main);
+    std::vector<uint256> unique_parents;
+    unique_parents.reserve(tx.vin.size());
+    for (const CTxIn& txin : tx.vin) {
+        unique_parents.push_back(txin.prevout.hash);
+    }
+    std::sort(unique_parents.begin(), unique_parents.end());
+    unique_parents.erase(std::unique(unique_parents.begin(), unique_parents.end()), unique_parents.end());
+
+    const auto current_time{GetTime<std::chrono::microseconds>()};
+    for (const uint256& parent_txid : unique_parents) {
+        if (m_recent_rejects.contains(parent_txid)) continue;
+        // Orphan parent fetch is by txid even for wtxidrelay peers.
+        const auto gtxid{GenTxid::Txid(parent_txid)};
+        AddKnownTx(peer, parent_txid);
+        if (!AlreadyHaveTx(gtxid)) AddTxAnnouncement(pfrom, gtxid, current_time);
+    }
+}
+
 bool PeerManagerImpl::ProcessOrphanTx(Peer& peer)
 {
     AssertLockHeld(g_msgproc_mutex);
@@ -2980,7 +3004,7 @@ bool PeerManagerImpl::ProcessOrphanTx(Peer& peer)
                 orphan_wtxid.ToString(),
                 m_mempool.size(), m_mempool.DynamicMemoryUsage() / 1000);
             RelayTransaction(orphanHash, porphanTx->GetWitnessHash());
-            m_orphanage.AddChildrenToWorkSet(*porphanTx);
+            m_orphanage.AddChildrenToWorkSet(*porphanTx, m_rng);
             m_orphanage.EraseTx(orphanHash);
             for (const CTransactionRef& removedTx : result.m_replaced_transactions.value()) {
                 AddToCompactExtraTransactions(removedTx);
@@ -4175,6 +4199,13 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         // (older than our recency filter) if trying to DoS us, without any need
         // for witness malleation.
         if (AlreadyHaveTx(GenTxid::Wtxid(wtxid))) {
+            // Another peer already gave us this orphan. Record this announcer
+            // and ask them for the missing parents too.
+            if (m_orphanage.HaveTx(GenTxid::Wtxid(wtxid))) {
+                if (m_orphanage.AddAnnouncer(wtxid, pfrom.GetId())) {
+                    RequestOrphanParents(pfrom, *peer, tx);
+                }
+            }
             if (pfrom.HasPermission(NetPermissionFlags::ForceRelay)) {
                 // Always relay transactions received from peers with forcerelay
                 // permission, even if they were already in the mempool, allowing
@@ -4215,7 +4246,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             m_txrequest.ForgetTxHash(tx.GetHash());
             m_txrequest.ForgetTxHash(tx.GetWitnessHash());
             RelayTransaction(tx.GetHash(), tx.GetWitnessHash());
-            m_orphanage.AddChildrenToWorkSet(tx);
+            m_orphanage.AddChildrenToWorkSet(tx, m_rng);
 
             pfrom.m_last_tx_time = GetTime<std::chrono::seconds>();
 
@@ -4232,36 +4263,14 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         else if (state.GetResult() == TxValidationResult::TX_MISSING_INPUTS)
         {
             bool fRejectedParents = false; // It may be the case that the orphans parents have all been rejected
-
-            // Deduplicate parent txids, so that we don't have to loop over
-            // the same parent txid more than once down below.
-            std::vector<uint256> unique_parents;
-            unique_parents.reserve(tx.vin.size());
             for (const CTxIn& txin : tx.vin) {
-                // We start with all parents, and then remove duplicates below.
-                unique_parents.push_back(txin.prevout.hash);
-            }
-            std::sort(unique_parents.begin(), unique_parents.end());
-            unique_parents.erase(std::unique(unique_parents.begin(), unique_parents.end()), unique_parents.end());
-            for (const uint256& parent_txid : unique_parents) {
-                if (m_recent_rejects.contains(parent_txid)) {
+                if (m_recent_rejects.contains(txin.prevout.hash)) {
                     fRejectedParents = true;
                     break;
                 }
             }
             if (!fRejectedParents) {
-                const auto current_time{GetTime<std::chrono::microseconds>()};
-
-                for (const uint256& parent_txid : unique_parents) {
-                    // Here, we only have the txid (and not wtxid) of the
-                    // inputs, so we only request in txid mode, even for
-                    // wtxidrelay peers.
-                    // Eventually we should replace this with an improved
-                    // protocol for getting all unconfirmed parents.
-                    const auto gtxid{GenTxid::Txid(parent_txid)};
-                    AddKnownTx(*peer, parent_txid);
-                    if (!AlreadyHaveTx(gtxid)) AddTxAnnouncement(pfrom, gtxid, current_time);
-                }
+                RequestOrphanParents(pfrom, *peer, tx);
 
                 if (m_orphanage.AddTx(ptx, pfrom.GetId())) {
                     AddToCompactExtraTransactions(ptx);
@@ -4271,8 +4280,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 m_txrequest.ForgetTxHash(tx.GetHash());
                 m_txrequest.ForgetTxHash(tx.GetWitnessHash());
 
-                // DoS prevention: do not allow m_orphanage to grow unbounded (see CVE-2012-3789)
-                m_orphanage.LimitOrphans(m_opts.max_orphan_txs);
+                // Evict by unique weight / latency score, not a 100-tx count.
+                m_orphanage.LimitOrphans(m_rng);
             } else {
                 LogPrint(BCLog::MEMPOOL, "not keeping orphan with rejected parents %s (wtxid=%s)\n",
                          tx.GetHash().ToString(),
