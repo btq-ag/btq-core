@@ -53,8 +53,7 @@ BOOST_AUTO_TEST_CASE(BlockPolicyEstimates)
     int blocknum = 0;
 
     // Loop through 200 blocks
-    // At a decay .9952 and 4 fee transactions per block
-    // This makes the tx count about 2.5 per bucket, well above the 0.1 threshold
+    // Short decay is .99616. 4 fee txs per block keeps the count well above the 0.1 threshold.
     while (blocknum < 200) {
         for (int j = 0; j < 10; j++) { // For each fee
             for (int k = 0; k < 4; k++) { // add 4 fee txs
