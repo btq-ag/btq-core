@@ -69,6 +69,7 @@
 #include <script/sigcache.h>
 #include <shutdown.h>
 #include <sync.h>
+#include <timedata.h>
 #include <torcontrol.h>
 #include <txdb.h>
 #include <txmempool.h>
