@@ -42,7 +42,7 @@
 using wallet::CCoinControl;
 using wallet::DEFAULT_PAY_TX_FEE;
 
-static constexpr std::array confTargets{2, 4, 6, 12, 24, 48, 144, 504, 1008};
+static constexpr std::array confTargets{2, 6, 12, 30, 60, 180, 720, 1440};
 int getConfTargetForIndex(int index) {
     if (index+1 > static_cast<int>(confTargets.size())) {
         return confTargets.back();
