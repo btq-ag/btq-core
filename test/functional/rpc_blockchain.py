@@ -203,9 +203,8 @@ class BlockchainTest(BTQTestFramework):
             'bip65': {'type': 'buried', 'active': True, 'height': 4},
             'csv': {'type': 'buried', 'active': True, 'height': 5},
             'segwit': {'type': 'buried', 'active': True, 'height': 6},
-            # BTQ-specific deployments. LWMA is scheduled far past the heights
-            # this helper is called at, so it is always still inactive here.
-            'lwma': {'type': 'buried', 'active': False, 'height': 300000},
+            # BTQ-specific deployments. LWMA is active from block 1.
+            'lwma': {'type': 'buried', 'active': True, 'height': 1},
             'dilithium': {'type': 'buried', 'active': True, 'height': 1},
             'dilithium_p2mr': {'type': 'buried', 'active': True, 'height': 1},
             'testdummy': {

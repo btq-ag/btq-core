@@ -90,11 +90,8 @@ public:
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        // BTQ-AUDIT-103: LWMA from block 1 so mainnet never has a pre-LWMA
-        // legacy-retarget window that can be manipulated. Mainnet only: the
-        // live testnet keeps its scheduled height (changing it retroactively
-        // would invalidate existing history — see the height-gate pattern in
-        // nDilithiumP2MRHeight).
+        // BTQ-AUDIT-103: LWMA from block 1 so there is no pre-LWMA
+        // legacy-retarget window that can be manipulated.
         consensus.nLWMAHeight = 1;
         consensus.nDilithiumHeight = 1;
         // Mainnet is pre-launch: Dilithium is P2MR-only from genesis.
@@ -197,7 +194,7 @@ public:
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        consensus.nLWMAHeight = 300000;
+        consensus.nLWMAHeight = 1;
         consensus.nDilithiumHeight = 1;
         // DEPLOYMENT_DILITHIUM_P2MR is deliberately unscheduled here, so the
         // restriction is policy-only on testnet (non-standard to relay, refused
@@ -350,7 +347,7 @@ public:
         consensus.SegwitHeight = 1;
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        consensus.nLWMAHeight = 300000;
+        consensus.nLWMAHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 18144; // 90% of 20160
@@ -433,7 +430,7 @@ public:
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        consensus.nLWMAHeight = 300000;
+        consensus.nLWMAHeight = 1;
         consensus.nDilithiumHeight = 1;
         consensus.nDilithiumP2MRHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = true;
