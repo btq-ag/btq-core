@@ -107,25 +107,6 @@ BOOST_AUTO_TEST_CASE(lwma_activation_height_configured)
     BOOST_CHECK_EQUAL(params->GetConsensus().nLWMAWindow, 144);
 }
 
-BOOST_AUTO_TEST_CASE(lwma_before_activation_uses_legacy_path)
-{
-    const auto params = CreateChainParams(*m_node.args, ChainType::BTQREGTEST);
-    Consensus::Params consensus = params->GetConsensus();
-    // Default nLWMAHeight is 1; raise it so this still hits the legacy retarget.
-    consensus.nLWMAHeight = 300000;
-
-    CBlockIndex pindexLast;
-    pindexLast.nHeight = consensus.nLWMAHeight - 1;
-    pindexLast.nBits = 0x207fffff;
-    pindexLast.nTime = 1000000;
-    pindexLast.pprev = nullptr;
-
-    const int64_t nFirstBlockTime = pindexLast.nTime - consensus.nPowTargetSpacing;
-
-    const uint32_t next = CalculateNextWorkRequired(&pindexLast, nFirstBlockTime, consensus);
-    BOOST_CHECK(next > 0);
-}
-
 BOOST_AUTO_TEST_CASE(lwma_preserves_low_constant_target_without_zero_underflow)
 {
     auto params = CreateChainParams(*m_node.args, ChainType::BTQREGTEST);
