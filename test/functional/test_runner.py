@@ -113,6 +113,7 @@ BASE_SCRIPTS = [
     'feature_p2mr.py',
     'feature_p2mr_dilithium_multisig.py',
     'feature_p2mr_rpc.py --descriptors',
+    'wallet_p2mr_backup.py --descriptors',
     'feature_block.py',
     'feature_cve_2024_52911.py',
     'btq_regtest_mining.py',

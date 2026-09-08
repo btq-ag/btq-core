@@ -228,6 +228,7 @@ BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSet
     BOOST_CHECK_EQUAL(second->address, first->address);
     BOOST_CHECK_EQUAL(HexStr(second->script_pub_key), HexStr(first->script_pub_key));
     BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+    BOOST_CHECK_EQUAL(ListP2MR(*wallet)[0].label, "second");
 }
 
 BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTestingSetup)
