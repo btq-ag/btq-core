@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 //
 
+#include <chain.h>
 #include <netaddress.h>
 #include <noui.h>
 #include <test/util/logging.h>
@@ -100,6 +101,13 @@ BOOST_AUTO_TEST_CASE(addtimedata)
     BOOST_CHECK_EQUAL(GetTimeOffset(), 0);
 
     TestOnlyResetTimeData();
+}
+
+BOOST_AUTO_TEST_CASE(max_time_adjustment_fits_future_block_window)
+{
+    // Peer offset must not exceed MAX_FUTURE_BLOCK_TIME. Otherwise an old
+    // node carrying a large offset accepts headers a patched node rejects.
+    BOOST_CHECK_LE(DEFAULT_MAX_TIME_ADJUSTMENT, MAX_FUTURE_BLOCK_TIME);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

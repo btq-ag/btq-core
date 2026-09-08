@@ -13,7 +13,9 @@
 #include <cstdint>
 #include <vector>
 
-static const int64_t DEFAULT_MAX_TIME_ADJUSTMENT = 70 * 60;
+// Keep this at or below MAX_FUTURE_BLOCK_TIME (15 minutes). A larger peer
+// offset would let an unpatched node accept headers a patched node rejects.
+static const int64_t DEFAULT_MAX_TIME_ADJUSTMENT = 15 * 60;
 
 class CNetAddr;
 
