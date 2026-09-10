@@ -137,9 +137,10 @@ transaction at about seven inputs.
 ### Package and ancestor limits are one block
 
 A default template holds 7,600,000 weight units minus a 4000 WU coinbase
-reserve, which at a scale factor of 16 is 474,749 vbytes. `DEFAULT_ANCESTOR_SIZE_LIMIT_KVB` and `DEFAULT_DESCENDANT_SIZE_LIMIT_KVB`
+reserve, which at a scale factor of 16 is 474,750 vbytes. `DEFAULT_ANCESTOR_SIZE_LIMIT_KVB` and `DEFAULT_DESCENDANT_SIZE_LIMIT_KVB`
 are 474 kvB, and `MAX_PACKAGE_WEIGHT` is 7,584,000, so an accepted package fits
-the default BlockAssembler. `policy/packages.h` asserts
+the default BlockAssembler weight budget. Sigops are checked separately.
+`policy/packages.h` asserts
 `MAX_PACKAGE_WEIGHT >= DEFAULT_ANCESTOR_SIZE_LIMIT_KVB * WITNESS_SCALE_FACTOR *
 1000`; those values now match.
 
