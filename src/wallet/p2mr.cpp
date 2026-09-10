@@ -339,11 +339,6 @@ P2MREntry MetadataToEntry(const CTxDestination& dest, const UniValue& meta, cons
 
 } // namespace
 
-bool IsTrivialP2MRLeaf(const P2MRTreeLeaf& leaf)
-{
-    return leaf.script.empty() || IsOpTrueLeaf(leaf);
-}
-
 // --- Tree parsing ----------------------------------------------------------
 
 util::Result<std::vector<P2MRTreeLeaf>> ParseP2MRTreeChecked(const UniValue& tree)
@@ -694,14 +689,15 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::string& label,
                                      bool add_to_address_book,
                                      bool allow_trivial_leaves,
-                                     int64_t created_at)
+                                     std::optional<int64_t> created_at)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!allow_trivial_leaves) {
         for (const auto& leaf : leaves) {
-            if (IsTrivialP2MRLeaf(leaf)) {
+            const CScript script{leaf.script.begin(), leaf.script.end()};
+            if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT || !IsDilithiumLeafSpendable(wallet, script)) {
                 return util::Error{Untranslated(
-                    "P2MR tree contains a trivial anyone-can-spend leaf (empty or OP_TRUE); pass allow_trivial_leaves if this is intentional")};
+                    "P2MR tree contains a leaf the wallet cannot safely spend; pass allow_trivial_leaves if this is intentional")};
             }
         }
     }
@@ -715,7 +711,7 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     out.address = EncodeDestination(out.dest);
     const WitnessV2P2MR& w = std::get<WitnessV2P2MR>(out.dest);
     std::copy(w.begin(), w.end(), out.merkle_root.begin());
-    const int64_t ts = created_at > 0 ? created_at : GetTime();
+    const int64_t ts = created_at.value_or(GetTime());
 
     for (const auto& entry : ListP2MR(wallet)) {
         if (entry.script_pub_key == out.script_pub_key && SameP2MRTree(entry.tree, leaves)) {
@@ -723,12 +719,17 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
             out.address = entry.address;
             out.merkle_root = entry.merkle_root;
             out.dest = entry.dest;
-            if (add_to_address_book && !label.empty() && label != entry.label) {
-                if (!wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
+            const bool update_label = add_to_address_book && !label.empty() && label != entry.label;
+            const bool update_created_at = created_at.has_value() && *created_at != entry.created_at;
+            if (update_label || update_created_at) {
+                const std::string restored_label = update_label ? label : entry.label;
+                const int64_t restored_created_at = created_at.value_or(entry.created_at > 0 ? entry.created_at : ts);
+                if (update_label &&
+                    !wallet.SetAddressBook(out.dest, restored_label, AddressPurpose::RECEIVE)) {
                     return util::Error{Untranslated("failed to set P2MR address book entry")};
                 }
                 WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
-                const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, label, leaves, entry.created_at > 0 ? entry.created_at : ts);
+                const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, restored_label, leaves, restored_created_at);
                 if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
                     return util::Error{Untranslated("failed to persist P2MR metadata")};
                 }
@@ -750,9 +751,15 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     return out;
 }
 
-util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta)
+namespace {
+struct ValidatedP2MRRestore {
+    std::vector<P2MRTreeLeaf> leaves;
+    std::string label;
+    std::optional<int64_t> created_at;
+};
+
+util::Result<ValidatedP2MRRestore> ParseP2MRRestore(const UniValue& meta)
 {
-    AssertLockHeld(wallet.cs_wallet);
     if (!meta.isObject() || !meta.exists("tree")) {
         return util::Error{Untranslated("P2MR record missing tree")};
     }
@@ -768,22 +775,56 @@ util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta)
     uint256 root;
     std::copy(w.begin(), w.end(), root.begin());
 
-    if (meta.exists("address") && meta["address"].isStr() && meta["address"].get_str() != address) {
-        return util::Error{Untranslated("P2MR address does not match reconstructed tree")};
+    if (meta.exists("address")) {
+        if (!meta["address"].isStr()) return util::Error{Untranslated("P2MR address must be a string")};
+        if (meta["address"].get_str() != address) {
+            return util::Error{Untranslated("P2MR address does not match reconstructed tree")};
+        }
     }
-    if (meta.exists("merkle_root") && meta["merkle_root"].isStr() && meta["merkle_root"].get_str() != HexStr(root)) {
-        return util::Error{Untranslated("P2MR merkle_root does not match reconstructed tree")};
+    if (meta.exists("merkle_root")) {
+        if (!meta["merkle_root"].isStr()) return util::Error{Untranslated("P2MR merkle_root must be a string")};
+        if (meta["merkle_root"].get_str() != HexStr(root)) {
+            return util::Error{Untranslated("P2MR merkle_root does not match reconstructed tree")};
+        }
     }
-    if (meta.exists("scriptPubKey") && meta["scriptPubKey"].isStr() && meta["scriptPubKey"].get_str() != HexStr(spk)) {
-        return util::Error{Untranslated("P2MR scriptPubKey does not match reconstructed tree")};
+    if (meta.exists("scriptPubKey")) {
+        if (!meta["scriptPubKey"].isStr()) return util::Error{Untranslated("P2MR scriptPubKey must be a string")};
+        if (meta["scriptPubKey"].get_str() != HexStr(spk)) {
+            return util::Error{Untranslated("P2MR scriptPubKey does not match reconstructed tree")};
+        }
     }
 
-    const std::string label = meta.exists("label") && meta["label"].isStr() ? meta["label"].get_str() : "";
-    int64_t created_at = 0;
-    if (meta.exists("created_at") && meta["created_at"].isNum()) {
-        created_at = meta["created_at"].getInt<int64_t>();
+    ValidatedP2MRRestore validated{std::move(*leaves), "", std::nullopt};
+    if (meta.exists("label")) {
+        if (!meta["label"].isStr()) return util::Error{Untranslated("P2MR label must be a string")};
+        validated.label = meta["label"].get_str();
     }
-    return CreateP2MR(wallet, *leaves, label, /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true, created_at);
+    if (meta.exists("created_at")) {
+        if (!meta["created_at"].isNum()) return util::Error{Untranslated("P2MR created_at must be a number")};
+        try {
+            validated.created_at = meta["created_at"].getInt<int64_t>();
+        } catch (const std::exception&) {
+            return util::Error{Untranslated("P2MR created_at is out of range")};
+        }
+    }
+    return validated;
+}
+} // namespace
+
+util::Result<void> ValidateP2MRRestore(const UniValue& meta)
+{
+    auto validated = ParseP2MRRestore(meta);
+    if (!validated) return util::Error{util::ErrorString(validated)};
+    return {};
+}
+
+util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    auto validated = ParseP2MRRestore(meta);
+    if (!validated) return util::Error{util::ErrorString(validated)};
+    return CreateP2MR(wallet, validated->leaves, validated->label, /*add_to_address_book=*/true,
+                      /*allow_trivial_leaves=*/true, validated->created_at);
 }
 
 util::Result<P2MRFunded> FundP2MR(CWallet& wallet,

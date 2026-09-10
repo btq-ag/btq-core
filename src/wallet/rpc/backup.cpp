@@ -612,9 +612,7 @@ RPCHelpMan importwallet()
             }
 
             std::vector<std::string> vstr = SplitString(line, ' ');
-            if (vstr.size() < 2)
-                continue;
-            if (vstr[0] == "p2mr") {
+            if (!vstr.empty() && vstr[0] == "p2mr") {
                 if (vstr.size() < 3 || !IsHex(vstr[2])) {
                     throw JSONRPCError(RPC_WALLET_ERROR, "malformed p2mr dump record");
                 }
@@ -628,9 +626,15 @@ RPCHelpMan importwallet()
                 if (!meta.exists("created_at") && nTime > 0) {
                     meta.pushKV("created_at", nTime);
                 }
+                auto valid = ValidateP2MRRestore(meta);
+                if (!valid) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Error importing P2MR metadata: %s", util::ErrorString(valid).original));
+                }
                 p2mr_metas.push_back(std::move(meta));
                 continue;
             }
+            if (vstr.size() < 2)
+                continue;
             CKey key = DecodeSecret(vstr[0]);
             if (key.IsValid()) {
                 int64_t nTime = ParseISO8601DateTime(vstr[1]);

@@ -22,6 +22,17 @@
 namespace wallet {
 
 namespace {
+void RescanWallet(CWallet& wallet, const WalletRescanReserver& reserver, int64_t time_begin)
+{
+    const int64_t scanned_time = wallet.RescanFromTime(time_begin, reserver, /*update=*/true);
+    if (wallet.IsAbortingRescan()) {
+        throw JSONRPCError(RPC_MISC_ERROR, "Rescan aborted by user.");
+    }
+    if (scanned_time > time_begin) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Rescan was unable to fully rescan the blockchain. Some transactions may be missing.");
+    }
+}
+
 UniValue EntryToJSON(const P2MREntry& entry)
 {
     UniValue meta(UniValue::VOBJ);
@@ -44,12 +55,12 @@ RPCHelpMan getnewp2mraddress()
         "getnewp2mraddress",
         "\nCreate and store a new wallet-managed P2MR destination.\n"
         "The normal Dilithium receive path is getnewdilithiumaddress. This RPC is for custom trees.\n"
-        "A leaf whose script is empty or OP_TRUE (hex 51) is anyone-can-spend. Those trees are\n"
-        "rejected unless allow_trivial_leaves is true (regtest and tests only).\n",
+        "Leaves are rejected unless the wallet recognises them as spendable Dilithium scripts or\n"
+        "allow_trivial_leaves is true (regtest and tests only).\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
-            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow empty or OP_TRUE leaves (anyone-can-spend). Tests only."},
+            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow leaves outside known wallet-spendable Dilithium templates. Tests only."},
         },
         RPCResult{
             RPCResult::Type::OBJ, "", "",
@@ -93,7 +104,7 @@ RPCHelpMan sendtop2mr()
     return RPCHelpMan{
         "sendtop2mr",
         "\nCreate a wallet-tracked P2MR destination and send funds to it.\n"
-        "Trivial anyone-can-spend leaves (empty or OP_TRUE / hex 51) are rejected unless\n"
+        "Leaves outside known wallet-spendable Dilithium templates are rejected unless\n"
         "allow_trivial_leaves is true. Prefer getnewdilithiumaddress for ordinary receive.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
@@ -102,7 +113,7 @@ RPCHelpMan sendtop2mr()
             {"comment", RPCArg::Type::STR, RPCArg::Default{""}, "Wallet comment"},
             {"comment_to", RPCArg::Type::STR, RPCArg::Default{""}, "Wallet comment-to"},
             {"subtractfeefromamount", RPCArg::Type::BOOL, RPCArg::Default{false}, "Subtract fee from amount"},
-            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow empty or OP_TRUE leaves (anyone-can-spend). Tests only."},
+            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow leaves outside known wallet-spendable Dilithium templates. Tests only."},
         },
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "txid", "Funding transaction id"},
@@ -128,7 +139,7 @@ RPCHelpMan sendtop2mr()
             auto funded = FundP2MR(*pwallet, leaves, amount, label, subtract_fee, coin_control, allow_trivial);
             if (!funded) {
                 const std::string msg = util::ErrorString(funded).original;
-                if (msg.find("trivial anyone-can-spend") != std::string::npos) {
+                if (msg.find("cannot safely spend") != std::string::npos) {
                     throw JSONRPCError(RPC_WALLET_ERROR, msg);
                 }
                 throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, msg);
@@ -403,31 +414,39 @@ RPCHelpMan importp2mr()
                 throw JSONRPCError(RPC_WALLET_ERROR, "Wallet is currently rescanning. Abort existing rescan or wait.");
             }
 
-            LOCK(pwallet->cs_wallet);
             UniValue out(UniValue::VARR);
-            int64_t nTimeBegin = 0;
+            std::optional<int64_t> time_begin;
             std::vector<UniValue> metas;
             for (const UniValue& entry : request.params[0].getValues()) {
                 if (!entry.isObject() || !entry.exists("tree")) {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "each entry must be an object with a tree field");
                 }
+                auto valid = ValidateP2MRRestore(entry);
+                if (!valid) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, util::ErrorString(valid).original);
+                }
                 metas.push_back(entry);
-                if (entry.exists("created_at") && entry["created_at"].isNum()) {
+                if (!entry.exists("created_at")) {
+                    time_begin = 0;
+                } else if (!time_begin || *time_begin != 0) {
                     const int64_t ts = entry["created_at"].getInt<int64_t>();
-                    if (nTimeBegin == 0 || ts < nTimeBegin) nTimeBegin = ts;
+                    if (!time_begin || ts < *time_begin) time_begin = ts;
                 }
             }
-            for (const UniValue& meta : metas) {
-                auto created = RestoreP2MR(*pwallet, meta);
-                if (!created) {
-                    throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+            {
+                LOCK(pwallet->cs_wallet);
+                for (const UniValue& meta : metas) {
+                    auto created = RestoreP2MR(*pwallet, meta);
+                    if (!created) {
+                        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+                    }
+                    UniValue row(UniValue::VOBJ);
+                    row.pushKV("address", created->address);
+                    row.pushKV("p2mr_id", created->id);
+                    out.push_back(std::move(row));
                 }
-                UniValue row(UniValue::VOBJ);
-                row.pushKV("address", created->address);
-                row.pushKV("p2mr_id", created->id);
-                out.push_back(std::move(row));
             }
-            pwallet->RescanFromTime(nTimeBegin, reserver, /*update=*/true);
+            RescanWallet(*pwallet, reserver, time_begin.value_or(0));
             pwallet->MarkDirty();
             return out;
         },
