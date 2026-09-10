@@ -136,14 +136,11 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
 /** Whether any ScriptPubKeyMan in the wallet holds this Dilithium private key. */
 bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid);
 
-/** True if the leaf is empty or a lone OP_TRUE. Those trees are consensus-valid
- *  anyone-can-spend outputs; the wallet refuses them unless the caller opts in. */
-bool IsTrivialP2MRLeaf(const P2MRTreeLeaf& leaf);
-
 /** Create and persist a new P2MR destination.
  *  Pass add_to_address_book=false for change destinations: an address book
  *  entry is what makes CWallet::IsChange treat an output as a receive.
- *  Trivial anyone-can-spend leaves are rejected unless allow_trivial_leaves. */
+ *  Leaves the wallet cannot spend through a known Dilithium template are
+ *  rejected unless allow_trivial_leaves is set. */
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
