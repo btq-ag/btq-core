@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cassert>
 #include <iterator>
+#include <utility>
 
 uint256 TxOrphanage::ResolveWtxid(const uint256& hash) const
 {
@@ -143,7 +144,12 @@ void TxOrphanage::EraseForPeer(NodeId peer)
 {
     LOCK(m_mutex);
 
-    m_peer_orphanage_info.erase(peer);
+    std::set<uint256> work_set;
+    auto peer_it = m_peer_orphanage_info.find(peer);
+    if (peer_it != m_peer_orphanage_info.end()) {
+        work_set = std::move(peer_it->second.m_work_set);
+        m_peer_orphanage_info.erase(peer_it);
+    }
 
     int nErased = 0;
     auto iter = m_orphans.begin();
@@ -156,6 +162,14 @@ void TxOrphanage::EraseForPeer(NodeId peer)
         if (orphan.announcers.empty()) {
             nErased += EraseTxNoLock(wtxid);
         }
+    }
+    for (const uint256& wtxid : work_set) {
+        const auto orphan_it = m_orphans.find(wtxid);
+        if (orphan_it == m_orphans.end()) continue;
+        Assume(!orphan_it->second.announcers.empty());
+        const NodeId announcer = *orphan_it->second.announcers.begin();
+        m_peer_orphanage_info.at(announcer).m_work_set.insert(wtxid);
+        LogPrint(BCLog::TXPACKAGES, "reassigned orphan tx %s from peer=%d to peer=%d workset\n", wtxid.ToString(), peer, announcer);
     }
     if (nErased > 0) LogPrint(BCLog::TXPACKAGES, "Erased %d orphan tx from peer=%d\n", nErased, peer);
 }
@@ -228,7 +242,7 @@ void TxOrphanage::LimitOrphans(FastRandomContext& rng)
         if (unique_wtxid) {
             EraseTxNoLock(*unique_wtxid);
             ++nEvicted;
-        } else if (shared_wtxid) {
+        } else if (shared_wtxid && m_total_latency_score <= m_max_latency_score) {
             auto& orphan = m_orphans[*shared_wtxid];
             orphan.announcers.erase(worst);
             m_total_announcements -= 1;
@@ -236,6 +250,9 @@ void TxOrphanage::LimitOrphans(FastRandomContext& rng)
             if (peer_it != m_peer_orphanage_info.end()) {
                 peer_it->second.m_total_usage -= orphan.GetUsage();
             }
+            ++nEvicted;
+        } else if (shared_wtxid) {
+            EraseTxNoLock(*shared_wtxid);
             ++nEvicted;
         } else {
             break;

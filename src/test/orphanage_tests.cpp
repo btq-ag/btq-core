@@ -149,6 +149,50 @@ BOOST_AUTO_TEST_CASE(announcer_and_weight_trim)
     orphanage.SanityCheck();
 }
 
+BOOST_AUTO_TEST_CASE(shared_orphan_latency_trim)
+{
+    TxOrphanageTest orphanage(/*max_global_usage=*/2000, /*max_latency_score=*/0, /*reserved_usage_per_peer=*/400);
+    CKey key;
+    MakeNewKeyWithFastRandomContext(key);
+    FastRandomContext rng{uint256{1}};
+
+    auto tx = MakeOrphanTx(key, InsecureRand256());
+    BOOST_CHECK(orphanage.AddTx(tx, /*peer=*/0));
+    BOOST_CHECK(orphanage.AddAnnouncer(tx->GetWitnessHash(), /*peer=*/1));
+
+    orphanage.LimitOrphans(rng);
+    BOOST_CHECK_EQUAL(orphanage.CountOrphans(), 0U);
+    orphanage.SanityCheck();
+}
+
+BOOST_AUTO_TEST_CASE(reassign_work_on_peer_disconnect)
+{
+    TxOrphanageTest orphanage;
+    CKey key;
+    MakeNewKeyWithFastRandomContext(key);
+    FastRandomContext rng{uint256{1}};
+
+    auto parent = MakeOrphanTx(key, InsecureRand256());
+    auto child = MakeOrphanTx(key, parent->GetHash());
+    BOOST_CHECK(orphanage.AddTx(child, /*peer=*/0));
+    BOOST_CHECK(orphanage.AddAnnouncer(child->GetWitnessHash(), /*peer=*/1));
+    orphanage.AddChildrenToWorkSet(*parent, rng);
+
+    const bool assigned_to_peer_0 = orphanage.HaveTxToReconsider(/*peer=*/0);
+    const bool assigned_to_peer_1 = orphanage.HaveTxToReconsider(/*peer=*/1);
+    BOOST_REQUIRE(assigned_to_peer_0 != assigned_to_peer_1);
+    const NodeId assigned_peer = assigned_to_peer_0 ? 0 : 1;
+    const NodeId remaining_peer = assigned_to_peer_0 ? 1 : 0;
+
+    orphanage.EraseForPeer(assigned_peer);
+    BOOST_CHECK(orphanage.HaveTx(GenTxid::Wtxid(child->GetWitnessHash())));
+    BOOST_CHECK(orphanage.HaveTxToReconsider(remaining_peer));
+    auto reconsider = orphanage.GetTxToReconsider(remaining_peer);
+    BOOST_REQUIRE(reconsider);
+    BOOST_CHECK_EQUAL(reconsider->GetWitnessHash(), child->GetWitnessHash());
+    orphanage.SanityCheck();
+}
+
 BOOST_AUTO_TEST_CASE(reject_duplicate_txid_different_wtxid)
 {
     TxOrphanageTest orphanage;
