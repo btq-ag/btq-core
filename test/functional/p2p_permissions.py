@@ -11,8 +11,8 @@ from test_framework.messages import (
     SEQUENCE_FINAL,
     CTxOut,
 )
-from test_framework.script import CScript, OP_TRUE
 from test_framework.p2p import P2PDataStore
+from test_framework.script_util import key_to_p2wpkh_script
 from test_framework.test_node import ErrorMatch
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
@@ -113,7 +113,7 @@ class P2PPermissionsTests(BTQTestFramework):
             self.wait_until(lambda: txid in self.nodes[0].getrawmempool())
 
         self.log.debug("Check that node[1] will not send an invalid tx to node[0]")
-        tx.vout.append(CTxOut(nValue=0, scriptPubKey=CScript([OP_TRUE])))
+        tx.vout.append(CTxOut(nValue=0, scriptPubKey=key_to_p2wpkh_script(bytes(33))))
         txid = tx.rehash()
         # Dust is invalid independent of RBF signaling. The first send is
         # rejected by ATMP; the second hits m_recent_rejects.
