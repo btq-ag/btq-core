@@ -147,7 +147,10 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::string& label,
                                      bool add_to_address_book = true,
                                      bool allow_trivial_leaves = false,
-                                     int64_t created_at = 0);
+                                     std::optional<int64_t> created_at = std::nullopt);
+
+/** Validate a dumped P2MR entry without changing the wallet. */
+util::Result<void> ValidateP2MRRestore(const UniValue& meta);
 
 /** Restore a dumped P2MR entry. Rebuilds the tree and requires any supplied
  *  address / scriptPubKey / merkle_root to match before writing. Trivial
