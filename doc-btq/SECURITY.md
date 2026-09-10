@@ -7,7 +7,7 @@ Only the most recent release line receives security fixes.
 
 | Version | Supported |
 | ------- | --------- |
-| `v0.4.4-testnet` | Current |
+| `v0.5.0-testnet` | Current |
 | `v0.4.3-testnet` | Tag only; binaries were not published |
 | earlier `-testnet` | No |
 
