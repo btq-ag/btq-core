@@ -236,6 +236,37 @@ BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSet
     BOOST_CHECK_EQUAL(second->address, first->address);
     BOOST_CHECK_EQUAL(HexStr(second->script_pub_key), HexStr(first->script_pub_key));
     BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+    BOOST_CHECK_EQUAL(ListP2MR(*wallet)[0].label, "second");
+}
+
+BOOST_FIXTURE_TEST_CASE(restore_duplicate_replaces_creation_time, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const auto leaves = MakeOpTrueTree();
+
+    auto created = CreateP2MR(*wallet, leaves, "restored", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+    BOOST_REQUIRE(created);
+
+    UniValue meta(UniValue::VOBJ);
+    meta.pushKV("address", created->address);
+    meta.pushKV("scriptPubKey", HexStr(created->script_pub_key));
+    meta.pushKV("merkle_root", HexStr(created->merkle_root));
+    meta.pushKV("created_at", int64_t{0});
+    meta.pushKV("label", "restored");
+    meta.pushKV("tree", P2MRTreeToUniValue(leaves));
+
+    auto restored = RestoreP2MR(*wallet, meta);
+    BOOST_REQUIRE(restored);
+    auto entry = GetP2MR(*wallet, restored->id);
+    BOOST_REQUIRE(entry);
+    BOOST_CHECK_EQUAL(entry->created_at, 0);
+
+    UniValue invalid_meta(UniValue::VOBJ);
+    invalid_meta.pushKV("tree", P2MRTreeToUniValue(leaves));
+    invalid_meta.pushKV("merkle_root", int64_t{1});
+    auto invalid = ValidateP2MRRestore(invalid_meta);
+    BOOST_CHECK(!invalid);
 }
 
 BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTestingSetup)

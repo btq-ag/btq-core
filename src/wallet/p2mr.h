@@ -145,7 +145,16 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
                                      bool add_to_address_book = true,
-                                     bool allow_trivial_leaves = false);
+                                     bool allow_trivial_leaves = false,
+                                     std::optional<int64_t> created_at = std::nullopt);
+
+/** Validate a dumped P2MR entry without changing the wallet. */
+util::Result<void> ValidateP2MRRestore(const UniValue& meta);
+
+/** Restore a dumped P2MR entry. Rebuilds the tree and requires any supplied
+ *  address / scriptPubKey / merkle_root to match before writing. Trivial
+ *  leaves are allowed because this is a restore. */
+util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta);
 
 /**
  * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR
