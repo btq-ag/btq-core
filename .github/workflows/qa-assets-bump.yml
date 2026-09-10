@@ -50,8 +50,8 @@ jobs:
           set -euo pipefail
           SHORT="${NEW:0:12}"
           BRANCH="ci/qa-assets-pin-${SHORT}"
-          if gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' | grep -q '[0-9]'; then
-            echo "PR already open for $BRANCH"
+          if git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "Branch already exists for $BRANCH"
             exit 0
           fi
           git config user.name "github-actions[bot]"
