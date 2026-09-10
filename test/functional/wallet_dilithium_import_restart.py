@@ -25,7 +25,11 @@ class WalletDilithiumImportRestartTest(BTQTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
-        self.extra_args = [["-deprecatedrpc=create_bdb", "-fallbackfee=0.0002"]]
+        self.extra_args = [[
+            "-deprecatedrpc=create_bdb",
+            "-fallbackfee=0.0002",
+            "-blockfilterindex=1",
+        ]]
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
@@ -70,7 +74,11 @@ class WalletDilithiumImportRestartTest(BTQTestFramework):
         assert target.verifydilithiumsignature(msg, addr, sig_before)
 
         self.log.info("Restart; the wallet must still load and the key must still be there")
-        self.restart_node(0, extra_args=["-deprecatedrpc=create_bdb", "-fallbackfee=0.0002"])
+        self.restart_node(0, extra_args=[
+            "-deprecatedrpc=create_bdb",
+            "-fallbackfee=0.0002",
+            "-blockfilterindex=1",
+        ])
         node = self.nodes[0]
         node.loadwallet("source")
         node.loadwallet("target")
@@ -120,6 +128,13 @@ class WalletDilithiumImportRestartTest(BTQTestFramework):
         imported_yr = yesrescan.importdilithiumkey(hist_secret, "yesrescan", True)
         assert_equal(imported_yr["address"], hist_addr)
         assert yesrescan.getbalance() > 0
+
+        self.log.info("Descriptor wallet fast rescan includes tracked P2MR scripts")
+        node.createwallet(wallet_name="descriptor_rescan", descriptors=True)
+        descriptor_rescan = node.get_wallet_rpc("descriptor_rescan")
+        imported_desc = descriptor_rescan.importdilithiumkey(hist_secret, "descriptor-rescan", True)
+        assert_equal(imported_desc["address"], hist_addr)
+        assert descriptor_rescan.getbalance() > 0
 
         norescan.rescanblockchain()
         assert norescan.getbalance() > 0
