@@ -44,12 +44,12 @@ RPCHelpMan getnewp2mraddress()
         "getnewp2mraddress",
         "\nCreate and store a new wallet-managed P2MR destination.\n"
         "The normal Dilithium receive path is getnewdilithiumaddress. This RPC is for custom trees.\n"
-        "A leaf whose script is empty or OP_TRUE (hex 51) is anyone-can-spend. Those trees are\n"
-        "rejected unless allow_trivial_leaves is true (regtest and tests only).\n",
+        "Leaves are rejected unless the wallet recognises them as spendable Dilithium scripts or\n"
+        "allow_trivial_leaves is true (regtest and tests only).\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
-            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow empty or OP_TRUE leaves (anyone-can-spend). Tests only."},
+            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow leaves outside known wallet-spendable Dilithium templates. Tests only."},
         },
         RPCResult{
             RPCResult::Type::OBJ, "", "",
@@ -93,7 +93,7 @@ RPCHelpMan sendtop2mr()
     return RPCHelpMan{
         "sendtop2mr",
         "\nCreate a wallet-tracked P2MR destination and send funds to it.\n"
-        "Trivial anyone-can-spend leaves (empty or OP_TRUE / hex 51) are rejected unless\n"
+        "Leaves outside known wallet-spendable Dilithium templates are rejected unless\n"
         "allow_trivial_leaves is true. Prefer getnewdilithiumaddress for ordinary receive.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
@@ -102,7 +102,7 @@ RPCHelpMan sendtop2mr()
             {"comment", RPCArg::Type::STR, RPCArg::Default{""}, "Wallet comment"},
             {"comment_to", RPCArg::Type::STR, RPCArg::Default{""}, "Wallet comment-to"},
             {"subtractfeefromamount", RPCArg::Type::BOOL, RPCArg::Default{false}, "Subtract fee from amount"},
-            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow empty or OP_TRUE leaves (anyone-can-spend). Tests only."},
+            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow leaves outside known wallet-spendable Dilithium templates. Tests only."},
         },
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "txid", "Funding transaction id"},
@@ -128,7 +128,7 @@ RPCHelpMan sendtop2mr()
             auto funded = FundP2MR(*pwallet, leaves, amount, label, subtract_fee, coin_control, allow_trivial);
             if (!funded) {
                 const std::string msg = util::ErrorString(funded).original;
-                if (msg.find("trivial anyone-can-spend") != std::string::npos) {
+                if (msg.find("cannot safely spend") != std::string::npos) {
                     throw JSONRPCError(RPC_WALLET_ERROR, msg);
                 }
                 throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, msg);

@@ -338,11 +338,6 @@ P2MREntry MetadataToEntry(const CTxDestination& dest, const UniValue& meta, cons
 
 } // namespace
 
-bool IsTrivialP2MRLeaf(const P2MRTreeLeaf& leaf)
-{
-    return leaf.script.empty() || IsOpTrueLeaf(leaf);
-}
-
 // --- Tree parsing ----------------------------------------------------------
 
 util::Result<std::vector<P2MRTreeLeaf>> ParseP2MRTreeChecked(const UniValue& tree)
@@ -691,9 +686,10 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     AssertLockHeld(wallet.cs_wallet);
     if (!allow_trivial_leaves) {
         for (const auto& leaf : leaves) {
-            if (IsTrivialP2MRLeaf(leaf)) {
+            const CScript script{leaf.script.begin(), leaf.script.end()};
+            if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT || !IsDilithiumLeafSpendable(wallet, script)) {
                 return util::Error{Untranslated(
-                    "P2MR tree contains a trivial anyone-can-spend leaf (empty or OP_TRUE); pass allow_trivial_leaves if this is intentional")};
+                    "P2MR tree contains a leaf the wallet cannot safely spend; pass allow_trivial_leaves if this is intentional")};
             }
         }
     }
