@@ -152,10 +152,11 @@ class InvalidTxRequestTest(BTQTestFramework):
         assert_equal(expected_mempool, set(node.getrawmempool()))
 
         self.log.info('Test orphan pool overflow')
-        orphan_tx_pool = [CTransaction() for _ in range(101)]
+        large_script_pub_key = b'\x51\x75' * 3000 + b'\x51'
+        orphan_tx_pool = [CTransaction() for _ in range(5)]
         for i in range(len(orphan_tx_pool)):
             orphan_tx_pool[i].vin.append(CTxIn(outpoint=COutPoint(i, 333)))
-            orphan_tx_pool[i].vout.append(CTxOut(nValue=11 * COIN, scriptPubKey=SCRIPT_PUB_KEY_OP_TRUE))
+            orphan_tx_pool[i].vout.append(CTxOut(nValue=11 * COIN, scriptPubKey=large_script_pub_key))
 
         with node.assert_debug_log(['orphanage overflow, removed 1 announcements']):
             node.p2ps[0].send_txs_and_test(orphan_tx_pool, node, success=False)
@@ -174,7 +175,7 @@ class InvalidTxRequestTest(BTQTestFramework):
         # orphans came from p2ps[0], which connected first and so has the
         # lower of the two ids.
         orphan_peer_id = min(p['id'] for p in node.getpeerinfo())
-        with node.assert_debug_log([f'Erased 100 orphan tx from peer={orphan_peer_id}']):
+        with node.assert_debug_log([f'Erased 4 orphan tx from peer={orphan_peer_id}']):
             self.reconnect_p2p(num_connections=1)
 
         self.log.info('Test that a transaction in the orphan pool is included in a new tip block causes erase this transaction from the orphan pool')
