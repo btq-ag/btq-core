@@ -8,14 +8,17 @@
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
 #include <consensus/tx_verify.h>
+#include <netaddress.h>
 #include <node/miner.h>
 #include <policy/policy.h>
+#include <pow.h>
 #include <test/util/random.h>
 #include <test/util/txmempool.h>
 #include <timedata.h>
 #include <txmempool.h>
 #include <uint256.h>
 #include <util/strencodings.h>
+#include <util/string.h>
 #include <util/time.h>
 #include <validation.h>
 #include <versionbits.h>
@@ -707,6 +710,67 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
     SetMockTime(0);
 
     TestPrioritisedMining(scriptPubKey, txFirst);
+}
+
+BOOST_AUTO_TEST_CASE(block_time_ignores_peer_offset)
+{
+    TestOnlyResetTimeData();
+    const CBlockIndex* tip{WITH_LOCK(::cs_main, return m_node.chainman->ActiveChain().Tip())};
+    const int64_t system_time{tip->GetMedianTimePast() + 600};
+    constexpr int64_t peer_offset{3600};
+    SetMockTime(system_time);
+
+    for (int i = 0; i < 4; ++i) {
+        CNetAddr peer;
+        peer.SetInternal(ToString(i));
+        AddTimeData(peer, peer_offset);
+    }
+    BOOST_CHECK_EQUAL(GetTimeOffset(), peer_offset);
+    BOOST_CHECK_EQUAL(TicksSinceEpoch<std::chrono::seconds>(GetAdjustedTime()), system_time + peer_offset);
+
+    auto block_template{BlockAssembler{m_node.chainman->ActiveChainstate(), m_node.mempool.get()}.CreateNewBlock(CScript{} << OP_TRUE)};
+    BOOST_REQUIRE(block_template);
+    BOOST_CHECK_EQUAL(block_template->block.nTime, system_time);
+    BOOST_CHECK_EQUAL(
+        TicksSinceEpoch<std::chrono::seconds>(m_node.chainman->m_options.adjusted_time_callback()),
+        system_time);
+
+    CBlock block{block_template->block};
+    block.nTime = system_time + MAX_FUTURE_BLOCK_TIME;
+    block.nBits = GetNextWorkRequired(tip, &block, m_node.chainman->GetConsensus());
+    {
+        LOCK(::cs_main);
+        BlockValidationState state;
+        BOOST_CHECK(TestBlockValidity(
+            state,
+            m_node.chainman->GetParams(),
+            m_node.chainman->ActiveChainstate(),
+            block,
+            m_node.chainman->ActiveChain().Tip(),
+            m_node.chainman->m_options.adjusted_time_callback,
+            /*fCheckPOW=*/false,
+            /*fCheckMerkleRoot=*/false));
+    }
+
+    ++block.nTime;
+    block.nBits = GetNextWorkRequired(tip, &block, m_node.chainman->GetConsensus());
+    {
+        LOCK(::cs_main);
+        BlockValidationState state;
+        BOOST_CHECK(!TestBlockValidity(
+            state,
+            m_node.chainman->GetParams(),
+            m_node.chainman->ActiveChainstate(),
+            block,
+            m_node.chainman->ActiveChain().Tip(),
+            m_node.chainman->m_options.adjusted_time_callback,
+            /*fCheckPOW=*/false,
+            /*fCheckMerkleRoot=*/false));
+        BOOST_CHECK_EQUAL(state.GetRejectReason(), "time-too-new");
+    }
+
+    SetMockTime(0);
+    TestOnlyResetTimeData();
 }
 
 BOOST_AUTO_TEST_SUITE_END()
