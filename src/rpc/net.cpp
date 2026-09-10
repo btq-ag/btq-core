@@ -394,7 +394,7 @@ static RPCHelpMan addconnection()
     NodeContext& node = EnsureAnyNodeContext(request.context);
     CConnman& connman = EnsureConnman(node);
 
-    const bool success = connman.AddConnection(address, conn_type);
+    const bool success = connman.AddConnection(address, conn_type, /*use_v2transport=*/false);
     if (!success) {
         throw JSONRPCError(RPC_CLIENT_NODE_CAPACITY_REACHED, "Error: Already at capacity for specified connection type.");
     }
