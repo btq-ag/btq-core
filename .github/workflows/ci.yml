@@ -23,6 +23,21 @@ env:
   MAKEJOBS: '-j10'
 
 jobs:
+  subtree-check:
+    name: 'subtree check'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # git-subtree-check.sh finds each subtree's last upstream squash
+          # commit in the log, so it needs full history.
+          fetch-depth: 0
+      - name: Check vendored subtrees match upstream
+        run: |
+          for dir in src/crypto/ctaes src/secp256k1 src/minisketch src/leveldb src/crc32c; do
+            test/lint/git-subtree-check.sh "$dir"
+          done
+
   test-each-commit:
     name: 'test each commit'
     runs-on: ubuntu-22.04
