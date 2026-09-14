@@ -139,8 +139,9 @@ bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid);
 /** Create and persist a new P2MR destination.
  *  Pass add_to_address_book=false for change destinations: an address book
  *  entry is what makes CWallet::IsChange treat an output as a receive.
- *  Leaves the wallet cannot spend through a known Dilithium template are
- *  rejected unless allow_trivial_leaves is set. */
+ *  Leaves are rejected unless the wallet holds at least one key in a
+ *  recognised Dilithium template (including the threshold-accumulator form
+ *  used by createdilithiummultisig). allow_trivial_leaves opts out. */
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,

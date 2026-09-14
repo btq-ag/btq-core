@@ -9,6 +9,7 @@
 #include <key_io.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
+#include <script/dilithium_leaf.h>
 #include <script/interpreter.h>
 #include <script/script.h>
 #include <script/sign.h>
@@ -219,6 +220,43 @@ BOOST_FIXTURE_TEST_CASE(create_allows_only_wallet_spendable_dilithium_leaves_by_
 
     auto allowed = CreateP2MR(*wallet, rejected_trees[3], "unsafe", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
     BOOST_REQUIRE(allowed);
+}
+
+BOOST_FIXTURE_TEST_CASE(create_allows_threshold_accumulator_with_one_cosigner_key, BasicTestingSetup)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    auto* spk_man = wallet.GetOrCreateLegacyScriptPubKeyMan();
+    BOOST_REQUIRE(spk_man);
+
+    CDilithiumKey mine, other_a, other_b;
+    mine.MakeNewKey();
+    other_a.MakeNewKey();
+    other_b.MakeNewKey();
+    BOOST_REQUIRE(mine.IsValid() && other_a.IsValid() && other_b.IsValid());
+
+    {
+        LOCK2(wallet.cs_wallet, spk_man->cs_KeyStore);
+        BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(mine, CPubKey()));
+
+        const CScript leaf_script = GetScriptForDilithiumThreshold(
+            2, {mine.GetPubKey(), other_a.GetPubKey(), other_b.GetPubKey()});
+        const std::vector<P2MRTreeLeaf> leaves{
+            {0, TAPROOT_LEAF_TAPSCRIPT, {leaf_script.begin(), leaf_script.end()}}};
+
+        auto created = CreateP2MR(wallet, leaves, "shared-multisig");
+        BOOST_REQUIRE(created);
+    }
+
+    CDilithiumKey outsider_a, outsider_b;
+    outsider_a.MakeNewKey();
+    outsider_b.MakeNewKey();
+    const CScript outsider_script = GetScriptForDilithiumThreshold(
+        2, {outsider_a.GetPubKey(), outsider_b.GetPubKey()});
+    const std::vector<P2MRTreeLeaf> outsider_leaves{
+        {0, TAPROOT_LEAF_TAPSCRIPT, {outsider_script.begin(), outsider_script.end()}}};
+    LOCK(wallet.cs_wallet);
+    auto rejected = CreateP2MR(wallet, outsider_leaves, "not-ours");
+    BOOST_CHECK(!rejected);
 }
 
 BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSetup)
