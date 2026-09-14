@@ -15,7 +15,7 @@ Dilithium record arrived before any script pub key manager existed.
 """
 
 from test_framework.test_framework import BTQTestFramework
-from test_framework.util import assert_equal
+from test_framework.util import assert_equal, assert_raises_rpc_error
 
 
 class WalletDilithiumImportRestartTest(BTQTestFramework):
@@ -138,6 +138,12 @@ class WalletDilithiumImportRestartTest(BTQTestFramework):
 
         norescan.rescanblockchain()
         assert norescan.getbalance() > 0
+
+        self.log.info("importdilithiumkey refuses wallets with private keys disabled")
+        node.createwallet(wallet_name="nokeys", descriptors=False, disable_private_keys=True)
+        nokeys = node.get_wallet_rpc("nokeys")
+        assert_raises_rpc_error(-4, "Cannot import private keys to a wallet with private keys disabled",
+                                nokeys.importdilithiumkey, hist_secret)
 
 
 if __name__ == "__main__":
