@@ -100,9 +100,3 @@ wallet_signrawtransactionwithwallet.py --legacy-wallet  # JSONRPCException: Insu
 wallet_taproot.py --descriptors                         # AssertionError: not(qcrt1pwccu4nkrxsc99kr77ngqvhmpmh5z6lfdkrqucqh0v8hnexpw5a3...
 wallet_transactiontime_rescan.py --descriptors          # JSONRPCException: Insufficient funds (-6)
 wallet_transactiontime_rescan.py --legacy-wallet        # JSONRPCException: Insufficient funds (-6)
-wallet_txn_clone.py                                     # AssertionError: not(125.00000000 == 1250)
-wallet_txn_clone.py --mineblock                         # AssertionError: not(125.00000000 == 1250)
-wallet_txn_clone.py --segwit                            # AssertionError: not(125.00000000 == 1250)
-wallet_txn_doublespend.py --descriptors                 # AssertionError: not(125.00000000 == 1250)
-wallet_txn_doublespend.py --legacy-wallet               # AssertionError: not(125.00000000 == 1250)
-wallet_txn_doublespend.py --mineblock                   # AssertionError: not(125.00000000 == 1250)
