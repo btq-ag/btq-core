@@ -27,7 +27,6 @@ feature_segwit.py --legacy-wallet
 feature_signet.py                                       # AssertionError: not(bad-signet-blksig == None)
 feature_utxo_set_hash.py                                # AssertionError: not(<hex> == <hex>)
 interface_rest.py                                       # AssertionError: 291 <= 300
-mempool_accept.py                                       # JSONRPCException: bad-txns-in-belowout, value in (5.00) < value out (49.30) (...
 mempool_dust.py                                         # AssertionError: not(True == False)
 mempool_limit.py                                        # KeyError: 'fees' (testmempoolaccept rejects the fill txs: tx-size)
 mempool_package_limits.py                               # JSONRPCException: tx-size (-26)
@@ -56,8 +55,6 @@ wallet_bumpfee.py --descriptors                         # JSONRPCException: Insu
 wallet_bumpfee.py --legacy-wallet                       # JSONRPCException: Insufficient total fee 0.0000012, must be at least 0.000016...
 wallet_fundrawtransaction.py --descriptors              # AssertionError: not(132.89994590 == 87.89994590)
 wallet_fundrawtransaction.py --legacy-wallet            # AssertionError: not(132.89994580 == 87.89994580)
-wallet_groups.py --descriptors                          # JSONRPCException: Insufficient funds (-6)
-wallet_groups.py --legacy-wallet                        # JSONRPCException: Insufficient funds (-6)
 wallet_hd.py --legacy-wallet                            # JSONRPCException: Invalid or non-wallet transaction id (-5)
 wallet_import_rescan.py --legacy-wallet                 # AssertionError: not(0 == 1)
 wallet_keypool.py --descriptors                         # AssertionError: not(0.00007853 == 0.00009706)

@@ -25,6 +25,7 @@ from test_framework.messages import (
 )
 from test_framework.script import (
     CScript,
+    MAX_SCRIPT_ELEMENT_SIZE,
     OP_0,
     OP_HASH160,
     OP_RETURN,
@@ -302,7 +303,9 @@ class MempoolAcceptanceTest(BTQTestFramework):
             rawtxs=[tx.serialize().hex()],
         )
         tx = tx_from_hex(raw_tx_reference)
-        tx.vin[0].scriptSig = CScript([b'a' * 1648]) # Some too large scriptSig (>1650 bytes)
+        # BTQ's MAX_STANDARD_SCRIPTSIG_SIZE is MAX_SCRIPT_ELEMENT_SIZE, so one
+        # full-size push plus its PUSHDATA2 prefix is too large.
+        tx.vin[0].scriptSig = CScript([b'a' * MAX_SCRIPT_ELEMENT_SIZE])
         self.check_mempool_result(
             result_expected=[{'txid': tx.rehash(), 'allowed': False, 'reject-reason': 'scriptsig-size'}],
             rawtxs=[tx.serialize().hex()],

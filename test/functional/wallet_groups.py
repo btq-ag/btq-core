@@ -32,8 +32,10 @@ class WalletGroupTest(BTQTestFramework):
             [],
             [],
             ["-avoidpartialspends"],
-            ["-maxapsfee=0.00002719"],
-            ["-maxapsfee=0.00002720"],
+            # One sat below and exactly at the grouped - non-grouped fee
+            # difference for tx5/tx6 (6220 - 4320 sats) further down.
+            ["-maxapsfee=0.00001899"],
+            ["-maxapsfee=0.00001900"],
         ]
 
         for args in self.extra_args:
@@ -127,10 +129,12 @@ class WalletGroupTest(BTQTestFramework):
         assert_equal(input_addrs[0], input_addrs[1])
         # Node 2 enforces avoidpartialspends so needs no checking here
 
-        tx4_ungrouped_fee = 2820
-        tx4_grouped_fee = 4160
-        tx5_6_ungrouped_fee = 5520
-        tx5_6_grouped_fee = 8240
+        # Lower than upstream's because BTQ's witness scale factor is 16, not
+        # 4, so the P2WPKH inputs these transactions spend weigh fewer vbytes.
+        tx4_ungrouped_fee = 2400
+        tx4_grouped_fee = 3360
+        tx5_6_ungrouped_fee = 4320
+        tx5_6_grouped_fee = 6220
 
         self.log.info("Test wallet option maxapsfee")
         addr_aps = self.nodes[3].getnewaddress()
@@ -174,11 +178,15 @@ class WalletGroupTest(BTQTestFramework):
         self.generate(self.nodes[0], 1)
 
         self.log.info("Fill a wallet with 10,000 outputs corresponding to the same scriptPubKey")
-        for _ in range(5):
+        # Upstream sends 5 transactions of 2000 outputs. At BTQ's witness
+        # scale factor of 16 that many outputs weigh more than
+        # MAX_STANDARD_TX_WEIGHT, so send 20 of 500, each the weight upstream's
+        # transactions had.
+        for _ in range(20):
             raw_tx = self.nodes[0].createrawtransaction([{"txid":"0"*64, "vout":0}], [{addr2[0]: Decimal('0.005')}])
             tx = tx_from_hex(raw_tx)
             tx.vin = []
-            tx.vout = [tx.vout[0]] * 2000
+            tx.vout = [tx.vout[0]] * 500
             funded_tx = self.nodes[0].fundrawtransaction(tx.serialize().hex())
             signed_tx = self.nodes[0].signrawtransactionwithwallet(funded_tx['hex'])
             self.nodes[0].sendrawtransaction(signed_tx['hex'])
