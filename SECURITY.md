@@ -20,6 +20,14 @@ Two private channels, in order of preference:
 `doc-btq/SECURITY.md` documents the severity categories, response timelines
 and coordinated-disclosure process.
 
+## Bundled upstream code
+
+`src/secp256k1`, `src/leveldb`, `src/crc32c`, `src/minisketch` and
+`src/crypto/ctaes` are copies of upstream projects. If you find a
+vulnerability in one of them, report it to us through either channel above,
+and we will coordinate with upstream. You may also report it to the upstream
+project directly. `src/secp256k1/SECURITY.md` gives the libsecp256k1 contact.
+
 ## Encryption
 
 BTQ Core does not publish PGP keys. Use GitHub private reporting if you need
