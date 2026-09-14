@@ -278,7 +278,7 @@ Document BTQ development governance, contribution processes, release procedures,
 - `doc-btq-design.md` — Design document (1150 lines added in PR #10)
 
 **Governance Structure:**
-- **Maintainers**: oscar@btq.tech, barney@btq.tech
+- **Maintainers**: bitcoinq@btq.com
 - **Release Manager**: Coordinates release process
 - **Security Officers**: Handle vulnerability disclosure
 - **CI Owners**: Maintain test infrastructure
@@ -1441,7 +1441,7 @@ Merge Requirements:
 - Public review on GitHub (no private approvals)
 
 Security Policy:
-- Responsible disclosure via security@btq.tech
+- Responsible disclosure via bitcoinq@btq.com
 - Embargo period for critical vulnerabilities
 - Signed security advisories published after fix deployment
 
