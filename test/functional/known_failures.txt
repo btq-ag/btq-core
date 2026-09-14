@@ -71,7 +71,6 @@ wallet_bumpfee.py --descriptors                         # JSONRPCException: Insu
 wallet_bumpfee.py --legacy-wallet                       # JSONRPCException: Insufficient total fee 0.0000012, must be at least 0.000016...
 wallet_change_address.py --descriptors                  # JSONRPCException: Insufficient funds (-6)
 wallet_change_address.py --legacy-wallet                # JSONRPCException: Insufficient funds (-6)
-wallet_crosschain.py                                    # AssertionError: [node 1] Unable to connect to btqd after 240s
 wallet_descriptor.py --descriptors                      # JSONRPCException: Insufficient funds (-6)
 wallet_dump.py --legacy-wallet                          # AssertionError: not(0 == 10)
 wallet_fundrawtransaction.py --descriptors              # AssertionError: not(132.89994590 == 87.89994590)
