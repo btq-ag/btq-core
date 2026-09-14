@@ -19,7 +19,7 @@ class WalletP2MRBackupTest(BTQTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
-        self.extra_args = [["-acceptnonstdtxn=1", "-blockfilterindex=1"]]
+        self.extra_args = [["-acceptnonstdtxn=1", "-blockfilterindex=1", "-deprecatedrpc=create_bdb"]]
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
@@ -81,6 +81,25 @@ class WalletP2MRBackupTest(BTQTestFramework):
         zero_imported = zero_time.importp2mr([zero_entry])
         zero_metadata = zero_time.getp2mrinfo(zero_imported[0]["p2mr_id"])
         assert_equal(zero_metadata["created_at"], 0)
+
+        if self.is_bdb_compiled():
+            self.log.info("importwallet rescans from genesis when created_at is 0")
+            node.createwallet(wallet_name="legacy_zero", descriptors=False)
+            legacy_zero = node.get_wallet_rpc("legacy_zero")
+            self.generatetoaddress(node, 1, source.getnewaddress())
+            funded_zero = source.sendtop2mr(tree, Decimal("0.5"), "zero-birth", allow_trivial_leaves=True)
+            self.generate(node, 1)
+            zero_dump_entries = [e for e in source.listp2mr() if e["id"] == funded_zero["p2mr_id"]]
+            assert_equal(len(zero_dump_entries), 1)
+            zero_dump_entries[0]["created_at"] = 0
+            imported_zero = legacy_zero.importp2mr(zero_dump_entries)
+            dump_path = node.datadir_path / "p2mr_zero.dump"
+            legacy_zero.dumpwallet(str(dump_path))
+            node.createwallet(wallet_name="legacy_import", descriptors=False)
+            legacy_import = node.get_wallet_rpc("legacy_import")
+            legacy_import.importwallet(str(dump_path))
+            utxos = legacy_import.listunspent(0, 9999999, [imported_zero[0]["address"]])
+            assert_equal(len(utxos), 1)
 
 
 if __name__ == "__main__":

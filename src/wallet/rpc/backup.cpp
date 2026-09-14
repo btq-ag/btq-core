@@ -617,7 +617,11 @@ RPCHelpMan importwallet()
                     throw JSONRPCError(RPC_WALLET_ERROR, "malformed p2mr dump record");
                 }
                 const int64_t nTime = ParseISO8601DateTime(vstr[1]);
-                if (nTime > 0) nTimeBegin = std::min(nTimeBegin, nTime);
+                if (nTime <= 0) {
+                    nTimeBegin = 0;
+                } else {
+                    nTimeBegin = std::min(nTimeBegin, nTime);
+                }
                 const std::vector<unsigned char> raw = ParseHex(vstr[2]);
                 UniValue meta;
                 if (!meta.read(std::string(raw.begin(), raw.end())) || !meta.isObject()) {
