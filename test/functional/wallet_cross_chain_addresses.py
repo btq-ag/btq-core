@@ -111,7 +111,6 @@ class WalletCrossChainAddresses(BTQTestFramework):
         """Launch a fresh btqd on `chain`, return the running TestNode."""
         datadir = get_datadir_path(self.options.tmpdir, node_index)
         initialize_datadir(self.options.tmpdir, node_index, chain, self.disable_autoconnect)
-        chain_args = ["-chain=test"] if chain == "test" else []
         node_chain = "" if chain == "main" else chain
 
         node = TestNode(
@@ -126,7 +125,7 @@ class WalletCrossChainAddresses(BTQTestFramework):
             coverage_dir=self.options.coveragedir,
             cwd=self.options.tmpdir,
             extra_conf=["bind=127.0.0.1"],
-            extra_args=chain_args + [
+            extra_args=[
                 # Stay off every real network. dnsseed/fixedseeds are
                 # already disabled by write_config().
                 "-maxconnections=0",
