@@ -493,9 +493,12 @@ void TxConfirmStats::removeTx(unsigned int entryHeight, unsigned int nBestSeenHe
                      blockIndex, bucketindex);
         }
     }
-    if (!inBlock && (unsigned int)blocksAgo >= scale) { // Only counts as a failure if not confirmed for entire period
+    if (!inBlock && (unsigned int)blocksAgo >= 1) {
+        // Count any unmined removal after one block as a failure. SHORT_SCALE
+        // is 10 for 60s blocks, so the old `blocksAgo >= scale` skip left 1-9
+        // block RBF/eviction looking like 100% success.
         assert(scale != 0);
-        unsigned int periodsAgo = blocksAgo / scale;
+        unsigned int periodsAgo = std::max(1u, (unsigned int)blocksAgo / scale);
         for (size_t i = 0; i < periodsAgo && i < failAvg.size(); i++) {
             failAvg[i][bucketindex]++;
         }

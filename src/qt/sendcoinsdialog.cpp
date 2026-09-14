@@ -43,6 +43,15 @@ using wallet::CCoinControl;
 using wallet::DEFAULT_PAY_TX_FEE;
 
 static constexpr std::array confTargets{20, 40, 60, 120, 240, 480, 1440, 5040, 10080};
+static constexpr std::array oldTenMinuteConfTargets{2, 4, 6, 12, 24, 48, 144, 504, 1008};
+
+int migrateConfTargetFromTenMinuteBlocks(int stored)
+{
+    for (int old : oldTenMinuteConfTargets) {
+        if (stored == old) return old * 10;
+    }
+    return stored;
+}
 int getConfTargetForIndex(int index) {
     if (index+1 > static_cast<int>(confTargets.size())) {
         return confTargets.back();
@@ -225,7 +234,8 @@ void SendCoinsDialog::setModel(WalletModel *_model)
         if (settings.value("nConfTarget").toInt() == 0)
             ui->confTargetSelector->setCurrentIndex(getIndexForConfTarget(model->wallet().getConfirmTarget()));
         else
-            ui->confTargetSelector->setCurrentIndex(getIndexForConfTarget(settings.value("nConfTarget").toInt()));
+            ui->confTargetSelector->setCurrentIndex(getIndexForConfTarget(
+                migrateConfTargetFromTenMinuteBlocks(settings.value("nConfTarget").toInt())));
     }
 }
 
