@@ -4,6 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test Migrating a wallet from legacy to descriptor."""
 
+from decimal import Decimal
 import random
 import shutil
 import struct
@@ -135,12 +136,12 @@ class WalletMigrationTest(BTQTestFramework):
         basic1 = self.create_legacy_wallet("basic1")
 
         for _ in range(0, 10):
-            default.sendtoaddress(basic1.getnewaddress(), 1)
+            default.sendtoaddress(basic1.getnewaddress(), Decimal('0.1'))
 
         self.generate(self.nodes[0], 1)
 
         for _ in range(0, 5):
-            basic1.sendtoaddress(default.getnewaddress(), 0.5)
+            basic1.sendtoaddress(default.getnewaddress(), Decimal('0.05'))
 
         self.generate(self.nodes[0], 1)
         bal = basic1.getbalance()
@@ -180,7 +181,7 @@ class WalletMigrationTest(BTQTestFramework):
         # Receive coins on different output types for the same seed
         basic2_balance = 0
         for addr in [basic2_seed.p2pkh_addr, basic2_seed.p2wpkh_addr, basic2_seed.p2sh_p2wpkh_addr]:
-            send_value = random.randint(1, 4)
+            send_value = Decimal(random.randint(1, 4)) / 10
             default.sendtoaddress(addr, send_value)
             basic2_balance += send_value
             self.generate(self.nodes[0], 1)
@@ -230,14 +231,14 @@ class WalletMigrationTest(BTQTestFramework):
 
         addr1 = ms_info["address"]
         addr2 = ms_info2["address"]
-        txid = default.sendtoaddress(addr1, 10)
+        txid = default.sendtoaddress(addr1, 1)
         multisig1.importaddress(addr1)
         assert_equal(multisig1.getaddressinfo(addr1)["ismine"], False)
         assert_equal(multisig1.getaddressinfo(addr1)["iswatchonly"], True)
         assert_equal(multisig1.getaddressinfo(addr1)["solvable"], True)
         self.generate(self.nodes[0], 1)
         multisig1.gettransaction(txid)
-        assert_equal(multisig1.getbalances()["watchonly"]["trusted"], 10)
+        assert_equal(multisig1.getbalances()["watchonly"]["trusted"], 1)
         assert_equal(multisig1.getaddressinfo(addr2)["ismine"], False)
         assert_equal(multisig1.getaddressinfo(addr2)["iswatchonly"], False)
         assert_equal(multisig1.getaddressinfo(addr2)["solvable"], True)
@@ -267,7 +268,7 @@ class WalletMigrationTest(BTQTestFramework):
         assert_equal(ms1_watchonly.getaddressinfo(addr2)["ismine"], False)
         assert_equal(ms1_watchonly.getaddressinfo(addr2)["solvable"], False)
         ms1_watchonly.gettransaction(txid)
-        assert_equal(ms1_watchonly.getbalance(), 10)
+        assert_equal(ms1_watchonly.getbalance(), 1)
 
         # Migrating multisig1 should see the second multisig is no longer part of multisig1
         # A new wallet multisig1_solvables is created which has the second address
@@ -299,18 +300,18 @@ class WalletMigrationTest(BTQTestFramework):
         # Normal non-watchonly tx
         received_addr = imports0.getnewaddress()
         imports0.setlabel(received_addr, "Receiving")
-        received_txid = default.sendtoaddress(received_addr, 10)
+        received_txid = default.sendtoaddress(received_addr, 1)
 
         # Watchonly tx
         import_addr = default.getnewaddress()
         imports0.importaddress(import_addr)
         imports0.setlabel(import_addr, "imported")
-        received_watchonly_txid = default.sendtoaddress(import_addr, 10)
+        received_watchonly_txid = default.sendtoaddress(import_addr, 1)
 
         # Received watchonly tx that is then spent
         import_sent_addr = default.getnewaddress()
         imports0.importaddress(import_sent_addr)
-        received_sent_watchonly_txid = default.sendtoaddress(import_sent_addr, 10)
+        received_sent_watchonly_txid = default.sendtoaddress(import_sent_addr, 1)
         received_sent_watchonly_vout = find_vout_for_address(self.nodes[0], received_sent_watchonly_txid, import_sent_addr)
         send = default.sendall(recipients=[default.getnewaddress()], inputs=[{"txid": received_sent_watchonly_txid, "vout": received_sent_watchonly_vout}])
         sent_watchonly_txid = send["txid"]
@@ -378,7 +379,7 @@ class WalletMigrationTest(BTQTestFramework):
                 "timestamp": "now",
             }])
         assert_equal(res[0]['success'], True)
-        default.sendtoaddress(addr, 10)
+        default.sendtoaddress(addr, 1)
         self.generate(self.nodes[0], 1)
 
         watchonly0.migratewallet()
@@ -444,7 +445,7 @@ class WalletMigrationTest(BTQTestFramework):
 
         wallet.encryptwallet("pass")
         addr = wallet.getnewaddress()
-        txid = default.sendtoaddress(addr, 1)
+        txid = default.sendtoaddress(addr, Decimal('0.1'))
         self.generate(self.nodes[0], 1)
         bals = wallet.getbalances()
 
@@ -468,7 +469,7 @@ class WalletMigrationTest(BTQTestFramework):
         default = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
 
         addr = wallet.getnewaddress()
-        txid = default.sendtoaddress(addr, 1)
+        txid = default.sendtoaddress(addr, Decimal('0.1'))
         self.generate(self.nodes[0], 1)
         bals = wallet.getbalances()
 
@@ -491,7 +492,7 @@ class WalletMigrationTest(BTQTestFramework):
         default = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
 
         addr = wallet.getnewaddress()
-        txid = default.sendtoaddress(addr, 1)
+        txid = default.sendtoaddress(addr, Decimal('0.1'))
         self.generate(self.nodes[0], 1)
         bals = wallet.getbalances()
 
@@ -549,12 +550,12 @@ class WalletMigrationTest(BTQTestFramework):
 
         self.log.info("Test migration of address book data")
         wallet = self.create_legacy_wallet("legacy_addrbook")
-        df_wallet.sendtoaddress(wallet.getnewaddress(), 3)
+        df_wallet.sendtoaddress(wallet.getnewaddress(), Decimal('0.3'))
 
         # Import watch-only script to create a watch-only wallet after migration
         watch_addr = df_wallet.getnewaddress()
         wallet.importaddress(watch_addr)
-        df_wallet.sendtoaddress(watch_addr, 2)
+        df_wallet.sendtoaddress(watch_addr, Decimal('0.2'))
 
         # Import solvable script
         multi_addr1 = wallet.getnewaddress()
@@ -610,7 +611,7 @@ class WalletMigrationTest(BTQTestFramework):
         }
 
         # To store the change address in the addressbook need to send coins to it
-        wallet.send(outputs=[{wallet.getnewaddress(): 2}], options={"change_address": change_address['addr']})
+        wallet.send(outputs=[{wallet.getnewaddress(): Decimal('0.2')}], options={"change_address": change_address['addr']})
         self.generate(self.nodes[0], 1)
 
         # Util wrapper func for 'addr_info'
@@ -677,7 +678,7 @@ class WalletMigrationTest(BTQTestFramework):
 
         def send_to_script(script, amount):
             tx = CTransaction()
-            tx.vout.append(CTxOut(nValue=amount*COIN, scriptPubKey=script))
+            tx.vout.append(CTxOut(nValue=int(amount * COIN), scriptPubKey=script))
 
             hex_tx = df_wallet.fundrawtransaction(tx.serialize().hex())['hex']
             signed_tx = df_wallet.signrawtransactionwithwallet(hex_tx)
@@ -688,20 +689,20 @@ class WalletMigrationTest(BTQTestFramework):
         pubkey = df_wallet.getaddressinfo(df_wallet.getnewaddress())["pubkey"]
         script_pkh = key_to_p2pkh_script(pubkey)
         script_sh_pkh = script_to_p2sh_script(script_pkh)
-        send_to_script(script=script_sh_pkh, amount=2)
+        send_to_script(script=script_sh_pkh, amount=Decimal('0.2'))
 
         # Import script and check balance
         wallet.rpc.importaddress(address=script_pkh.hex(), label="raw_spk", rescan=True, p2sh=True)
-        assert_equal(wallet.getbalances()['watchonly']['trusted'], 2)
+        assert_equal(wallet.getbalances()['watchonly']['trusted'], Decimal('0.2'))
 
         # Craft wsh(pkh(key)) and send coins to it
         pubkey = df_wallet.getaddressinfo(df_wallet.getnewaddress())["pubkey"]
         script_wsh_pkh = script_to_p2wsh_script(key_to_p2pkh_script(pubkey))
-        send_to_script(script=script_wsh_pkh, amount=3)
+        send_to_script(script=script_wsh_pkh, amount=Decimal('0.3'))
 
         # Import script and check balance
         wallet.rpc.importaddress(address=script_wsh_pkh.hex(), label="raw_spk2", rescan=True, p2sh=False)
-        assert_equal(wallet.getbalances()['watchonly']['trusted'], 5)
+        assert_equal(wallet.getbalances()['watchonly']['trusted'], Decimal('0.5'))
 
         # Import sh(pkh()) script, by using importaddress(), with the p2sh flag enabled.
         # This will wrap the script under another sh level, which is invalid!, and store it inside the wallet.
@@ -723,7 +724,7 @@ class WalletMigrationTest(BTQTestFramework):
         wallet_wo = self.nodes[0].get_wallet_rpc(info_migration["watchonly_name"])
 
         # Watch-only balance is under "mine".
-        assert_equal(wallet_wo.getbalances()['mine']['trusted'], 5)
+        assert_equal(wallet_wo.getbalances()['mine']['trusted'], Decimal('0.5'))
         # The watch-only scripts are no longer part of the main wallet
         assert_equal(wallet.getbalances()['mine']['trusted'], 0)
 
@@ -744,18 +745,18 @@ class WalletMigrationTest(BTQTestFramework):
         # Just in case, also verify wallet restart
         self.nodes[0].unloadwallet(info_migration["watchonly_name"])
         self.nodes[0].loadwallet(info_migration["watchonly_name"])
-        assert_equal(wallet_wo.getbalances()['mine']['trusted'], 5)
+        assert_equal(wallet_wo.getbalances()['mine']['trusted'], Decimal('0.5'))
 
     def test_conflict_txs(self):
         self.log.info("Test migration when wallet contains conflicting transactions")
         def_wallet = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
 
         wallet = self.create_legacy_wallet("conflicts")
-        def_wallet.sendtoaddress(wallet.getnewaddress(), 10)
+        def_wallet.sendtoaddress(wallet.getnewaddress(), 1)
         self.generate(self.nodes[0], 1)
 
         # parent tx
-        parent_txid = wallet.sendtoaddress(wallet.getnewaddress(), 9)
+        parent_txid = wallet.sendtoaddress(wallet.getnewaddress(), Decimal('0.9'))
         parent_txid_bytes = bytes.fromhex(parent_txid)[::-1]
         conflict_utxo = wallet.gettransaction(txid=parent_txid, verbose=True)["decoded"]["vin"][0]
 
@@ -765,7 +766,7 @@ class WalletMigrationTest(BTQTestFramework):
         locktime = 500000000 # Use locktime as nonce, starting at unix timestamp minimum
         addr = wallet.getnewaddress()
         while True:
-            child_send_res = wallet.send(outputs=[{addr: 8}], add_to_wallet=False, locktime=locktime)
+            child_send_res = wallet.send(outputs=[{addr: Decimal('0.8')}], add_to_wallet=False, locktime=locktime)
             child_txid = child_send_res["txid"]
             child_txid_bytes = bytes.fromhex(child_txid)[::-1]
             if (child_txid_bytes > parent_txid_bytes):
@@ -773,8 +774,9 @@ class WalletMigrationTest(BTQTestFramework):
                 break
             locktime += 1
 
-        # conflict with parent
-        conflict_unsigned = self.nodes[0].createrawtransaction(inputs=[conflict_utxo], outputs=[{wallet.getnewaddress(): 9.9999}])
+        # conflict with parent. The fee stays at upstream's 0.0001 rather than
+        # scaling with the amounts: it must outbid the parent and child it replaces.
+        conflict_unsigned = self.nodes[0].createrawtransaction(inputs=[conflict_utxo], outputs=[{wallet.getnewaddress(): Decimal('0.9999')}])
         conflict_signed = wallet.signrawtransactionwithwallet(conflict_unsigned)["hex"]
         conflict_txid = self.nodes[0].sendrawtransaction(conflict_signed)
         self.generate(self.nodes[0], 1)
@@ -879,6 +881,9 @@ class WalletMigrationTest(BTQTestFramework):
 
 
     def run_test(self):
+        # This leaves the default wallet a single mature block reward, so the
+        # amounts the tests send are a tenth of upstream's, as BTQ's subsidy is
+        # a tenth of Bitcoin's.
         self.generate(self.nodes[0], 101)
 
         # TODO: Test the actual records in the wallet for these tests too. The behavior may be correct, but the data written may not be what we actually want

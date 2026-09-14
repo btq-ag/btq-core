@@ -16,9 +16,13 @@ variants.
   and test the values returned."""
 
 import concurrent.futures
+from decimal import Decimal
 
 from test_framework.authproxy import JSONRPCException
-from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.blocktools import (
+    COINBASE_MATURITY,
+    block_subsidy,
+)
 from test_framework.test_framework import BTQTestFramework
 from test_framework.descriptors import descsum_create
 from test_framework.util import (
@@ -30,6 +34,12 @@ from test_framework.wallet_util import (
     get_generate_key,
     test_address,
 )
+
+# Every block this test mines is well before the first halving, so one subsidy
+# is all it ever needs. The amounts it moves around are a tenth of upstream's
+# because BTQ's subsidy is a tenth of Bitcoin's.
+SUBSIDY = block_subsidy(1)
+
 
 class ImportDescriptorsTest(BTQTestFramework):
     def add_options(self, parser):
@@ -411,9 +421,11 @@ class ImportDescriptorsTest(BTQTestFramework):
                      address,
                      solvable=True,
                      ismine=True)
-        txid = w0.sendtoaddress(address, 49.99995540)
+        # Send w0's one mature coinbase, less the fee, so there is no change
+        # output and the payment is vout 0.
+        txid = w0.sendtoaddress(address, SUBSIDY - Decimal('0.00004460'))
         self.generatetoaddress(self.nodes[0], 6, w0.getnewaddress())
-        tx = wpriv.createrawtransaction([{"txid": txid, "vout": 0}], {w0.getnewaddress(): 49.999})
+        tx = wpriv.createrawtransaction([{"txid": txid, "vout": 0}], {w0.getnewaddress(): SUBSIDY - Decimal('0.001')})
         signed_tx = wpriv.signrawtransactionwithwallet(tx)
         w1.sendrawtransaction(signed_tx['hex'])
 
@@ -456,9 +468,9 @@ class ImportDescriptorsTest(BTQTestFramework):
         change_addr = wmulti_priv.getrawchangeaddress('bech32') # uses change 0
         assert_equal(change_addr, 'qcrt1qt9uhe3a9hnq7vajl7a094z4s3crm9ttf8zw3f5v9gr2nyd7e3lnsvqwdfn') # Derived at m/84'/1'/0'/0
         assert_equal(wmulti_priv.getwalletinfo()['keypoolsize'], 1000)
-        txid = w0.sendtoaddress(addr, 10)
+        txid = w0.sendtoaddress(addr, 1)
         self.generate(self.nodes[0], 6)
-        send_txid = wmulti_priv.sendtoaddress(w0.getnewaddress(), 8) # uses change 1
+        send_txid = wmulti_priv.sendtoaddress(w0.getnewaddress(), Decimal('0.8')) # uses change 1
         decoded = wmulti_priv.gettransaction(txid=send_txid, verbose=True)['decoded']
         assert_equal(len(decoded['vin'][0]['txinwitness']), 4)
         self.sync_all()
@@ -493,11 +505,11 @@ class ImportDescriptorsTest(BTQTestFramework):
         assert_equal(wmulti_pub.getwalletinfo()['keypoolsize'], 999)
 
         # generate some utxos for next tests
-        txid = w0.sendtoaddress(addr, 10)
+        txid = w0.sendtoaddress(addr, 1)
         vout = find_vout_for_address(self.nodes[0], txid, addr)
 
         addr2 = wmulti_pub.getnewaddress('', 'bech32')
-        txid2 = w0.sendtoaddress(addr2, 10)
+        txid2 = w0.sendtoaddress(addr2, 1)
         vout2 = find_vout_for_address(self.nodes[0], txid2, addr2)
 
         self.generate(self.nodes[0], 6)
@@ -554,7 +566,7 @@ class ImportDescriptorsTest(BTQTestFramework):
         assert_equal(res[1]['success'], True)
         assert_equal(res[1]['warnings'][0], 'Not all private keys provided. Some wallet functionality may return unexpected errors')
 
-        rawtx = self.nodes[1].createrawtransaction([{'txid': txid, 'vout': vout}], {w0.getnewaddress(): 9.999})
+        rawtx = self.nodes[1].createrawtransaction([{'txid': txid, 'vout': vout}], {w0.getnewaddress(): Decimal('0.9999')})
         tx_signed_1 = wmulti_priv1.signrawtransactionwithwallet(rawtx)
         assert_equal(tx_signed_1['complete'], False)
         tx_signed_2 = wmulti_priv2.signrawtransactionwithwallet(tx_signed_1['hex'])
@@ -586,10 +598,10 @@ class ImportDescriptorsTest(BTQTestFramework):
         assert_equal(res[1]['success'], True)
 
         addr = wmulti_priv_big.getnewaddress()
-        w0.sendtoaddress(addr, 10)
+        w0.sendtoaddress(addr, 1)
         self.generate(self.nodes[0], 1)
         # It is standard and would relay.
-        txid = wmulti_priv_big.sendtoaddress(w0.getnewaddress(), 9.999)
+        txid = wmulti_priv_big.sendtoaddress(w0.getnewaddress(), Decimal('0.9999'))
         decoded = wmulti_priv_big.gettransaction(txid=txid, verbose=True)['decoded']
         # 20 sigs + dummy + witness script
         assert_equal(len(decoded['vin'][0]['txinwitness']), 22)
@@ -620,10 +632,10 @@ class ImportDescriptorsTest(BTQTestFramework):
         assert_equal(res[1]['success'], True)
 
         addr = multi_priv_big.getnewaddress("", "legacy")
-        w0.sendtoaddress(addr, 10)
+        w0.sendtoaddress(addr, 1)
         self.generate(self.nodes[0], 6)
         # It is standard and would relay.
-        txid = multi_priv_big.sendtoaddress(w0.getnewaddress(), 10, "", "", True)
+        txid = multi_priv_big.sendtoaddress(w0.getnewaddress(), 1, "", "", True)
         decoded = multi_priv_big.gettransaction(txid=txid, verbose=True)['decoded']
 
         self.log.info("Amending multisig with new private keys")
@@ -648,7 +660,7 @@ class ImportDescriptorsTest(BTQTestFramework):
             }])
         assert_equal(res[0]['success'], True)
 
-        rawtx = self.nodes[1].createrawtransaction([{'txid': txid2, 'vout': vout2}], {w0.getnewaddress(): 9.999})
+        rawtx = self.nodes[1].createrawtransaction([{'txid': txid2, 'vout': vout2}], {w0.getnewaddress(): Decimal('0.9999')})
         tx = wmulti_priv3.signrawtransactionwithwallet(rawtx)
         assert_equal(tx['complete'], True)
         self.nodes[1].sendrawtransaction(tx['hex'])
