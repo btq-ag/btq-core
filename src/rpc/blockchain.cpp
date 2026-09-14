@@ -765,7 +765,7 @@ static RPCHelpMan pruneblockchain()
     return RPCHelpMan{"pruneblockchain", "",
                 {
                     {"height", RPCArg::Type::NUM, RPCArg::Optional::NO, "The block height to prune up to. May be set to a discrete height, or to a " + UNIX_EPOCH_TIME + "\n"
-            "                  to prune blocks whose block time is at least 2 hours older than the provided timestamp."},
+            "                  to prune blocks whose block time is at least 15 minutes older than the provided timestamp."},
                 },
                 RPCResult{
                     RPCResult::Type::NUM, "", "Height of the last block pruned"},
