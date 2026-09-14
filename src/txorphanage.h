@@ -49,8 +49,9 @@ public:
      * or the tx is over MAX_STANDARD_TX_WEIGHT. */
     bool AddTx(const CTransactionRef& tx, NodeId peer) EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
 
-    /** Add another announcer to an existing orphan. */
-    bool AddAnnouncer(const uint256& wtxid, NodeId peer) EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
+    /** Add another announcer to an existing orphan.
+     *  provided_tx is true when this peer sent the full transaction, not just an inv. */
+    bool AddAnnouncer(const uint256& wtxid, NodeId peer, bool provided_tx = false) EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
 
     /** Check if we already have an orphan (txid or wtxid). */
     bool HaveTx(const GenTxid& gtxid) const EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);
@@ -121,6 +122,8 @@ protected:
 
     struct OrphanTx : public OrphanTxBase {
         size_t list_pos;
+        //! Peers that sent the full tx. Inv-only announcers are not in this set.
+        std::set<NodeId> tx_providers;
     };
 
     const int64_t m_max_global_usage;
@@ -139,6 +142,7 @@ protected:
     struct PeerOrphanInfo {
         std::set<uint256> m_work_set;
         unsigned int m_total_usage{0};
+        unsigned int m_total_latency{0};
     };
     std::map<NodeId, PeerOrphanInfo> m_peer_orphanage_info GUARDED_BY(m_mutex);
 
@@ -157,6 +161,8 @@ protected:
     NodeSeconds m_next_sweep GUARDED_BY(m_mutex){0s};
 
     int EraseTxNoLock(const uint256& wtxid) EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
+    bool AddAnnouncerNoLock(const uint256& wtxid, NodeId peer, bool provided_tx) EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
+    void RemoveAnnouncerKeepTx(const uint256& wtxid, NodeId peer) EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
     bool NeedsTrim() const EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
     uint256 ResolveWtxid(const uint256& hash) const EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
 };

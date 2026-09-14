@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cassert>
 #include <iterator>
+#include <limits>
 #include <utility>
 
 uint256 TxOrphanage::ResolveWtxid(const uint256& hash) const
@@ -32,19 +33,8 @@ bool TxOrphanage::AddTx(const CTransactionRef& tx, NodeId peer)
     const uint256& hash = tx->GetHash();
     const uint256& wtxid = tx->GetWitnessHash();
     if (m_orphans.count(wtxid)) {
-        // Existing orphan: just record this announcer.
-        const bool added = [&] {
-            const auto it = m_orphans.find(wtxid);
-            if (it->second.announcers.size() >= MAX_ANNOUNCERS_PER_ORPHAN) return false;
-            const auto ret = it->second.announcers.insert(peer);
-            if (!ret.second) return false;
-            auto& peer_info = m_peer_orphanage_info.try_emplace(peer).first->second;
-            peer_info.m_total_usage += it->second.GetUsage();
-            m_total_announcements += 1;
-            LogPrint(BCLog::TXPACKAGES, "added peer=%d as announcer of orphan tx %s\n", peer, wtxid.ToString());
-            return true;
-        }();
-        (void)added;
+        // Existing orphan: this peer sent the full tx, so record them as a provider.
+        (void)AddAnnouncerNoLock(wtxid, peer, /*provided_tx=*/true);
         return false;
     }
 
@@ -59,7 +49,7 @@ bool TxOrphanage::AddTx(const CTransactionRef& tx, NodeId peer)
         return false;
     }
 
-    auto ret = m_orphans.emplace(wtxid, OrphanTx{{tx, {peer}, Now<NodeSeconds>() + ORPHAN_TX_EXPIRE_TIME}, m_orphan_list.size()});
+    auto ret = m_orphans.emplace(wtxid, OrphanTx{{tx, {peer}, Now<NodeSeconds>() + ORPHAN_TX_EXPIRE_TIME}, m_orphan_list.size(), {peer}});
     assert(ret.second);
     m_orphan_list.push_back(ret.first);
     m_txid_to_wtxid.emplace(hash, wtxid);
@@ -71,26 +61,64 @@ bool TxOrphanage::AddTx(const CTransactionRef& tx, NodeId peer)
     m_total_announcements += 1;
     auto& peer_info = m_peer_orphanage_info.try_emplace(peer).first->second;
     peer_info.m_total_usage += sz;
+    peer_info.m_total_latency += ret.first->second.GetLatencyScore();
 
     LogPrint(BCLog::TXPACKAGES, "stored orphan tx %s (wtxid=%s), weight: %u (mapsz %u outsz %u)\n", hash.ToString(), wtxid.ToString(), sz,
              m_orphans.size(), m_outpoint_to_orphan_it.size());
     return true;
 }
 
-bool TxOrphanage::AddAnnouncer(const uint256& wtxid, NodeId peer)
+bool TxOrphanage::AddAnnouncer(const uint256& wtxid, NodeId peer, bool provided_tx)
 {
     LOCK(m_mutex);
+    return AddAnnouncerNoLock(wtxid, peer, provided_tx);
+}
+
+bool TxOrphanage::AddAnnouncerNoLock(const uint256& wtxid, NodeId peer, bool provided_tx)
+{
+    AssertLockHeld(m_mutex);
     const auto it = m_orphans.find(wtxid);
     if (it == m_orphans.end()) return false;
     Assume(!it->second.announcers.empty());
-    if (it->second.announcers.size() >= MAX_ANNOUNCERS_PER_ORPHAN) return false;
-    const auto ret = it->second.announcers.insert(peer);
-    if (!ret.second) return false;
+    if (it->second.announcers.count(peer)) {
+        if (provided_tx) it->second.tx_providers.insert(peer);
+        return false;
+    }
+    if (it->second.announcers.size() >= MAX_ANNOUNCERS_PER_ORPHAN) {
+        if (!provided_tx) return false;
+        NodeId displace{-1};
+        for (const NodeId existing : it->second.announcers) {
+            if (!it->second.tx_providers.count(existing)) {
+                displace = existing;
+                break;
+            }
+        }
+        if (displace < 0) return false;
+        RemoveAnnouncerKeepTx(wtxid, displace);
+    }
+    it->second.announcers.insert(peer);
+    if (provided_tx) it->second.tx_providers.insert(peer);
     auto& peer_info = m_peer_orphanage_info.try_emplace(peer).first->second;
     peer_info.m_total_usage += it->second.GetUsage();
+    peer_info.m_total_latency += it->second.GetLatencyScore();
     m_total_announcements += 1;
     LogPrint(BCLog::TXPACKAGES, "added peer=%d as announcer of orphan tx %s\n", peer, wtxid.ToString());
     return true;
+}
+
+void TxOrphanage::RemoveAnnouncerKeepTx(const uint256& wtxid, NodeId peer)
+{
+    AssertLockHeld(m_mutex);
+    auto it = m_orphans.find(wtxid);
+    if (it == m_orphans.end()) return;
+    if (!it->second.announcers.erase(peer)) return;
+    it->second.tx_providers.erase(peer);
+    m_total_announcements -= 1;
+    auto peer_it = m_peer_orphanage_info.find(peer);
+    if (peer_it != m_peer_orphanage_info.end()) {
+        peer_it->second.m_total_usage -= it->second.GetUsage();
+        peer_it->second.m_total_latency -= it->second.GetLatencyScore();
+    }
 }
 
 int TxOrphanage::EraseTx(const uint256& hash)
@@ -122,6 +150,7 @@ int TxOrphanage::EraseTxNoLock(const uint256& wtxid)
         auto peer_it = m_peer_orphanage_info.find(peer);
         if (Assume(peer_it != m_peer_orphanage_info.end())) {
             peer_it->second.m_total_usage -= tx_size;
+            peer_it->second.m_total_latency -= latency;
         }
     }
 
@@ -158,6 +187,7 @@ void TxOrphanage::EraseForPeer(NodeId peer)
         auto orphan_it = orphan.announcers.find(peer);
         if (orphan_it == orphan.announcers.end()) continue;
         orphan.announcers.erase(peer);
+        orphan.tx_providers.erase(peer);
         m_total_announcements -= 1;
         if (orphan.announcers.empty()) {
             nErased += EraseTxNoLock(wtxid);
@@ -212,23 +242,43 @@ void TxOrphanage::LimitOrphans(FastRandomContext& rng)
     }
 
     while (NeedsTrim() && !m_orphan_list.empty()) {
-        NodeId worst = -1;
-        unsigned int worst_usage = 0;
-        for (const auto& [peer, info] : m_peer_orphanage_info) {
-            if (info.m_total_usage > worst_usage) {
-                worst = peer;
-                worst_usage = info.m_total_usage;
+        const bool trim_latency = m_total_latency_score > m_max_latency_score;
+
+        if (trim_latency) {
+            // Latency pressure: throw away the cheapest unique orphans first
+            // (inv-flood junk). Never erase a shared orphan.
+            const uint256* smallest_unique = nullptr;
+            unsigned int smallest_usage = std::numeric_limits<unsigned int>::max();
+            for (const auto& [wtxid, orphan] : m_orphans) {
+                if (orphan.announcers.size() != 1) continue;
+                if (orphan.GetUsage() < smallest_usage) {
+                    smallest_usage = orphan.GetUsage();
+                    smallest_unique = &wtxid;
+                }
+            }
+            if (smallest_unique) {
+                EraseTxNoLock(*smallest_unique);
+                ++nEvicted;
+                continue;
             }
         }
-        if (worst < 0 || worst_usage == 0) {
-            // Fall back to a random unique orphan if peer accounting is empty.
+
+        NodeId worst = -1;
+        unsigned int worst_metric = 0;
+        for (const auto& [peer, info] : m_peer_orphanage_info) {
+            const unsigned int metric = trim_latency ? info.m_total_latency : info.m_total_usage;
+            if (metric > worst_metric) {
+                worst = peer;
+                worst_metric = metric;
+            }
+        }
+        if (worst < 0 || worst_metric == 0) {
             size_t randompos = rng.randrange(m_orphan_list.size());
             EraseTxNoLock(m_orphan_list[randompos]->first);
             ++nEvicted;
             continue;
         }
 
-        // Prefer evicting an orphan this peer uniquely announced.
         const uint256* unique_wtxid = nullptr;
         const uint256* shared_wtxid = nullptr;
         for (const auto& [wtxid, orphan] : m_orphans) {
@@ -242,17 +292,8 @@ void TxOrphanage::LimitOrphans(FastRandomContext& rng)
         if (unique_wtxid) {
             EraseTxNoLock(*unique_wtxid);
             ++nEvicted;
-        } else if (shared_wtxid && m_total_latency_score <= m_max_latency_score) {
-            auto& orphan = m_orphans[*shared_wtxid];
-            orphan.announcers.erase(worst);
-            m_total_announcements -= 1;
-            auto peer_it = m_peer_orphanage_info.find(worst);
-            if (peer_it != m_peer_orphanage_info.end()) {
-                peer_it->second.m_total_usage -= orphan.GetUsage();
-            }
-            ++nEvicted;
         } else if (shared_wtxid) {
-            EraseTxNoLock(*shared_wtxid);
+            RemoveAnnouncerKeepTx(*shared_wtxid, worst);
             ++nEvicted;
         } else {
             break;
@@ -416,6 +457,7 @@ void TxOrphanage::SanityCheck() const
     unsigned int counted_total_usage{0};
     unsigned int counted_latency{0};
     std::map<NodeId, unsigned int> counted_size_per_peer;
+    std::map<NodeId, unsigned int> counted_latency_per_peer;
 
     for (const auto& [wtxid, orphan] : m_orphans) {
         counted_total_announcements += orphan.announcers.size();
@@ -423,8 +465,12 @@ void TxOrphanage::SanityCheck() const
         counted_latency += orphan.GetLatencyScore();
         Assume(!orphan.announcers.empty());
         Assume(m_txid_to_wtxid.count(orphan.tx->GetHash()));
+        for (const auto& peer : orphan.tx_providers) {
+            Assume(orphan.announcers.count(peer));
+        }
         for (const auto& peer : orphan.announcers) {
             counted_size_per_peer.try_emplace(peer).first->second += orphan.GetUsage();
+            counted_latency_per_peer.try_emplace(peer).first->second += orphan.GetLatencyScore();
         }
     }
 
@@ -439,8 +485,10 @@ void TxOrphanage::SanityCheck() const
         auto it_counted = counted_size_per_peer.find(peerid);
         if (it_counted == counted_size_per_peer.end()) {
             Assume(info.m_total_usage == 0);
+            Assume(info.m_total_latency == 0);
         } else {
             Assume(it_counted->second == info.m_total_usage);
+            Assume(counted_latency_per_peer.at(peerid) == info.m_total_latency);
         }
     }
 }
