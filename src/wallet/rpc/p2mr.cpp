@@ -44,8 +44,9 @@ RPCHelpMan getnewp2mraddress()
         "getnewp2mraddress",
         "\nCreate and store a new wallet-managed P2MR destination.\n"
         "The normal Dilithium receive path is getnewdilithiumaddress. This RPC is for custom trees.\n"
-        "Leaves are rejected unless the wallet recognises them as spendable Dilithium scripts or\n"
-        "allow_trivial_leaves is true (regtest and tests only).\n",
+        "Leaves are rejected unless the wallet holds at least one key in a recognised Dilithium\n"
+        "template (including createdilithiummultisig's accumulator leaf) or allow_trivial_leaves is\n"
+        "true (regtest and tests only).\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
