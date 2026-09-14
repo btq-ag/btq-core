@@ -62,7 +62,7 @@ BOOST_FIXTURE_TEST_CASE(package_sanitization_tests, TestChain100Setup)
 
     // Packages can't have a total weight of more than MAX_PACKAGE_WEIGHT.
     //
-    // The ceiling is one 8 MW block. A 700-in/700-out placeholder is large
+    // The ceiling is one default 7.584 MW template. A 700-in/700-out placeholder is large
     // enough that a handful of copies exceed that while staying under
     // MAX_PACKAGE_COUNT. The assertion below fails if the package outgrows the
     // count limit before the weight one.

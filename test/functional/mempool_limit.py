@@ -30,7 +30,7 @@ class MempoolLimitTest(BTQTestFramework):
         self.num_nodes = 1
         self.extra_args = [[
             "-datacarriersize=100000",
-            "-maxmempool=5",
+            "-maxmempool=19",
         ]]
         self.supports_cli = False
 
@@ -368,11 +368,10 @@ class MempoolLimitTest(BTQTestFramework):
         assert_greater_than((parent_fee + child_fee) / (tx_parent_just_below["tx"].get_vsize() + tx_child_just_above["tx"].get_vsize()), mempoolmin_feerate / 1000)
         assert_raises_rpc_error(-26, "mempool full", node.submitpackage, [tx_parent_just_below["hex"], tx_child_just_above["hex"]])
 
-        self.log.info('Test passing a value below the minimum (80 MB) to -maxmempool throws an error')
+        self.log.info('Test passing a value below the minimum (19 MB) to -maxmempool throws an error')
         self.stop_node(0)
-        # Floor is descendant_size_vbytes * 40. BTQ's raised descendant limit makes
-        # that 80 MB; upstream's equivalent message said 5 MB.
-        self.nodes[0].assert_start_raises_init_error(["-maxmempool=4"], "Error: -maxmempool must be at least 80 MB")
+        # Floor is descendant_size_vbytes * 40. 474 kvB * 40 rounds up to 19 MB.
+        self.nodes[0].assert_start_raises_init_error(["-maxmempool=18"], "Error: -maxmempool must be at least 19 MB")
 
         self.test_mid_package_replacement()
         self.test_mid_package_eviction()

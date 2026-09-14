@@ -18,7 +18,7 @@ tip or some preceding transaction in the package.
 
 The following rules are enforced for all packages:
 
-* Packages cannot exceed `MAX_PACKAGE_COUNT=25` count and `MAX_PACKAGE_WEIGHT=404000` total weight
+* Packages cannot exceed `MAX_PACKAGE_COUNT=25` count and `MAX_PACKAGE_WEIGHT=7584000` total weight
    (#20833)
 
    - *Rationale*: We want package size to be as small as possible to mitigate DoS via package
