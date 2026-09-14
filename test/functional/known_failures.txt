@@ -43,8 +43,6 @@ rpc_dumptxoutset.py                                     # AssertionError: not(<h
 rpc_getblockfrompeer.py                                 # AssertionError: not(<hex> == <hex>)
 rpc_getblockstats.py                                    # JSONRPCException: Target block height 101 after current tip 0 (-8)
 rpc_invalid_address_message.py                          # AssertionError: not(Invalid or unsupported Segwit (Bech32) or Base58 encoding...
-rpc_psbt.py --descriptors                               # AssertionError: not(19 == 2)
-rpc_psbt.py --legacy-wallet                             # AssertionError: not(19 == 2)
 rpc_rawtransaction.py --legacy-wallet                   # JSONRPCException: Fee exceeds maximum configured by user (e.g. -maxtxfee, max...
 rpc_scanblocks.py                                       # AssertionError: not(595120 == 113199)
 rpc_signmessagewithprivkey.py                           # AssertionError: not(INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdA...
@@ -53,14 +51,10 @@ rpc_validateaddress.py                                  # AssertionError: not(In
 wallet_avoidreuse.py --descriptors                      # JSONRPCException: Transaction has too long of a mempool chain (-6)
 wallet_bumpfee.py --descriptors                         # JSONRPCException: Insufficient total fee 0.0000012, must be at least 0.000016...
 wallet_bumpfee.py --legacy-wallet                       # JSONRPCException: Insufficient total fee 0.0000012, must be at least 0.000016...
-wallet_fundrawtransaction.py --descriptors              # AssertionError: not(132.89994590 == 87.89994590)
-wallet_fundrawtransaction.py --legacy-wallet            # AssertionError: not(132.89994580 == 87.89994580)
 wallet_hd.py --legacy-wallet                            # JSONRPCException: Invalid or non-wallet transaction id (-5)
 wallet_import_rescan.py --legacy-wallet                 # AssertionError: not(0 == 1)
 wallet_keypool.py --descriptors                         # AssertionError: not(0.00007853 == 0.00009706)
 wallet_keypool.py --legacy-wallet                       # AssertionError: not(0.00007853 == 0.00009706)
 wallet_miniscript.py --descriptors                      # AssertionError: [{'success': False, 'error': {'code': -5, 'message': "'nnnnnn...
 wallet_reorgsrestore.py                                 # JSONRPCException: bad-txns-inputs-missingorspent (-25)
-wallet_send.py --descriptors                            # AssertionError: not(5.00000000 == 50)
-wallet_send.py --legacy-wallet                          # AssertionError: not(5.00000000 == 50)
 wallet_taproot.py --descriptors                         # AssertionError: not(qcrt1pwccu4nkrxsc99kr77ngqvhmpmh5z6lfdkrqucqh0v8hnexpw5a3...
