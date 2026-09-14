@@ -42,6 +42,15 @@ public:
         auto it = m_orphans.find(wtxid);
         return it == m_orphans.end() ? 0 : it->second.announcers.size();
     }
+
+    void ZeroPeerAccounting() EXCLUSIVE_LOCKS_REQUIRED(!m_mutex)
+    {
+        LOCK(m_mutex);
+        for (auto& [peer, info] : m_peer_orphanage_info) {
+            info.m_total_usage = 0;
+            info.m_total_latency = 0;
+        }
+    }
 };
 
 static void MakeNewKeyWithFastRandomContext(CKey& key)
@@ -125,9 +134,8 @@ BOOST_AUTO_TEST_CASE(DoS_mapOrphans)
 
 BOOST_AUTO_TEST_CASE(announcer_and_weight_trim)
 {
-    // Limits large enough that a couple of MakeOrphanTx stay, small enough that
-    // a peer with several unique orphans still gets trimmed.
-    TxOrphanageTest orphanage(/*max_global_usage=*/8000, /*max_latency_score=*/3000, /*reserved_usage_per_peer=*/4000);
+    // Cap below 1 shared + 6 unique MakeOrphanTx (~1376 WU each with WSF=16).
+    TxOrphanageTest orphanage(/*max_global_usage=*/4000, /*max_latency_score=*/3000, /*reserved_usage_per_peer=*/4000);
     CKey key;
     MakeNewKeyWithFastRandomContext(key);
     FastRandomContext rng{uint256{1}};
@@ -142,11 +150,14 @@ BOOST_AUTO_TEST_CASE(announcer_and_weight_trim)
         BOOST_CHECK(orphanage.AddTx(MakeOrphanTx(key, InsecureRand256()), /*peer=*/2));
     }
 
+    BOOST_CHECK(orphanage.TotalOrphanUsage() > 4000);
+    const size_t before = orphanage.CountOrphans();
     orphanage.LimitOrphans(rng);
+    BOOST_CHECK(orphanage.CountOrphans() < before);
     BOOST_CHECK(orphanage.HaveTx(GenTxid::Wtxid(shared->GetWitnessHash())));
     BOOST_CHECK(orphanage.HaveTxFromPeer(shared->GetWitnessHash(), 0));
     BOOST_CHECK(orphanage.TotalOrphanUsage() > 0);
-    BOOST_CHECK(orphanage.TotalOrphanUsage() <= 8000);
+    BOOST_CHECK(orphanage.TotalOrphanUsage() <= 4000);
     orphanage.SanityCheck();
 }
 
@@ -192,6 +203,26 @@ BOOST_AUTO_TEST_CASE(tx_provider_displaces_inv_only_announcer)
     BOOST_CHECK(orphanage.HaveTxFromPeer(tx->GetWitnessHash(), MAX_ANNOUNCERS_PER_ORPHAN));
     BOOST_CHECK_EQUAL(orphanage.CountAnnouncers(tx->GetWitnessHash()), MAX_ANNOUNCERS_PER_ORPHAN);
     BOOST_CHECK(orphanage.HaveTxFromPeer(tx->GetWitnessHash(), 0));
+    orphanage.SanityCheck();
+}
+
+BOOST_AUTO_TEST_CASE(empty_peer_accounting_does_not_erase_shared)
+{
+    TxOrphanageTest orphanage(/*max_global_usage=*/4000, /*max_latency_score=*/3000, /*reserved_usage_per_peer=*/4000);
+    CKey key;
+    MakeNewKeyWithFastRandomContext(key);
+    FastRandomContext rng{uint256{1}};
+
+    auto shared = MakeOrphanTx(key, InsecureRand256());
+    BOOST_CHECK(orphanage.AddTx(shared, /*peer=*/0));
+    BOOST_CHECK(orphanage.AddAnnouncer(shared->GetWitnessHash(), /*peer=*/1));
+    for (int i = 0; i < 6; i++) {
+        BOOST_CHECK(orphanage.AddTx(MakeOrphanTx(key, InsecureRand256()), /*peer=*/2));
+    }
+
+    orphanage.ZeroPeerAccounting();
+    orphanage.LimitOrphans(rng);
+    BOOST_CHECK(orphanage.HaveTx(GenTxid::Wtxid(shared->GetWitnessHash())));
     orphanage.SanityCheck();
 }
 

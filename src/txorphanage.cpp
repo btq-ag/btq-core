@@ -17,6 +17,7 @@
 #include <iterator>
 #include <limits>
 #include <utility>
+#include <vector>
 
 uint256 TxOrphanage::ResolveWtxid(const uint256& hash) const
 {
@@ -273,9 +274,29 @@ void TxOrphanage::LimitOrphans(FastRandomContext& rng)
             }
         }
         if (worst < 0 || worst_metric == 0) {
-            size_t randompos = rng.randrange(m_orphan_list.size());
-            EraseTxNoLock(m_orphan_list[randompos]->first);
-            ++nEvicted;
+            // Peer accounting is empty or all zeros, but NeedsTrim is still
+            // true. Never EraseTx a shared orphan: that would drop it for
+            // honest announcers too.
+            std::vector<const uint256*> unique;
+            std::vector<std::pair<const uint256*, NodeId>> shared;
+            for (const auto& [wtxid, orphan] : m_orphans) {
+                if (orphan.announcers.empty()) continue;
+                if (orphan.announcers.size() == 1) {
+                    unique.push_back(&wtxid);
+                } else {
+                    shared.emplace_back(&wtxid, *orphan.announcers.begin());
+                }
+            }
+            if (!unique.empty()) {
+                EraseTxNoLock(*unique.at(rng.randrange(unique.size())));
+                ++nEvicted;
+            } else if (!shared.empty()) {
+                const auto& [wtxid, peer] = shared.at(rng.randrange(shared.size()));
+                RemoveAnnouncerKeepTx(*wtxid, peer);
+                ++nEvicted;
+            } else {
+                break;
+            }
             continue;
         }
 
