@@ -30,7 +30,12 @@ class MempoolLimitTest(BTQTestFramework):
         self.num_nodes = 1
         self.extra_args = [[
             "-datacarriersize=100000",
-            "-maxmempool=19",
+            # fill_mempool is ~5 MB of 65 kvB txs. 101 kvB * 40 is a 5 MB
+            # floor, same as Core, so eviction still fires. The default 474 kvB
+            # floor (19 MB) is checked separately at shutdown.
+            "-maxmempool=5",
+            "-limitdescendantsize=101",
+            "-limitancestorsize=101",
         ]]
         self.supports_cli = False
 
