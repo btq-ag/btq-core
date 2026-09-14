@@ -319,9 +319,7 @@ static RPCHelpMan addnode()
     CConnman& connman = EnsureConnman(node);
 
     const std::string node_arg{request.params[0].get_str()};
-    const bool use_v2transport = request.params[2].isNull()
-                                     ? bool(connman.GetLocalServices() & NODE_P2P_V2)
-                                     : self.Arg<bool>(2);
+    const bool use_v2transport = self.MaybeArg<bool>(2).value_or(bool(connman.GetLocalServices() & NODE_P2P_V2));
 
     if (use_v2transport && !(node.connman->GetLocalServices() & NODE_P2P_V2)) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Error: v2transport requested but not enabled (see -v2transport)");
