@@ -597,7 +597,7 @@ private:
     arith_uint256 GetAntiDoSWorkThreshold();
     /** Deal with state tracking and headers sync for peers that send the
      * occasional non-connecting header (this can happen due to BIP 130 headers
-     * announcements for blocks interacting with the 2hr (MAX_FUTURE_BLOCK_TIME) rule). */
+     * announcements for blocks interacting with the 15-minute (MAX_FUTURE_BLOCK_TIME) rule). */
     void HandleFewUnconnectingHeaders(CNode& pfrom, Peer& peer, const std::vector<CBlockHeader>& headers) EXCLUSIVE_LOCKS_REQUIRED(g_msgproc_mutex);
     /** Return true if the headers connect to each other, false otherwise */
     bool CheckHeadersAreContinuous(const std::vector<CBlockHeader>& headers) const;
