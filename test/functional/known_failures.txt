@@ -23,7 +23,6 @@ feature_coinstatsindex.py                               # AssertionError: not(5.
 feature_fee_estimation.py
 feature_maxuploadtarget.py
 feature_nulldummy.py                                    # JSONRPCException: bad-txns-in-belowout, value in (5.00) < value out (49.00) (...
-feature_p2mr.py                                         # AssertionError: Expected "Dilithium opcodes are not available in tapscript" i...
 feature_rbf.py                                          # AssertionError: 500000000 < 500001000
 feature_segwit.py --descriptors
 feature_segwit.py --descriptors --v2transport
