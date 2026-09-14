@@ -8,6 +8,7 @@ from copy import deepcopy
 from decimal import Decimal
 import math
 
+from test_framework.blocktools import block_subsidy
 from test_framework.test_framework import BTQTestFramework
 from test_framework.messages import (
     MAX_BIP125_RBF_SEQUENCE,
@@ -44,6 +45,11 @@ from test_framework.util import (
 )
 from test_framework.wallet import MiniWallet
 from test_framework.wallet_util import generate_keypair
+
+# Every block this test mines is well before the first halving, so one subsidy
+# is all it ever needs. The amounts it moves around are a tenth of upstream's
+# because BTQ's subsidy is a tenth of Bitcoin's.
+SUBSIDY = block_subsidy(1)
 
 
 class MempoolAcceptanceTest(BTQTestFramework):
@@ -84,8 +90,8 @@ class MempoolAcceptanceTest(BTQTestFramework):
         self.log.info('A transaction already in the blockchain')
         tx = self.wallet.create_self_transfer()['tx']  # Pick a random coin(base) to spend
         tx.vout.append(deepcopy(tx.vout[0]))
-        tx.vout[0].nValue = int(0.3 * COIN)
-        tx.vout[1].nValue = int(49 * COIN)
+        tx.vout[0].nValue = int(0.03 * COIN)
+        tx.vout[1].nValue = int(4.9 * COIN)
         raw_tx_in_block = tx.serialize().hex()
         txid_in_block = self.wallet.sendrawtransaction(from_node=node, tx_hex=raw_tx_in_block)
         self.generate(node, 1)
@@ -97,9 +103,9 @@ class MempoolAcceptanceTest(BTQTestFramework):
 
         self.log.info('A transaction not in the mempool')
         fee = Decimal('0.000007')
-        utxo_to_spend = self.wallet.get_utxo(txid=txid_in_block)  # use 0.3 BTQ UTXO
+        utxo_to_spend = self.wallet.get_utxo(txid=txid_in_block)  # use 0.03 BTQ UTXO
         tx = self.wallet.create_self_transfer(utxo_to_spend=utxo_to_spend, sequence=MAX_BIP125_RBF_SEQUENCE)['tx']
-        tx.vout[0].nValue = int((Decimal('0.3') - fee) * COIN)
+        tx.vout[0].nValue = int((Decimal('0.03') - fee) * COIN)
         raw_tx_0 = tx.serialize().hex()
         txid_0 = tx.rehash()
         self.check_mempool_result(
@@ -116,7 +122,7 @@ class MempoolAcceptanceTest(BTQTestFramework):
         tx.vout[0].nValue = int(output_amount * COIN)
         raw_tx_final = tx.serialize().hex()
         tx = tx_from_hex(raw_tx_final)
-        fee_expected = Decimal('50.0') - output_amount
+        fee_expected = SUBSIDY - output_amount  # spends a coinbase output
         self.check_mempool_result(
             result_expected=[{'txid': tx.rehash(), 'allowed': True, 'vsize': tx.get_vsize(), 'fees': {'base': fee_expected}}],
             rawtxs=[tx.serialize().hex()],
@@ -166,7 +172,7 @@ class MempoolAcceptanceTest(BTQTestFramework):
 
         self.log.info('A transaction with missing inputs, that existed once in the past')
         tx = tx_from_hex(raw_tx_0)
-        tx.vin[0].prevout.n = 1  # Set vout to 1, to spend the other outpoint (49 coins) of the in-chain-tx we want to double spend
+        tx.vin[0].prevout.n = 1  # Set vout to 1, to spend the other outpoint (4.9 coins) of the in-chain-tx we want to double spend
         raw_tx_1 = tx.serialize().hex()
         txid_1 = node.sendrawtransaction(hexstring=raw_tx_1, maxfeerate=0)
         # Now spend both to "clearly hide" the outputs, ie. remove the coins from the utxo set by spending them
@@ -175,7 +181,7 @@ class MempoolAcceptanceTest(BTQTestFramework):
         tx.wit.vtxinwit.append(deepcopy(tx.wit.vtxinwit[0]))
         tx.vin[0].prevout = COutPoint(hash=int(txid_0, 16), n=0)
         tx.vin[1].prevout = COutPoint(hash=int(txid_1, 16), n=0)
-        tx.vout[0].nValue = int(0.1 * COIN)
+        tx.vout[0].nValue = int(0.01 * COIN)
         raw_tx_spend_both = tx.serialize().hex()
         txid_spend_both = self.wallet.sendrawtransaction(from_node=node, tx_hex=raw_tx_spend_both)
         self.generate(node, 1)
@@ -193,11 +199,11 @@ class MempoolAcceptanceTest(BTQTestFramework):
         self.log.info('Create a "reference" tx for later use')
         utxo_to_spend = self.wallet.get_utxo(txid=txid_spend_both)
         tx = self.wallet.create_self_transfer(utxo_to_spend=utxo_to_spend, sequence=SEQUENCE_FINAL)['tx']
-        tx.vout[0].nValue = int(0.05 * COIN)
+        tx.vout[0].nValue = int(0.005 * COIN)
         raw_tx_reference = tx.serialize().hex()
         # Reference tx should be valid on itself
         self.check_mempool_result(
-            result_expected=[{'txid': tx.rehash(), 'allowed': True, 'vsize': tx.get_vsize(), 'fees': { 'base': Decimal('0.1') - Decimal('0.05')}}],
+            result_expected=[{'txid': tx.rehash(), 'allowed': True, 'vsize': tx.get_vsize(), 'fees': { 'base': Decimal('0.01') - Decimal('0.005')}}],
             rawtxs=[tx.serialize().hex()],
             maxfeerate=0,
         )
