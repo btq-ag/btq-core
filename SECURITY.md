@@ -20,13 +20,23 @@ Two private channels, in order of preference:
 `doc-btq/SECURITY.md` documents the severity categories, response timelines
 and coordinated-disclosure process.
 
-## Bundled upstream code
+## Bugs that also affect upstream
 
-`src/secp256k1`, `src/leveldb`, `src/crc32c`, `src/minisketch` and
-`src/crypto/ctaes` are copies of upstream projects. If you find a
-vulnerability in one of them, report it to us through either channel above,
-and we will coordinate with upstream. You may also report it to the upstream
-project directly. `src/secp256k1/SECURITY.md` gives the libsecp256k1 contact.
+BTQ Core is a fork of Bitcoin Core 26.0. It also bundles upstream libraries
+in `src/secp256k1`, `src/leveldb`, `src/crc32c`, `src/minisketch` and
+`src/crypto/ctaes`. If a bug is in code that BTQ did not change, the upstream
+project owns the fix. Report it to upstream first:
+
+- Bitcoin Core: security@bitcoincore.org
+- libsecp256k1: secp256k1-security@bitcoincore.org
+- Other libraries: the project's own security policy
+
+If upstream agrees, please also tell us through a private channel above, so
+we can ship the fix when upstream releases it. If you are not sure whether
+BTQ changed the code, report it to us and we will check.
+
+Bugs in BTQ-specific code — Dilithium signatures, P2MR, and BTQ consensus
+and network parameters — come to us only.
 
 ## Encryption
 
