@@ -3899,10 +3899,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 AddKnownTx(*peer, inv.hash);
                 if (fAlreadyHave) {
                     if (CTransactionRef orphan_tx = m_orphanage.GetTx(gtxid)) {
-                        if (m_orphanage.AddAnnouncer(orphan_tx->GetWitnessHash(), pfrom.GetId())) {
-                            RequestOrphanParents(pfrom, *peer, *orphan_tx);
-                            m_orphanage.LimitOrphans(m_rng);
-                        }
+                        const bool added = m_orphanage.AddAnnouncer(orphan_tx->GetWitnessHash(), pfrom.GetId());
+                        RequestOrphanParents(pfrom, *peer, *orphan_tx);
+                        if (added) m_orphanage.LimitOrphans(m_rng);
                     }
                 } else if (!m_chainman.IsInitialBlockDownload()) {
                     AddTxAnnouncement(pfrom, gtxid, current_time);
@@ -4209,10 +4208,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             // Another peer already gave us this orphan. Record this announcer
             // and ask them for the missing parents too.
             if (m_orphanage.HaveTx(GenTxid::Wtxid(wtxid))) {
-                if (m_orphanage.AddAnnouncer(wtxid, pfrom.GetId())) {
-                    RequestOrphanParents(pfrom, *peer, tx);
-                    m_orphanage.LimitOrphans(m_rng);
-                }
+                const bool added = m_orphanage.AddAnnouncer(wtxid, pfrom.GetId(), /*provided_tx=*/true);
+                RequestOrphanParents(pfrom, *peer, tx);
+                if (added) m_orphanage.LimitOrphans(m_rng);
             }
             if (pfrom.HasPermission(NetPermissionFlags::ForceRelay)) {
                 // Always relay transactions received from peers with forcerelay
