@@ -132,6 +132,10 @@ RPCHelpMan importdilithiumkey()
             std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
             if (!wallet) return UniValue::VNULL;
 
+            if (wallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "Cannot import private keys to a wallet with private keys disabled");
+            }
+
             WalletRescanReserver reserver(*wallet);
             bool fRescan = true;
             std::string created_address;

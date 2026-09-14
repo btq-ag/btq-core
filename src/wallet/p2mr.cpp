@@ -742,6 +742,9 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
                                                    std::optional<int64_t> created_at)
 {
     AssertLockHeld(wallet.cs_wallet);
+    if (wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+        return util::Error{Untranslated("Cannot import private keys to a wallet with private keys disabled")};
+    }
     if (!key.IsValid()) {
         return util::Error{Untranslated("Invalid Dilithium private key")};
     }
