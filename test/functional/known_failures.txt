@@ -1,0 +1,12 @@
+# Functional tests that fail on master today. Tracked in #104.
+#
+# The "functional tests" CI job runs the whole suite. It fails only when a
+# test fails that is not on this list, so a PR cannot break a test that
+# passes today.
+#
+# One test per line, written as test_runner.py prints it, with any
+# arguments (for example "wallet_basic.py --descriptors").
+# Text after "#" is a comment.
+#
+# When you fix a test, remove its line. The job warns about listed tests
+# that pass. Do not add a test to hide a failure your change caused.
