@@ -680,9 +680,19 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
-                                     bool add_to_address_book)
+                                     bool add_to_address_book,
+                                     bool allow_trivial_leaves)
 {
     AssertLockHeld(wallet.cs_wallet);
+    if (!allow_trivial_leaves) {
+        for (const auto& leaf : leaves) {
+            const CScript script{leaf.script.begin(), leaf.script.end()};
+            if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT || !IsDilithiumLeafSpendable(wallet, script)) {
+                return util::Error{Untranslated(
+                    "P2MR tree contains a leaf the wallet cannot safely spend; pass allow_trivial_leaves if this is intentional")};
+            }
+        }
+    }
     auto builder_res = BuildP2MRTreeChecked(leaves);
     if (!builder_res) return util::Error{util::ErrorString(builder_res)};
     P2MRBuilder builder = std::move(*builder_res);
@@ -722,14 +732,15 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
                                   CAmount amount,
                                   const std::string& label,
                                   bool subtract_fee_from_amount,
-                                  const CCoinControl& coin_control)
+                                  const CCoinControl& coin_control,
+                                  bool allow_trivial_leaves)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (wallet.IsLocked()) {
         return util::Error{_("Wallet is locked")};
     }
 
-    auto created_res = CreateP2MR(wallet, leaves, label);
+    auto created_res = CreateP2MR(wallet, leaves, label, /*add_to_address_book=*/true, allow_trivial_leaves);
     if (!created_res) return util::Error{util::ErrorString(created_res)};
     P2MRCreated created = std::move(*created_res);
 

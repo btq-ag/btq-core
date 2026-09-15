@@ -36,11 +36,24 @@ class P2MRRPCTest(BTQTestFramework):
             "script": "51",  # OP_TRUE
         }]
 
+        self.log.info("Refuse leaves outside known Dilithium templates unless explicitly allowed")
+        rejected_trees = [
+            [{"depth": 0, "leaf_version": LEAF_VERSION_TAPSCRIPT, "script": ""}],
+            tree,
+            [{"depth": 0, "leaf_version": LEAF_VERSION_TAPSCRIPT, "script": "52"}],  # OP_2
+            [{"depth": 0, "leaf_version": LEAF_VERSION_TAPSCRIPT, "script": "7551"}],  # OP_DROP OP_TRUE
+            [{"depth": 0, "leaf_version": LEAF_VERSION_TAPSCRIPT, "script": "50"}],  # OP_SUCCESS80
+            [{"depth": 0, "leaf_version": 0xc2, "script": "51"}],
+        ]
+        for rejected_tree in rejected_trees:
+            assert_raises_rpc_error(-4, "cannot safely spend", wallet.getnewp2mraddress, rejected_tree, "rpc-p2mr")
+            assert_raises_rpc_error(-4, "cannot safely spend", wallet.sendtop2mr, rejected_tree, Decimal("1.0"), "rpc-p2mr-fund")
+
         self.log.info("Create, persist, and list a P2MR address")
-        created = wallet.getnewp2mraddress(tree, "rpc-p2mr")
+        created = wallet.getnewp2mraddress(tree, "rpc-p2mr", True)
         assert created["address"]
         assert created["p2mr_id"]
-        duplicate = wallet.getnewp2mraddress(tree, "rpc-p2mr-duplicate")
+        duplicate = wallet.getnewp2mraddress(tree, "rpc-p2mr-duplicate", True)
         assert_equal(duplicate["address"], created["address"])
         assert_equal(duplicate["p2mr_id"], created["p2mr_id"])
         listed = wallet.listp2mr()
@@ -50,7 +63,7 @@ class P2MRRPCTest(BTQTestFramework):
         assert_raises_rpc_error(-8, "unknown p2mr_id", wallet.getp2mrinfo, "does-not-exist")
 
         self.log.info("Fund through convenience RPC")
-        funded = wallet.sendtop2mr(tree, Decimal("1.0"), "rpc-p2mr-fund")
+        funded = wallet.sendtop2mr(tree, Decimal("1.0"), "rpc-p2mr-fund", allow_trivial_leaves=True)
         assert funded["txid"]
         assert_equal(funded["p2mr_id"], created["p2mr_id"])
         self.generate(node, 1)
@@ -99,7 +112,8 @@ class P2MRRPCTest(BTQTestFramework):
             "leaf_version": LEAF_VERSION_TAPSCRIPT,
             "script": "7551",  # OP_DROP OP_TRUE
         }]
-        needs_stack = wallet.sendtop2mr(needs_stack_tree, Decimal("0.1"), "rpc-p2mr-needs-stack")
+        assert_raises_rpc_error(-4, "cannot safely spend", wallet.sendtop2mr, needs_stack_tree, Decimal("0.1"), "rpc-p2mr-needs-stack")
+        needs_stack = wallet.sendtop2mr(needs_stack_tree, Decimal("0.1"), "rpc-p2mr-needs-stack", allow_trivial_leaves=True)
         self.generate(node, 1)
         needs_stack_spend = wallet.createp2mrspend(needs_stack["p2mr_id"], destination, Decimal("0.05"))
         incomplete = wallet.signp2mrtransaction(needs_stack_spend["hex"], needs_stack["p2mr_id"])

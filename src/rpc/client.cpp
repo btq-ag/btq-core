@@ -306,9 +306,11 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "addnode", 2, "v2transport" },
     // P2MR wallet RPCs
     { "getnewp2mraddress", 0, "tree" },
+    { "getnewp2mraddress", 2, "allow_trivial_leaves" },
     { "sendtop2mr", 0, "tree" },
     { "sendtop2mr", 1, "amount" },
     { "sendtop2mr", 5, "subtractfeefromamount" },
+    { "sendtop2mr", 6, "allow_trivial_leaves" },
     { "createp2mrspend", 2, "amount" },
     { "createp2mrspend", 3, "fee" },
     // Dilithium wallet RPCs
