@@ -21,8 +21,6 @@ feature_bip68_sequence.py                               # AssertionError: Block 
 feature_cltv.py                                         # AssertionError: not(104 == 97)
 feature_fee_estimation.py
 feature_maxuploadtarget.py
-feature_segwit.py --descriptors                         # Intermittent: Internal bug detected: Fee needed > fee paid
-feature_segwit.py --descriptors --v2transport           # Intermittent: Internal bug detected: Fee needed > fee paid
 interface_rest.py                                       # AssertionError: 291 <= 300
 mempool_dust.py                                         # AssertionError: not(True == False)
 mempool_limit.py                                        # KeyError: 'fees' (testmempoolaccept rejects the fill txs: tx-size)
