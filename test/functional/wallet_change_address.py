@@ -6,11 +6,18 @@
 
 import re
 
-from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.blocktools import (
+    COINBASE_MATURITY,
+    block_subsidy,
+)
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
 )
+
+# Every block this test mines is well before the first halving, so one subsidy
+# is all it ever needs.
+SUBSIDY = block_subsidy(1)
 
 
 class WalletChangeAddressTest(BTQTestFramework):
@@ -50,8 +57,11 @@ class WalletChangeAddressTest(BTQTestFramework):
 
     def run_test(self):
         self.log.info("Setting up")
-        # Mine some coins
-        self.generate(self.nodes[0], COINBASE_MATURITY + 1)
+        # Mine some coins. Upstream funds this test with one mature 50-coin block
+        # reward. The amounts below are sized against -discardfee and the fee,
+        # which don't shrink with BTQ's smaller subsidy, so rather than scaling
+        # them down, mature as many BTQ block rewards as make up those 50 coins.
+        self.generate(self.nodes[0], COINBASE_MATURITY + int(50 / SUBSIDY))
 
         # Get some addresses from the two nodes
         addr1 = [self.nodes[1].getnewaddress() for _ in range(3)]

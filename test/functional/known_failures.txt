@@ -19,20 +19,14 @@ feature_assumeutxo.py                                   # AssertionError: not(<h
 feature_assumevalid.py
 feature_bip68_sequence.py                               # AssertionError: Block sync timed out after 240s:
 feature_cltv.py                                         # AssertionError: not(104 == 97)
-feature_coinstatsindex.py                               # AssertionError: not(5.00000000 == 50)
 feature_fee_estimation.py
 feature_maxuploadtarget.py
-feature_nulldummy.py                                    # JSONRPCException: bad-txns-in-belowout, value in (5.00) < value out (49.00) (...
-feature_p2mr.py                                         # AssertionError: Expected "Dilithium opcodes are not available in tapscript" i...
-feature_rbf.py                                          # AssertionError: 500000000 < 500001000
 feature_segwit.py --descriptors
 feature_segwit.py --descriptors --v2transport
 feature_segwit.py --legacy-wallet
 feature_signet.py                                       # AssertionError: not(bad-signet-blksig == None)
 feature_utxo_set_hash.py                                # AssertionError: not(<hex> == <hex>)
 interface_rest.py                                       # AssertionError: 291 <= 300
-mempool_accept.py                                       # JSONRPCException: bad-txns-in-belowout, value in (5.00) < value out (49.30) (...
-mempool_accept_wtxid.py                                 # JSONRPCException: bad-txns-in-belowout, value in (5.00) < value out (9.99998)...
 mempool_dust.py                                         # AssertionError: not(True == False)
 mempool_limit.py                                        # KeyError: 'fees' (testmempoolaccept rejects the fill txs: tx-size)
 mempool_package_limits.py                               # JSONRPCException: tx-size (-26)
@@ -41,8 +35,7 @@ mempool_sigoplimit.py                                   # AssertionError: 87 < 3
 mining_basic.py
 mining_getblocktemplate_longpoll.py                     # JSONRPCException: getblocktemplate must be called with the segwit rule set (c...
 mining_prioritisetransaction.py
-p2p_filter.py                                           # AssertionError: 500000000 < 700001000
-p2p_headers_sync_with_minchainwork.py
+p2p_headers_sync_with_minchainwork.py                   # JSONRPCException: CreateNewBlock: TestBlockValidity failed: time-too-new, blo...
 p2p_node_network_limited.py                             # AssertionError: not(33555464 == 1032)
 p2p_segwit.py
 rpc_createmultisig.py
@@ -54,56 +47,20 @@ rpc_psbt.py --descriptors                               # AssertionError: not(19
 rpc_psbt.py --legacy-wallet                             # AssertionError: not(19 == 2)
 rpc_rawtransaction.py --legacy-wallet                   # JSONRPCException: Fee exceeds maximum configured by user (e.g. -maxtxfee, max...
 rpc_scanblocks.py                                       # AssertionError: not(595120 == 113199)
-rpc_scantxoutset.py                                     # AssertionError: 500000000 < 819201000
 rpc_signmessagewithprivkey.py                           # AssertionError: not(INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdA...
 rpc_signrawtransactionwithkey.py
 rpc_validateaddress.py                                  # AssertionError: not(Invalid or unsupported Segwit (Bech32) or Base58 encoding...
-tool_wallet.py --descriptors                            # JSONRPCException: Insufficient funds (-6)
-tool_wallet.py --legacy-wallet                          # JSONRPCException: Insufficient funds (-6)
-wallet_abandonconflict.py --descriptors                 # AssertionError: not(3 == 0)
-wallet_abandonconflict.py --legacy-wallet               # AssertionError: not(3 == 0)
-wallet_avoid_mixing_output_types.py --descriptors       # JSONRPCException: Insufficient funds (-6)
 wallet_avoidreuse.py --descriptors                      # JSONRPCException: Transaction has too long of a mempool chain (-6)
-wallet_balance.py --descriptors                         # AssertionError: not(5.00000000 == 50)
-wallet_balance.py --legacy-wallet                       # AssertionError: not(5.00000000 == 50)
 wallet_bumpfee.py --descriptors                         # JSONRPCException: Insufficient total fee 0.0000012, must be at least 0.000016...
 wallet_bumpfee.py --legacy-wallet                       # JSONRPCException: Insufficient total fee 0.0000012, must be at least 0.000016...
-wallet_change_address.py --descriptors                  # JSONRPCException: Insufficient funds (-6)
-wallet_change_address.py --legacy-wallet                # JSONRPCException: Insufficient funds (-6)
-wallet_descriptor.py --descriptors                      # JSONRPCException: Insufficient funds (-6)
-wallet_dump.py --legacy-wallet                          # AssertionError: not(0 == 10)
 wallet_fundrawtransaction.py --descriptors              # AssertionError: not(132.89994590 == 87.89994590)
 wallet_fundrawtransaction.py --legacy-wallet            # AssertionError: not(132.89994580 == 87.89994580)
-wallet_groups.py --descriptors                          # JSONRPCException: Insufficient funds (-6)
-wallet_groups.py --legacy-wallet                        # JSONRPCException: Insufficient funds (-6)
 wallet_hd.py --legacy-wallet                            # JSONRPCException: Invalid or non-wallet transaction id (-5)
 wallet_import_rescan.py --legacy-wallet                 # AssertionError: not(0 == 1)
-wallet_importdescriptors.py --descriptors               # JSONRPCException: Insufficient funds (-6)
-wallet_importmulti.py --legacy-wallet                   # JSONRPCException: Insufficient funds (-6)
 wallet_keypool.py --descriptors                         # AssertionError: not(0.00007853 == 0.00009706)
 wallet_keypool.py --legacy-wallet                       # AssertionError: not(0.00007853 == 0.00009706)
-wallet_keypool_topup.py --descriptors                   # JSONRPCException: Insufficient funds (-6)
-wallet_keypool_topup.py --legacy-wallet                 # JSONRPCException: Insufficient funds (-6)
-wallet_labels.py --descriptors                          # AssertionError: not(10.00000000 == 100)
-wallet_labels.py --legacy-wallet                        # AssertionError: not(10.00000000 == 100)
-wallet_listreceivedby.py --descriptors                  # AssertionError: not(5.00000000 == 25)
-wallet_listreceivedby.py --legacy-wallet                # AssertionError: not(5.00000000 == 25)
-wallet_migration.py                                     # JSONRPCException: Insufficient funds (-6)
 wallet_miniscript.py --descriptors                      # AssertionError: [{'success': False, 'error': {'code': -5, 'message': "'nnnnnn...
-wallet_multisig_descriptor_psbt.py --descriptors        # JSONRPCException: Insufficient funds (-6)
 wallet_reorgsrestore.py                                 # JSONRPCException: bad-txns-inputs-missingorspent (-25)
 wallet_send.py --descriptors                            # AssertionError: not(5.00000000 == 50)
 wallet_send.py --legacy-wallet                          # AssertionError: not(5.00000000 == 50)
-wallet_sendall.py --descriptors                         # JSONRPCException: Insufficient funds (-6)
-wallet_sendall.py --legacy-wallet                       # JSONRPCException: Insufficient funds (-6)
-wallet_signrawtransactionwithwallet.py --descriptors    # JSONRPCException: Insufficient funds (-4)
-wallet_signrawtransactionwithwallet.py --legacy-wallet  # JSONRPCException: Insufficient funds (-4)
 wallet_taproot.py --descriptors                         # AssertionError: not(qcrt1pwccu4nkrxsc99kr77ngqvhmpmh5z6lfdkrqucqh0v8hnexpw5a3...
-wallet_transactiontime_rescan.py --descriptors          # JSONRPCException: Insufficient funds (-6)
-wallet_transactiontime_rescan.py --legacy-wallet        # JSONRPCException: Insufficient funds (-6)
-wallet_txn_clone.py                                     # AssertionError: not(125.00000000 == 1250)
-wallet_txn_clone.py --mineblock                         # AssertionError: not(125.00000000 == 1250)
-wallet_txn_clone.py --segwit                            # AssertionError: not(125.00000000 == 1250)
-wallet_txn_doublespend.py --descriptors                 # AssertionError: not(125.00000000 == 1250)
-wallet_txn_doublespend.py --legacy-wallet               # AssertionError: not(125.00000000 == 1250)
-wallet_txn_doublespend.py --mineblock                   # AssertionError: not(125.00000000 == 1250)

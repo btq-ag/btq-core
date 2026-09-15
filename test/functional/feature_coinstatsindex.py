@@ -13,6 +13,7 @@ from decimal import Decimal
 
 from test_framework.blocktools import (
     COINBASE_MATURITY,
+    block_subsidy,
     create_block,
     create_coinbase,
 )
@@ -35,6 +36,11 @@ from test_framework.wallet import (
     getnewdestination,
 )
 
+# Every block this test mines is well before the first halving, so one subsidy
+# is all it ever needs. The amounts it moves around are a tenth of upstream's
+# because BTQ's subsidy is a tenth of Bitcoin's.
+SUBSIDY = block_subsidy(1)
+
 
 class CoinStatsIndexTest(BTQTestFramework):
     def set_test_params(self):
@@ -55,9 +61,8 @@ class CoinStatsIndexTest(BTQTestFramework):
         self._test_init_index_after_reorg()
 
     def block_sanity_check(self, block_info):
-        block_subsidy = 50
         assert_equal(
-            block_info['prevout_spent'] + block_subsidy,
+            block_info['prevout_spent'] + SUBSIDY,
             block_info['new_outputs_ex_coinbase'] + block_info['coinbase'] + block_info['unspendable']
         )
 
@@ -116,14 +121,14 @@ class CoinStatsIndexTest(BTQTestFramework):
         for hash_option in index_hash_options:
             # Genesis block is unspendable
             res4 = index_node.gettxoutsetinfo(hash_option, 0)
-            assert_equal(res4['total_unspendable_amount'], 50)
+            assert_equal(res4['total_unspendable_amount'], SUBSIDY)
             assert_equal(res4['block_info'], {
-                'unspendable': 50,
+                'unspendable': SUBSIDY,
                 'prevout_spent': 0,
                 'new_outputs_ex_coinbase': 0,
                 'coinbase': 0,
                 'unspendables': {
-                    'genesis_block': 50,
+                    'genesis_block': SUBSIDY,
                     'bip30': 0,
                     'scripts': 0,
                     'unclaimed_rewards': 0
@@ -133,12 +138,12 @@ class CoinStatsIndexTest(BTQTestFramework):
 
             # Test an older block height that included a normal tx
             res5 = index_node.gettxoutsetinfo(hash_option, 102)
-            assert_equal(res5['total_unspendable_amount'], 50)
+            assert_equal(res5['total_unspendable_amount'], SUBSIDY)
             assert_equal(res5['block_info'], {
                 'unspendable': 0,
-                'prevout_spent': 50,
-                'new_outputs_ex_coinbase': Decimal('49.99968800'),
-                'coinbase': Decimal('50.00031200'),
+                'prevout_spent': SUBSIDY,
+                'new_outputs_ex_coinbase': SUBSIDY - Decimal('0.00029100'),
+                'coinbase': SUBSIDY + Decimal('0.00029100'),
                 'unspendables': {
                     'genesis_block': 0,
                     'bip30': 0,
@@ -152,15 +157,15 @@ class CoinStatsIndexTest(BTQTestFramework):
         tx1 = self.wallet.send_to(
             from_node=node,
             scriptPubKey=self.wallet.get_scriptPubKey(),
-            amount=21 * COIN,
+            amount=int(Decimal('2.1') * COIN),
         )
 
-        # Find the right position of the 21 BTQ output
-        tx1_out_21 = self.wallet.get_utxo(txid=tx1["txid"], vout=tx1["sent_vout"])
+        # Find the right position of the 2.1 BTQ output
+        tx1_out_2_1 = self.wallet.get_utxo(txid=tx1["txid"], vout=tx1["sent_vout"])
 
         # Generate and send another tx with an OP_RETURN output (which is unspendable)
-        tx2 = self.wallet.create_self_transfer(utxo_to_spend=tx1_out_21)['tx']
-        tx2_val = '20.99'
+        tx2 = self.wallet.create_self_transfer(utxo_to_spend=tx1_out_2_1)['tx']
+        tx2_val = '2.099'
         tx2.vout = [CTxOut(int(Decimal(tx2_val) * COIN), CScript([OP_RETURN] + [OP_FALSE] * 30))]
         tx2_hex = tx2.serialize().hex()
         self.nodes[0].sendrawtransaction(tx2_hex, 0, tx2_val)
@@ -171,16 +176,16 @@ class CoinStatsIndexTest(BTQTestFramework):
         for hash_option in index_hash_options:
             # Check all amounts were registered correctly
             res6 = index_node.gettxoutsetinfo(hash_option, 108)
-            assert_equal(res6['total_unspendable_amount'], Decimal('70.99000000'))
+            assert_equal(res6['total_unspendable_amount'], SUBSIDY + Decimal('2.09900000'))
             assert_equal(res6['block_info'], {
-                'unspendable': Decimal('20.99000000'),
-                'prevout_spent': 71,
-                'new_outputs_ex_coinbase': Decimal('49.99999000'),
-                'coinbase': Decimal('50.01001000'),
+                'unspendable': Decimal('2.09900000'),
+                'prevout_spent': SUBSIDY + Decimal('2.1'),
+                'new_outputs_ex_coinbase': SUBSIDY - Decimal('0.00001000'),
+                'coinbase': SUBSIDY + Decimal('0.00101000'),
                 'unspendables': {
                     'genesis_block': 0,
                     'bip30': 0,
-                    'scripts': Decimal('20.99000000'),
+                    'scripts': Decimal('2.09900000'),
                     'unclaimed_rewards': 0,
                 }
             })
@@ -188,8 +193,8 @@ class CoinStatsIndexTest(BTQTestFramework):
 
         # Create a coinbase that does not claim full subsidy and also
         # has two outputs
-        cb = create_coinbase(109, nValue=35)
-        cb.vout.append(CTxOut(5 * COIN, CScript([OP_FALSE])))
+        cb = create_coinbase(109, nValue=3)
+        cb.vout.append(CTxOut(1 * COIN, CScript([OP_FALSE])))
         cb.rehash()
 
         # Generate a block that includes previous coinbase
@@ -202,17 +207,17 @@ class CoinStatsIndexTest(BTQTestFramework):
 
         for hash_option in index_hash_options:
             res7 = index_node.gettxoutsetinfo(hash_option, 109)
-            assert_equal(res7['total_unspendable_amount'], Decimal('80.99000000'))
+            assert_equal(res7['total_unspendable_amount'], SUBSIDY + Decimal('2.09900000') + 1)
             assert_equal(res7['block_info'], {
-                'unspendable': 10,
+                'unspendable': 1,
                 'prevout_spent': 0,
                 'new_outputs_ex_coinbase': 0,
-                'coinbase': 40,
+                'coinbase': 4,
                 'unspendables': {
                     'genesis_block': 0,
                     'bip30': 0,
                     'scripts': 0,
-                    'unclaimed_rewards': 10
+                    'unclaimed_rewards': 1
                 }
             })
             self.block_sanity_check(res7['block_info'])
