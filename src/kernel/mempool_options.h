@@ -27,7 +27,7 @@ static_assert(DEFAULT_BLOCKSONLY_MAX_MEMPOOL_SIZE_MB >= 80);
 /** Default for -mempoolexpiry, expiration time for mempool transactions in hours */
 static constexpr unsigned int DEFAULT_MEMPOOL_EXPIRY_HOURS{336};
 /** Default for -mempoolfullrbf, if the transaction replaceability signaling is ignored */
-static constexpr bool DEFAULT_MEMPOOL_FULL_RBF{false};
+static constexpr bool DEFAULT_MEMPOOL_FULL_RBF{true};
 /** Default for -acceptnonstdtxn */
 static constexpr bool DEFAULT_ACCEPT_NON_STD_TXN{false};
 
