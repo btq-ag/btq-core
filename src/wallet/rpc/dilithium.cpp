@@ -18,6 +18,7 @@
 #include <script/sign.h>
 #include <script/interpreter.h>
 #include <core_io.h>
+#include <rpc/protocol.h>
 #include <rpc/rawtransaction_util.h>
 #include <util/message.h>
 #include <util/strencodings.h>
@@ -26,6 +27,20 @@
 #include <univalue.h>
 
 namespace wallet {
+
+namespace {
+static const int64_t TIMESTAMP_MIN = 0;
+
+void RescanWallet(CWallet& wallet, const WalletRescanReserver& reserver, int64_t time_begin = TIMESTAMP_MIN, bool update = true)
+{
+    int64_t scanned_time = wallet.RescanFromTime(time_begin, reserver, update);
+    if (wallet.IsAbortingRescan()) {
+        throw JSONRPCError(RPC_MISC_ERROR, "Rescan aborted by user.");
+    } else if (scanned_time > time_begin) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Rescan was unable to fully rescan the blockchain. Some transactions may be missing.");
+    }
+}
+} // namespace
 
 RPCHelpMan getnewdilithiumaddress()
 {
@@ -91,11 +106,14 @@ RPCHelpMan importdilithiumkey()
     return RPCHelpMan{"importdilithiumkey",
         "\nAdds a Dilithium private key (as returned by dumpprivkey) to your wallet and\n"
         "creates a matching single-leaf P2MR receive destination for it.\n"
-        "If 'label' is specified, it is assigned to the new address.\n",
+        "If 'label' is specified, it is assigned to the new address.\n"
+        "\nNote: This call can take over an hour to complete if rescan is true, during that time, other rpc calls\n"
+        "may report that the imported key exists but related transactions are still missing, leading to temporarily incorrect/bogus balances and unspent outputs until rescan completes.\n"
+        "Note: Use \"getwalletinfo\" to query the scanning progress.\n",
         {
             {"privkey", RPCArg::Type::STR, RPCArg::Optional::NO, "The Dilithium private key (see dumpprivkey)"},
             {"label", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "An optional label"},
-            {"rescan", RPCArg::Type::BOOL, RPCArg::Default{true}, "Rescan the wallet for transactions"},
+            {"rescan", RPCArg::Type::BOOL, RPCArg::Default{true}, "Scan the chain and mempool for wallet transactions."},
         },
         RPCResult{
             RPCResult::Type::OBJ, "", "",
@@ -114,34 +132,49 @@ RPCHelpMan importdilithiumkey()
             std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
             if (!wallet) return UniValue::VNULL;
 
-            LOCK(wallet->cs_wallet);
-
-            const std::string strSecret = request.params[0].get_str();
-            std::string strLabel;
-            if (!request.params[1].isNull())
-                strLabel = request.params[1].get_str();
-
+            WalletRescanReserver reserver(*wallet);
             bool fRescan = true;
-            if (!request.params[2].isNull())
-                fRescan = request.params[2].get_bool();
+            std::string created_address;
+            std::string created_id;
+            {
+                LOCK(wallet->cs_wallet);
 
-            CDilithiumKey dilithium_key = DecodeDilithiumSecret(strSecret);
-            if (!dilithium_key.IsValid()) {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dilithium private key");
-            }
+                const std::string strSecret = request.params[0].get_str();
+                std::string strLabel;
+                if (!request.params[1].isNull())
+                    strLabel = request.params[1].get_str();
 
-            auto created = ImportDilithiumKeyAsP2MR(*wallet, dilithium_key, strLabel);
-            if (!created) {
-                throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+                if (!request.params[2].isNull())
+                    fRescan = request.params[2].get_bool();
+
+                if (fRescan && wallet->chain().havePruned()) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Rescan is disabled when blocks are pruned");
+                }
+
+                if (fRescan && !reserver.reserve()) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Wallet is currently rescanning. Abort existing rescan or wait.");
+                }
+
+                CDilithiumKey dilithium_key = DecodeDilithiumSecret(strSecret);
+                if (!dilithium_key.IsValid()) {
+                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dilithium private key");
+                }
+
+                auto created = ImportDilithiumKeyAsP2MR(*wallet, dilithium_key, strLabel);
+                if (!created) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+                }
+                created_address = created->address;
+                created_id = created->id;
             }
 
             if (fRescan) {
-                // TODO: Trigger rescan of the blockchain
+                RescanWallet(*wallet, reserver);
             }
 
             UniValue result(UniValue::VOBJ);
-            result.pushKV("address", created->address);
-            result.pushKV("p2mr_id", created->id);
+            result.pushKV("address", created_address);
+            result.pushKV("p2mr_id", created_id);
             return result;
         },
     };

@@ -25,7 +25,11 @@ class WalletDilithiumImportRestartTest(BTQTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
-        self.extra_args = [["-deprecatedrpc=create_bdb", "-fallbackfee=0.0002"]]
+        self.extra_args = [[
+            "-deprecatedrpc=create_bdb",
+            "-fallbackfee=0.0002",
+            "-blockfilterindex=1",
+        ]]
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
@@ -70,7 +74,11 @@ class WalletDilithiumImportRestartTest(BTQTestFramework):
         assert target.verifydilithiumsignature(msg, addr, sig_before)
 
         self.log.info("Restart; the wallet must still load and the key must still be there")
-        self.restart_node(0, extra_args=["-deprecatedrpc=create_bdb", "-fallbackfee=0.0002"])
+        self.restart_node(0, extra_args=[
+            "-deprecatedrpc=create_bdb",
+            "-fallbackfee=0.0002",
+            "-blockfilterindex=1",
+        ])
         node = self.nodes[0]
         node.loadwallet("source")
         node.loadwallet("target")
@@ -99,6 +107,37 @@ class WalletDilithiumImportRestartTest(BTQTestFramework):
         assert txid in node.getrawmempool()
         self.generate(node, 1)
         assert_equal(target.gettransaction(txid)["confirmations"], 1)
+
+        self.log.info("rescan=true sees coins already on chain; rescan=false does not")
+        node.createwallet(wallet_name="hist_source", descriptors=False)
+        hist_source = node.get_wallet_rpc("hist_source")
+        hist_addr = hist_source.getnewdilithiumaddress()["address"]
+        source.sendtoaddress(hist_addr, 2)
+        self.generate(node, 1)
+        hist_secret = self.dilithium_secret_from_dump(
+            hist_source, self.nodes[0].datadir_path / "dump-rescan.txt")
+
+        node.createwallet(wallet_name="norescan", descriptors=False, blank=True)
+        norescan = node.get_wallet_rpc("norescan")
+        imported_nr = norescan.importdilithiumkey(hist_secret, "norescan", False)
+        assert_equal(imported_nr["address"], hist_addr)
+        assert_equal(norescan.getbalance(), 0)
+
+        node.createwallet(wallet_name="yesrescan", descriptors=False, blank=True)
+        yesrescan = node.get_wallet_rpc("yesrescan")
+        imported_yr = yesrescan.importdilithiumkey(hist_secret, "yesrescan", True)
+        assert_equal(imported_yr["address"], hist_addr)
+        assert yesrescan.getbalance() > 0
+
+        self.log.info("Descriptor wallet fast rescan includes tracked P2MR scripts")
+        node.createwallet(wallet_name="descriptor_rescan", descriptors=True)
+        descriptor_rescan = node.get_wallet_rpc("descriptor_rescan")
+        imported_desc = descriptor_rescan.importdilithiumkey(hist_secret, "descriptor-rescan", True)
+        assert_equal(imported_desc["address"], hist_addr)
+        assert descriptor_rescan.getbalance() > 0
+
+        norescan.rescanblockchain()
+        assert norescan.getbalance() > 0
 
 
 if __name__ == "__main__":
