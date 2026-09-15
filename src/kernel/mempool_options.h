@@ -15,8 +15,13 @@
 
 class CBlockPolicyEstimator;
 
-/** Default for -maxmempool, maximum megabytes of mempool memory usage */
-static constexpr unsigned int DEFAULT_MAX_MEMPOOL_SIZE_MB{2000}; // 2 GB
+/** Default for -maxmempool, maximum megabytes of mempool memory usage.
+ *  300 is Bitcoin Core's default and a RAM-safe default for commodity nodes.
+ *  9c97fc7ab raised this to 2 GB so PQ-sized entries would not thrash the
+ *  rolling min-fee. That size is still available with -maxmempool=2000.
+ *  A smaller default does not skip verification (txs are checked before
+ *  TrimToSize); it only shortens retained backlog. */
+static constexpr unsigned int DEFAULT_MAX_MEMPOOL_SIZE_MB{300};
 /** Default for -maxmempool when blocksonly is set.
  *  AppInitMain requires maxmempool >= descendant_size_vbytes * 40. BTQ raised
  *  DEFAULT_DESCENDANT_SIZE_LIMIT_KVB with MAX_BLOCK_WEIGHT, so that floor is

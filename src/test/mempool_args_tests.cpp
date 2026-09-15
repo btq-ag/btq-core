@@ -14,6 +14,7 @@
 //! compiled out and unrun on every machine this suite is likely to run on,
 //! which is the same shape of untested guard the cap exists to replace.
 
+#include <kernel/mempool_options.h>
 #include <node/mempool_args.h>
 
 #include <test/util/setup_common.h>
@@ -60,6 +61,13 @@ BOOST_AUTO_TEST_CASE(maxmempool_is_capped_on_32bit)
         BOOST_CHECK_MESSAGE(message.find("32-bit") != std::string::npos,
                             "error does not mention the architecture: " + message);
     }
+}
+
+BOOST_AUTO_TEST_CASE(unconfigured_mempool_default_is_300mb)
+{
+    kernel::MemPoolOptions opts;
+    BOOST_CHECK_EQUAL(DEFAULT_MAX_MEMPOOL_SIZE_MB, 300U);
+    BOOST_CHECK_EQUAL(opts.max_size_bytes, DEFAULT_MAX_MEMPOOL_SIZE_MB * 1'000'000);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
