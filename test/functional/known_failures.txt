@@ -21,9 +21,8 @@ feature_bip68_sequence.py                               # AssertionError: Block 
 feature_cltv.py                                         # AssertionError: not(104 == 97)
 feature_fee_estimation.py
 feature_maxuploadtarget.py
-feature_segwit.py --descriptors
-feature_segwit.py --descriptors --v2transport
-feature_segwit.py --legacy-wallet
+feature_segwit.py --descriptors                         # Intermittent: Internal bug detected: Fee needed > fee paid
+feature_segwit.py --descriptors --v2transport           # Intermittent: Internal bug detected: Fee needed > fee paid
 feature_signet.py                                       # AssertionError: not(bad-signet-blksig == None)
 feature_utxo_set_hash.py                                # AssertionError: not(<hex> == <hex>)
 interface_rest.py                                       # AssertionError: 291 <= 300
@@ -46,7 +45,6 @@ rpc_invalid_address_message.py                          # AssertionError: not(In
 rpc_rawtransaction.py --legacy-wallet                   # JSONRPCException: Fee exceeds maximum configured by user (e.g. -maxtxfee, max...
 rpc_scanblocks.py                                       # AssertionError: not(595120 == 113199)
 rpc_signmessagewithprivkey.py                           # AssertionError: not(INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdA...
-rpc_signrawtransactionwithkey.py
 rpc_validateaddress.py                                  # AssertionError: not(Invalid or unsupported Segwit (Bech32) or Base58 encoding...
 wallet_avoidreuse.py --descriptors                      # JSONRPCException: Transaction has too long of a mempool chain (-6)
 wallet_bumpfee.py --descriptors                         # JSONRPCException: Insufficient total fee 0.0000012, must be at least 0.000016...
