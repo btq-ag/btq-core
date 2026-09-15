@@ -357,6 +357,23 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
         BOOST_CHECK_EQUAL(result, ISMINE_SPENDABLE);
     }
 
+    // P2WPKH of a key that the descriptor only uses in a multisig - Descriptor
+    {
+        CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
+        std::string desc_str = "wsh(multi(1," + EncodeSecret(keys[0]) + "))";
+
+        auto spk_manager = CreateDescriptor(keystore, desc_str, true);
+
+        // The descriptor holds the key but never produces this script
+        scriptPubKey = GetScriptForDestination(WitnessV0KeyHash(pubkeys[0]));
+        result = spk_manager->IsMine(scriptPubKey);
+        BOOST_CHECK_EQUAL(result, ISMINE_NO);
+
+        // Seeing a payment to the script must not add it to the descriptor's scripts
+        spk_manager->MarkUnusedAddresses(scriptPubKey);
+        BOOST_CHECK(spk_manager->GetScriptPubKeys().count(scriptPubKey) == 0);
+    }
+
     // P2WPKH uncompressed - Legacy
     {
         CWallet keystore(chain.get(), "", CreateMockableWalletDatabase());
