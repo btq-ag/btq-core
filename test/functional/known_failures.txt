@@ -21,8 +21,6 @@ feature_bip68_sequence.py                               # AssertionError: Block 
 feature_cltv.py                                         # AssertionError: not(104 == 97)
 feature_fee_estimation.py
 feature_maxuploadtarget.py
-feature_segwit.py --descriptors                         # Intermittent: Internal bug detected: Fee needed > fee paid
-feature_segwit.py --descriptors --v2transport           # Intermittent: Internal bug detected: Fee needed > fee paid
 feature_signet.py                                       # AssertionError: not(bad-signet-blksig == None)
 feature_utxo_set_hash.py                                # AssertionError: not(<hex> == <hex>)
 interface_rest.py                                       # AssertionError: 291 <= 300
