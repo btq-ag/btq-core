@@ -12,6 +12,7 @@ Generate COINBASE_MATURITY (CB) more blocks to ensure the coinbases are mature.
 [Consensus] Check that the new NULLDUMMY rules are not enforced on block CB + 4.
 [Policy/Consensus] Check that the new NULLDUMMY rules are enforced on block CB + 5.
 """
+from decimal import Decimal
 import time
 
 from test_framework.address import address_to_scriptpubkey
@@ -91,22 +92,24 @@ class NULLDUMMYTest(BTQTestFramework):
         self.lastblocktime = int(time.time()) + self.lastblockheight
 
         self.log.info(f"Test 1: NULLDUMMY compliant base transactions should be accepted to mempool and mined before activation [{COINBASE_MATURITY + 3}]")
-        test1txs = [self.create_transaction(txid=coinbase_txid[0], addr=self.ms_address, amount=49,
+        # Each transaction pays a 0.1 BTQ fee, a tenth of upstream's, because
+        # BTQ's block reward is a tenth of Bitcoin's.
+        test1txs = [self.create_transaction(txid=coinbase_txid[0], addr=self.ms_address, amount=Decimal('4.9'),
                                             privkey=self.nodes[0].get_deterministic_priv_key().key)]
         txid1 = self.nodes[0].sendrawtransaction(test1txs[0].serialize_with_witness().hex(), 0)
         test1txs.append(self.create_transaction(txid=txid1, input_details=ms_unlock_details,
-                                                addr=self.ms_address, amount=48,
+                                                addr=self.ms_address, amount=Decimal('4.8'),
                                                 privkey=self.privkey))
         txid2 = self.nodes[0].sendrawtransaction(test1txs[1].serialize_with_witness().hex(), 0)
         test1txs.append(self.create_transaction(txid=coinbase_txid[1],
-                                                addr=self.wit_ms_address, amount=49,
+                                                addr=self.wit_ms_address, amount=Decimal('4.9'),
                                                 privkey=self.nodes[0].get_deterministic_priv_key().key))
         txid3 = self.nodes[0].sendrawtransaction(test1txs[2].serialize_with_witness().hex(), 0)
         self.block_submit(self.nodes[0], test1txs, accept=True)
 
         self.log.info("Test 2: Non-NULLDUMMY base multisig transaction should not be accepted to mempool before activation")
         test2tx = self.create_transaction(txid=txid2, input_details=ms_unlock_details,
-                                          addr=self.ms_address, amount=47,
+                                          addr=self.ms_address, amount=Decimal('4.7'),
                                           privkey=self.privkey)
         invalidate_nulldummy_tx(test2tx)
         assert_raises_rpc_error(-26, NULLDUMMY_MEMPOOL_ERROR, self.nodes[0].sendrawtransaction, test2tx.serialize_with_witness().hex(), 0)
@@ -116,7 +119,7 @@ class NULLDUMMYTest(BTQTestFramework):
 
         self.log.info("Test 4: Non-NULLDUMMY base multisig transaction is invalid after activation")
         test4tx = self.create_transaction(txid=test2tx.hash, input_details=ms_unlock_details,
-                                          addr=getnewdestination()[2], amount=46,
+                                          addr=getnewdestination()[2], amount=Decimal('4.6'),
                                           privkey=self.privkey)
         test6txs = [CTransaction(test4tx)]
         invalidate_nulldummy_tx(test4tx)
@@ -125,8 +128,8 @@ class NULLDUMMYTest(BTQTestFramework):
 
         self.log.info("Test 5: Non-NULLDUMMY P2WSH multisig transaction invalid after activation")
         test5tx = self.create_transaction(txid=txid3, input_details={"scriptPubKey": test1txs[2].vout[0].scriptPubKey.hex(),
-                                          "amount": 49, "witnessScript": wms["redeemScript"]},
-                                          addr=getnewdestination(address_type='p2sh-segwit')[2], amount=48,
+                                          "amount": Decimal('4.9'), "witnessScript": wms["redeemScript"]},
+                                          addr=getnewdestination(address_type='p2sh-segwit')[2], amount=Decimal('4.8'),
                                           privkey=self.privkey)
         test6txs.append(CTransaction(test5tx))
         test5tx.wit.vtxinwit[0].scriptWitness.stack[0] = b'\x01'

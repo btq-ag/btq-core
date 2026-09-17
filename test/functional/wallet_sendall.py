@@ -13,6 +13,10 @@ from test_framework.util import (
     assert_raises_rpc_error,
 )
 
+# The chain starts empty, so the default wallet only ever holds a handful of
+# 5 BTQ block rewards. The amounts this test moves around are a tenth of
+# upstream's because BTQ's subsidy is a tenth of Bitcoin's.
+
 # Decorator to reset activewallet to zero utxos
 def cleanup(func):
     def wrapper(self):
@@ -72,7 +76,7 @@ class SendallTest(BTQTestFramework):
 
     @cleanup
     def gen_and_clean(self):
-        self.add_utxos([15, 2, 4])
+        self.add_utxos([Decimal('1.5'), Decimal('0.2'), Decimal('0.4')])
 
     def test_cleanup(self):
         self.log.info("Test that cleanup wrapper empties wallet")
@@ -83,7 +87,7 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_two_utxos(self):
         self.log.info("Testing basic sendall case without specific amounts")
-        pre_sendall_balance = self.add_utxos([10,11])
+        pre_sendall_balance = self.add_utxos([1, Decimal('1.1')])
         tx_from_wallet = self.test_sendall_success(sendall_args = [self.remainder_target])
 
         self.assert_tx_has_outputs(tx = tx_from_wallet,
@@ -96,7 +100,7 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_split(self):
         self.log.info("Testing sendall where two recipients have unspecified amount")
-        pre_sendall_balance = self.add_utxos([1, 2, 3, 15])
+        pre_sendall_balance = self.add_utxos([Decimal('0.1'), Decimal('0.2'), Decimal('0.3'), Decimal('1.5')])
         tx_from_wallet = self.test_sendall_success([self.remainder_target, self.split_target])
 
         half = (pre_sendall_balance + tx_from_wallet["fee"]) / 2
@@ -111,13 +115,13 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_and_spend(self):
         self.log.info("Testing sendall in combination with paying specified amount to recipient")
-        pre_sendall_balance = self.add_utxos([8, 13])
-        tx_from_wallet = self.test_sendall_success([{self.recipient: 5}, self.remainder_target])
+        pre_sendall_balance = self.add_utxos([Decimal('0.8'), Decimal('1.3')])
+        tx_from_wallet = self.test_sendall_success([{self.recipient: Decimal('0.5')}, self.remainder_target])
 
         self.assert_tx_has_outputs(tx_from_wallet,
             expected_outputs = [
-                { "address": self.recipient, "value": 5 },
-                { "address": self.remainder_target, "value": pre_sendall_balance - 5 + tx_from_wallet["fee"] }
+                { "address": self.recipient, "value": Decimal('0.5') },
+                { "address": self.remainder_target, "value": pre_sendall_balance - Decimal('0.5') + tx_from_wallet["fee"] }
             ]
         )
         self.assert_balance_swept_completely(tx_from_wallet, pre_sendall_balance)
@@ -125,19 +129,19 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_invalid_recipient_addresses(self):
         self.log.info("Test having only recipient with specified amount, missing recipient with unspecified amount")
-        self.add_utxos([12, 9])
+        self.add_utxos([Decimal('1.2'), Decimal('0.9')])
 
         assert_raises_rpc_error(
                 -8,
                 "Must provide at least one address without a specified amount" ,
                 self.wallet.sendall,
-                [{self.recipient: 5}]
+                [{self.recipient: Decimal('0.5')}]
             )
 
     @cleanup
     def sendall_duplicate_recipient(self):
         self.log.info("Test duplicate destination")
-        self.add_utxos([1, 8, 3, 9])
+        self.add_utxos([Decimal('0.1'), Decimal('0.8'), Decimal('0.3'), Decimal('0.9')])
 
         assert_raises_rpc_error(
                 -8,
@@ -149,14 +153,14 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_invalid_amounts(self):
         self.log.info("Test sending more than balance")
-        pre_sendall_balance = self.add_utxos([7, 14])
+        pre_sendall_balance = self.add_utxos([Decimal('0.7'), Decimal('1.4')])
 
-        expected_tx = self.wallet.sendall(recipients=[{self.recipient: 5}, self.remainder_target], add_to_wallet=False)
+        expected_tx = self.wallet.sendall(recipients=[{self.recipient: Decimal('0.5')}, self.remainder_target], add_to_wallet=False)
         tx = self.wallet.decoderawtransaction(expected_tx['hex'])
-        fee = 21 - sum([o["value"] for o in tx["vout"]])
+        fee = Decimal('2.1') - sum([o["value"] for o in tx["vout"]])
 
         assert_raises_rpc_error(-6, "Assigned more value to outputs than available funds.", self.wallet.sendall,
-                [{self.recipient: pre_sendall_balance + 1}, self.remainder_target])
+                [{self.recipient: pre_sendall_balance + Decimal('0.1')}, self.remainder_target])
         assert_raises_rpc_error(-6, "Insufficient funds for fees after creating specified outputs.", self.wallet.sendall,
                 [{self.recipient: pre_sendall_balance}, self.remainder_target])
         assert_raises_rpc_error(-8, "Specified output amount to {} is below dust threshold".format(self.recipient),
@@ -203,7 +207,7 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_specific_inputs(self):
         self.log.info("Test sendall with a subset of UTXO pool")
-        self.add_utxos([17, 4])
+        self.add_utxos([Decimal('1.7'), Decimal('0.4')])
         utxo = self.wallet.listunspent()[0]
 
         sendall_tx_receipt = self.wallet.sendall(recipients=[self.remainder_target], inputs=[utxo])
@@ -221,7 +225,7 @@ class SendallTest(BTQTestFramework):
     def sendall_fails_on_missing_input(self):
         # fails because UTXO was previously spent, and wallet is empty
         self.log.info("Test sendall fails because specified UTXO is not available")
-        self.add_utxos([16, 5])
+        self.add_utxos([Decimal('1.6'), Decimal('0.5')])
         spent_utxo = self.wallet.listunspent()[0]
 
         # fails on out of bounds vout
@@ -237,7 +241,7 @@ class SendallTest(BTQTestFramework):
 
         # fails on specific previously spent UTXO, while other UTXOs exist
         self.generate(self.nodes[0], 1)
-        self.add_utxos([19, 2])
+        self.add_utxos([Decimal('1.9'), Decimal('0.2')])
         assert_raises_rpc_error(-8,
                 "Input not available. UTXO ({}:{}) was already spent.".format(spent_utxo["txid"], spent_utxo["vout"]),
                 self.wallet.sendall, recipients=[self.remainder_target], inputs=[spent_utxo])
@@ -251,7 +255,7 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_fails_on_no_address(self):
         self.log.info("Test sendall fails because no address is provided")
-        self.add_utxos([19, 2])
+        self.add_utxos([Decimal('1.9'), Decimal('0.2')])
 
         assert_raises_rpc_error(
                 -8,
@@ -263,7 +267,7 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_fails_on_specific_inputs_with_send_max(self):
         self.log.info("Test sendall fails because send_max is used while specific inputs are provided")
-        self.add_utxos([15, 6])
+        self.add_utxos([Decimal('1.5'), Decimal('0.6')])
         utxo = self.wallet.listunspent()[0]
 
         assert_raises_rpc_error(-8,
@@ -275,14 +279,17 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_fails_on_high_fee(self):
         self.log.info("Test sendall fails if the transaction fee exceeds the maxtxfee")
-        self.add_utxos([21])
+        self.add_utxos([Decimal('2.1')])
 
+        # BTQ's WITNESS_SCALE_FACTOR of 16 makes this one-input sweep ~89 vB,
+        # where upstream's 100000 sat/vB comes to only ~0.089 BTQ, under the
+        # 0.1 BTQ default maxtxfee. Double the rate so the fee clears it again.
         assert_raises_rpc_error(
                 -4,
                 "Fee exceeds maximum configured by user",
                 self.wallet.sendall,
                 recipients=[self.remainder_target],
-                fee_rate=100000)
+                fee_rate=200000)
 
     @cleanup
     def sendall_fails_on_low_fee(self):
@@ -293,7 +300,7 @@ class SendallTest(BTQTestFramework):
     @cleanup
     def sendall_watchonly_specific_inputs(self):
         self.log.info("Test sendall with a subset of UTXO pool in a watchonly wallet")
-        self.add_utxos([17, 4])
+        self.add_utxos([Decimal('1.7'), Decimal('0.4')])
         utxo = self.wallet.listunspent()[0]
 
         self.nodes[0].createwallet(wallet_name="watching", disable_private_keys=True)
@@ -319,10 +326,10 @@ class SendallTest(BTQTestFramework):
 
     @cleanup
     def sendall_with_minconf(self):
-        # utxo of 17 bicoin has 6 confirmations, utxo of 4 has 3
-        self.add_utxos([17])
+        # utxo of 1.7 BTQ has 6 confirmations, utxo of 0.4 has 3
+        self.add_utxos([Decimal('1.7')])
         self.generate(self.nodes[0], 2)
-        self.add_utxos([4])
+        self.add_utxos([Decimal('0.4')])
         self.generate(self.nodes[0], 2)
 
         self.log.info("Test sendall fails because minconf is negative")
@@ -361,10 +368,10 @@ class SendallTest(BTQTestFramework):
 
     @cleanup
     def sendall_with_maxconf(self):
-        # utxo of 17 bicoin has 6 confirmations, utxo of 4 has 3
-        self.add_utxos([17])
+        # utxo of 1.7 BTQ has 6 confirmations, utxo of 0.4 has 3
+        self.add_utxos([Decimal('1.7')])
         self.generate(self.nodes[0], 2)
-        self.add_utxos([4])
+        self.add_utxos([Decimal('0.4')])
         self.generate(self.nodes[0], 2)
 
         self.log.info("Test sendall fails because there are no utxos with enough confirmations specified by maxconf")
@@ -387,8 +394,12 @@ class SendallTest(BTQTestFramework):
         self.wallet.keypoolrefill(1600)
 
         # create many inputs
-        outputs = {self.wallet.getnewaddress(): 0.000025 for _ in range(1600)}
-        self.def_wallet.sendmany(amounts=outputs)
+        # BTQ's WITNESS_SCALE_FACTOR of 16 makes a single transaction with all
+        # 1600 outputs heavier than MAX_STANDARD_TX_WEIGHT, so fund them in four
+        # batches of 400, each the weight upstream's one funding transaction had.
+        for _ in range(4):
+            outputs = {self.wallet.getnewaddress(): 0.000025 for _ in range(400)}
+            self.def_wallet.sendmany(amounts=outputs)
         self.generate(self.nodes[0], 1)
 
         assert_raises_rpc_error(

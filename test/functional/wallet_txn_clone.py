@@ -3,7 +3,9 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the wallet accounts properly when there are cloned transactions with malleated scriptsigs."""
+from decimal import Decimal
 
+from test_framework.blocktools import block_subsidy
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
@@ -13,6 +15,11 @@ from test_framework.messages import (
     COIN,
     tx_from_hex,
 )
+
+# Every block this test mines is well before the first halving, so one subsidy
+# is all it ever needs. The amounts it moves around are a tenth of upstream's
+# because BTQ's subsidy is a tenth of Bitcoin's.
+SUBSIDY = block_subsidy(1)
 
 
 class TxnMallTest(BTQTestFramework):
@@ -48,20 +55,20 @@ class TxnMallTest(BTQTestFramework):
         else:
             output_type = "legacy"
 
-        # All nodes should start with 1,250 BTQ:
-        starting_balance = 1250
+        # All nodes should start with 25 mature block rewards:
+        starting_balance = 25 * SUBSIDY
         for i in range(3):
             assert_equal(self.nodes[i].getbalance(), starting_balance)
 
         self.nodes[0].settxfee(.001)
 
         node0_address1 = self.nodes[0].getnewaddress(address_type=output_type)
-        node0_txid1 = self.nodes[0].sendtoaddress(node0_address1, 1219)
+        node0_txid1 = self.nodes[0].sendtoaddress(node0_address1, Decimal('121.9'))
         node0_tx1 = self.nodes[0].gettransaction(node0_txid1)
         self.nodes[0].lockunspent(False, [{"txid":node0_txid1, "vout": find_vout_for_address(self.nodes[0], node0_txid1, node0_address1)}])
 
         node0_address2 = self.nodes[0].getnewaddress(address_type=output_type)
-        node0_txid2 = self.nodes[0].sendtoaddress(node0_address2, 29)
+        node0_txid2 = self.nodes[0].sendtoaddress(node0_address2, Decimal('2.9'))
         node0_tx2 = self.nodes[0].gettransaction(node0_txid2)
 
         assert_equal(self.nodes[0].getbalance(),
@@ -71,8 +78,8 @@ class TxnMallTest(BTQTestFramework):
         node1_address = self.nodes[1].getnewaddress()
 
         # Send tx1, and another transaction tx2 that won't be cloned
-        txid1 = self.spend_txid(node0_txid1, find_vout_for_address(self.nodes[0], node0_txid1, node0_address1), {node1_address: 40})
-        txid2 = self.spend_txid(node0_txid2, find_vout_for_address(self.nodes[0], node0_txid2, node0_address2), {node1_address: 20})
+        txid1 = self.spend_txid(node0_txid1, find_vout_for_address(self.nodes[0], node0_txid1, node0_address1), {node1_address: 4})
+        txid2 = self.spend_txid(node0_txid2, find_vout_for_address(self.nodes[0], node0_txid2, node0_address2), {node1_address: 2})
 
         # Construct a clone of tx1, to be malleated
         rawtx1 = self.nodes[0].getrawtransaction(txid1, 1)
@@ -84,7 +91,7 @@ class TxnMallTest(BTQTestFramework):
 
         # createrawtransaction randomizes the order of its outputs, so swap them if necessary.
         clone_tx = tx_from_hex(clone_raw)
-        if (rawtx1["vout"][0]["value"] == 40 and clone_tx.vout[0].nValue != 40*COIN or rawtx1["vout"][0]["value"] != 40 and clone_tx.vout[0].nValue == 40*COIN):
+        if (rawtx1["vout"][0]["value"] == 4 and clone_tx.vout[0].nValue != 4*COIN or rawtx1["vout"][0]["value"] != 4 and clone_tx.vout[0].nValue == 4*COIN):
             (clone_tx.vout[0], clone_tx.vout[1]) = (clone_tx.vout[1], clone_tx.vout[0])
 
         # Use a different signature hash type to sign.  This creates an equivalent but malleated clone.
@@ -99,11 +106,11 @@ class TxnMallTest(BTQTestFramework):
         tx1 = self.nodes[0].gettransaction(txid1)
         tx2 = self.nodes[0].gettransaction(txid2)
 
-        # Node0's balance should be starting balance, plus 50BTC for another
+        # Node0's balance should be starting balance, plus a block reward for another
         # matured block, minus tx1 and tx2 amounts, and minus transaction fees:
         expected = starting_balance + node0_tx1["fee"] + node0_tx2["fee"]
         if self.options.mine_block:
-            expected += 50
+            expected += SUBSIDY
         expected += tx1["amount"] + tx1["fee"]
         expected += tx2["amount"] + tx2["fee"]
         assert_equal(self.nodes[0].getbalance(), expected)
@@ -141,11 +148,11 @@ class TxnMallTest(BTQTestFramework):
         assert_equal(tx1_clone["confirmations"], 2)
         assert_equal(tx2["confirmations"], 1)
 
-        # Check node0's total balance; should be same as before the clone, + 100 BTQ for 2 matured,
-        # less possible orphaned matured subsidy
-        expected += 100
+        # Check node0's total balance; should be same as before the clone, plus two block
+        # rewards for 2 matured, less possible orphaned matured subsidy
+        expected += 2 * SUBSIDY
         if (self.options.mine_block):
-            expected -= 50
+            expected -= SUBSIDY
         assert_equal(self.nodes[0].getbalance(), expected)
 
 

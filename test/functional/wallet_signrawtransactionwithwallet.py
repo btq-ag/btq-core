@@ -153,7 +153,9 @@ class SignRawTransactionWithWalletTest(BTQTestFramework):
         self.log.info("Test signing a fully signed transaction does nothing")
         self.nodes[0].walletpassphrase("password", 9999)
         self.generate(self.nodes[0], COINBASE_MATURITY + 1)
-        rawtx = self.nodes[0].createrawtransaction([], [{self.nodes[0].getnewaddress(): 10}])
+        # Only one block reward has matured, so spend a tenth of upstream's
+        # amount because BTQ's subsidy is a tenth of Bitcoin's.
+        rawtx = self.nodes[0].createrawtransaction([], [{self.nodes[0].getnewaddress(): 1}])
         fundedtx = self.nodes[0].fundrawtransaction(rawtx)
         signedtx = self.nodes[0].signrawtransactionwithwallet(fundedtx["hex"])
         assert_equal(signedtx["complete"], True)

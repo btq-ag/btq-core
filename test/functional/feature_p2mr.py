@@ -274,12 +274,12 @@ class P2MRTest(BTQTestFramework):
 
             # P2MR test
             print(how(f'Place same [{name}] in a P2MR tapscript leaf and attempt to spend'))
-            print(expect('NOT rejected for "not available in tapscript" (may fail for other reasons like invalid sig)'))
+            print(expect('NOT rejected for "only available in P2MR" (may fail for other reasons like invalid sig)'))
             p2mr = p2mr_construct([("l", leaf)])
             f2 = self.fund(p2mr.scriptPubKey)
             r2 = self.spend_p2mr(f2, p2mr, "l", [b'\x01', b'\x01'])
             if not r2['accepted']:
-                assert 'not available in tapscript' not in r2['error'].lower(), \
+                assert 'only available in p2mr' not in r2['error'].lower(), \
                     f'{name} blocked in P2MR! {r2["error"]}'
                 print(got(f'P2MR ran opcode, failed on sig/pubkey: {r2["error"][:45]}'))
             else:
@@ -297,7 +297,7 @@ class P2MRTest(BTQTestFramework):
         print(sub('5a. P2TR must return exact error message'))
         print(why('The error message distinguishes "Dilithium blocked in tapscript" from other failures.'))
         print(how('Attempt OP_CHECKSIGDILITHIUM in P2TR and check the exact error string.'))
-        expected_msg = 'Dilithium opcodes are not available in tapscript'
+        expected_msg = 'Dilithium opcodes are only available in P2MR tapscript (witness v2)'
         print(expect(f'Error contains: "{expected_msg}"'))
         leaf = CScript([OP_TRUE, OP_TRUE, OP_CHECKSIGDILITHIUM])
         tap = taproot_construct(xo, [("l", leaf)])
