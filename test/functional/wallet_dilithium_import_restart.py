@@ -135,6 +135,10 @@ class WalletDilithiumImportRestartTest(BTQTestFramework):
         imported_desc = descriptor_rescan.importdilithiumkey(hist_secret, "descriptor-rescan", True)
         assert_equal(imported_desc["address"], hist_addr)
         assert descriptor_rescan.getbalance() > 0
+        node.unloadwallet("descriptor_rescan")
+        node.loadwallet("descriptor_rescan")
+        descriptor_rescan = node.get_wallet_rpc("descriptor_rescan")
+        assert descriptor_rescan.getbalance() > 0
 
         norescan.rescanblockchain()
         assert norescan.getbalance() > 0

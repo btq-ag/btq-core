@@ -608,13 +608,22 @@ bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
     if (wallet.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
         for (auto* spk_man : wallet.GetAllScriptPubKeyMans()) {
             if (auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) return true;
+                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) {
+                    // Unknown birthday. Stops blockConnected from skipping
+                    // pre-wallet blocks. Does not rewind a stored locator.
+                    desc->UpdateTimeFirstKey(1);
+                    wallet.FirstKeyTimeChanged(desc, 1);
+                    return true;
+                }
             }
         }
         return false;
     }
     LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
-    return legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
+    if (!legacy || !legacy->AddDilithiumKeyPubKey(key, CPubKey())) return false;
+    LOCK(legacy->cs_KeyStore);
+    legacy->UpdateTimeFirstKey(1);
+    return true;
 }
 
 util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)
@@ -677,11 +686,6 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
     wallet.MarkDirty();
     if (!StoreDilithiumKeyInWallet(wallet, key)) {
         return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
-    }
-    if (LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan()) {
-        LOCK(legacy->cs_KeyStore);
-        // Timestamp 1: unknown birthday, load-time rescan starts at genesis.
-        legacy->UpdateTimeFirstKey(1);
     }
     return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), label);
 }
