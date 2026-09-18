@@ -32,10 +32,13 @@ class MempoolLimitTest(BTQTestFramework):
             "-datacarriersize=100000",
             # fill_mempool is ~5 MB of 65 kvB txs. 101 kvB * 40 is a 5 MB
             # floor, same as Core, so eviction still fires. The default 474 kvB
-            # floor (19 MB) is checked separately at shutdown.
+            # floor (19 MB) is checked separately at shutdown. Those fill txs
+            # weigh ~1.08 MW at WSF 16, over MAX_STANDARD_TX_WEIGHT, so
+            # require_standard has to be off or they never enter the pool.
             "-maxmempool=5",
             "-limitdescendantsize=101",
             "-limitancestorsize=101",
+            "-acceptnonstdtxn=1",
         ]]
         self.supports_cli = False
 
