@@ -792,7 +792,7 @@ static RPCHelpMan pruneblockchain()
     // Height value more than a billion is too high to be a block height, and
     // too low to be a block time (corresponds to timestamp from Sep 2001).
     if (heightParam > 1000000000) {
-        // Add a 2 hour buffer to include blocks which might have had old timestamps
+        // TIMESTAMP_WINDOW buffer for blocks whose timestamps sit ahead of our clock
         const CBlockIndex* pindex = active_chain.FindEarliestAtLeast(heightParam - TIMESTAMP_WINDOW, 0);
         if (!pindex) {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Could not find block with at least the specified timestamp.");

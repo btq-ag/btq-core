@@ -717,7 +717,7 @@ BOOST_AUTO_TEST_CASE(block_time_ignores_peer_offset)
     TestOnlyResetTimeData();
     const CBlockIndex* tip{WITH_LOCK(::cs_main, return m_node.chainman->ActiveChain().Tip())};
     const int64_t system_time{tip->GetMedianTimePast() + 600};
-    constexpr int64_t peer_offset{3600};
+    constexpr int64_t peer_offset{10 * 60};
     SetMockTime(system_time);
 
     for (int i = 0; i < 4; ++i) {
