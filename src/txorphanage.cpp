@@ -19,6 +19,13 @@
 #include <utility>
 #include <vector>
 
+namespace {
+void SaturatingSub(unsigned int& value, unsigned int delta)
+{
+    value = (value >= delta) ? value - delta : 0;
+}
+} // namespace
+
 uint256 TxOrphanage::ResolveWtxid(const uint256& hash) const
 {
     if (m_orphans.count(hash)) return hash;
@@ -117,8 +124,8 @@ void TxOrphanage::RemoveAnnouncerKeepTx(const uint256& wtxid, NodeId peer)
     m_total_announcements -= 1;
     auto peer_it = m_peer_orphanage_info.find(peer);
     if (peer_it != m_peer_orphanage_info.end()) {
-        peer_it->second.m_total_usage -= it->second.GetUsage();
-        peer_it->second.m_total_latency -= it->second.GetLatencyScore();
+        SaturatingSub(peer_it->second.m_total_usage, it->second.GetUsage());
+        SaturatingSub(peer_it->second.m_total_latency, it->second.GetLatencyScore());
     }
 }
 
@@ -150,8 +157,8 @@ int TxOrphanage::EraseTxNoLock(const uint256& wtxid)
     for (const auto& peer : it->second.announcers) {
         auto peer_it = m_peer_orphanage_info.find(peer);
         if (Assume(peer_it != m_peer_orphanage_info.end())) {
-            peer_it->second.m_total_usage -= tx_size;
-            peer_it->second.m_total_latency -= latency;
+            SaturatingSub(peer_it->second.m_total_usage, tx_size);
+            SaturatingSub(peer_it->second.m_total_latency, latency);
         }
     }
 

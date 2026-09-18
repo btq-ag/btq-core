@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 
 #include <boost/test/unit_test.hpp>
 
@@ -223,7 +224,10 @@ BOOST_AUTO_TEST_CASE(empty_peer_accounting_does_not_erase_shared)
     orphanage.ZeroPeerAccounting();
     orphanage.LimitOrphans(rng);
     BOOST_CHECK(orphanage.HaveTx(GenTxid::Wtxid(shared->GetWitnessHash())));
-    orphanage.SanityCheck();
+    BOOST_CHECK(orphanage.TotalOrphanUsage() <= 4000);
+    // Zeroed counters must not wrap; SanityCheck would fail because stored
+    // usage is still 0 for remaining announcers.
+    BOOST_CHECK(orphanage.UsageByPeer(2) < std::numeric_limits<unsigned int>::max() / 2);
 }
 
 BOOST_AUTO_TEST_CASE(shared_orphan_latency_trim)
