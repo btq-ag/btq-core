@@ -674,8 +674,14 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
     if (!key.IsValid()) {
         return util::Error{Untranslated("Invalid Dilithium private key")};
     }
+    wallet.MarkDirty();
     if (!StoreDilithiumKeyInWallet(wallet, key)) {
         return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
+    }
+    if (LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan()) {
+        LOCK(legacy->cs_KeyStore);
+        // Timestamp 1: unknown birthday, load-time rescan starts at genesis.
+        legacy->UpdateTimeFirstKey(1);
     }
     return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), label);
 }
