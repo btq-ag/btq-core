@@ -84,20 +84,32 @@ class WalletP2MRBackupTest(BTQTestFramework):
 
         if self.is_bdb_compiled():
             self.log.info("importwallet rescans from genesis when created_at is 0")
-            node.createwallet(wallet_name="legacy_zero", descriptors=False)
-            legacy_zero = node.get_wallet_rpc("legacy_zero")
-            self.generatetoaddress(node, 1, source.getnewaddress())
             funded_zero = source.sendtop2mr(tree, Decimal("0.5"), "zero-birth", allow_trivial_leaves=True)
             self.generate(node, 1)
+            # RescanFromTime looks back TIMESTAMP_WINDOW (15 min). Move the tip
+            # past that so a rescan that starts at the tip cannot see this output.
+            # Key birth times in a full dumpwallet would also widen the range, so
+            # the imported file is p2mr records only.
+            chain_time = node.getblockheader(node.getbestblockhash())["time"]
+            node.setmocktime(chain_time + 16 * 60)
+            self.generate(node, 1)
+
+            node.createwallet(wallet_name="legacy_zero", descriptors=False)
+            legacy_zero = node.get_wallet_rpc("legacy_zero")
             zero_dump_entries = [e for e in source.listp2mr() if e["id"] == funded_zero["p2mr_id"]]
             assert_equal(len(zero_dump_entries), 1)
             zero_dump_entries[0]["created_at"] = 0
             imported_zero = legacy_zero.importp2mr(zero_dump_entries)
             dump_path = node.datadir_path / "p2mr_zero.dump"
             legacy_zero.dumpwallet(str(dump_path))
+            p2mr_only = node.datadir_path / "p2mr_zero_only.dump"
+            with open(dump_path, encoding="utf-8") as src, open(p2mr_only, "w", encoding="utf-8") as dst:
+                for line in src:
+                    if line.startswith("p2mr ") or line.startswith("#"):
+                        dst.write(line)
             node.createwallet(wallet_name="legacy_import", descriptors=False)
             legacy_import = node.get_wallet_rpc("legacy_import")
-            legacy_import.importwallet(str(dump_path))
+            legacy_import.importwallet(str(p2mr_only))
             utxos = legacy_import.listunspent(0, 9999999, [imported_zero[0]["address"]])
             assert_equal(len(utxos), 1)
 
