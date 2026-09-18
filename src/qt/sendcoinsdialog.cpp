@@ -45,7 +45,7 @@ using wallet::DEFAULT_PAY_TX_FEE;
 static constexpr std::array confTargets{20, 40, 60, 120, 240, 480, 1440, 5040, 10080};
 static constexpr std::array oldTenMinuteConfTargets{2, 4, 6, 12, 24, 48, 144, 504, 1008};
 
-int migrateConfTargetFromTenMinuteBlocks(int stored)
+static int migrateConfTargetFromTenMinuteBlocks(int stored)
 {
     for (int old : oldTenMinuteConfTargets) {
         if (stored == old) return old * 10;
