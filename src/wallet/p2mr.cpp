@@ -30,7 +30,9 @@
 #include <wallet/walletdb.h>
 
 #include <algorithm>
+#include <optional>
 #include <set>
+#include <utility>
 
 namespace wallet {
 
@@ -214,44 +216,45 @@ bool IsOpTrueLeaf(const P2MRTreeLeaf& leaf)
            leaf.script[0] == OP_TRUE;
 }
 
-bool IsDilithiumLeafSpendable(const CWallet& wallet, const CScript& script)
+//! Keys this wallet holds vs signatures the leaf requires.
+//! nullopt means the script is not a recognised Dilithium spend template.
+std::optional<std::pair<int, int>> DilithiumLeafKeyCounts(const CWallet& wallet, const CScript& script)
 {
-    std::vector<std::vector<unsigned char>> solutions;
-    const TxoutType which_type = Solver(script, solutions);
-    switch (which_type) {
-    case TxoutType::DILITHIUM_PUBKEY: {
-        if (solutions.empty()) return false;
-        const CDilithiumPubKey pubkey{solutions[0]};
-        if (!pubkey.IsValid()) return false;
-        CKeyID keyid;
-        const uint160 id = pubkey.GetID();
-        std::copy(id.begin(), id.end(), keyid.begin());
-        return WalletHaveDilithiumKey(wallet, keyid);
-    }
-    case TxoutType::DILITHIUM_PUBKEYHASH:
-    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH: {
-        if (solutions.empty() || solutions[0].size() != uint160::size()) return false;
-        CKeyID keyid;
-        std::copy(solutions[0].begin(), solutions[0].end(), keyid.begin());
-        return WalletHaveDilithiumKey(wallet, keyid);
-    }
-    case TxoutType::DILITHIUM_MULTISIG: {
-        if (solutions.size() < 3 || solutions.front().empty()) return false;
-        const int required = solutions.front()[0];
+    const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
+    if (policy.IsValid()) {
         int available = 0;
-        for (size_t i = 1; i + 1 < solutions.size(); ++i) {
-            const CDilithiumPubKey pubkey{solutions[i]};
-            if (!pubkey.IsValid()) continue;
+        for (const CDilithiumPubKey& pubkey : policy.pubkeys) {
             CKeyID keyid;
             const uint160 id = pubkey.GetID();
             std::copy(id.begin(), id.end(), keyid.begin());
-            if (WalletHaveDilithiumKey(wallet, keyid) && ++available >= required) return true;
+            if (WalletHaveDilithiumKey(wallet, keyid)) ++available;
         }
-        return false;
+        return std::make_pair(available, policy.m);
     }
-    default:
-        return false;
+
+    // ParseP2MRDilithiumLeaf does not cover pkh / wpkh leaves.
+    std::vector<std::vector<unsigned char>> solutions;
+    const TxoutType which_type = Solver(script, solutions);
+    if (which_type != TxoutType::DILITHIUM_PUBKEYHASH &&
+        which_type != TxoutType::DILITHIUM_WITNESS_V0_KEYHASH) {
+        return std::nullopt;
     }
+    if (solutions.empty() || solutions[0].size() != uint160::size()) return std::nullopt;
+    CKeyID keyid;
+    std::copy(solutions[0].begin(), solutions[0].end(), keyid.begin());
+    return std::make_pair(WalletHaveDilithiumKey(wallet, keyid) ? 1 : 0, 1);
+}
+
+bool IsDilithiumLeafSpendable(const CWallet& wallet, const CScript& script)
+{
+    const auto counts = DilithiumLeafKeyCounts(wallet, script);
+    return counts && counts->first >= counts->second;
+}
+
+bool IsDilithiumLeafParticipating(const CWallet& wallet, const CScript& script)
+{
+    const auto counts = DilithiumLeafKeyCounts(wallet, script);
+    return counts && counts->first >= 1;
 }
 
 bool IsXOnlyLeafSpendable(const CWallet& wallet, const CScript& script)
@@ -680,9 +683,21 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
-                                     bool add_to_address_book)
+                                     bool add_to_address_book,
+                                     bool allow_trivial_leaves)
 {
     AssertLockHeld(wallet.cs_wallet);
+    if (!allow_trivial_leaves) {
+        for (const auto& leaf : leaves) {
+            const CScript script{leaf.script.begin(), leaf.script.end()};
+            // Cosigners hold one key of an m-of-n leaf, so this is "we
+            // participate", not "we can spend alone".
+            if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT || !IsDilithiumLeafParticipating(wallet, script)) {
+                return util::Error{Untranslated(
+                    "P2MR tree contains a leaf the wallet cannot safely spend; pass allow_trivial_leaves if this is intentional")};
+            }
+        }
+    }
     auto builder_res = BuildP2MRTreeChecked(leaves);
     if (!builder_res) return util::Error{util::ErrorString(builder_res)};
     P2MRBuilder builder = std::move(*builder_res);
@@ -722,14 +737,15 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
                                   CAmount amount,
                                   const std::string& label,
                                   bool subtract_fee_from_amount,
-                                  const CCoinControl& coin_control)
+                                  const CCoinControl& coin_control,
+                                  bool allow_trivial_leaves)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (wallet.IsLocked()) {
         return util::Error{_("Wallet is locked")};
     }
 
-    auto created_res = CreateP2MR(wallet, leaves, label);
+    auto created_res = CreateP2MR(wallet, leaves, label, /*add_to_address_book=*/true, allow_trivial_leaves);
     if (!created_res) return util::Error{util::ErrorString(created_res)};
     P2MRCreated created = std::move(*created_res);
 
