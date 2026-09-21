@@ -475,8 +475,6 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
         assert_equal(len(binary_cli), num_nodes)
         for i in range(num_nodes):
             args = list(extra_args[i])
-            if self.options.v2transport and ("-v2transport=0" not in args):
-                args.append("-v2transport=1")
             test_node_i = TestNode(
                 i,
                 get_datadir_path(self.options.tmpdir, i),
@@ -495,6 +493,14 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
                 use_valgrind=self.options.valgrind,
                 descriptors=self.options.descriptors,
             )
+            # P2PInterface is v1. Pin v2 on TestNode.args (survives restart_node
+            # extra_args=...) unless the test already set an explicit flag.
+            # Production DEFAULT_V2_TRANSPORT is true; that is locked in net_tests.
+            if self.options.v2transport:
+                if "-v2transport=0" not in args:
+                    test_node_i.args.append("-v2transport=1")
+            elif "-v2transport=1" not in args:
+                test_node_i.args.append("-v2transport=0")
             self.nodes.append(test_node_i)
 
     def start_node(self, i, *args, **kwargs):
@@ -567,7 +573,8 @@ class BTQTestFramework(metaclass=BTQTestMetaClass):
         if peer_advertises_v2 is None:
             peer_advertises_v2 = self.options.v2transport
 
-        from_connection.addnode(node=ip_port, command="onetry", v2transport=peer_advertises_v2)
+        # Positional: named command= collides with TestNodeCLI.send_cli(command=...).
+        from_connection.addnode(ip_port, "onetry", peer_advertises_v2)
 
         if not wait_for_connect:
             return
