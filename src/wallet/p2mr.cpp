@@ -694,7 +694,7 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
             // participate", not "we can spend alone".
             if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT || !IsDilithiumLeafParticipating(wallet, script)) {
                 return util::Error{Untranslated(
-                    "P2MR tree contains a leaf the wallet cannot safely spend; pass allow_trivial_leaves if this is intentional")};
+                    "P2MR tree contains a leaf the wallet does not participate in; pass allow_trivial_leaves if this is intentional")};
             }
         }
     }

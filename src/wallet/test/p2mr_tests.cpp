@@ -215,7 +215,7 @@ BOOST_FIXTURE_TEST_CASE(create_allows_only_wallet_spendable_dilithium_leaves_by_
     for (const auto& leaves : rejected_trees) {
         auto rejected = CreateP2MR(*wallet, leaves, "unsafe");
         BOOST_CHECK(!rejected);
-        BOOST_CHECK(util::ErrorString(rejected).original.find("cannot safely spend") != std::string::npos);
+        BOOST_CHECK(util::ErrorString(rejected).original.find("does not participate") != std::string::npos);
     }
 
     auto allowed = CreateP2MR(*wallet, rejected_trees[3], "unsafe", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
