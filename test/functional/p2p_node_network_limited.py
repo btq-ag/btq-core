@@ -8,7 +8,7 @@ Tests that a node configured with -prune=550 signals NODE_NETWORK_LIMITED correc
 and that it responds to getdata requests for blocks correctly:
     - send a block within 288 + 2 of the tip
     - disconnect peers who request blocks older than that."""
-from test_framework.messages import CInv, MSG_BLOCK, msg_getdata, msg_verack, NODE_NETWORK_LIMITED, NODE_WITNESS
+from test_framework.messages import CInv, MSG_BLOCK, msg_getdata, msg_verack, NODE_BTQ_DILITHIUM, NODE_NETWORK_LIMITED, NODE_P2P_V2, NODE_WITNESS
 from test_framework.p2p import P2PInterface
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
@@ -35,7 +35,7 @@ class NodeNetworkLimitedTest(BTQTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 3
-        self.extra_args = [['-prune=550', '-addrmantest'], [], []]
+        self.extra_args = [['-prune=550', '-addrmantest', '-v2transport=1'], [], []]
 
     def disconnect_all(self):
         self.disconnect_nodes(0, 1)
@@ -49,7 +49,7 @@ class NodeNetworkLimitedTest(BTQTestFramework):
     def run_test(self):
         node = self.nodes[0].add_p2p_connection(P2PIgnoreInv())
 
-        expected_services = NODE_WITNESS | NODE_NETWORK_LIMITED
+        expected_services = NODE_WITNESS | NODE_NETWORK_LIMITED | NODE_P2P_V2 | NODE_BTQ_DILITHIUM
 
         self.log.info("Check that node has signalled expected services.")
         assert_equal(node.nServices, expected_services)
