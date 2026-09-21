@@ -105,11 +105,14 @@ RPCHelpMan importdilithiumkey()
 {
     return RPCHelpMan{"importdilithiumkey",
         "\nAdds a Dilithium private key (as returned by dumpprivkey) to your wallet and\n"
-        "creates a matching single-leaf P2MR receive destination for it.\n"
+        "creates a matching single-leaf P2MR receive destination for it. Requires a new wallet backup.\n"
         "If 'label' is specified, it is assigned to the new address.\n"
         "\nNote: This call can take over an hour to complete if rescan is true, during that time, other rpc calls\n"
         "may report that the imported key exists but related transactions are still missing, leading to temporarily incorrect/bogus balances and unspent outputs until rescan completes.\n"
-        "Note: Use \"getwalletinfo\" to query the scanning progress.\n",
+        "The rescan parameter can be set to false if the key was never used to create transactions. If it is set to false,\n"
+        "but the key was used to create transactions, rescanblockchain needs to be called with the appropriate block range.\n"
+        "Note: Use \"getwalletinfo\" to query the scanning progress.\n" +
+        HELP_REQUIRING_PASSPHRASE,
         {
             {"privkey", RPCArg::Type::STR, RPCArg::Optional::NO, "The Dilithium private key (see dumpprivkey)"},
             {"label", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "An optional label"},
@@ -143,10 +146,10 @@ RPCHelpMan importdilithiumkey()
             {
                 LOCK(wallet->cs_wallet);
 
+                EnsureWalletIsUnlocked(*wallet);
+
                 const std::string strSecret = request.params[0].get_str();
-                std::string strLabel;
-                if (!request.params[1].isNull())
-                    strLabel = request.params[1].get_str();
+                const std::string strLabel{LabelFromValue(request.params[1])};
 
                 if (!request.params[2].isNull())
                     fRescan = request.params[2].get_bool();
