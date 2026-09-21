@@ -22,6 +22,9 @@ BOOST_AUTO_TEST_CASE(package_limits_are_one_default_template)
     BOOST_CHECK_EQUAL(DEFAULT_DESCENDANT_SIZE_LIMIT_KVB, 474U);
     BOOST_CHECK_EQUAL(MAX_PACKAGE_WEIGHT, 7'584'000U);
     BOOST_CHECK_EQUAL(MAX_PACKAGE_WEIGHT, DEFAULT_ANCESTOR_SIZE_LIMIT_KVB * WITNESS_SCALE_FACTOR * 1000);
+    // Coinbase reserve 4000 WU. 474 kvB fits a default 7.6 MW template; 475 does not.
+    BOOST_CHECK_LT(4000 + DEFAULT_ANCESTOR_SIZE_LIMIT_KVB * 1000 * WITNESS_SCALE_FACTOR, DEFAULT_BLOCK_MAX_WEIGHT);
+    BOOST_CHECK_GE(4000 + (DEFAULT_ANCESTOR_SIZE_LIMIT_KVB + 1) * 1000 * WITNESS_SCALE_FACTOR, DEFAULT_BLOCK_MAX_WEIGHT);
 }
 
 // A fee amount that is above 1sat/vB but below 5sat/vB for most transactions created within these
@@ -142,8 +145,8 @@ BOOST_FIXTURE_TEST_CASE(package_validation_tests, TestChain100Setup)
     // because the two land in the same place there, both near 100 kB. Here they
     // do not: a standard transaction stops at 25'000 vbytes once the weight is
     // divided by a scale factor of 16, while the ancestor size limit is 474 kvB.
-    // The inherited form therefore demanded a transaction eighty times larger
-    // than the rule it was setting up, and this one is not that large.
+    // The inherited form therefore demanded a transaction about nineteen times
+    // larger than the rule it was setting up, and this one is not that large.
     BOOST_CHECK(GetTransactionWeight(*giant_ptx) > MAX_STANDARD_TX_WEIGHT);
     auto result_single_large = ProcessNewPackage(m_node.chainman->ActiveChainstate(), *m_node.mempool, {giant_ptx}, /*test_accept=*/true);
     BOOST_CHECK(result_single_large.m_state.IsInvalid());

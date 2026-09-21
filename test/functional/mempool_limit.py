@@ -7,6 +7,7 @@
 from decimal import Decimal
 
 from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.messages import WITNESS_SCALE_FACTOR
 from test_framework.p2p import P2PTxInvStore
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
@@ -23,21 +24,29 @@ from test_framework.wallet import (
     MiniWallet,
 )
 
+# EXTRA_DESCENDANT_TX_SIZE_LIMIT in src/policy/policy.h, in vbytes.
+EXTRA_DESCENDANT_TX_SIZE_LIMIT = 10000
+
+
+def vsize_from_weight(weight):
+    """Virtual size used for mempool fees. Matches CTransaction.get_vsize()."""
+    return (weight + WITNESS_SCALE_FACTOR - 1) // WITNESS_SCALE_FACTOR
+
 
 class MempoolLimitTest(BTQTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
+        # fill_mempool is ~5 MB of 65 kvB txs. 101 kvB * 40 is a 5 MB
+        # floor, same as Core, so eviction still fires. The default 474 kvB
+        # floor (19 MB) is checked separately at shutdown. Those fill txs
+        # weigh ~1.08 MW at WSF 16, over MAX_STANDARD_TX_WEIGHT, so
+        # require_standard has to be off or they never enter the pool.
         self.extra_args = [[
             "-datacarriersize=100000",
-            # fill_mempool is ~5 MB of 65 kvB txs. 101 kvB * 40 is a 5 MB
-            # floor, same as Core, so eviction still fires. The default 474 kvB
-            # floor (19 MB) is checked separately at shutdown. Those fill txs
-            # weigh ~1.08 MW at WSF 16, over MAX_STANDARD_TX_WEIGHT, so
-            # require_standard has to be off or they never enter the pool.
             "-maxmempool=5",
-            "-limitdescendantsize=101",
             "-limitancestorsize=101",
+            "-limitdescendantsize=101",
             "-acceptnonstdtxn=1",
         ]]
         self.supports_cli = False
@@ -111,7 +120,7 @@ class MempoolLimitTest(BTQTestFramework):
         mempoolmin_feerate = node.getmempoolinfo()["mempoolminfee"]
         tx_A = self.wallet.send_self_transfer(
             from_node=node,
-            fee=(mempoolmin_feerate / 1000) * (A_weight // 4) + Decimal('0.000001'),
+            fee=(mempoolmin_feerate / 1000) * vsize_from_weight(A_weight) + Decimal('0.000001'),
             target_weight=A_weight,
             utxo_to_spend=rbf_utxo,
             confirmed_only=True
@@ -125,14 +134,16 @@ class MempoolLimitTest(BTQTestFramework):
             confirmed_only=True
         )
 
-        # Spends tx_B's output, too big for cpfp carveout (because that would also increase the descendant limit by 1)
-        non_cpfp_carveout_weight = 40001 # EXTRA_DESCENDANT_TX_SIZE_LIMIT + 1
+        # Spends tx_B's output, too big for cpfp carveout (because that would also increase the descendant limit by 1).
+        # EXTRA_DESCENDANT_TX_SIZE_LIMIT is vbytes. Core's 40001 was weight at WSF=4.
+        non_cpfp_carveout_weight = EXTRA_DESCENDANT_TX_SIZE_LIMIT * WITNESS_SCALE_FACTOR + 1
         tx_C = self.wallet.create_self_transfer(
             target_weight=non_cpfp_carveout_weight,
-            fee = (mempoolmin_feerate / 1000) * (non_cpfp_carveout_weight // 4) + Decimal('0.000001'),
+            fee=(mempoolmin_feerate / 1000) * vsize_from_weight(non_cpfp_carveout_weight) + Decimal('0.000001'),
             utxo_to_spend=tx_B["new_utxo"],
             confirmed_only=True
         )
+        assert_greater_than(tx_C["tx"].get_vsize(), EXTRA_DESCENDANT_TX_SIZE_LIMIT)
 
         assert_raises_rpc_error(-26, "too-long-mempool-chain", node.submitpackage, [tx_B["hex"], tx_C["hex"]])
 
@@ -160,7 +171,7 @@ class MempoolLimitTest(BTQTestFramework):
         # happen in the middle of package evaluation, as it can invalidate the coins cache.
         mempool_evicted_tx = self.wallet.send_self_transfer(
             from_node=node,
-            fee=(mempoolmin_feerate / 1000) * (evicted_weight // 4) + Decimal('0.000001'),
+            fee=(mempoolmin_feerate / 1000) * vsize_from_weight(evicted_weight) + Decimal('0.000001'),
             target_weight=evicted_weight,
             confirmed_only=True
         )
@@ -183,17 +194,23 @@ class MempoolLimitTest(BTQTestFramework):
 
         # Series of parents that don't need CPFP and are submitted individually. Each one is large and
         # high feerate, which means they should trigger eviction but not be evicted.
-        parent_weight = 100000
+        # ~25 kvB each, same as Core's 100000-weight / WSF=4. Three of them
+        # overflow leftover space after fill (fill txs are ~65 kvB) without
+        # exceeding the 101 kvB ancestor cap this test pins.
+        parent_weight = 25000 * WITNESS_SCALE_FACTOR
         num_big_parents = 3
-        assert_greater_than(parent_weight * num_big_parents, current_info["maxmempool"] - current_info["bytes"])
-        parent_fee = (100 * mempoolmin_feerate / 1000) * (parent_weight // 4)
+        parent_vsize = vsize_from_weight(parent_weight)
+        assert_greater_than(parent_vsize * num_big_parents, current_info["maxmempool"] - current_info["bytes"])
+        parent_fee = (100 * mempoolmin_feerate / 1000) * parent_vsize
 
         big_parent_txids = []
+        big_parents = []
         for i in range(num_big_parents):
             parent = self.wallet.create_self_transfer(fee=parent_fee, target_weight=parent_weight, confirmed_only=True)
             parent_utxos.append(parent["new_utxo"])
             package_hex.append(parent["hex"])
             big_parent_txids.append(parent["txid"])
+            big_parents.append(parent)
             # There is room for each of these transactions independently
             assert node.testmempoolaccept([parent["hex"]])[0]["allowed"]
 
@@ -210,6 +227,10 @@ class MempoolLimitTest(BTQTestFramework):
 
         child = self.wallet.create_self_transfer_multi(utxos_to_spend=parent_utxos, fee_per_output=cpfp_satoshis)
         package_hex.append(child["hex"])
+        # Child's in-mempool ancestors are the 3 big parents. Stay under
+        # -limitancestorsize=101 or submitpackage returns too-long-mempool-chain.
+        ancestor_vsize = sum(p["tx"].get_vsize() for p in big_parents) + child["tx"].get_vsize()
+        assert_greater_than(101000, ancestor_vsize)
 
         # Package should be submitted, temporarily exceeding maxmempool, and then evicted.
         with node.assert_debug_log(expected_msgs=["rolling minimum fee bumped"]):
@@ -358,13 +379,15 @@ class MempoolLimitTest(BTQTestFramework):
         for txid in current_mempool:
             entry = node.getmempoolentry(txid)
             worst_feerate_btcvb = min(worst_feerate_btcvb, entry["fees"]["descendant"] / entry["descendantsize"])
-        # Needs to be large enough to trigger eviction
-        target_weight_each = 200000
-        assert_greater_than(target_weight_each * 2, node.getmempoolinfo()["maxmempool"] - node.getmempoolinfo()["bytes"])
+        # Needs to be large enough to trigger eviction. 50 kvB each matches
+        # Core's 200000-weight / WSF=4 intent; leftover after fill is <65 kvB.
+        target_weight_each = 50000 * WITNESS_SCALE_FACTOR
+        target_vsize = vsize_from_weight(target_weight_each)
+        assert_greater_than(target_vsize * 2, node.getmempoolinfo()["maxmempool"] - node.getmempoolinfo()["bytes"])
         # Should be a true CPFP: parent's feerate is just below mempool min feerate
-        parent_fee = (mempoolmin_feerate / 1000) * (target_weight_each // 4) - Decimal("0.00001")
+        parent_fee = (mempoolmin_feerate / 1000) * target_vsize - Decimal("0.00001")
         # Parent + child is above mempool minimum feerate
-        child_fee = (worst_feerate_btcvb) * (target_weight_each // 4) - Decimal("0.00001")
+        child_fee = (worst_feerate_btcvb) * target_vsize - Decimal("0.00001")
         # However, when eviction is triggered, these transactions should be at the bottom.
         # This assertion assumes parent and child are the same size.
         miniwallet.rescan_utxos()

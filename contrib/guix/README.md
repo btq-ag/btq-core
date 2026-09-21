@@ -106,11 +106,11 @@ worktree to save disk space:
 ## Attesting to build outputs
 
 Much like how Gitian build outputs are attested to in a `gitian.sigs`
-repository, Guix build outputs are attested to in the [`guix.sigs`
-repository](https://github.com/btq-core/guix.sigs).
+repository, Guix build outputs are attested to in a `guix.sigs` repository.
+The intended home is `btq-ag/guix.sigs` (**TBD** — not published yet).
 
-After you've cloned the `guix.sigs` repository, to attest to the current
-worktree's commit/tag:
+Once that repository exists, clone it and attest to the current worktree's
+commit/tag:
 
 ```
 env GUIX_SIGS_REPO=<path/to/guix.sigs> SIGNER=<gpg-key-name> ./contrib/guix/guix-attest
@@ -121,8 +121,8 @@ See `./contrib/guix/guix-attest --help` for more information on the various ways
 
 ## Verifying build output attestations
 
-After at least one other signer has uploaded their signatures to the `guix.sigs`
-repository:
+Once `btq-ag/guix.sigs` exists and at least one other signer has uploaded
+their signatures:
 
 ```
 git -C <path/to/guix.sigs> pull

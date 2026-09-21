@@ -38,7 +38,8 @@ moved is as interesting as where things stand.
   whether the configured host resolves. **It does not.** Mainnet carries a single
   DNS seed, `seed1.btq.com`, with no A record, and `chainparams_seed_main[]` is a
   self-described invalid placeholder — so a default-configured mainnet node cannot
-  find a peer. `btq.com` is a domain the project no longer controls. Tracked in
+  find a peer. `btq.com` was out of project control when this row was written;
+  BTQ has since recovered it. Tracked in
   #114, with related contact and supply-chain exposure in #115 and #118.
 - **C03.** `nLWMAHeight` is 1 on mainnet but **300000 on testnet, signet and
   regtest**. LWMA has therefore never run on a live chain, and since functional
@@ -247,9 +248,10 @@ evidence:
 
 - **Mainnet peer discovery does not work.** The sole DNS seed `seed1.btq.com`
   has no A record and `chainparams_seed_main[]` is a placeholder marked invalid
-  in its own comment, so a default-configured node cannot bootstrap. `btq.com` is
-  additionally a domain the project no longer controls, which makes this a trust
-  anchor held by a third party rather than only a launch bug. Signet has the same
+  in its own comment, so a default-configured node cannot bootstrap. When this
+  was written, `btq.com` was also out of project control, which made the seed a
+  trust anchor held by a third party. BTQ has since recovered the domain, so the
+  remaining problem is the missing seed infrastructure. Signet has the same
   configuration. **#114** — treat as launch-blocking.
 - P2MR Dilithium mined-spend coverage exists, but the full mined mutation
   matrix, invalid-control matrix, and reorg/reindex coverage remain open.
