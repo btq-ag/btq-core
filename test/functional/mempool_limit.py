@@ -28,9 +28,14 @@ class MempoolLimitTest(BTQTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
+        # -maxmempool must be at least 40 times the descendant size limit.
+        # BTQ's 2 MB default limit puts that floor at 80 MB, so use
+        # upstream's 101 kvB limits to keep this test's 5 MB mempool.
         self.extra_args = [[
             "-datacarriersize=100000",
             "-maxmempool=5",
+            "-limitancestorsize=101",
+            "-limitdescendantsize=101",
         ]]
         self.supports_cli = False
 
