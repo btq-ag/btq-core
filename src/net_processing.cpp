@@ -3908,8 +3908,10 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 if (fAlreadyHave) {
                     if (CTransactionRef orphan_tx = m_orphanage.GetTx(gtxid)) {
                         const bool added = m_orphanage.AddAnnouncer(orphan_tx->GetWitnessHash(), pfrom.GetId());
-                        RequestOrphanParents(pfrom, *peer, *orphan_tx);
-                        if (added) m_orphanage.LimitOrphans(m_rng);
+                        if (added) {
+                            RequestOrphanParents(pfrom, *peer, *orphan_tx);
+                            m_orphanage.LimitOrphans(m_rng);
+                        }
                     }
                 } else if (!m_chainman.IsInitialBlockDownload()) {
                     AddTxAnnouncement(pfrom, gtxid, current_time);
