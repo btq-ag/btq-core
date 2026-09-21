@@ -9,11 +9,13 @@
 #include <key_io.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
+#include <script/dilithium_leaf.h>
 #include <script/interpreter.h>
 #include <script/script.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
 #include <univalue.h>
+#include <util/result.h>
 #include <util/strencodings.h>
 #include <util/vector.h>
 #include <validation.h>
@@ -198,15 +200,74 @@ BOOST_AUTO_TEST_CASE(reject_typeerror_on_script_int)
     BOOST_CHECK(!parsed);
 }
 
+BOOST_FIXTURE_TEST_CASE(create_allows_only_wallet_spendable_dilithium_leaves_by_default, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const std::vector<std::vector<P2MRTreeLeaf>> rejected_trees{
+        {{0, TAPROOT_LEAF_TAPSCRIPT, {}}},
+        {{0, TAPROOT_LEAF_TAPSCRIPT, {OP_TRUE}}},
+        {{0, TAPROOT_LEAF_TAPSCRIPT, {OP_2}}},
+        {{0, TAPROOT_LEAF_TAPSCRIPT, {OP_DROP, OP_TRUE}}},
+        {{0, TAPROOT_LEAF_TAPSCRIPT, {0x50}}}, // OP_SUCCESS80
+        {{0, 0xc2, {OP_TRUE}}},
+    };
+    for (const auto& leaves : rejected_trees) {
+        auto rejected = CreateP2MR(*wallet, leaves, "unsafe");
+        BOOST_CHECK(!rejected);
+        BOOST_CHECK(util::ErrorString(rejected).original.find("does not participate") != std::string::npos);
+    }
+
+    auto allowed = CreateP2MR(*wallet, rejected_trees[3], "unsafe", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+    BOOST_REQUIRE(allowed);
+}
+
+BOOST_FIXTURE_TEST_CASE(create_allows_threshold_accumulator_with_one_cosigner_key, BasicTestingSetup)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    auto* spk_man = wallet.GetOrCreateLegacyScriptPubKeyMan();
+    BOOST_REQUIRE(spk_man);
+
+    CDilithiumKey mine, other_a, other_b;
+    mine.MakeNewKey();
+    other_a.MakeNewKey();
+    other_b.MakeNewKey();
+    BOOST_REQUIRE(mine.IsValid() && other_a.IsValid() && other_b.IsValid());
+
+    {
+        LOCK2(wallet.cs_wallet, spk_man->cs_KeyStore);
+        BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(mine, CPubKey()));
+
+        const CScript leaf_script = GetScriptForDilithiumThreshold(
+            2, {mine.GetPubKey(), other_a.GetPubKey(), other_b.GetPubKey()});
+        const std::vector<P2MRTreeLeaf> leaves{
+            {0, TAPROOT_LEAF_TAPSCRIPT, {leaf_script.begin(), leaf_script.end()}}};
+
+        auto created = CreateP2MR(wallet, leaves, "shared-multisig");
+        BOOST_REQUIRE(created);
+    }
+
+    CDilithiumKey outsider_a, outsider_b;
+    outsider_a.MakeNewKey();
+    outsider_b.MakeNewKey();
+    const CScript outsider_script = GetScriptForDilithiumThreshold(
+        2, {outsider_a.GetPubKey(), outsider_b.GetPubKey()});
+    const std::vector<P2MRTreeLeaf> outsider_leaves{
+        {0, TAPROOT_LEAF_TAPSCRIPT, {outsider_script.begin(), outsider_script.end()}}};
+    LOCK(wallet.cs_wallet);
+    auto rejected = CreateP2MR(wallet, outsider_leaves, "not-ours");
+    BOOST_CHECK(!rejected);
+}
+
 BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);
     LOCK(wallet->cs_wallet);
     const auto leaves = MakeOpTrueTree();
 
-    auto first = CreateP2MR(*wallet, leaves, "first");
+    auto first = CreateP2MR(*wallet, leaves, "first", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
     BOOST_REQUIRE(first);
-    auto second = CreateP2MR(*wallet, leaves, "second");
+    auto second = CreateP2MR(*wallet, leaves, "second", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
     BOOST_REQUIRE(second);
 
     BOOST_CHECK_EQUAL(second->id, first->id);
@@ -227,7 +288,7 @@ BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTest
 
     BOOST_CHECK_EQUAL(wallet->IsMine(tracked_script), ISMINE_NO);
 
-    auto created = CreateP2MR(*wallet, leaves, "tracked");
+    auto created = CreateP2MR(*wallet, leaves, "tracked", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
     BOOST_REQUIRE(created);
     BOOST_CHECK_EQUAL(HexStr(created->script_pub_key), HexStr(tracked_script));
     BOOST_CHECK_EQUAL(wallet->IsMine(created->script_pub_key), ISMINE_SPENDABLE);
@@ -264,7 +325,7 @@ BOOST_FIXTURE_TEST_CASE(wallet_is_mine_tracks_unowned_p2mr_metadata_as_watchonly
     const auto leaves = MakeXOnlyChecksigTree(XOnlyPubKey{external_key.GetPubKey()});
 
     LOCK(wallet->cs_wallet);
-    auto created = CreateP2MR(*wallet, leaves, "external");
+    auto created = CreateP2MR(*wallet, leaves, "external", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
     BOOST_REQUIRE(created);
 
     BOOST_CHECK(IsTrackedP2MRScript(*wallet, created->script_pub_key));
@@ -282,7 +343,7 @@ BOOST_FIXTURE_TEST_CASE(tracked_balance_deduplicates_legacy_duplicate_metadata, 
     LOCK(wallet->cs_wallet);
     const auto leaves = MakeOpTrueTree();
 
-    auto created = CreateP2MR(*wallet, leaves, "original");
+    auto created = CreateP2MR(*wallet, leaves, "original", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
     BOOST_REQUIRE(created);
 
     UniValue duplicate_meta(UniValue::VOBJ);
@@ -326,7 +387,7 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_aggregates_inputs_and_reports_effectiv
     LOCK(wallet->cs_wallet);
     const auto leaves = MakeOpTrueTree();
 
-    auto created = CreateP2MR(*wallet, leaves, "aggregate");
+    auto created = CreateP2MR(*wallet, leaves, "aggregate", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
     BOOST_REQUIRE(created);
 
     const CBlockIndex* tip = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip());
@@ -712,7 +773,7 @@ BOOST_FIXTURE_TEST_CASE(build_signing_provider_exports_descriptor_xonly_p2mr_lea
     FlatSigningProvider provider;
     {
         LOCK(wallet.cs_wallet);
-        auto created_res = CreateP2MR(wallet, leaves, "descriptor-xonly");
+        auto created_res = CreateP2MR(wallet, leaves, "descriptor-xonly", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(created_res);
         created = std::move(*created_res);
         BOOST_CHECK_EQUAL(wallet.IsMine(created.script_pub_key), ISMINE_SPENDABLE);

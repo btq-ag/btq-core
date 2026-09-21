@@ -112,7 +112,7 @@ class WalletBip360SendPathsTest(BTQTestFramework):
             "script": "51",
         }]
 
-        created = receiver.getnewp2mraddress(tree, "plain-wallet-send")
+        created = receiver.getnewp2mraddress(tree, "plain-wallet-send", True)
         assert created["address"].startswith("qcrt1z")
         assert created["scriptPubKey"].startswith("5220")
         assert_equal(receiver.getp2mrinfo(created["p2mr_id"])["address"], created["address"])
@@ -133,8 +133,8 @@ class WalletBip360SendPathsTest(BTQTestFramework):
         self.generate(node, 1)
         assert_equal(receiver.gettransaction(spent_txid, True)["confirmations"], 1)
 
-        funded_p2mr = wallet.sendtop2mr(tree, Decimal("0.25"), "sender-owned-p2mr")
-        duplicate = wallet.getnewp2mraddress(tree, "sender-owned-p2mr-duplicate")
+        funded_p2mr = wallet.sendtop2mr(tree, Decimal("0.25"), "sender-owned-p2mr", allow_trivial_leaves=True)
+        duplicate = wallet.getnewp2mraddress(tree, "sender-owned-p2mr-duplicate", True)
         assert_equal(funded_p2mr["address"], duplicate["address"])
         assert_equal(funded_p2mr["p2mr_id"], duplicate["p2mr_id"])
 
