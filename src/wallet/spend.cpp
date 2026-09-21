@@ -761,6 +761,17 @@ util::Result<SelectionResult> ChooseSelectionResult(interfaces::Chain& chain, co
         results.push_back(*knapsack_result);
     } else append_error(knapsack_result);
 
+    // Dilithium inputs are thousands of bytes. Grind for fewer inputs once
+    // the effective feerate is 2× the long-term feerate (Core uses 3×).
+    if (coin_selection_params.m_effective_feerate > CFeeRate{2 * coin_selection_params.m_long_term_feerate.GetFeePerK()}) {
+        if (auto cg_result{CoinGrinder(groups.positive_group, nTargetValue, coin_selection_params.m_min_change_target, max_inputs_weight)}) {
+            cg_result->ComputeAndSetWaste(coin_selection_params.min_viable_change, coin_selection_params.m_cost_of_change, coin_selection_params.m_change_fee);
+            results.push_back(*cg_result);
+        } else {
+            append_error(cg_result);
+        }
+    }
+
     if (auto srd_result{SelectCoinsSRD(groups.positive_group, nTargetValue, coin_selection_params.m_change_fee, coin_selection_params.rng_fast, max_inputs_weight)}) {
         results.push_back(*srd_result);
     } else append_error(srd_result);

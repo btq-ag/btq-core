@@ -311,7 +311,8 @@ enum class SelectionAlgorithm : uint8_t
     BNB = 0,
     KNAPSACK = 1,
     SRD = 2,
-    MANUAL = 3,
+    CG = 3,
+    MANUAL = 4,
 };
 
 std::string GetAlgorithmName(const SelectionAlgorithm algo);
@@ -333,6 +334,8 @@ private:
     int m_weight{0};
     /** How much individual inputs overestimated the bump fees for the shared ancestry */
     CAmount bump_fee_group_discount{0};
+    bool m_algo_completed{true};
+    size_t m_selections_evaluated{0};
 
     template<typename T>
     void InsertInputs(const T& inputs)
@@ -425,10 +428,18 @@ public:
     SelectionAlgorithm GetAlgo() const { return m_algo; }
 
     int GetWeight() const { return m_weight; }
+
+    void SetAlgoCompleted(bool algo_completed) { m_algo_completed = algo_completed; }
+    bool GetAlgoCompleted() const { return m_algo_completed; }
+    void SetSelectionsEvaluated(size_t attempts) { m_selections_evaluated = attempts; }
+    size_t GetSelectionsEvaluated() const { return m_selections_evaluated; }
 };
 
 util::Result<SelectionResult> SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const CAmount& cost_of_change,
                                              int max_weight);
+
+/** Minimum-weight input set that still funds the payment plus change. */
+util::Result<SelectionResult> CoinGrinder(std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, CAmount change_target, int max_weight);
 
 /** Select coins by Single Random Draw. OutputGroups are selected randomly from the eligible
  * outputs until the target is satisfied
