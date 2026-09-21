@@ -19,7 +19,9 @@ upstream review intuition both assume the Core column.
 | `MAX_BLOCK_WEIGHT` | 4,000,000 | **8,000,000** | `src/consensus/consensus.h` |
 | `MAX_BLOCK_SIGOPS_COST` | 80,000 | 80,000 (unchanged) | `src/consensus/consensus.h` |
 | `MAX_STANDARD_TX_WEIGHT` | 400,000 | 400,000 (unchanged) | `src/policy/policy.h` |
-| `MAX_PACKAGE_WEIGHT` | 404,000 | **40,000,000** | `src/policy/packages.h` |
+| `MAX_PACKAGE_WEIGHT` | 404,000 | **7,584,000** (one default template) | `src/policy/packages.h` |
+| `DEFAULT_ANCESTOR_SIZE_LIMIT_KVB` | 101 | **474** (one default template at WSF=16) | `src/policy/policy.h` |
+| `DEFAULT_DESCENDANT_SIZE_LIMIT_KVB` | 101 | **474** | `src/policy/policy.h` |
 | `DEFAULT_MAX_MEMPOOL_SIZE_MB` | 300 | **2000** | `src/kernel/mempool_options.h` |
 | `DILITHIUM_SIGOP_COST` | — | **50** (new) | `src/script/script.h` |
 
