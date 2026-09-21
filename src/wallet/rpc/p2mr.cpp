@@ -129,10 +129,11 @@ RPCHelpMan sendtop2mr()
             auto funded = FundP2MR(*pwallet, leaves, amount, label, subtract_fee, coin_control, allow_trivial);
             if (!funded) {
                 const std::string msg = util::ErrorString(funded).original;
-                if (msg.find("cannot safely spend") != std::string::npos) {
-                    throw JSONRPCError(RPC_WALLET_ERROR, msg);
+                const std::string lower = ToLower(msg);
+                if (lower.find("insufficient") != std::string::npos || lower.find("no spendable") != std::string::npos) {
+                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, msg);
                 }
-                throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, msg);
+                throw JSONRPCError(RPC_WALLET_ERROR, msg);
             }
 
             UniValue out(UniValue::VOBJ);

@@ -46,8 +46,10 @@ class P2MRRPCTest(BTQTestFramework):
             [{"depth": 0, "leaf_version": 0xc2, "script": "51"}],
         ]
         for rejected_tree in rejected_trees:
-            assert_raises_rpc_error(-4, "cannot safely spend", wallet.getnewp2mraddress, rejected_tree, "rpc-p2mr")
-            assert_raises_rpc_error(-4, "cannot safely spend", wallet.sendtop2mr, rejected_tree, Decimal("1.0"), "rpc-p2mr-fund")
+            assert_raises_rpc_error(-4, "does not participate", wallet.getnewp2mraddress, rejected_tree, "rpc-p2mr")
+            assert_raises_rpc_error(-4, "does not participate", wallet.sendtop2mr, rejected_tree, Decimal("1.0"), "rpc-p2mr-fund")
+
+        assert_raises_rpc_error(-6, "Insufficient funds", wallet.sendtop2mr, tree, Decimal("1000000"), "rpc-p2mr-broke", allow_trivial_leaves=True)
 
         self.log.info("Create, persist, and list a P2MR address")
         created = wallet.getnewp2mraddress(tree, "rpc-p2mr", True)
@@ -112,7 +114,7 @@ class P2MRRPCTest(BTQTestFramework):
             "leaf_version": LEAF_VERSION_TAPSCRIPT,
             "script": "7551",  # OP_DROP OP_TRUE
         }]
-        assert_raises_rpc_error(-4, "cannot safely spend", wallet.sendtop2mr, needs_stack_tree, Decimal("0.1"), "rpc-p2mr-needs-stack")
+        assert_raises_rpc_error(-4, "does not participate", wallet.sendtop2mr, needs_stack_tree, Decimal("0.1"), "rpc-p2mr-needs-stack")
         needs_stack = wallet.sendtop2mr(needs_stack_tree, Decimal("0.1"), "rpc-p2mr-needs-stack", allow_trivial_leaves=True)
         self.generate(node, 1)
         needs_stack_spend = wallet.createp2mrspend(needs_stack["p2mr_id"], destination, Decimal("0.05"))
