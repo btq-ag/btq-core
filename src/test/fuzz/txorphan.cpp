@@ -8,6 +8,7 @@
 #include <node/eviction.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
+#include <random.h>
 #include <script/script.h>
 #include <sync.h>
 #include <test/fuzz/FuzzedDataProvider.h>
@@ -85,7 +86,8 @@ FUZZ_TARGET(txorphan, .init = initialize_orphanage)
             CallOneOf(
                 fuzzed_data_provider,
                 [&] {
-                    orphanage.AddChildrenToWorkSet(*tx);
+                    FastRandomContext rng{uint256{1}};
+                    orphanage.AddChildrenToWorkSet(*tx, rng);
                 },
                 [&] {
                     {
@@ -129,11 +131,13 @@ FUZZ_TARGET(txorphan, .init = initialize_orphanage)
                     orphanage.EraseForPeer(peer_id);
                 },
                 [&] {
-                    // test mocktime and expiry
                     SetMockTime(ConsumeTime(fuzzed_data_provider));
-                    auto limit = fuzzed_data_provider.ConsumeIntegral<unsigned int>();
-                    orphanage.LimitOrphans(limit);
-                    Assert(orphanage.Size() <= limit);
+                    FastRandomContext rng{uint256{1}};
+                    orphanage.LimitOrphans(rng);
+                    orphanage.SanityCheck();
+                },
+                [&] {
+                    orphanage.AddAnnouncer(tx->GetWitnessHash(), peer_id);
                 });
         }
     }
