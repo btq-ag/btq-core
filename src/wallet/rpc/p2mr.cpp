@@ -3,8 +3,10 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <addresstype.h>
+#include <chain.h>
 #include <consensus/amount.h>
 #include <core_io.h>
+#include <interfaces/chain.h>
 #include <key_io.h>
 #include <primitives/transaction.h>
 #include <rpc/server.h>
@@ -18,6 +20,8 @@
 #include <wallet/p2mr.h>
 #include <wallet/rpc/util.h>
 #include <wallet/wallet.h>
+
+using interfaces::FoundBlock;
 
 namespace wallet {
 
@@ -434,6 +438,18 @@ RPCHelpMan importp2mr()
                     if (!time_begin || ts < *time_begin) time_begin = ts;
                 }
             }
+            const int64_t rescan_from = time_begin.value_or(0);
+            {
+                auto& chain = pwallet->chain();
+                if (chain.havePruned()) {
+                    int height{0};
+                    const bool found{chain.findFirstBlockWithTimeAndHeight(rescan_from - TIMESTAMP_WINDOW, 0, FoundBlock().height(height))};
+                    const uint256 tip_hash{WITH_LOCK(pwallet->cs_wallet, return pwallet->GetLastBlockHash())};
+                    if (found && !chain.hasBlocks(tip_hash, height)) {
+                        throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Pruned blocks from height %d required to import keys. Use RPC call getblockchaininfo to determine your pruned height.", height));
+                    }
+                }
+            }
             {
                 LOCK(pwallet->cs_wallet);
                 for (const UniValue& meta : metas) {
@@ -447,7 +463,7 @@ RPCHelpMan importp2mr()
                     out.push_back(std::move(row));
                 }
             }
-            RescanWallet(*pwallet, reserver, time_begin.value_or(0));
+            RescanWallet(*pwallet, reserver, rescan_from);
             pwallet->MarkDirty();
             return out;
         },
