@@ -49,6 +49,8 @@ class P2MRRPCTest(BTQTestFramework):
             assert_raises_rpc_error(-4, "does not participate", wallet.getnewp2mraddress, rejected_tree, "rpc-p2mr")
             assert_raises_rpc_error(-4, "does not participate", wallet.sendtop2mr, rejected_tree, Decimal("1.0"), "rpc-p2mr-fund")
 
+        assert_raises_rpc_error(-6, "Insufficient funds", wallet.sendtop2mr, tree, Decimal("1000000"), "rpc-p2mr-broke", allow_trivial_leaves=True)
+
         self.log.info("Create, persist, and list a P2MR address")
         created = wallet.getnewp2mraddress(tree, "rpc-p2mr", True)
         assert created["address"]
