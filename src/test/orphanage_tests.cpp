@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <set>
 
 #include <boost/test/unit_test.hpp>
 
@@ -205,6 +206,32 @@ BOOST_AUTO_TEST_CASE(tx_provider_displaces_inv_only_announcer)
     BOOST_CHECK_EQUAL(orphanage.CountAnnouncers(tx->GetWitnessHash()), MAX_ANNOUNCERS_PER_ORPHAN);
     BOOST_CHECK(orphanage.HaveTxFromPeer(tx->GetWitnessHash(), 0));
     orphanage.SanityCheck();
+}
+
+BOOST_AUTO_TEST_CASE(limit_orphans_randomizes_equal_usage_peers)
+{
+    CKey key;
+    MakeNewKeyWithFastRandomContext(key);
+    const auto a = MakeOrphanTx(key, uint256{1});
+    const auto b = MakeOrphanTx(key, uint256{2});
+
+    TxOrphanageTest probe(/*max_global_usage=*/100000, /*max_latency_score=*/3000, /*reserved_usage_per_peer=*/100000);
+    BOOST_CHECK(probe.AddTx(a, /*peer=*/0));
+    const size_t one = probe.TotalOrphanUsage();
+    BOOST_REQUIRE(one > 0);
+
+    std::set<uint256> survivors;
+    for (int seed = 1; seed <= 32; ++seed) {
+        TxOrphanageTest orphanage(/*max_global_usage=*/one + 1, /*max_latency_score=*/3000, /*reserved_usage_per_peer=*/one + 1);
+        BOOST_CHECK(orphanage.AddTx(a, /*peer=*/0));
+        BOOST_CHECK(orphanage.AddTx(b, /*peer=*/1));
+        FastRandomContext rng{uint256{static_cast<uint64_t>(seed)}};
+        orphanage.LimitOrphans(rng);
+        BOOST_CHECK_EQUAL(orphanage.CountOrphans(), 1U);
+        if (orphanage.HaveTx(GenTxid::Wtxid(a->GetWitnessHash()))) survivors.insert(a->GetWitnessHash());
+        if (orphanage.HaveTx(GenTxid::Wtxid(b->GetWitnessHash()))) survivors.insert(b->GetWitnessHash());
+    }
+    BOOST_CHECK_EQUAL(survivors.size(), 2U);
 }
 
 BOOST_AUTO_TEST_CASE(empty_peer_accounting_does_not_erase_shared)

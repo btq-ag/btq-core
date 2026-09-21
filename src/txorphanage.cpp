@@ -273,12 +273,19 @@ void TxOrphanage::LimitOrphans(FastRandomContext& rng)
 
         NodeId worst = -1;
         unsigned int worst_metric = 0;
+        std::vector<NodeId> worst_peers;
         for (const auto& [peer, info] : m_peer_orphanage_info) {
             const unsigned int metric = trim_latency ? info.m_total_latency : info.m_total_usage;
             if (metric > worst_metric) {
-                worst = peer;
+                worst_peers.clear();
+                worst_peers.push_back(peer);
                 worst_metric = metric;
+            } else if (metric == worst_metric && metric > 0) {
+                worst_peers.push_back(peer);
             }
+        }
+        if (!worst_peers.empty() && worst_metric > 0) {
+            worst = worst_peers.at(rng.randrange(worst_peers.size()));
         }
         if (worst < 0 || worst_metric == 0) {
             // Peer accounting is empty or all zeros, but NeedsTrim is still
@@ -307,21 +314,21 @@ void TxOrphanage::LimitOrphans(FastRandomContext& rng)
             continue;
         }
 
-        const uint256* unique_wtxid = nullptr;
-        const uint256* shared_wtxid = nullptr;
+        std::vector<const uint256*> unique_of_worst;
+        std::vector<const uint256*> shared_of_worst;
         for (const auto& [wtxid, orphan] : m_orphans) {
             if (!orphan.announcers.count(worst)) continue;
             if (orphan.announcers.size() == 1) {
-                unique_wtxid = &wtxid;
-                break;
+                unique_of_worst.push_back(&wtxid);
+            } else {
+                shared_of_worst.push_back(&wtxid);
             }
-            if (!shared_wtxid) shared_wtxid = &wtxid;
         }
-        if (unique_wtxid) {
-            EraseTxNoLock(*unique_wtxid);
+        if (!unique_of_worst.empty()) {
+            EraseTxNoLock(*unique_of_worst.at(rng.randrange(unique_of_worst.size())));
             ++nEvicted;
-        } else if (shared_wtxid) {
-            RemoveAnnouncerKeepTx(*shared_wtxid, worst);
+        } else if (!shared_of_worst.empty()) {
+            RemoveAnnouncerKeepTx(*shared_of_worst.at(rng.randrange(shared_of_worst.size())), worst);
             ++nEvicted;
         } else {
             break;
