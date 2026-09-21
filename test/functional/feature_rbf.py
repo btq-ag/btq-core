@@ -33,9 +33,11 @@ class ReplaceByFeeTest(BTQTestFramework):
                 "-limitancestorsize=101",
                 "-limitdescendantcount=200",
                 "-limitdescendantsize=101",
+                "-mempoolfullrbf=0",
             ],
-            # second node has default mempool parameters
+            # second node keeps opt-in RBF so the signaling tests stay meaningful
             [
+                "-mempoolfullrbf=0",
             ],
         ]
         self.supports_cli = False
@@ -702,7 +704,7 @@ class ReplaceByFeeTest(BTQTestFramework):
     def test_fullrbf(self):
 
         confirmed_utxo = self.make_utxo(self.nodes[0], int(2 * COIN))
-        self.restart_node(0, extra_args=["-mempoolfullrbf=1"])
+        self.restart_node(0, extra_args=[])
         assert self.nodes[0].getmempoolinfo()["fullrbf"]
 
         # Create an explicitly opt-out transaction
