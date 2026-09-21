@@ -417,6 +417,7 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, Walle
         const auto p2mr_entries = ListP2MR(*wallet);
         BOOST_REQUIRE_EQUAL(p2mr_entries.size(), 1U);
         BOOST_CHECK_EQUAL(p2mr_entries[0].label, "dilithium backup");
+        BOOST_CHECK_EQUAL(p2mr_entries[0].created_at, key_time);
     }
 }
 

@@ -172,7 +172,8 @@ util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
  */
 util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
                                                    const CDilithiumKey& key,
-                                                   const std::string& label);
+                                                   const std::string& label,
+                                                   std::optional<int64_t> created_at = std::nullopt);
 
 /** Create + persist + fund a P2MR destination in one call. */
 util::Result<P2MRFunded> FundP2MR(CWallet& wallet,

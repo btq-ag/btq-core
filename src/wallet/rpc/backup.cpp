@@ -737,7 +737,7 @@ RPCHelpMan importwallet()
                 LOCK(spk_man->cs_KeyStore);
                 spk_man->mapKeyMetadata[keyid].nCreateTime = time;
             }
-            auto created = ImportDilithiumKeyAsP2MR(*pwallet, key, has_label ? label : "");
+            auto created = ImportDilithiumKeyAsP2MR(*pwallet, key, has_label ? label : "", time);
             if (!created) {
                 pwallet->WalletLogPrintf("Error importing Dilithium key: %s\n", util::ErrorString(created).original);
                 fGood = false;

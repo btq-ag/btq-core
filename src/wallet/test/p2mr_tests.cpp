@@ -215,7 +215,7 @@ BOOST_FIXTURE_TEST_CASE(create_allows_only_wallet_spendable_dilithium_leaves_by_
     for (const auto& leaves : rejected_trees) {
         auto rejected = CreateP2MR(*wallet, leaves, "unsafe");
         BOOST_CHECK(!rejected);
-        BOOST_CHECK(util::ErrorString(rejected).original.find("cannot safely spend") != std::string::npos);
+        BOOST_CHECK(util::ErrorString(rejected).original.find("does not participate") != std::string::npos);
     }
 
     auto allowed = CreateP2MR(*wallet, rejected_trees[3], "unsafe", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
@@ -300,11 +300,66 @@ BOOST_FIXTURE_TEST_CASE(restore_duplicate_replaces_creation_time, BasicTestingSe
     BOOST_REQUIRE(entry);
     BOOST_CHECK_EQUAL(entry->created_at, 0);
 
+    UniValue omit_meta(UniValue::VOBJ);
+    omit_meta.pushKV("tree", P2MRTreeToUniValue(leaves));
+    omit_meta.pushKV("label", "omitted-birth");
+    auto omitted = RestoreP2MR(*wallet, omit_meta);
+    BOOST_REQUIRE(omitted);
+    auto omitted_entry = GetP2MR(*wallet, omitted->id);
+    BOOST_REQUIRE(omitted_entry);
+    BOOST_CHECK_EQUAL(omitted_entry->created_at, 0);
+
     UniValue invalid_meta(UniValue::VOBJ);
     invalid_meta.pushKV("tree", P2MRTreeToUniValue(leaves));
     invalid_meta.pushKV("merkle_root", int64_t{1});
     auto invalid = ValidateP2MRRestore(invalid_meta);
     BOOST_CHECK(!invalid);
+}
+
+BOOST_FIXTURE_TEST_CASE(restore_omitted_created_at_on_new_record_is_zero, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    UniValue meta(UniValue::VOBJ);
+    meta.pushKV("tree", P2MRTreeToUniValue(MakeOpTrueTree()));
+    auto restored = RestoreP2MR(*wallet, meta);
+    BOOST_REQUIRE(restored);
+    auto entry = GetP2MR(*wallet, restored->id);
+    BOOST_REQUIRE(entry);
+    BOOST_CHECK_EQUAL(entry->created_at, 0);
+}
+
+BOOST_FIXTURE_TEST_CASE(restore_duplicate_later_created_at_does_not_move_forward, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const auto leaves = MakeOpTrueTree();
+
+    UniValue first(UniValue::VOBJ);
+    first.pushKV("tree", P2MRTreeToUniValue(leaves));
+    first.pushKV("created_at", int64_t{1'000});
+    BOOST_REQUIRE(RestoreP2MR(*wallet, first));
+    BOOST_REQUIRE_EQUAL(ListP2MR(*wallet)[0].created_at, 1'000);
+
+    UniValue later(UniValue::VOBJ);
+    later.pushKV("tree", P2MRTreeToUniValue(leaves));
+    later.pushKV("created_at", int64_t{9'000});
+    BOOST_REQUIRE(RestoreP2MR(*wallet, later));
+    BOOST_CHECK_EQUAL(ListP2MR(*wallet)[0].created_at, 1'000);
+
+    UniValue unknown(UniValue::VOBJ);
+    unknown.pushKV("tree", P2MRTreeToUniValue(leaves));
+    unknown.pushKV("created_at", int64_t{0});
+    BOOST_REQUIRE(RestoreP2MR(*wallet, unknown));
+    BOOST_CHECK_EQUAL(ListP2MR(*wallet)[0].created_at, 0);
+}
+
+BOOST_FIXTURE_TEST_CASE(restore_rejects_negative_created_at, BasicTestingSetup)
+{
+    UniValue meta(UniValue::VOBJ);
+    meta.pushKV("tree", P2MRTreeToUniValue(MakeOpTrueTree()));
+    meta.pushKV("created_at", int64_t{-1});
+    BOOST_CHECK(!ValidateP2MRRestore(meta));
 }
 
 BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTestingSetup)

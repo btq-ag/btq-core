@@ -593,10 +593,20 @@ CAmount GetTrackedP2MRBalance(const CWallet& wallet, int min_depth)
 
 namespace {
 
+// 0 means unknown birth (rescan from genesis) and always wins. Otherwise
+// keep the earlier time so a later dump cannot shrink the next import's
+// rescan window.
+int64_t MergeP2MRCreatedAt(int64_t stored, int64_t incoming)
+{
+    if (stored <= 0 || incoming <= 0) return 0;
+    return std::min(stored, incoming);
+}
+
 util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
                                                         const CDilithiumPubKey& pubkey,
                                                         const std::string& label,
-                                                        bool add_to_address_book = true)
+                                                        bool add_to_address_book = true,
+                                                        std::optional<int64_t> created_at = std::nullopt)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!pubkey.IsValid()) {
@@ -609,7 +619,7 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
         /*leaf_version=*/TAPROOT_LEAF_TAPSCRIPT,
         /*script=*/std::vector<unsigned char>{leaf_script.begin(), leaf_script.end()},
     });
-    return CreateP2MR(wallet, leaves, label, add_to_address_book);
+    return CreateP2MR(wallet, leaves, label, add_to_address_book, /*allow_trivial_leaves=*/false, created_at);
 }
 
 bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
@@ -675,7 +685,8 @@ util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
 
 util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
                                                    const CDilithiumKey& key,
-                                                   const std::string& label)
+                                                   const std::string& label,
+                                                   std::optional<int64_t> created_at)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!key.IsValid()) {
@@ -684,7 +695,7 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
     if (!StoreDilithiumKeyInWallet(wallet, key)) {
         return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
     }
-    return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), label);
+    return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), label, /*add_to_address_book=*/true, created_at);
 }
 
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
@@ -702,7 +713,7 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
             // participate", not "we can spend alone".
             if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT || !IsDilithiumLeafParticipating(wallet, script)) {
                 return util::Error{Untranslated(
-                    "P2MR tree contains a leaf the wallet cannot safely spend; pass allow_trivial_leaves if this is intentional")};
+                    "P2MR tree contains a leaf the wallet does not participate in; pass allow_trivial_leaves if this is intentional")};
             }
         }
     }
@@ -725,10 +736,12 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
             out.merkle_root = entry.merkle_root;
             out.dest = entry.dest;
             const bool update_label = add_to_address_book && !label.empty() && label != entry.label;
-            const bool update_created_at = created_at.has_value() && *created_at != entry.created_at;
+            const int64_t restored_created_at = created_at.has_value()
+                                                   ? MergeP2MRCreatedAt(entry.created_at, *created_at)
+                                                   : entry.created_at;
+            const bool update_created_at = restored_created_at != entry.created_at;
             if (update_label || update_created_at) {
                 const std::string restored_label = update_label ? label : entry.label;
-                const int64_t restored_created_at = created_at.value_or(entry.created_at > 0 ? entry.created_at : ts);
                 if (update_label &&
                     !wallet.SetAddressBook(out.dest, restored_label, AddressPurpose::RECEIVE)) {
                     return util::Error{Untranslated("failed to set P2MR address book entry")};
@@ -807,10 +820,16 @@ util::Result<ValidatedP2MRRestore> ParseP2MRRestore(const UniValue& meta)
     if (meta.exists("created_at")) {
         if (!meta["created_at"].isNum()) return util::Error{Untranslated("P2MR created_at must be a number")};
         try {
-            validated.created_at = meta["created_at"].getInt<int64_t>();
+            const int64_t ts = meta["created_at"].getInt<int64_t>();
+            if (ts < 0) return util::Error{Untranslated("P2MR created_at is out of range")};
+            validated.created_at = ts;
         } catch (const std::exception&) {
             return util::Error{Untranslated("P2MR created_at is out of range")};
         }
+    } else {
+        // Missing birth time means unknown. Persist 0 so the following
+        // rescan starts at genesis instead of TIMESTAMP_WINDOW before now.
+        validated.created_at = 0;
     }
     return validated;
 }
