@@ -88,7 +88,7 @@ BOOST_AUTO_TEST_CASE(BlockPolicyEstimates)
     };
 
     // Medium decay is 0.99952. 4 fee txs per block keeps the count well above
-    // the 0.1 / (1-decay) ≈ 208 threshold after a couple of buckets combine.
+    // the 0.01 / (1-decay) ≈ 21 threshold after a couple of buckets combine.
     while (blocknum < kTrainBlocks) {
         for (int j = 0; j < kFeeLevels; j++) { // For each fee
             for (int k = 0; k < 4; k++) { // add 4 fee txs
@@ -125,11 +125,14 @@ BOOST_AUTO_TEST_CASE(BlockPolicyEstimates)
         if (i > 2) { // Fee estimates should be monotonically decreasing
             BOOST_CHECK(origFeeEst[i-1] <= origFeeEst[i-2]);
         }
-        // Scale 20 buckets targets 1-20 together, so the old
-        // "estimateFee(2) == 9*baseRate" mapping does not apply. Just
-        // require a real estimate at the medium-scale steps.
-        if (target % kMedScale == 0) {
-            BOOST_CHECK(origFeeEst[i-1] > 0);
+        // Scale 20 buckets targets 1-20 together. After 2000 blocks the 80%
+        // inclusion fee (8*baseRate) still confirms inside one medium period
+        // and passes the 95% check, so the estimate sits in the 8-10*baseRate
+        // band. 10*baseRate is every block but estimateFee(1) is hardcoded
+        // to fail.
+        if (target == kMedScale) {
+            BOOST_CHECK(origFeeEst[i-1] > 8 * baseRate.GetFeePerK() - deltaFee);
+            BOOST_CHECK(origFeeEst[i-1] < 10 * baseRate.GetFeePerK() + deltaFee);
         }
     }
     // Fill out rest of the original estimates (medium horizon max is 480)

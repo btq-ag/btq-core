@@ -711,10 +711,25 @@ class WalletTest(BTQTestFramework):
 
         self.log.info("Test send* RPCs with verbose=True")
         address = self.nodes[0].getnewaddress("test")
+        # Short-horizon half-life is ~180 one-minute blocks, so this test's
+        # mining can produce an estimate (Core's 18-block half-life did not).
+        estimate = self.nodes[2].estimatesmartfee(60)
+        estimate_reasons = {
+            "Half Target 60% Threshold",
+            "Target 85% Threshold",
+            "Double Target 95% Threshold",
+            "Conservative Double Target longer horizon",
+        }
         txid_feeReason_one = self.nodes[2].sendtoaddress(address=address, amount=Decimal('0.5'), verbose=True)
-        assert_equal(txid_feeReason_one["fee_reason"], "Fallback fee")
+        if "feerate" in estimate:
+            assert txid_feeReason_one["fee_reason"] in estimate_reasons, txid_feeReason_one["fee_reason"]
+        else:
+            assert_equal(txid_feeReason_one["fee_reason"], "Fallback fee")
         txid_feeReason_two = self.nodes[2].sendmany(dummy='', amounts={address: Decimal('0.5')}, verbose=True)
-        assert_equal(txid_feeReason_two["fee_reason"], "Fallback fee")
+        if "feerate" in estimate:
+            assert txid_feeReason_two["fee_reason"] in estimate_reasons, txid_feeReason_two["fee_reason"]
+        else:
+            assert_equal(txid_feeReason_two["fee_reason"], "Fallback fee")
         self.log.info("Test send* RPCs with verbose=False")
         txid_feeReason_three = self.nodes[2].sendtoaddress(address=address, amount=Decimal('0.5'), verbose=False)
         assert_equal(self.nodes[2].gettransaction(txid_feeReason_three)['txid'], txid_feeReason_three)
