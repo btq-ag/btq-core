@@ -1710,6 +1710,96 @@ static std::vector<unsigned int> AllConsensusFlags()
 /** Precomputed list of all valid combinations of consensus-relevant script validation flags. */
 static const std::vector<unsigned int> ALL_CONSENSUS_FLAGS = AllConsensusFlags();
 
+// Dilithium reclaimed BIP342 OP_SUCCESS 0xbb–0xbf. Skip cases whose success or failure
+// executed scripts contain those opcodes (GetOp walk), plus known size-limit comment prefixes.
+static bool ScriptHasReclaimedDilithiumOpcode(const CScript& script)
+{
+    CScript::const_iterator pc = script.begin();
+    while (pc < script.end()) {
+        opcodetype opcode;
+        if (!script.GetOp(pc, opcode)) break;
+        if (opcode >= 0xbb && opcode <= 0xbf) return true;
+    }
+    return false;
+}
+
+static bool SideHasReclaimedDilithiumOpcode(const UniValue& test, const char* side)
+{
+    if (!test.exists(side)) return false;
+    const UniValue& obj = test[side];
+
+    const CScript scriptSig = ScriptFromHex(obj["scriptSig"].get_str());
+    if (ScriptHasReclaimedDilithiumOpcode(scriptSig)) return true;
+
+    const std::vector<CTxOut> prevouts = TxOutsFromJSON(test["prevouts"]);
+    const size_t idx = test["index"].getInt<int64_t>();
+    CScript scriptPubKey = prevouts[idx].scriptPubKey;
+    if (ScriptHasReclaimedDilithiumOpcode(scriptPubKey)) return true;
+
+    // Inner program for witness checks (redeem script when P2SH-wrapped).
+    CScript program = scriptPubKey;
+    if (scriptPubKey.IsPayToScriptHash()) {
+        CScript::const_iterator pc = scriptSig.begin();
+        std::vector<unsigned char> vData;
+        while (pc < scriptSig.end()) {
+            opcodetype opcode;
+            if (!scriptSig.GetOp(pc, opcode, vData)) break;
+        }
+        CScript redeem_script(vData.begin(), vData.end());
+        if (ScriptHasReclaimedDilithiumOpcode(redeem_script)) return true;
+        program = std::move(redeem_script);
+    }
+
+    std::vector<std::vector<unsigned char>> stack;
+    const UniValue& witness = obj["witness"];
+    if (witness.isArray()) {
+        for (size_t i = 0; i < witness.size(); ++i) {
+            stack.push_back(ParseHex(witness[i].get_str()));
+        }
+    }
+
+    int witversion;
+    std::vector<unsigned char> witprogram;
+    if (program.IsWitnessProgram(witversion, witprogram)) {
+        if (witversion == 1 && witprogram.size() == 32) {
+            // P2TR: strip annex when locating tapscript; key-path has no script to walk.
+            size_t n = stack.size();
+            if (n >= 2 && !stack.back().empty() && stack.back()[0] == ANNEX_TAG) {
+                --n;
+            }
+            if (n >= 2) {
+                const CScript tapscript(stack[n - 2].begin(), stack[n - 2].end());
+                if (ScriptHasReclaimedDilithiumOpcode(tapscript)) return true;
+            }
+        } else if (program.IsPayToWitnessScriptHash() || (witversion == 0 && witprogram.size() == 32)) {
+            // P2WSH: only the witness script (last stack item) is executed as a script.
+            if (!stack.empty()) {
+                const CScript witness_script(stack.back().begin(), stack.back().end());
+                if (ScriptHasReclaimedDilithiumOpcode(witness_script)) return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static bool IsDilithiumReclaimedOpSuccessCase(const UniValue& test)
+{
+    if (SideHasReclaimedDilithiumOpcode(test, "success")) return true;
+    if (SideHasReclaimedDilithiumOpcode(test, "failure")) return true;
+    // Remainder of the known 11-case taproot set: GetOp does not see 0xbb–0xbf inside the
+    // 520/521-byte pushes. These cases assume Bitcoin's 520-byte element limit (failure is 521);
+    // BTQ allows 15000 so the failure path succeeds.
+    if (test.exists("comment")) {
+        const std::string& comment = test["comment"].get_str();
+        if (comment.rfind("tapscript/inputmaxlimit", 0) == 0 ||
+            comment.rfind("tapscript/pushmaxlimit", 0) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void AssetTest(const UniValue& test)
 {
     BOOST_CHECK(test.isObject());
@@ -1813,6 +1903,14 @@ BOOST_AUTO_TEST_CASE(script_assets_test)
     BOOST_CHECK(tests.size() > 0);
 
     for (size_t i = 0; i < tests.size(); i++) {
+        if (IsDilithiumReclaimedOpSuccessCase(tests[i])) {
+            if (tests[i].exists("comment")) {
+                BOOST_TEST_MESSAGE("Skipping Dilithium-reclaimed OP_SUCCESS / size-limit case: " << tests[i]["comment"].get_str());
+            } else {
+                BOOST_TEST_MESSAGE("Skipping Dilithium-reclaimed OP_SUCCESS / size-limit case");
+            }
+            continue;
+        }
         AssetTest(tests[i]);
     }
     file.close();
