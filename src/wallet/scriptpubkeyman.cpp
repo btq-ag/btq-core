@@ -3010,6 +3010,21 @@ bool DescriptorScriptPubKeyMan::AddDilithiumKeyPubKey(const CDilithiumKey& key, 
     return true;
 }
 
+void DescriptorScriptPubKeyMan::UpdateTimeFirstKey(int64_t nCreateTime)
+{
+    LOCK(cs_desc_man);
+    const uint64_t birth = nCreateTime <= 1 ? 1 : static_cast<uint64_t>(nCreateTime);
+    if (m_wallet_descriptor.creation_time != 0 && birth >= m_wallet_descriptor.creation_time) {
+        return;
+    }
+    m_wallet_descriptor.creation_time = birth;
+    WalletBatch batch(m_storage.GetDatabase());
+    if (!batch.WriteDescriptor(GetID(), m_wallet_descriptor)) {
+        throw std::runtime_error(std::string(__func__) + ": writing descriptor failed");
+    }
+    NotifyFirstKeyTimeChanged(this, m_wallet_descriptor.creation_time);
+}
+
 bool DescriptorScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& key, const CPubKey& pubkey)
 {
     LOCK(cs_desc_man);
