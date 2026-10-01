@@ -63,12 +63,16 @@ static constexpr unsigned int DUST_RELAY_TX_FEE{3000};
 static constexpr unsigned int DEFAULT_MIN_RELAY_TX_FEE{1000};
 /** Default for -limitancestorcount, max number of in-mempool ancestors */
 static constexpr unsigned int DEFAULT_ANCESTOR_LIMIT{25};
-/** Default for -limitancestorsize, maximum kilobytes of tx + all in-mempool ancestors */
-static constexpr unsigned int DEFAULT_ANCESTOR_SIZE_LIMIT_KVB{2000}; // 2 MB
+/** Default for -limitancestorsize, maximum kilobytes of tx + all in-mempool ancestors.
+ *  474 kvB is the default BlockAssembler budget: DEFAULT_BLOCK_MAX_WEIGHT
+ *  (7.6 MW) minus the 4000 WU coinbase reserve, at WSF=16. 500 kvB is one
+ *  hard 8 MW block and would not fit a default template. */
+static constexpr unsigned int DEFAULT_ANCESTOR_SIZE_LIMIT_KVB{474};
 /** Default for -limitdescendantcount, max number of in-mempool descendants */
 static constexpr unsigned int DEFAULT_DESCENDANT_LIMIT{25};
-/** Default for -limitdescendantsize, maximum kilobytes of in-mempool descendants */
-static constexpr unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT_KVB{2000}; // 2 MB
+/** Default for -limitdescendantsize, maximum kilobytes of in-mempool descendants.
+ *  Matched to the ancestor limit: one default template. */
+static constexpr unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT_KVB{474};
 /** Default for -datacarrier */
 static const bool DEFAULT_ACCEPT_DATACARRIER = true;
 /**
