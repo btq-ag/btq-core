@@ -1251,7 +1251,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, const SyncTxS
             // loop though all outputs
             for (const CTxOut& txout: tx.vout) {
                 for (const auto& spk_man : GetScriptPubKeyMans(txout.scriptPubKey)) {
-                    for (auto &dest : spk_man->MarkUnusedAddresses(txout.scriptPubKey)) {
+                    auto destinations = spk_man->MarkUnusedAddresses(txout.scriptPubKey);
+                    // Marking a used key can derive more keys from an inactive HD
+                    // seed. Previously unknown scripts may now belong to us.
+                    m_ismine_cache.clear();
+                    for (auto &dest : destinations) {
                         // If internal flag is not defined try to infer it from the ScriptPubKeyMan
                         if (!dest.internal.has_value()) {
                             dest.internal = IsInternalScriptPubKeyMan(spk_man);

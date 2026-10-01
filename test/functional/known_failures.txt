@@ -50,12 +50,9 @@ wallet_bumpfee.py --descriptors                         # JSONRPCException: Insu
 wallet_bumpfee.py --legacy-wallet                       # JSONRPCException: Insufficient total fee 0.0000012, must be at least 0.000016...
 wallet_fundrawtransaction.py --descriptors              # AssertionError: not(132.89994590 == 87.89994590)
 wallet_fundrawtransaction.py --legacy-wallet            # AssertionError: not(132.89994580 == 87.89994580)
-wallet_hd.py --legacy-wallet                            # JSONRPCException: Invalid or non-wallet transaction id (-5)
-wallet_import_rescan.py --legacy-wallet                 # AssertionError: not(0 == 1)
 wallet_keypool.py --descriptors                         # AssertionError: not(0.00007853 == 0.00009706)
 wallet_keypool.py --legacy-wallet                       # AssertionError: not(0.00007853 == 0.00009706)
 wallet_miniscript.py --descriptors                      # AssertionError: [{'success': False, 'error': {'code': -5, 'message': "'nnnnnn...
-wallet_reorgsrestore.py                                 # JSONRPCException: bad-txns-inputs-missingorspent (-25)
 wallet_send.py --descriptors                            # AssertionError: not(5.00000000 == 50)
 wallet_send.py --legacy-wallet                          # AssertionError: not(5.00000000 == 50)
 wallet_taproot.py --descriptors                         # AssertionError: not(qcrt1pwccu4nkrxsc99kr77ngqvhmpmh5z6lfdkrqucqh0v8hnexpw5a3...
