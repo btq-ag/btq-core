@@ -1115,5 +1115,95 @@ BOOST_FIXTURE_TEST_CASE(wallet_sync_tx_invalid_state_test, TestingSetup)
                           HasReason("DB error adding transaction to wallet, write failed"));
 }
 
+// First script the descriptor has not generated yet. With m_keypool_size == 1
+// that is index 1; index 0 is already in the pool and already IsMine.
+static CScript ScriptPastKeypool(CWallet& wallet, OutputType type, bool internal)
+{
+    auto* spk_man = wallet.GetScriptPubKeyMan(type, internal);
+    BOOST_REQUIRE(spk_man);
+    auto* desc_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+    BOOST_REQUIRE(desc_man);
+    WalletDescriptor wd;
+    {
+        LOCK(desc_man->cs_desc_man);
+        wd = desc_man->GetWalletDescriptor();
+    }
+    // The next index is not generated yet. The descriptor cache has the parent
+    // xpub from the keypool top-up, so this derivation does not need the seed.
+    FlatSigningProvider out;
+    std::vector<CScript> scripts;
+    BOOST_REQUIRE(wd.descriptor->ExpandFromCache(wd.range_end, wd.cache, scripts, out));
+    BOOST_REQUIRE_EQUAL(scripts.size(), 1U);
+    return scripts[0];
+}
+
+// A script checked before its key exists must be recognised once the key is
+// derived. Caching that first ISMINE_NO hides the later payment.
+BOOST_AUTO_TEST_CASE(ismine_cache_tracks_keys_derived_after_a_miss)
+{
+    auto wallet = std::make_unique<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    LOCK(wallet->cs_wallet);
+    wallet->m_keypool_size = 1;
+    wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+    wallet->SetupDescriptorScriptPubKeyMans();
+
+    // getnewaddress. The second call is what tops the keypool up to this script.
+    {
+        const CScript future = ScriptPastKeypool(*wallet, OutputType::BECH32M, /*internal=*/false);
+        BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_NO);
+
+        const auto first = wallet->GetNewDestination(OutputType::BECH32M, "");
+        BOOST_REQUIRE(first);
+        BOOST_CHECK(GetScriptForDestination(*first) != future);
+        BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_NO);
+
+        const auto second = wallet->GetNewDestination(OutputType::BECH32M, "");
+        BOOST_REQUIRE(second);
+        BOOST_CHECK(GetScriptForDestination(*second) == future);
+        BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_SPENDABLE);
+    }
+
+    // Change reserved the way CreateTransaction does, not via GetNewChangeDestination.
+    {
+        const CScript future = ScriptPastKeypool(*wallet, OutputType::BECH32, /*internal=*/true);
+        BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_NO);
+
+        {
+            ReserveDestination reserved(wallet.get(), OutputType::BECH32);
+            const auto first = reserved.GetReservedDestination(/*internal=*/true);
+            BOOST_REQUIRE(first);
+            BOOST_CHECK(GetScriptForDestination(*first) != future);
+            reserved.KeepDestination();
+        }
+        BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_NO);
+        {
+            ReserveDestination reserved(wallet.get(), OutputType::BECH32);
+            const auto second = reserved.GetReservedDestination(/*internal=*/true);
+            BOOST_REQUIRE(second);
+            BOOST_CHECK(GetScriptForDestination(*second) == future);
+            reserved.KeepDestination();
+        }
+        BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_SPENDABLE);
+    }
+
+    // Top-up inside the script pubkey manager does not clear the wallet cache.
+    // A stored miss would still be ISMINE_NO after this.
+    {
+        const CScript future = ScriptPastKeypool(*wallet, OutputType::BECH32, /*internal=*/false);
+        BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_NO);
+
+        const auto first = wallet->GetNewDestination(OutputType::BECH32, "");
+        BOOST_REQUIRE(first);
+        BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_NO);
+
+        auto* spk_man = wallet->GetScriptPubKeyMan(OutputType::BECH32, /*internal=*/false);
+        BOOST_REQUIRE(spk_man);
+        const auto derived = spk_man->GetNewDestination(OutputType::BECH32);
+        BOOST_REQUIRE(derived);
+        BOOST_CHECK(GetScriptForDestination(*derived) == future);
+        BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_SPENDABLE);
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 } // namespace wallet

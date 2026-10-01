@@ -314,6 +314,7 @@ private:
     std::atomic<SteadyClock::time_point> m_scanning_start{SteadyClock::time_point{}};
     std::atomic<double> m_scanning_progress{0};
     friend class WalletRescanReserver;
+    friend class ReserveDestination;
 
     //! the current wallet version: clients below this version are not able to load the wallet
     int nWalletVersion GUARDED_BY(cs_wallet){FEATURE_BASE};
@@ -418,7 +419,14 @@ private:
     // ScriptPubKeyMan::GetID. In many cases it will be the hash of an internal structure
     std::map<uint256, std::unique_ptr<ScriptPubKeyMan>> m_spk_managers;
 
-    /** Cache IsMine results to avoid repeated lookups across all SPK managers during rescan */
+    /**
+     * IsMine results for scripts this wallet can spend or watch.
+     * ISMINE_NO is not stored: it goes stale when a later derivation makes the
+     * script ours, and every output in every block would otherwise stay here
+     * until the next full clear. Capped so a large keypool cannot grow it
+     * without bound. Cleared when keys or script managers change.
+     */
+    static constexpr size_t ISMINE_CACHE_MAX{100000};
     mutable std::map<CScript, isminetype> m_ismine_cache GUARDED_BY(cs_wallet);
 
     // Appends spk managers into the main 'm_spk_managers'.

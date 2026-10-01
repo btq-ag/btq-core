@@ -1600,7 +1600,17 @@ isminetype CWallet::IsMine(const CScript& script) const
         result = GetTrackedP2MRScriptIsMine(*this, script);
     }
 
-    m_ismine_cache[script] = result;
+    // Misses stay out of the map. getnewaddress and change reservation top up
+    // keys inside the script pubkey manager, and a cached ISMINE_NO would hide
+    // the new script from AddToWalletIfInvolvingMe. Misses are also nearly
+    // every output the node sees, so storing them is what made the map grow
+    // with the chain.
+    if (result != ISMINE_NO) {
+        if (m_ismine_cache.size() >= ISMINE_CACHE_MAX) {
+            m_ismine_cache.clear();
+        }
+        m_ismine_cache.emplace(script, result);
+    }
     return result;
 }
 
@@ -2571,6 +2581,10 @@ util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, c
 
     auto op_dest = spk_man->GetNewDestination(type);
     if (op_dest) {
+        // Top-up ran in the script pubkey manager, not CWallet::TopUpKeyPool,
+        // which is the path that clears the ownership cache. SetAddressBook
+        // below calls IsMine on the new destination.
+        m_ismine_cache.clear();
         SetAddressBook(*op_dest, label, AddressPurpose::RECEIVE);
     }
 
@@ -2668,6 +2682,9 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
             if (!created) return util::Error{util::ErrorString(created)};
             address = created->dest;
             fInternal = internal;
+            // Minting the script can make a previously seen output ours.
+            AssertLockHeld(pwallet->cs_wallet);
+            pwallet->m_ismine_cache.clear();
         }
         return address;
     }
@@ -2683,6 +2700,11 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         if (!op_address) return op_address;
         address = *op_address;
         fInternal = keypool.fInternal;
+        // GetReservedDestination tops up the keypool. CWallet::TopUpKeyPool
+        // would have cleared the ownership cache; this path does not.
+        // CreateTransaction reserves change here, not via GetNewChangeDestination.
+        AssertLockHeld(pwallet->cs_wallet);
+        pwallet->m_ismine_cache.clear();
     }
     return address;
 }
