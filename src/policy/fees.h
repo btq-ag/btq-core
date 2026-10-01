@@ -34,6 +34,10 @@ static constexpr std::chrono::hours MAX_FILE_AGE{60};
 // Whether we allow importing a fee_estimates file older than MAX_FILE_AGE.
 static constexpr bool DEFAULT_ACCEPT_STALE_FEE_ESTIMATES{false};
 
+/** fee_estimates.dat format. 1 = Bitcoin 26 / 10-minute horizons (149900 marker).
+ *  2 = 60-second block horizons. Old files are discarded on read. */
+static constexpr int FEE_ESTIMATES_FORMAT = 2;
+
 class AutoFile;
 class CTxMemPoolEntry;
 class TxConfirmStats;
@@ -146,24 +150,26 @@ struct FeeCalculation
 class CBlockPolicyEstimator
 {
 private:
-    /** Track confirm delays up to 12 blocks for short horizon */
+    /** Track confirm delays up to 12 * 10 = 120 one-minute blocks (~2 hours).
+     *  Scale 10 matches the medium/long retune: same wall-clock bucket width
+     *  as Core's 10-minute short horizon, not 1-minute buckets. */
     static constexpr unsigned int SHORT_BLOCK_PERIODS = 12;
-    static constexpr unsigned int SHORT_SCALE = 1;
-    /** Track confirm delays up to 48 blocks for medium horizon */
+    static constexpr unsigned int SHORT_SCALE = 10;
+    /** Track confirm delays up to 480 one-minute blocks (~8 hours) for medium horizon */
     static constexpr unsigned int MED_BLOCK_PERIODS = 24;
-    static constexpr unsigned int MED_SCALE = 2;
-    /** Track confirm delays up to 1008 blocks for long horizon */
+    static constexpr unsigned int MED_SCALE = 20;
+    /** Track confirm delays up to 10080 one-minute blocks (~1 week) for long horizon */
     static constexpr unsigned int LONG_BLOCK_PERIODS = 42;
-    static constexpr unsigned int LONG_SCALE = 24;
-    /** Historical estimates that are older than this aren't valid */
-    static const unsigned int OLDEST_ESTIMATE_HISTORY = 6 * 1008;
+    static constexpr unsigned int LONG_SCALE = 240;
+    /** Historical estimates that are older than this aren't valid (~6 weeks) */
+    static const unsigned int OLDEST_ESTIMATE_HISTORY = 6 * 10080;
 
-    /** Decay of .962 is a half-life of 18 blocks or about 3 hours */
-    static constexpr double SHORT_DECAY = .962;
-    /** Decay of .9952 is a half-life of 144 blocks or about 1 day */
-    static constexpr double MED_DECAY = .9952;
-    /** Decay of .99931 is a half-life of 1008 blocks or about 1 week */
-    static constexpr double LONG_DECAY = .99931;
+    /** Decay of .99616 is a half-life of 180 one-minute blocks (~3 hours) */
+    static constexpr double SHORT_DECAY = .99616;
+    /** Decay of .99952 is a half-life of 1440 one-minute blocks (~1 day) */
+    static constexpr double MED_DECAY = .99952;
+    /** Decay of .999931 is a half-life of 10080 one-minute blocks (~1 week) */
+    static constexpr double LONG_DECAY = .999931;
 
     /** Require greater than 60% of X feerate transactions to be confirmed within Y/2 blocks*/
     static constexpr double HALF_SUCCESS_PCT = .6;
@@ -172,10 +178,10 @@ private:
     /** Require greater than 95% of X feerate transactions to be confirmed within 2 * Y blocks*/
     static constexpr double DOUBLE_SUCCESS_PCT = .95;
 
-    /** Require an avg of 0.1 tx in the combined feerate bucket per block to have stat significance */
-    static constexpr double SUFFICIENT_FEETXS = 0.1;
-    /** Require an avg of 0.5 tx when using short decay since there are fewer blocks considered*/
-    static constexpr double SUFFICIENT_TXS_SHORT = 0.5;
+    /** Per-block sufficiency, scaled 10x down so 60s blocks keep Core's wall-clock sample. */
+    static constexpr double SUFFICIENT_FEETXS = 0.01;
+    /** Short-horizon sufficiency, same 10x wall-clock scaling as SUFFICIENT_FEETXS. */
+    static constexpr double SUFFICIENT_TXS_SHORT = 0.05;
 
     /** Minimum and Maximum values for tracking feerates
      * The MIN_BUCKET_FEERATE should just be set to the lowest reasonable feerate we
