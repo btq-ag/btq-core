@@ -276,6 +276,34 @@ BOOST_FIXTURE_TEST_CASE(wallet_is_mine_tracks_unowned_p2mr_metadata_as_watchonly
     BOOST_CHECK(!spend);
 }
 
+// importdilithiumkey stores the key and then CreateP2MR finds the existing
+// tree and returns before SetP2MRMetadata. A cached watch-only hit would
+// still be there, and coin selection would skip the output.
+BOOST_FIXTURE_TEST_CASE(imported_dilithium_key_upgrades_cached_watchonly_p2mr, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    wallet->SetupLegacyScriptPubKeyMan();
+
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CScript leaf_script = CScript() << ToByteVector(key.GetPubKey()) << OP_CHECKSIGDILITHIUM;
+    const std::vector<P2MRTreeLeaf> leaves{{
+        /*depth=*/0,
+        TAPROOT_LEAF_TAPSCRIPT,
+        {leaf_script.begin(), leaf_script.end()},
+    }};
+
+    auto created = CreateP2MR(*wallet, leaves, "watch");
+    BOOST_REQUIRE(created);
+    BOOST_CHECK_EQUAL(wallet->IsMine(created->script_pub_key), ISMINE_WATCH_ONLY);
+
+    auto imported = ImportDilithiumKeyAsP2MR(*wallet, key, "imported");
+    BOOST_REQUIRE(imported);
+    BOOST_CHECK_EQUAL(imported->id, created->id);
+    BOOST_CHECK_EQUAL(wallet->IsMine(created->script_pub_key), ISMINE_SPENDABLE);
+}
+
 BOOST_FIXTURE_TEST_CASE(tracked_balance_deduplicates_legacy_duplicate_metadata, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);

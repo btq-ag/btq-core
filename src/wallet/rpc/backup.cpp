@@ -239,6 +239,8 @@ RPCHelpMan importprivkey()
                 if (!pwallet->GetLegacyScriptPubKeyMan()->AddDilithiumKeyPubKey(dilithium_key, pubkey)) {
                     throw JSONRPCError(RPC_WALLET_ERROR, "Error adding Dilithium key to wallet");
                 }
+                // The key can turn a tracked P2MR from watch-only to spendable.
+                pwallet->ClearIsMineCache();
             } else {
                 if (!pwallet->ImportPrivKeys({{vchAddress, key}}, 1)) {
                     throw JSONRPCError(RPC_WALLET_ERROR, "Error adding key to wallet");
@@ -703,6 +705,8 @@ RPCHelpMan importwallet()
                 fGood = false;
                 continue;
             }
+            // The key can turn a tracked P2MR from watch-only to spendable.
+            pwallet->ClearIsMineCache();
 
             if (has_label) {
                 pwallet->SetAddressBook(DilithiumPKHash(keyid), label, AddressPurpose::RECEIVE);
