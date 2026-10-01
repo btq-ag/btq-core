@@ -20,7 +20,10 @@ static constexpr bool DEFAULT_TXRECONCILIATION_ENABLE{false};
 static const uint32_t DEFAULT_MAX_ORPHAN_TRANSACTIONS{100};
 /** Default number of non-mempool transactions to keep around for block reconstruction. Includes
     orphan, replaced, and rejected transactions. */
-static const uint32_t DEFAULT_BLOCK_RECONSTRUCTION_EXTRA_TXN{100};
+// 100 is a Bitcoin-era leftover. An 8 MB Dilithium block is hundreds to
+// low-thousands of txs; keep enough extras that compact-block rebuild
+// does not fall back to a full download. Measure before raising again.
+static const uint32_t DEFAULT_BLOCK_RECONSTRUCTION_EXTRA_TXN{2000};
 static const bool DEFAULT_PEERBLOOMFILTERS = false;
 static const bool DEFAULT_PEERBLOCKFILTERS = false;
 /** Threshold for marking a node to be discouraged, e.g. disconnected and added to the discouragement filter. */
