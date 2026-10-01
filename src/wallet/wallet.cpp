@@ -1600,18 +1600,23 @@ isminetype CWallet::IsMine(const CScript& script) const
         result = GetTrackedP2MRScriptIsMine(*this, script);
     }
 
-    // Misses stay out of the map. getnewaddress and change reservation top up
-    // keys inside the script pubkey manager, and a cached ISMINE_NO would hide
-    // the new script from AddToWalletIfInvolvingMe. Misses are also nearly
-    // every output the node sees, so storing them is what made the map grow
-    // with the chain.
-    if (result != ISMINE_NO) {
+    // Only spendable hits stay in the map. A miss goes stale when the key is
+    // derived later, and it is also almost every output in a block. A
+    // watch-only hit goes stale when the spending key is imported: coin
+    // selection then keeps skipping the output.
+    if ((result & ISMINE_SPENDABLE) != 0) {
         if (m_ismine_cache.size() >= ISMINE_CACHE_MAX) {
             m_ismine_cache.clear();
         }
         m_ismine_cache.emplace(script, result);
     }
     return result;
+}
+
+void CWallet::ClearIsMineCache()
+{
+    AssertLockHeld(cs_wallet);
+    m_ismine_cache.clear();
 }
 
 bool CWallet::IsMine(const CTransaction& tx) const

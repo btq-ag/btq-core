@@ -605,16 +605,25 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
 bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
 {
     AssertLockHeld(wallet.cs_wallet);
+    bool stored = false;
     if (wallet.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
         for (auto* spk_man : wallet.GetAllScriptPubKeyMans()) {
             if (auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) return true;
+                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) {
+                    stored = true;
+                    break;
+                }
             }
         }
-        return false;
+    } else {
+        LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
+        stored = legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
     }
-    LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
-    return legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
+    // One key can make every tracked P2MR that uses it spendable. CreateP2MR
+    // only returns the script it was asked about, and a duplicate tree returns
+    // before SetP2MRMetadata erases that one entry.
+    if (stored) wallet.ClearIsMineCache();
+    return stored;
 }
 
 util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)

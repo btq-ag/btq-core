@@ -420,11 +420,12 @@ private:
     std::map<uint256, std::unique_ptr<ScriptPubKeyMan>> m_spk_managers;
 
     /**
-     * IsMine results for scripts this wallet can spend or watch.
+     * Cached IsMine results for scripts this wallet can spend.
      * ISMINE_NO is not stored: it goes stale when a later derivation makes the
-     * script ours, and every output in every block would otherwise stay here
-     * until the next full clear. Capped so a large keypool cannot grow it
-     * without bound. Cleared when keys or script managers change.
+     * script ours, and every output in every block would otherwise stay here.
+     * ISMINE_WATCH_ONLY is not stored either. Importing the spending key turns
+     * it into ISMINE_SPENDABLE, and that import does not always reach a clear.
+     * Capped so a large keypool cannot grow it without bound.
      */
     static constexpr size_t ISMINE_CACHE_MAX{100000};
     mutable std::map<CScript, isminetype> m_ismine_cache GUARDED_BY(cs_wallet);
@@ -780,6 +781,8 @@ public:
 
     isminetype IsMine(const CTxDestination& dest) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     isminetype IsMine(const CScript& script) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    /** Drop cached IsMine hits. A newly added key can turn watch-only scripts spendable. */
+    void ClearIsMineCache() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     /**
      * Returns amount of debit if the input matches the
      * filter, otherwise returns 0
