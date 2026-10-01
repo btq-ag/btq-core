@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 //
 
+#include <chain.h>
 #include <netaddress.h>
 #include <noui.h>
 #include <test/util/logging.h>
@@ -100,6 +101,11 @@ BOOST_AUTO_TEST_CASE(addtimedata)
     BOOST_CHECK_EQUAL(GetTimeOffset(), 0);
 
     TestOnlyResetTimeData();
+}
+
+BOOST_AUTO_TEST_CASE(time_adjustment_fits_future_block_window)
+{
+    BOOST_CHECK_LE(DEFAULT_MAX_TIME_ADJUSTMENT, MAX_FUTURE_BLOCK_TIME);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

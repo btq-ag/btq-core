@@ -2826,7 +2826,7 @@ void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
     for (const auto& entry : mapKeyFirstBlock) {
         int64_t block_time;
         CHECK_NONFATAL(chain().findBlock(entry.second->confirmed_block_hash, FoundBlock().time(block_time)));
-        mapKeyBirth[entry.first] = block_time - TIMESTAMP_WINDOW; // block times can be 2h off
+        mapKeyBirth[entry.first] = block_time - TIMESTAMP_WINDOW; // block times can be TIMESTAMP_WINDOW off
     }
 }
 
