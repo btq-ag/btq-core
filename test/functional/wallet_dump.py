@@ -73,7 +73,7 @@ def read_dump(file_name, addrs, script_addrs, hd_master_addr_old):
                         elif addr.startswith('2'):
                             # P2SH-segwit address
                             found_p2sh_segwit_addr += 1
-                        elif addr.startswith('bcrt1'):
+                        elif addr.startswith('qcrt1'):
                             found_bech32_addr += 1
                         break
                     elif keytype == "change=1":
@@ -217,7 +217,7 @@ class WalletDumpTest(BTQTestFramework):
         self.nodes[0].createwallet("w3")
         w3 = self.nodes[0].get_wallet_rpc("w3")
         w3.importprivkey(privkey=self.nodes[0].get_deterministic_priv_key().key, label="coinbase_import")
-        w3.sendtoaddress(w3.getnewaddress(), 10)
+        w3.sendtoaddress(w3.getnewaddress(), 1)
         w3.unloadwallet()
         self.nodes[0].loadwallet("w3")
         w3.dumpwallet(self.nodes[0].datadir_path / "w3.dump")

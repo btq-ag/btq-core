@@ -136,28 +136,30 @@ class ReplaceByFeeTest(BTQTestFramework):
     def test_doublespend_chain(self):
         """Doublespend of a long chain"""
 
-        initial_nValue = 5 * COIN
+        # A tenth of upstream's amounts and fees, as BTQ's block reward is a
+        # tenth of Bitcoin's; the chain is still 40 transactions long.
+        initial_nValue = int(0.5 * COIN)
         tx0_outpoint = self.make_utxo(self.nodes[0], initial_nValue)
 
         prevout = tx0_outpoint
         remaining_value = initial_nValue
         chain_txids = []
-        while remaining_value > 1 * COIN:
-            remaining_value -= int(0.1 * COIN)
+        while remaining_value > int(0.1 * COIN):
+            remaining_value -= int(0.01 * COIN)
             prevout = self.wallet.send_self_transfer(
                 from_node=self.nodes[0],
                 utxo_to_spend=prevout,
                 sequence=0,
-                fee=Decimal("0.1"),
+                fee=Decimal("0.01"),
             )["new_utxo"]
             chain_txids.append(prevout["txid"])
 
         # Whether the double-spend is allowed is evaluated by including all
-        # child fees - 4 BTQ - so this attempt is rejected.
+        # child fees - 0.4 BTQ - so this attempt is rejected.
         dbl_tx = self.wallet.create_self_transfer(
             utxo_to_spend=tx0_outpoint,
             sequence=0,
-            fee=Decimal("3"),
+            fee=Decimal("0.3"),
         )["tx"]
         dbl_tx_hex = dbl_tx.serialize().hex()
 
@@ -165,7 +167,7 @@ class ReplaceByFeeTest(BTQTestFramework):
         assert_raises_rpc_error(-26, "insufficient fee", self.nodes[0].sendrawtransaction, dbl_tx_hex, 0)
 
         # Accepted with sufficient fee
-        dbl_tx.vout[0].nValue = int(0.1 * COIN)
+        dbl_tx.vout[0].nValue = int(0.01 * COIN)
         dbl_tx_hex = dbl_tx.serialize().hex()
         self.nodes[0].sendrawtransaction(dbl_tx_hex, 0)
 
@@ -176,7 +178,8 @@ class ReplaceByFeeTest(BTQTestFramework):
     def test_doublespend_tree(self):
         """Doublespend of a big tree of transactions"""
 
-        initial_nValue = 5 * COIN
+        # A tenth of upstream's, as BTQ's block reward is a tenth of Bitcoin's.
+        initial_nValue = int(0.5 * COIN)
         tx0_outpoint = self.make_utxo(self.nodes[0], initial_nValue)
 
         def branch(prevout, initial_value, max_txs, tree_width=5, fee=0.00001 * COIN, _total_txs=None):
@@ -341,8 +344,11 @@ class ReplaceByFeeTest(BTQTestFramework):
         # Try directly replacing more than MAX_REPLACEMENT_LIMIT
         # transactions
 
-        # Start by creating a single transaction with many outputs
-        initial_nValue = 10 * COIN
+        # Start by creating a single transaction with many outputs. Upstream
+        # starts from 10 coins, which no single 5 BTQ block reward covers. A
+        # tenth of that would leave each split output smaller than the
+        # 100 * fee margin taken off it below, so use 2 BTQ.
+        initial_nValue = 2 * COIN
         utxo = self.make_utxo(self.nodes[0], initial_nValue)
         fee = int(0.0001 * COIN)
         split_value = int((initial_nValue - fee) / (MAX_REPLACEMENT_LIMIT + 1))

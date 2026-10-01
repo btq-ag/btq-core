@@ -4,6 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test btq-wallet."""
 
+from decimal import Decimal
 import os
 import stat
 import subprocess
@@ -403,11 +404,12 @@ class ToolWalletTest(BTQTestFramework):
 
         self.nodes[0].createwallet("conflicts")
         wallet = self.nodes[0].get_wallet_rpc("conflicts")
-        def_wallet.sendtoaddress(wallet.getnewaddress(), 10)
+        # Amounts are a tenth of upstream's because BTQ's block reward is a tenth of Bitcoin's.
+        def_wallet.sendtoaddress(wallet.getnewaddress(), 1)
         self.generate(self.nodes[0], 1)
 
         # parent tx
-        parent_txid = wallet.sendtoaddress(wallet.getnewaddress(), 9)
+        parent_txid = wallet.sendtoaddress(wallet.getnewaddress(), Decimal('0.9'))
         parent_txid_bytes = bytes.fromhex(parent_txid)[::-1]
         conflict_utxo = wallet.gettransaction(txid=parent_txid, verbose=True)["decoded"]["vin"][0]
 
@@ -417,7 +419,7 @@ class ToolWalletTest(BTQTestFramework):
         locktime = 500000000 # Use locktime as nonce, starting at unix timestamp minimum
         addr = wallet.getnewaddress()
         while True:
-            child_send_res = wallet.send(outputs=[{addr: 8}], add_to_wallet=False, locktime=locktime)
+            child_send_res = wallet.send(outputs=[{addr: Decimal('0.8')}], add_to_wallet=False, locktime=locktime)
             child_txid = child_send_res["txid"]
             child_txid_bytes = bytes.fromhex(child_txid)[::-1]
             if (child_txid_bytes > parent_txid_bytes):
@@ -426,7 +428,7 @@ class ToolWalletTest(BTQTestFramework):
             locktime += 1
 
         # conflict with parent
-        conflict_unsigned = self.nodes[0].createrawtransaction(inputs=[conflict_utxo], outputs=[{wallet.getnewaddress(): 9.9999}])
+        conflict_unsigned = self.nodes[0].createrawtransaction(inputs=[conflict_utxo], outputs=[{wallet.getnewaddress(): Decimal('0.9999')}])
         conflict_signed = wallet.signrawtransactionwithwallet(conflict_unsigned)["hex"]
         conflict_txid = self.nodes[0].sendrawtransaction(conflict_signed)
         self.generate(self.nodes[0], 1)

@@ -56,7 +56,8 @@ class MempoolWtxidTest(BTQTestFramework):
 
         parent = CTransaction()
         parent.vin.append(CTxIn(COutPoint(int(txid, 16), 0), b""))
-        parent.vout.append(CTxOut(int(9.99998 * COIN), script_pubkey))
+        # A tenth of upstream's amount, because BTQ's block reward is a tenth of Bitcoin's.
+        parent.vout.append(CTxOut(int(0.99998 * COIN), script_pubkey))
         parent.rehash()
 
         privkeys = [node.get_deterministic_priv_key().key]
@@ -73,7 +74,7 @@ class MempoolWtxidTest(BTQTestFramework):
 
         child_one = CTransaction()
         child_one.vin.append(CTxIn(COutPoint(int(parent_txid, 16), 0), b""))
-        child_one.vout.append(CTxOut(int(9.99996 * COIN), child_script_pubkey))
+        child_one.vout.append(CTxOut(int(0.99996 * COIN), child_script_pubkey))
         child_one.wit.vtxinwit.append(CTxInWitness())
         child_one.wit.vtxinwit[0].scriptWitness.stack = [b'Preimage', b'\x01', witness_script]
         child_one_wtxid = child_one.getwtxid()
