@@ -16,7 +16,7 @@ class ChainstateManager;
 
 /** Whether transaction reconciliation protocol should be enabled by default. */
 static constexpr bool DEFAULT_TXRECONCILIATION_ENABLE{false};
-/** Default for -maxorphantx, maximum number of orphan transactions kept in memory */
+/** Historical -maxorphantx default. The flag is ignored; eviction is by weight. */
 static const uint32_t DEFAULT_MAX_ORPHAN_TRANSACTIONS{100};
 /** Default number of non-mempool transactions to keep around for block reconstruction. Includes
     orphan, replaced, and rejected transactions. */
@@ -51,7 +51,7 @@ public:
         bool ignore_incoming_txs{DEFAULT_BLOCKSONLY};
         //! Whether transaction reconciliation protocol is enabled
         bool reconcile_txs{DEFAULT_TXRECONCILIATION_ENABLE};
-        //! Maximum number of orphan transactions kept in memory
+        //! Unused. -maxorphantx is deprecated; kept so old configs still parse.
         uint32_t max_orphan_txs{DEFAULT_MAX_ORPHAN_TRANSACTIONS};
         //! Number of non-mempool transactions to keep around for block reconstruction. Includes
         //! orphan, replaced, and rejected transactions.
