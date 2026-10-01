@@ -35,18 +35,19 @@ class DumptxoutsetTest(BTQTestFramework):
         assert_equal(out['coins_written'], 100)
         assert_equal(out['base_height'], 100)
         assert_equal(out['path'], str(expected_path))
+        # BTQ vectors use the current genesis and 5-BTQ block subsidy.
         # Blockhash should be deterministic based on mocked time.
         assert_equal(
             out['base_hash'],
-            '09abf0e7b510f61ca6cf33bab104e9ee99b3528b371d27a2d4b39abb800fba7e')
+            '3330f99f9ec7f7d31f160b168ac7963957a5347ad772f90cb5b2fb848a5f3726')
 
         # UTXO snapshot hash should be deterministic based on mocked time.
         assert_equal(
             sha256sum_file(str(expected_path)).hex(),
-            'b1bacb602eacf5fbc9a7c2ef6eeb0d229c04e98bdf0c2ea5929012cd0eae3830')
+            '4da11bd129791a49bca85ec3fb5a375f20698e6ad18d57da92f90207a505ab8e')
 
         assert_equal(
-            out['txoutset_hash'], 'a0b7baa3bf5ccbd3279728f230d7ca0c44a76e9923fca8f32dbfd08d65ea496a')
+            out['txoutset_hash'], '80356d60b0e1c13eefd5e0bbc52fced2a9915d1445b6c714690ea126c49294f8')
         assert_equal(out['nchaintx'], 101)
 
         # Specifying a path to an existing or invalid file will fail.

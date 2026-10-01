@@ -24,8 +24,6 @@ feature_maxuploadtarget.py
 feature_segwit.py --descriptors
 feature_segwit.py --descriptors --v2transport
 feature_segwit.py --legacy-wallet
-feature_signet.py                                       # AssertionError: not(bad-signet-blksig == None)
-feature_utxo_set_hash.py                                # AssertionError: not(<hex> == <hex>)
 interface_rest.py                                       # AssertionError: 291 <= 300
 mempool_dust.py                                         # AssertionError: not(True == False)
 mempool_limit.py                                        # KeyError: 'fees' (testmempoolaccept rejects the fill txs: tx-size)
@@ -39,15 +37,12 @@ p2p_headers_sync_with_minchainwork.py                   # JSONRPCException: Crea
 p2p_node_network_limited.py                             # AssertionError: not(33555464 == 1032)
 p2p_segwit.py
 rpc_createmultisig.py
-rpc_dumptxoutset.py                                     # AssertionError: not(<hex> == <hex>)
-rpc_getblockfrompeer.py                                 # AssertionError: not(<hex> == <hex>)
 rpc_getblockstats.py                                    # JSONRPCException: Target block height 101 after current tip 0 (-8)
 rpc_invalid_address_message.py                          # AssertionError: not(Invalid or unsupported Segwit (Bech32) or Base58 encoding...
 rpc_psbt.py --descriptors                               # AssertionError: not(19 == 2)
 rpc_psbt.py --legacy-wallet                             # AssertionError: not(19 == 2)
 rpc_rawtransaction.py --legacy-wallet                   # JSONRPCException: Fee exceeds maximum configured by user (e.g. -maxtxfee, max...
 rpc_scanblocks.py                                       # AssertionError: not(595120 == 113199)
-rpc_signmessagewithprivkey.py                           # AssertionError: not(INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdA...
 rpc_signrawtransactionwithkey.py
 rpc_validateaddress.py                                  # AssertionError: not(Invalid or unsupported Segwit (Bech32) or Base58 encoding...
 wallet_avoidreuse.py --descriptors                      # JSONRPCException: Transaction has too long of a mempool chain (-6)

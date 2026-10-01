@@ -30,7 +30,8 @@ class SignMessagesWithPrivTest(BTQTestFramework):
 
         self.log.info('test signing with priv_key')
         priv_key = 'cUeKHd5orzT3mz8P9pxyREHfsWtVfgsfDjiZZBcjUBAaGk1BTj7N'
-        expected_signature = 'INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdAsXI46YZGb0KQTRii+wWIQzRpG/U+S0='
+        # Fixed vector for the "BTQ Signed Message:\n" domain separator.
+        expected_signature = 'H6eDwUI/agaaqAPPvK4WKTV7hMqMN/XK3d29qoLQpscEZ8giP9TbDkv8kvt7ouPgVUudX83Y6D21sgY3Kqo7SXc='
         signature = self.nodes[0].signmessagewithprivkey(priv_key, message)
         assert_equal(expected_signature, signature)
 
@@ -38,6 +39,9 @@ class SignMessagesWithPrivTest(BTQTestFramework):
         addresses = self.addresses_from_privkey(priv_key)
         assert_equal(addresses[0], 'mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB')
         assert self.nodes[0].verifymessage(addresses[0], signature, message)
+        # Bitcoin's signature for the same key and message uses a different domain.
+        bitcoin_signature = 'INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdAsXI46YZGb0KQTRii+wWIQzRpG/U+S0='
+        assert not self.nodes[0].verifymessage(addresses[0], bitcoin_signature, message)
 
         self.log.info('test that verifying with non-P2PKH addresses throws error')
         for non_p2pkh_address in addresses[1:]:
