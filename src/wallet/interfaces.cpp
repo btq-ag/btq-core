@@ -612,10 +612,12 @@ public:
     }
     util::Result<interfaces::WalletP2MRCreated> createP2MR(
         const std::vector<interfaces::WalletP2MRTreeLeaf>& leaves,
-        const std::string& label) override
+        const std::string& label,
+        bool allow_trivial_leaves) override
     {
         LOCK(m_wallet->cs_wallet);
-        auto res = CreateP2MR(*m_wallet, FromInterfaceLeaves(leaves), label);
+        auto res = CreateP2MR(*m_wallet, FromInterfaceLeaves(leaves), label,
+                              /*add_to_address_book=*/true, allow_trivial_leaves);
         if (!res) return util::Error{util::ErrorString(res)};
         return ToInterfaceCreated(*res);
     }
