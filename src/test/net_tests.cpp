@@ -36,6 +36,11 @@ using namespace std::literals;
 
 BOOST_FIXTURE_TEST_SUITE(net_tests, RegTestingSetup)
 
+BOOST_AUTO_TEST_CASE(v2_transport_is_on_by_default)
+{
+    BOOST_CHECK(DEFAULT_V2_TRANSPORT);
+}
+
 BOOST_AUTO_TEST_CASE(max_protocol_message_length)
 {
     // Transport cap must clear the largest legitimate payload (a serialized
