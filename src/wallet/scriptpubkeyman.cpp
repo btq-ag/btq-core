@@ -1208,6 +1208,10 @@ void LegacyScriptPubKeyMan::DeriveNewDilithiumChildKey(WalletBatch &batch, CKeyM
     DeriveDilithiumExtKey(accountKey, BIP32_HARDENED_KEY_LIMIT + (internal ? 1 : 0), chainChildKey);
 
     do {
+        // hdKeypath is replaced each iteration; the origin path is appended
+        // to, so it has to start empty or a retry leaves the previous
+        // iteration's indices in front of the real ones (Quarks F2.13).
+        metadata.key_origin.path.clear();
         if (internal) {
             DeriveDilithiumExtKey(chainChildKey, hd_chain.nInternalChainCounter | BIP32_HARDENED_KEY_LIMIT, childKey);
             metadata.hdKeypath = "m/0'/1'/" + ToString(hd_chain.nInternalChainCounter) + "'";
