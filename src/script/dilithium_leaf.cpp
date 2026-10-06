@@ -24,6 +24,14 @@ CScript GetScriptForDilithiumThreshold(int m, const std::vector<CDilithiumPubKey
     return script;
 }
 
+CScript GetScriptForHybridDilithiumLeaf(const CDilithiumPubKey& dilithium_pubkey, const XOnlyPubKey& schnorr_pubkey)
+{
+    CScript script;
+    script << ToByteVector(dilithium_pubkey) << OP_CHECKSIGDILITHIUMVERIFY;
+    script << ToByteVector(schnorr_pubkey) << OP_CHECKSIG;
+    return script;
+}
+
 namespace {
 //! Decode a script number pushed by any valid encoding, minimal or not.
 std::optional<int> DecodePushedNumber(opcodetype opcode, const std::vector<unsigned char>& data)
@@ -75,6 +83,35 @@ bool ParseThresholdAccumulator(const CScript& script, P2MRDilithiumLeafPolicy& o
     out.pubkeys = std::move(pubkeys);
     return true;
 }
+
+bool ParseHybridLeaf(const CScript& script, P2MRDilithiumLeafPolicy& out)
+{
+    CScript::const_iterator it = script.begin();
+    opcodetype opcode;
+    std::vector<unsigned char> data;
+
+    if (!script.GetOp(it, opcode, data) || data.size() != CDilithiumPubKey::SIZE) return false;
+    const CDilithiumPubKey dilithium_pubkey{Span<const unsigned char>{data}};
+    if (!dilithium_pubkey.IsFullyValid()) return false;
+
+    if (!script.GetOp(it, opcode, data) || opcode != OP_CHECKSIGDILITHIUMVERIFY) return false;
+
+    if (!script.GetOp(it, opcode, data) || data.size() != 32) return false;
+    const XOnlyPubKey schnorr_pubkey{Span<const unsigned char>{data}};
+    // A 32-byte push that is not a valid x coordinate makes the leaf
+    // unspendable (OP_CHECKSIG fails on any non-empty signature), so refuse
+    // to recognise it rather than claim it can be signed.
+    if (!schnorr_pubkey.IsFullyValid()) return false;
+
+    if (!script.GetOp(it, opcode, data) || opcode != OP_CHECKSIG) return false;
+    if (it != script.end()) return false;
+
+    out.type = P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR;
+    out.m = 1;
+    out.pubkeys = {dilithium_pubkey};
+    out.schnorr_pubkeys = {schnorr_pubkey};
+    return true;
+}
 } // namespace
 
 P2MRDilithiumLeafPolicy ParseP2MRDilithiumLeaf(const CScript& script)
@@ -110,7 +147,8 @@ P2MRDilithiumLeafPolicy ParseP2MRDilithiumLeaf(const CScript& script)
         break;
     }
 
-    ParseThresholdAccumulator(script, policy);
+    if (ParseThresholdAccumulator(script, policy)) return policy;
+    ParseHybridLeaf(script, policy);
     return policy;
 }
 
@@ -120,6 +158,7 @@ std::string P2MRLeafTemplateName(P2MRLeafTemplate type)
     case P2MRLeafTemplate::SINGLE_CHECKSIGDILITHIUM: return "dilithium_single";
     case P2MRLeafTemplate::CHECKMULTISIGDILITHIUM: return "dilithium_checkmultisig";
     case P2MRLeafTemplate::THRESHOLD_ACCUMULATOR: return "dilithium_threshold";
+    case P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR: return "dilithium_schnorr_hybrid";
     case P2MRLeafTemplate::UNKNOWN: return "unknown";
     } // no default case, so the compiler can warn about missing cases
     return "unknown";
@@ -134,7 +173,8 @@ std::optional<size_t> FindPolicyKeyIndex(const P2MRDilithiumLeafPolicy& policy, 
 
 bool BuildDilithiumLeafWitness(const P2MRDilithiumLeafPolicy& policy,
                                const std::vector<std::vector<unsigned char>>& sigs_by_key_index,
-                               std::vector<std::vector<unsigned char>>& stack_out)
+                               std::vector<std::vector<unsigned char>>& stack_out,
+                               const std::vector<std::vector<unsigned char>>& schnorr_sigs_by_key_index)
 {
     stack_out.clear();
     if (!policy.IsValid()) return false;
@@ -170,6 +210,16 @@ bool BuildDilithiumLeafWitness(const P2MRDilithiumLeafPolicy& policy,
         }
         return true;
     }
+
+    case P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR:
+        // Both signatures are required. The schnorr signature sits at the
+        // stack bottom: the leaf verifies the Dilithium signature first
+        // (consuming the top element), then OP_CHECKSIG consumes the rest.
+        if (schnorr_sigs_by_key_index.size() != policy.schnorr_pubkeys.size()) return false;
+        if (sigs_by_key_index[0].empty() || schnorr_sigs_by_key_index[0].empty()) return false;
+        stack_out.push_back(schnorr_sigs_by_key_index[0]);
+        stack_out.push_back(sigs_by_key_index[0]);
+        return true;
 
     case P2MRLeafTemplate::UNKNOWN:
         return false;
