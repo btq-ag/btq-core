@@ -2570,33 +2570,6 @@ isminetype DescriptorScriptPubKeyMan::IsMine(const CScript& script) const
     if (m_map_script_pub_keys.count(script) > 0) {
         return ISMINE_SPENDABLE;
     }
-
-    std::vector<valtype> vSolutions;
-    TxoutType whichType = Solver(script, vSolutions);
-
-    CKeyID keyID;
-    switch (whichType) {
-    case TxoutType::DILITHIUM_PUBKEY:
-    case TxoutType::DILITHIUM_PUBKEYHASH:
-    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
-    case TxoutType::DILITHIUM_SCRIPTHASH:
-    case TxoutType::DILITHIUM_MULTISIG:
-    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
-        // Legacy Dilithium templates are consensus-unspendable (P2MR-only opcodes).
-        return ISMINE_NO;
-    case TxoutType::WITNESS_V0_KEYHASH:
-    {
-        keyID = CKeyID(uint160(vSolutions[0]));
-        // Do not treat ordinary P2WPKH as Dilithium-spendable by key-id collision.
-        if (m_map_keys.find(keyID) != m_map_keys.end() || m_map_crypted_keys.find(keyID) != m_map_crypted_keys.end()) {
-            return ISMINE_SPENDABLE;
-        }
-        break;
-    }
-    default:
-        break;
-    }
-
     return ISMINE_NO;
 }
 
