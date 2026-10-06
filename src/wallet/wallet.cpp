@@ -2675,7 +2675,8 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         // ReturnDestination() are no-ops for this type.
         if (!IsValidDestination(address)) {
             auto created = CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
-                                                      /*add_to_address_book=*/!internal);
+                                                      /*add_to_address_book=*/!internal,
+                                                      internal);
             if (!created) return util::Error{util::ErrorString(created)};
             address = created->dest;
             fInternal = internal;

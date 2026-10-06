@@ -152,10 +152,13 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
  * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR
  * receive destination whose leaf is `<pubkey> OP_CHECKSIGDILITHIUM`.
  * This is the only consensus-valid Dilithium receive path.
+ * With internal=true the key comes from the internal manager's Dilithium
+ * sequence (change and returned destinations, Quarks F2.5).
  */
 util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
                                                      const std::string& label,
-                                                     bool add_to_address_book = true);
+                                                     bool add_to_address_book = true,
+                                                     bool internal = false);
 
 /**
  * Import an existing Dilithium key and create a matching single-leaf P2MR
@@ -164,6 +167,17 @@ util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
 util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
                                                    const CDilithiumKey& key,
                                                    const std::string& label);
+
+class DescriptorScriptPubKeyMan;
+
+/**
+ * Store a scanned sequence key into the manager that derived it (so the
+ * manager's own-key check covers the index) and create or reuse its
+ * single-leaf P2MR destination. Used by recoverdilithiumkeys.
+ */
+util::Result<P2MRCreated> RecoverDilithiumKeyAsP2MR(CWallet& wallet,
+                                                    DescriptorScriptPubKeyMan& manager,
+                                                    const CDilithiumKey& key);
 
 /** Create + persist + fund a P2MR destination in one call. */
 util::Result<P2MRFunded> FundP2MR(CWallet& wallet,

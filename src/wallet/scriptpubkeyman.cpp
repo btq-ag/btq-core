@@ -2402,7 +2402,7 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     return GenerateNewDilithiumKeyLocked();
 }
 
-util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKeyLocked()
+util::Result<CDilithiumKey> DescriptorScriptPubKeyMan::DeriveDilithiumKeyAtIndex(int32_t index) const
 {
     AssertLockHeld(cs_desc_man);
 
@@ -2426,7 +2426,7 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     hmac.Write(descriptor_key.begin(), descriptor_key.size());
     const uint256 desc_id = GetID();
     hmac.Write(desc_id.begin(), desc_id.size());
-    const uint32_t idx_be = htobe32(m_wallet_descriptor.next_index);
+    const uint32_t idx_be = htobe32(static_cast<uint32_t>(index));
     hmac.Write(reinterpret_cast<const unsigned char*>(&idx_be), sizeof(idx_be));
     // Retained for backwards compatibility of the derivation: keys generated
     // before P2MR became its own OutputType committed to DILITHIUM_LEGACY here,
@@ -2444,23 +2444,57 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     if (!ok) {
         return util::Error{_("Error: Failed to generate Dilithium key")};
     }
+    return dilithium_key;
+}
 
-    const CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
-    const CKeyID keyid = CKeyID(dilithium_pubkey.GetID());
+util::Result<CDilithiumKey> DescriptorScriptPubKeyMan::GetDilithiumKeyForIndex(int32_t index)
+{
+    LOCK(cs_desc_man);
+    return DeriveDilithiumKeyAtIndex(index);
+}
 
-    if (HaveDilithiumKey(keyid)) {
-        return util::Error{_("Error: Failed to generate unique Dilithium key")};
+void DescriptorScriptPubKeyMan::LoadDilithiumNextIndex(int32_t index)
+{
+    LOCK(cs_desc_man);
+    m_dilithium_next_index = index;
+}
+
+util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKeyLocked()
+{
+    AssertLockHeld(cs_desc_man);
+
+    // The Dilithium sequence has its own counter (Quarks F2.5). Wallets that
+    // predate the counter derived from the shared next_index, so some low
+    // indexes may already be materialized as keys; skip those rather than
+    // fail, keeping the sequence gap-free from here on.
+    constexpr int32_t MAX_INDEX_SKIPS{10000};
+    for (int32_t attempts = 0; attempts <= MAX_INDEX_SKIPS; ++attempts) {
+        const int32_t index = m_dilithium_next_index;
+        if (index < 0) {
+            return util::Error{_("Error: Dilithium key index space exhausted")};
+        }
+        auto key_res = DeriveDilithiumKeyAtIndex(index);
+        if (!key_res) return util::Error{util::ErrorString(key_res)};
+
+        const CDilithiumPubKey dilithium_pubkey = key_res->GetPubKey();
+        const CKeyID keyid = CKeyID(dilithium_pubkey.GetID());
+
+        WalletBatch batch(m_storage.GetDatabase());
+        m_dilithium_next_index = index + 1;
+        if (!batch.WriteDilithiumDescriptorIndex(GetID(), m_dilithium_next_index)) {
+            return util::Error{_("Error: Failed to persist Dilithium key index")};
+        }
+
+        if (HaveDilithiumKey(keyid)) {
+            continue; // Already generated under the old shared counter.
+        }
+
+        if (!AddDilithiumKeyWithDB(batch, key_res.value(), keyid)) {
+            return util::Error{_("Error: Failed to store Dilithium key")};
+        }
+        return dilithium_pubkey;
     }
-
-    WalletBatch batch(m_storage.GetDatabase());
-    if (!AddDilithiumKeyWithDB(batch, dilithium_key, keyid)) {
-        return util::Error{_("Error: Failed to store Dilithium key")};
-    }
-
-    m_wallet_descriptor.next_index++;
-    batch.WriteDescriptor(GetID(), m_wallet_descriptor);
-
-    return dilithium_pubkey;
+    return util::Error{_("Error: Failed to generate unique Dilithium key")};
 }
 
 util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const OutputType type)

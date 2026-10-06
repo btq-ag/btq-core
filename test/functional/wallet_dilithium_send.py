@@ -158,6 +158,52 @@ class WalletDilithiumSendTest(BTQTestFramework):
         self.generate(node, 1)
         assert_equal(repro.gettransaction(many_txid)["confirmations"], 1)
 
+        # F2.5: the Dilithium sequence has its own counter, so ECDSA address
+        # generation must not create gaps in it, and a scan of indexes 0..N
+        # must find every Dilithium key the wallet ever derived.
+        self.log.info("recoverdilithiumkeys scans the dedicated Dilithium sequence")
+        node.createwallet(wallet_name="seq", descriptors=True)
+        seq = node.get_wallet_rpc("seq")
+        for _ in range(5):
+            seq.getnewaddress()  # ECDSA, must not advance the Dilithium counter
+        first = seq.getnewdilithiumaddress()["address"]
+        for _ in range(5):
+            seq.getnewaddress()
+        second = seq.getnewdilithiumaddress()["address"]
+
+        scan = seq.recoverdilithiumkeys(0, 9)
+        assert_equal(len(scan), 10)
+        # Indexes 0 and 1 are the two keys above; the ECDSA calls in between
+        # left no holes.
+        assert_equal(scan[0]["address"], first)
+        assert_equal(scan[1]["address"], second)
+        assert_equal(scan[0]["recovered"], False)
+        assert_equal(scan[1]["recovered"], False)
+        assert all(entry["recovered"] for entry in scan[2:])
+        # Idempotent: a second scan recovers nothing new.
+        rescan = seq.recoverdilithiumkeys(0, 9)
+        assert not any(entry["recovered"] for entry in rescan)
+        # Scanned-ahead keys are already materialized, so the next new address
+        # skips past them rather than reusing one.
+        assert seq.getnewdilithiumaddress()["address"] not in {e["address"] for e in scan}
+        # The internal (change) sequence is distinct from the external one.
+        internal_scan = seq.recoverdilithiumkeys(0, 9, True)
+        assert not (
+            {entry["address"] for entry in internal_scan}
+            & {entry["address"] for entry in scan}
+        )
+        assert_raises_rpc_error(-8, "Invalid index range", seq.recoverdilithiumkeys, 5, 4)
+        assert_raises_rpc_error(-8, "Index range too large", seq.recoverdilithiumkeys, 0, 20000)
+        # A recovered address is spendable: fund it and send the coins onward.
+        self.generate(node, 1)
+        fund_txid = repro.sendtoaddress(scan[3]["address"], Decimal("1.0"))
+        self.generate(node, 1)
+        assert fund_txid in {u["txid"] for u in seq.listunspent()}
+        spend_txid = seq.sendtoaddress(repro.getnewaddress(), Decimal("0.5"))
+        assert spend_txid in node.getrawmempool()
+        self.generate(node, 1)
+        assert_equal(seq.gettransaction(spend_txid)["confirmations"], 1)
+
 
 if __name__ == "__main__":
     WalletDilithiumSendTest().main()

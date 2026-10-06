@@ -633,6 +633,16 @@ private:
     //! Body of GenerateNewDilithiumKey(), for callers that already hold cs_desc_man.
     util::Result<CDilithiumPubKey> GenerateNewDilithiumKeyLocked() EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
+    /** Next index in the Dilithium-only derivation sequence. Separate from
+     *  m_wallet_descriptor.next_index, which ECDSA address derivation
+     *  advances; sharing that counter left unscannable gaps in the Dilithium
+     *  key stream (Quarks F2.5). Persisted as a dilithiumdescindex record. */
+    int32_t m_dilithium_next_index GUARDED_BY(cs_desc_man){0};
+
+    //! Derive (without storing) the Dilithium key at an index of this
+    //! manager's sequence. Needs the descriptor's private key material.
+    util::Result<CDilithiumKey> DeriveDilithiumKeyAtIndex(int32_t index) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+
     KeyMap GetKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     std::map<DilithiumPKHash, CDilithiumKey> GetDilithiumKeys() const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
@@ -672,6 +682,11 @@ public:
      * still a valid payment destination (see LegacyDilithiumBase58PaymentsAllowed).
      */
     util::Result<CDilithiumPubKey> GenerateNewDilithiumKey() EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
+
+    //! Derive the Dilithium key at an index without storing it (recovery scans).
+    util::Result<CDilithiumKey> GetDilithiumKeyForIndex(int32_t index) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
+    //! Set the persisted Dilithium derivation index (used by LoadWallet).
+    void LoadDilithiumNextIndex(int32_t index) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
 
     // Dilithium key management
     bool AddDilithiumKeyPubKey(const CDilithiumKey& key);
