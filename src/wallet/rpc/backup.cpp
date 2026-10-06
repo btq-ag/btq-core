@@ -242,7 +242,7 @@ RPCHelpMan importprivkey()
             // Use timestamp of 1 to scan the whole chain
             if (is_dilithium) {
                 // For Dilithium keys, use the Dilithium key import method
-                if (!pwallet->GetLegacyScriptPubKeyMan()->AddDilithiumKeyPubKey(dilithium_key, pubkey)) {
+                if (!pwallet->GetLegacyScriptPubKeyMan()->AddDilithiumKeyPubKey(dilithium_key)) {
                     throw JSONRPCError(RPC_WALLET_ERROR, "Error adding Dilithium key to wallet");
                 }
                 // The key can turn a tracked P2MR from watch-only to spendable.

@@ -244,13 +244,10 @@ public:
     bool WriteCryptedKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
     bool WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey);
 
-    // Dilithium key storage methods
-    bool WriteCryptedDilithiumKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
-    
-    // Proper Dilithium key storage methods that don't require dummy CPubKey
+    // Dilithium key storage. Keyed by CKeyID; CPubKey cannot represent a
+    // Dilithium pubkey (Quarks F2.11).
     bool WriteDilithiumKeyByID(const CKeyID& keyID, const CPrivKey& vchPrivKey, const CKeyMetadata &keyMeta);
     bool WriteCryptedDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
-    bool WriteDilithiumKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubkey, const bool overwrite);
 
     bool WriteCScript(const uint160& hash, const CScript& redeemScript);
 
