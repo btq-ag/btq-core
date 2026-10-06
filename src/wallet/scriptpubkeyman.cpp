@@ -298,10 +298,11 @@ bool LegacyScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master_key
                 batch.WriteCryptedKey(vchPubKey, vchCryptedSecret, mapKeyMetadata[vchPubKey.GetID()]);
             }
         }
+        // One pass over the Dilithium keys (Quarks F2.20: this map used to be
+        // decrypted twice). Thoroughly-checked wallets verify the first key
+        // only, like the ECDSA loop above; otherwise verify every key and
+        // rewrite it with a checksum.
         for (const auto& entry : mapCryptedDilithiumKeys) {
-            if (fDecryptionThoroughlyChecked && keyPass) {
-                break;
-            }
             const CKeyID& keyID = entry.first;
             const std::vector<unsigned char>& vchCryptedSecret = entry.second.second;
             CDilithiumKey key;
@@ -310,9 +311,10 @@ bool LegacyScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master_key
                 break;
             }
             keyPass = true;
-            if (!fDecryptionThoroughlyChecked) {
-                batch.WriteCryptedDilithiumKeyByID(keyID, vchCryptedSecret, mapKeyMetadata[keyID]);
+            if (fDecryptionThoroughlyChecked) {
+                break;
             }
+            batch.WriteCryptedDilithiumKeyByID(keyID, vchCryptedSecret, mapKeyMetadata[keyID]);
         }
         if (keyPass && keyFail)
         {
@@ -321,28 +323,6 @@ bool LegacyScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master_key
         }
         if (keyFail || (!keyPass && !accept_no_keys))
             return false;
-
-        bool dilithiumPass = mapCryptedDilithiumKeys.empty();
-        bool dilithiumFail = false;
-        for (const auto& [keyID, crypted_pair] : mapCryptedDilithiumKeys)
-        {
-            CDilithiumKey key;
-            if (!DecryptDilithiumKey(master_key, crypted_pair.second, keyID, key)) {
-                dilithiumFail = true;
-                break;
-            }
-            dilithiumPass = true;
-            if (fDecryptionThoroughlyChecked) {
-                break;
-            }
-        }
-        if (dilithiumPass && dilithiumFail) {
-            LogPrintf("The wallet is probably corrupted: Some Dilithium keys decrypt but not all.\n");
-            throw std::runtime_error("Error unlocking wallet: some Dilithium keys decrypt but not all. Your wallet file may be corrupt.");
-        }
-        if (dilithiumFail || (!dilithiumPass && !mapCryptedDilithiumKeys.empty() && !accept_no_keys)) {
-            return false;
-        }
 
         fDecryptionThoroughlyChecked = true;
     }
