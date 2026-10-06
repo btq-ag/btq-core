@@ -2195,7 +2195,8 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     // P2MR destinations are tracked outside ScriptPubKeyMans. Merge their
     // builders/keys and retry so ordinary send/fund paths can spend Dilithium
     // (and other) P2MR leaves without requiring signp2mrtransaction.
-    FlatSigningProvider p2mr_provider = BuildP2MRSigningProvider(*this, /*only_id=*/std::nullopt);
+    // cs_wallet is recursive; the keyed overload above may already hold it.
+    FlatSigningProvider p2mr_provider = WITH_LOCK(cs_wallet, return BuildP2MRSigningProvider(*this, /*only_id=*/std::nullopt));
     if (!p2mr_provider.p2mr_trees.empty()) {
         if (::SignTransaction(tx, &p2mr_provider, coins, sighash, input_errors)) {
             return true;
@@ -2774,9 +2775,10 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         // is nothing to hand back, so nIndex stays -1 and KeepDestination() /
         // ReturnDestination() are no-ops for this type.
         if (!IsValidDestination(address)) {
-            auto created = CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
-                                                      /*add_to_address_book=*/!internal,
-                                                      internal);
+            auto created = WITH_LOCK(pwallet->cs_wallet,
+                                     return CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
+                                                                       /*add_to_address_book=*/!internal,
+                                                                       internal));
             if (!created) return util::Error{util::ErrorString(created)};
             address = created->dest;
             fInternal = internal;
