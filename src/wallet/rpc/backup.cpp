@@ -236,7 +236,7 @@ RPCHelpMan importprivkey()
             // Use timestamp of 1 to scan the whole chain
             if (is_dilithium) {
                 // For Dilithium keys, use the Dilithium key import method
-                if (!pwallet->GetLegacyScriptPubKeyMan()->AddDilithiumKeyPubKey(dilithium_key, pubkey)) {
+                if (!pwallet->GetLegacyScriptPubKeyMan()->AddDilithiumKeyPubKey(dilithium_key)) {
                     throw JSONRPCError(RPC_WALLET_ERROR, "Error adding Dilithium key to wallet");
                 }
             } else {
@@ -705,7 +705,7 @@ RPCHelpMan importwallet()
                 LOCK(spk_man->cs_KeyStore);
                 spk_man->mapKeyMetadata[keyid].nCreateTime = time;
             }
-            if (!spk_man->AddDilithiumKeyPubKey(key, CPubKey(pubkey.begin(), pubkey.end()))) {
+            if (!spk_man->AddDilithiumKeyPubKey(key)) {
                 pwallet->WalletLogPrintf("Error importing Dilithium key for %s\n", EncodeDestination(DilithiumPKHash(keyid)));
                 fGood = false;
                 continue;
