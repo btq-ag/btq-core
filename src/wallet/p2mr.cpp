@@ -700,6 +700,7 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
             out.address = entry.address;
             out.merkle_root = entry.merkle_root;
             out.dest = entry.dest;
+            out.reused = true;
             return out;
         }
     }
@@ -736,6 +737,14 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
     std::vector<CRecipient> recipients{{created.dest, amount, subtract_fee_from_amount}};
     auto tx_res = CreateTransaction(wallet, recipients, /*change_pos=*/-1, coin_control, /*sign=*/true);
     if (!tx_res) {
+        // Funding failed, so drop the entry this call just created instead
+        // of leaving an orphaned tree and address-book row behind (Quarks
+        // F2.9). A pre-existing tree that CreateP2MR reused stays.
+        if (!created.reused) {
+            WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
+            wallet.EraseP2MRMetadata(batch, created.dest, created.id);
+            wallet.DelAddressBook(created.dest);
+        }
         return util::Error{util::ErrorString(tx_res)};
     }
 
