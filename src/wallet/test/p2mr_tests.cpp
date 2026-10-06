@@ -19,6 +19,7 @@
 #include <util/strencodings.h>
 #include <util/vector.h>
 #include <validation.h>
+#include <wallet/coincontrol.h>
 #include <wallet/p2mr.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/test/util.h>
@@ -434,6 +435,35 @@ BOOST_FIXTURE_TEST_CASE(create_does_not_reuse_same_leaves_in_another_shape, Basi
         BOOST_CHECK(created->id != bad_id);
         BOOST_CHECK_EQUAL(HexStr(created->script_pub_key), HexStr(spk));
     }
+}
+
+BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const auto leaves = MakeOpTrueTree();
+    CCoinControl coin_control;
+
+    // The wallet has no coins, so CreateTransaction fails. The entry this
+    // call created must be rolled back (Quarks F2.9).
+    auto funded = FundP2MR(*wallet, leaves, CENT, "fund-fail", /*subtract_fee_from_amount=*/false, coin_control);
+    BOOST_REQUIRE(!funded);
+    BOOST_CHECK(ListP2MR(*wallet).empty());
+    BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+    auto builder = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(builder);
+    BOOST_CHECK(!wallet->FindAddressBookEntry(builder->GetOutput()));
+
+    // A pre-existing tree that the failing call reused stays.
+    auto created = CreateP2MR(*wallet, leaves, "keep");
+    BOOST_REQUIRE(created);
+    BOOST_CHECK(!created->reused);
+    funded = FundP2MR(*wallet, leaves, CENT, "keep", /*subtract_fee_from_amount=*/false, coin_control);
+    BOOST_REQUIRE(!funded);
+    BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+    BOOST_CHECK(wallet->FindAddressBookEntry(created->dest));
+    std::string value;
+    BOOST_CHECK(wallet->GetP2MRMetadata(created->dest, created->id, value));
 }
 
 BOOST_FIXTURE_TEST_CASE(p2mr_metadata_not_in_receive_requests, BasicTestingSetup)
