@@ -415,6 +415,62 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, Walle
     }
 }
 
+// SplitString turns doubled or trailing spaces into empty tokens, and the
+// importwallet label loop used to call front() on them, which is undefined
+// behavior on an empty string. A dump line with sloppy spacing must import.
+BOOST_FIXTURE_TEST_CASE(importwallet_tolerates_empty_tokens, WalletTestingSetup)
+{
+    const fs::path dump_path = m_args.GetDataDirNet() / "empty-token.dump";
+
+    CKey key;
+    key.MakeNewKey(/*fCompressedIn=*/true);
+    const CKeyID keyid = key.GetPubKey().GetID();
+
+    CDilithiumKey dilithium_key;
+    dilithium_key.MakeNewKey();
+    BOOST_REQUIRE(dilithium_key.IsValid());
+    const CKeyID dilithium_keyid{dilithium_key.GetPubKey().GetID()};
+
+    {
+        std::ofstream dump_file{dump_path};
+        // Doubled space before label=, trailing spaces after the comment token.
+        dump_file << EncodeSecret(key) << " 2026-01-01T00:00:00Z  label=spaced  # addr=x  \n";
+        dump_file << EncodeDilithiumSecret(dilithium_key) << " 2026-01-01T00:00:00Z  label=dspaced  # addr=y  \n";
+    }
+
+    WalletContext context;
+    context.args = &m_args;
+    const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet->SetupLegacyScriptPubKeyMan();
+
+    JSONRPCRequest request;
+    request.context = &context;
+    request.params.setArray();
+    request.params.push_back(fs::PathToString(dump_path));
+    AddWallet(context, wallet);
+    {
+        LOCK(Assert(m_node.chainman)->GetMutex());
+        LOCK(wallet->cs_wallet);
+        wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+    }
+
+    wallet::importwallet().HandleRequest(request);
+    RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+
+    LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+    BOOST_REQUIRE(spk_man);
+    {
+        LOCK(spk_man->cs_KeyStore);
+        BOOST_CHECK(spk_man->HaveKey(keyid));
+    }
+    CDilithiumKey recovered;
+    BOOST_REQUIRE(spk_man->GetDilithiumKey(dilithium_keyid, recovered));
+    BOOST_CHECK(recovered == dilithium_key);
+    const auto* entry = wallet->FindAddressBookEntry(PKHash(keyid));
+    BOOST_REQUIRE(entry);
+    BOOST_CHECK_EQUAL(entry->GetLabel(), "spaced");
+}
+
 BOOST_FIXTURE_TEST_CASE(importprivkey_stores_dilithium_key_by_dilithium_id, WalletTestingSetup)
 {
     CDilithiumKey key;

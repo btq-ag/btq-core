@@ -610,6 +610,10 @@ RPCHelpMan importwallet()
                 std::string strLabel;
                 bool fLabel = true;
                 for (unsigned int nStr = 2; nStr < vstr.size(); nStr++) {
+                    // SplitString produces empty tokens for doubled or trailing
+                    // spaces; front() on an empty string is undefined behavior.
+                    if (vstr[nStr].empty())
+                        continue;
                     if (vstr[nStr].front() == '#')
                         break;
                     if (vstr[nStr] == "change=1")
@@ -628,6 +632,9 @@ RPCHelpMan importwallet()
                 std::string strLabel;
                 bool fLabel = true;
                 for (unsigned int nStr = 2; nStr < vstr.size(); nStr++) {
+                    // Same empty-token guard as the ECDSA loop above.
+                    if (vstr[nStr].empty())
+                        continue;
                     if (vstr[nStr].front() == '#')
                         break;
                     if (vstr[nStr] == "change=1")
