@@ -59,6 +59,11 @@ public:
     int m_max_depth = DEFAULT_MAX_DEPTH;
     //! SigningProvider that has pubkeys and scripts to do spend size estimation for external inputs
     FlatSigningProvider m_external_provider;
+    //! Set by the wallet when destChange merely reuses the first creation
+    //! attempt's change address on the avoid-partial-spends retry, rather than
+    //! being a user choice. The quantum-safe input-following rule (Quarks
+    //! F2.4) may still replace such a change script.
+    bool m_change_reused_from_first_attempt = false;
 
     CCoinControl();
 
