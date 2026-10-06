@@ -20,6 +20,11 @@ static const int COINBASE_MATURITY = 100;
 
 static const int WITNESS_SCALE_FACTOR = 16;
 
+/** Expected number of blocks in 24 hours at BTQ's 60-second target spacing.
+ *  Not a consensus rule; use where "about one day of blocks" is meant.
+ *  Bitcoin's equivalent literal is 144 (10-minute spacing). */
+static constexpr int BLOCKS_PER_DAY = 24 * 60;
+
 static const size_t MIN_TRANSACTION_WEIGHT = WITNESS_SCALE_FACTOR * 60; // 60 is the lower bound for the size of a valid serialized CTransaction
 static const size_t MIN_SERIALIZABLE_TRANSACTION_WEIGHT = WITNESS_SCALE_FACTOR * 10; // 10 is the lower bound for the size of a serialized CTransaction
 

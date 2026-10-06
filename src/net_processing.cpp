@@ -11,6 +11,7 @@
 #include <blockfilter.h>
 #include <chainparams.h>
 #include <consensus/amount.h>
+#include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <deploymentstatus.h>
 #include <hash.h>
@@ -2468,9 +2469,10 @@ arith_uint256 PeerManagerImpl::GetAntiDoSWorkThreshold()
     LOCK(cs_main);
     if (m_chainman.ActiveChain().Tip() != nullptr) {
         const CBlockIndex *tip = m_chainman.ActiveChain().Tip();
-        // Use a 144 block buffer, so that we'll accept headers that fork from
-        // near our tip.
-        near_chaintip_work = tip->nChainWork - std::min<arith_uint256>(144*GetBlockProof(*tip), tip->nChainWork);
+        // Use a one-day buffer, so that we'll accept headers that fork from
+        // near our tip. Upstream uses 144 blocks for the same 24 hours; with
+        // 60-second spacing that is BLOCKS_PER_DAY (1440).
+        near_chaintip_work = tip->nChainWork - std::min<arith_uint256>(BLOCKS_PER_DAY*GetBlockProof(*tip), tip->nChainWork);
     }
     return std::max(near_chaintip_work, m_chainman.MinimumChainWork());
 }
