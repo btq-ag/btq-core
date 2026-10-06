@@ -2963,35 +2963,39 @@ bool CWallet::EraseAddressReceiveRequest(WalletBatch& batch, const CTxDestinatio
     return true;
 }
 
-namespace {
-static constexpr std::string_view P2MR_RECEIVE_REQUEST_PREFIX{"rrp2mr:"};
+void CWallet::LoadP2MRMetadata(const CTxDestination& dest, const std::string& id, const std::string& value)
+{
+    m_p2mr_metadata[dest][id] = value;
 }
 
 bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value)
 {
-    const bool result = SetAddressReceiveRequest(batch, dest, std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id, value);
-    if (result) m_ismine_cache.erase(GetScriptForDestination(dest));
-    return result;
+    if (!batch.WriteP2MRMetadata(dest, id, value)) return false;
+    // Older wallets stored this as a receive request under "rrp2mr:<id>"
+    // (Quarks F2.17). Drop any such row, in the DB and in memory, so the
+    // two copies cannot diverge.
+    EraseAddressReceiveRequest(batch, dest, "rrp2mr:" + id);
+    m_p2mr_metadata[dest][id] = value;
+    m_ismine_cache.erase(GetScriptForDestination(dest));
+    return true;
 }
 
 bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const
 {
-    const auto* entry{common::FindKey(m_address_book, dest)};
+    const auto* entry{common::FindKey(m_p2mr_metadata, dest)};
     if (!entry) return false;
-    const auto full_id = std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id;
-    const auto* request{common::FindKey(entry->receive_requests, full_id)};
-    if (!request) return false;
-    value = *request;
+    const auto* meta{common::FindKey(*entry, id)};
+    if (!meta) return false;
+    value = *meta;
     return true;
 }
 
 std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata() const
 {
     std::vector<std::tuple<CTxDestination, std::string, std::string>> out;
-    for (const auto& [dest, entry] : m_address_book) {
-        for (const auto& [id, request] : entry.receive_requests) {
-            if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) != 0) continue;
-            out.emplace_back(dest, id.substr(P2MR_RECEIVE_REQUEST_PREFIX.size()), request);
+    for (const auto& [dest, entries] : m_p2mr_metadata) {
+        for (const auto& [id, value] : entries) {
+            out.emplace_back(dest, id, value);
         }
     }
     return out;

@@ -486,6 +486,9 @@ public:
     int64_t nOrderPosNext GUARDED_BY(cs_wallet) = 0;
 
     std::map<CTxDestination, CAddressBookData> m_address_book GUARDED_BY(cs_wallet);
+    /** P2MR tree metadata (JSON), kept out of the address book so
+     *  GetAddressReceiveRequests never returns it (Quarks F2.17). */
+    std::map<CTxDestination, std::map<std::string, std::string>> m_p2mr_metadata GUARDED_BY(cs_wallet);
     const CAddressBookData* FindAddressBookEntry(const CTxDestination&, bool allow_change = false) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /** Set of Coins owned by this wallet that we won't try to spend from. A
@@ -565,6 +568,8 @@ public:
     void LoadAddressPreviouslySpent(const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     //! Appends payment request to destination.
     void LoadAddressReceiveRequest(const CTxDestination& dest, const std::string& id, const std::string& request) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    //! Loads a P2MR metadata record (new p2mrmeta rows and legacy rrp2mr: receive requests).
+    void LoadP2MRMetadata(const CTxDestination& dest, const std::string& id, const std::string& value) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! Holds a timestamp at which point the wallet is scheduled (externally) to be relocked. Caller must arrange for actual relocking to occur via Lock().
     int64_t nRelockTime GUARDED_BY(cs_wallet){0};

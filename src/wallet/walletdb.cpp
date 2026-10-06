@@ -49,6 +49,7 @@ const std::string MINVERSION{"minversion"};
 const std::string NAME{"name"};
 const std::string OLD_KEY{"wkey"};
 const std::string ORDERPOSNEXT{"orderposnext"};
+const std::string P2MR_METADATA{"p2mrmeta"};
 const std::string POOL{"pool"};
 const std::string PURPOSE{"purpose"};
 const std::string SETTINGS{"settings"};
@@ -1230,12 +1231,33 @@ static DBErrors LoadAddressBookRecords(CWallet* pwallet, DatabaseBatch& batch) E
             pwallet->LoadAddressPreviouslySpent(dest);
         } else if (strKey.compare(0, 2, "rr") == 0) {
             // Load "rr##" keys where ## is a decimal number, and strValue
-            // is a serialized RecentRequestEntry object.
-            pwallet->LoadAddressReceiveRequest(dest, strKey.substr(2), strValue);
+            // is a serialized RecentRequestEntry object. Wallets written
+            // before P2MR metadata had its own record type stored it here
+            // under "rrrrp2mr:<id>"; route those rows to the metadata map so
+            // GetAddressReceiveRequests never returns them (Quarks F2.17).
+            const std::string rr_id = strKey.substr(2);
+            constexpr std::string_view legacy_p2mr_prefix{"rrp2mr:"};
+            if (rr_id.rfind(legacy_p2mr_prefix, 0) == 0) {
+                pwallet->LoadP2MRMetadata(dest, rr_id.substr(legacy_p2mr_prefix.size()), strValue);
+            } else {
+                pwallet->LoadAddressReceiveRequest(dest, rr_id, strValue);
+            }
         }
         return DBErrors::LOAD_OK;
     });
     result = std::max(result, dest_res.m_result);
+
+    // Load P2MR metadata records
+    LoadResult p2mr_meta_res = LoadRecords(pwallet, batch, DBKeys::P2MR_METADATA,
+        [] (CWallet* pwallet, DataStream& key, CDataStream& value, std::string& err) EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet) {
+        std::string strAddress, strId, strValue;
+        key >> strAddress;
+        key >> strId;
+        value >> strValue;
+        pwallet->LoadP2MRMetadata(DecodeDestination(strAddress), strId, strValue);
+        return DBErrors::LOAD_OK;
+    });
+    result = std::max(result, p2mr_meta_res.m_result);
 
     return result;
 }
@@ -1604,6 +1626,16 @@ bool WalletBatch::EraseAddressData(const CTxDestination& dest)
     DataStream prefix;
     prefix << DBKeys::DESTDATA << EncodeDestination(dest);
     return m_batch->ErasePrefix(prefix);
+}
+
+bool WalletBatch::WriteP2MRMetadata(const CTxDestination& dest, const std::string& id, const std::string& value)
+{
+    return WriteIC(std::make_pair(DBKeys::P2MR_METADATA, std::make_pair(EncodeDestination(dest), id)), value);
+}
+
+bool WalletBatch::EraseP2MRMetadata(const CTxDestination& dest, const std::string& id)
+{
+    return EraseIC(std::make_pair(DBKeys::P2MR_METADATA, std::make_pair(EncodeDestination(dest), id)));
 }
 
 bool WalletBatch::WriteHDChain(const CHDChain& chain)
