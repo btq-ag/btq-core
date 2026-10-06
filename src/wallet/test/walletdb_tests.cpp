@@ -101,5 +101,35 @@ BOOST_AUTO_TEST_CASE(walletdb_loads_dilithium_key_metadata)
     }
 }
 
+BOOST_AUTO_TEST_CASE(walletdb_rejects_invalid_dilithium_key_record)
+{
+    // A record with the right length but garbage key material makes
+    // CDilithiumKey::Set fail its self-checks and clear the key. Loading
+    // must report corruption instead of installing an invalid key.
+    const CKeyID key_id{uint160(std::vector<unsigned char>(20, 0x11))};
+    CKeyMetadata metadata{123456789};
+    const std::vector<unsigned char> garbage(DilithiumConstants::SECRET_KEY_SIZE + DilithiumConstants::PUBLIC_KEY_SIZE, 0x5a);
+
+    MockableData records;
+    {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        LOCK(wallet->cs_wallet);
+        wallet->SetupLegacyScriptPubKeyMan();
+        WalletBatch batch{wallet->GetDatabase()};
+        BOOST_REQUIRE(batch.WriteDilithiumKeyByID(key_id, garbage, metadata));
+        wallet->Flush();
+        records = GetMockableDatabase(*wallet).m_records;
+    }
+
+    {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+        {
+            LOCK(wallet->cs_wallet);
+            wallet->SetupLegacyScriptPubKeyMan();
+        }
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::CORRUPT);
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 } // namespace wallet
