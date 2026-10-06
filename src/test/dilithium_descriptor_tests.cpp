@@ -131,15 +131,11 @@ BOOST_AUTO_TEST_CASE(dilithium_type_compatibility)
     // Test type compatibility checking
     // This tests the logic we implemented in DescriptorScriptPubKeyMan
     
-    // The compatibility check should be true for our special case
-    bool special_legacy_compatible = (OutputType::DILITHIUM_LEGACY != OutputType::LEGACY) &&
-                                     (OutputType::DILITHIUM_LEGACY == OutputType::DILITHIUM_LEGACY && OutputType::LEGACY == OutputType::LEGACY);
-    BOOST_CHECK(special_legacy_compatible);
-    
-    // Test Dilithium bech32 compatibility
-    bool special_bech32_compatible = (OutputType::DILITHIUM_BECH32 != OutputType::BECH32) &&
-                                     (OutputType::DILITHIUM_BECH32 == OutputType::DILITHIUM_BECH32 && OutputType::BECH32 == OutputType::BECH32);
-    BOOST_CHECK(special_bech32_compatible);
+    // The Dilithium output types must stay distinct from their ECDSA
+    // counterparts (the self-comparisons the old check carried were
+    // tautological and tripped clang's -Wtautological-compare).
+    BOOST_CHECK(OutputType::DILITHIUM_LEGACY != OutputType::LEGACY);
+    BOOST_CHECK(OutputType::DILITHIUM_BECH32 != OutputType::BECH32);
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_signature_sizes)

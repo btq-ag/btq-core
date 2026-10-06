@@ -318,7 +318,7 @@ private:
     // derived from the Dilithium pubkey; there is no CPubKey involved
     // (Quarks F2.11).
     bool AddDilithiumKeyPubKeyInner(const CDilithiumKey& key);
-    bool AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, const CDilithiumKey& secret);
+    bool AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, const CDilithiumKey& secret) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
 
     /**
      * Private version of AddWatchOnly method which does not accept a

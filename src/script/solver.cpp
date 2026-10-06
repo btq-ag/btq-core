@@ -120,11 +120,8 @@ static bool MatchPayToDilithiumPubkey(const CScript& script, valtype& pubkey)
         pubkey = valtype(script.begin() + 3, script.begin() + CDilithiumPubKey::SIZE + 3);
         return pubkey.size() == CDilithiumPubKey::SIZE;
     }
-    // Check for direct push format (for small keys <= 75 bytes)
-    if (script.size() == CDilithiumPubKey::SIZE + 2 && script[0] == CDilithiumPubKey::SIZE && script.back() == OP_CHECKSIGDILITHIUM) {
-        pubkey = valtype(script.begin() + 1, script.begin() + CDilithiumPubKey::SIZE + 1);
-        return pubkey.size() == CDilithiumPubKey::SIZE;
-    }
+    // No direct-push form: Dilithium pubkeys (1312 bytes) always need
+    // OP_PUSHDATA2, so a single-byte push opcode can never encode them.
     return false;
 }
 
