@@ -82,21 +82,12 @@ public:
         return false;
     }
     
-    // Get public key
-    CPubKey GetPubKey() const {
-        switch (m_type) {
-            case KeyType::ECDSA:
-                return std::get<ECDSAKey>(m_key).GetPubKey();
-            case KeyType::DILITHIUM:
-                // For Dilithium, we need to return a dummy CPubKey since Dilithium keys are much larger
-                // This is a workaround for compatibility with existing wallet code
-                std::vector<unsigned char> dummy_data(33, 0x00);
-                dummy_data[0] = 0x02; // Compressed pubkey prefix
-                return CPubKey(dummy_data);
-        }
-        return CPubKey{}; // Should never reach here
-    }
-    
+    // There is deliberately no GetPubKey()/GetID() here. A CPubKey cannot
+    // represent a Dilithium public key, and the old implementation returned
+    // a hardcoded dummy compressed secp256k1 key for Dilithium (so GetID
+    // hashed the same dummy for every Dilithium key, Quarks F2.15). Use
+    // GetDilithiumPubKey() for Dilithium keys.
+
     // Get Dilithium public key (only valid for Dilithium keys)
     CDilithiumPubKey GetDilithiumPubKey() const {
         if (m_type != KeyType::DILITHIUM) {
@@ -168,11 +159,6 @@ public:
             m_key = ECDSAKey{};
             return std::get<ECDSAKey>(m_key).Load(privkey, pubkey, fSkipCheck);
         }
-    }
-    
-    // Get key ID for wallet storage
-    CKeyID GetID() const {
-        return GetPubKey().GetID();
     }
     
     // Check if key is compressed (only relevant for ECDSA)
