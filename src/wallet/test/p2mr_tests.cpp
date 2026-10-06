@@ -236,7 +236,7 @@ BOOST_FIXTURE_TEST_CASE(create_allows_threshold_accumulator_with_one_cosigner_ke
 
     {
         LOCK2(wallet.cs_wallet, spk_man->cs_KeyStore);
-        BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(mine, CPubKey()));
+        BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(mine));
 
         const CScript leaf_script = GetScriptForDilithiumThreshold(
             2, {mine.GetPubKey(), other_a.GetPubKey(), other_b.GetPubKey()});
