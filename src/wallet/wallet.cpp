@@ -2211,6 +2211,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     // builders/keys and retry so ordinary send/fund paths can spend Dilithium
     // (and other) P2MR leaves without requiring signp2mrtransaction.
     // Read only the entries for the coins being spent, once per destination.
+    // cs_wallet is already held (AssertLockHeld above); the helpers require it.
     std::set<WitnessV2P2MR> p2mr_outputs;
     for (const auto& [outpoint, coin] : coins) {
         CTxDestination dest;
@@ -2845,9 +2846,10 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         // is nothing to hand back, so nIndex stays -1 and KeepDestination() /
         // ReturnDestination() are no-ops for this type.
         if (!IsValidDestination(address)) {
-            auto created = CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
-                                                      /*add_to_address_book=*/!internal,
-                                                      internal);
+            auto created = WITH_LOCK(pwallet->cs_wallet,
+                                     return CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
+                                                                       /*add_to_address_book=*/!internal,
+                                                                       internal));
             if (!created) return util::Error{util::ErrorString(created)};
             address = created->dest;
             fInternal = internal;
