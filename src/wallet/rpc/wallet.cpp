@@ -27,6 +27,10 @@ static const std::map<uint64_t, std::string> WALLET_FLAG_CAVEATS{
      "You need to rescan the blockchain in order to correctly mark used "
      "destinations in the past. Until this is done, some destinations may "
      "be considered unused, even if the opposite is the case."},
+    {WALLET_FLAG_QUANTUM_ONLY,
+     "The wallet will refuse to create ECDSA addresses, including change. "
+     "Older software that does not know this flag will refuse to open the "
+     "wallet while the flag is set."},
 };
 
 /** Checks if a CKey is in the given CWallet compressed or otherwise*/

@@ -924,7 +924,9 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     out.tx.vout.emplace_back(send_amount, GetScriptForDestination(to_dest));
 
     if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
-        auto change_dest = wallet.GetNewChangeDestination(OutputType::BECH32);
+        // Change from a P2MR spend stays quantum-safe (Quarks F2.4); a bech32
+        // change output would move the remainder onto an ECDSA script.
+        auto change_dest = wallet.GetNewChangeDestination(OutputType::P2MR);
         if (!change_dest) return util::Error{util::ErrorString(change_dest)};
         out.tx.vout.emplace_back(change, GetScriptForDestination(*change_dest));
         out.has_change = true;

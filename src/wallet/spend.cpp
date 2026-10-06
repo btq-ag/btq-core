@@ -1040,7 +1040,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     coin_selection_params.m_long_term_feerate = wallet.m_consolidate_feerate;
 
     CAmount recipients_sum = 0;
-    const OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend);
+    const OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend, &coin_control);
     ReserveDestination reservedest(&wallet, change_type);
     unsigned int outputs_to_subtract_fee_from = 0; // The number of outputs which we are subtracting the fee from
     for (const auto& recipient : vecSend) {
@@ -1180,7 +1180,48 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     const SelectionResult& result = *select_coins_res;
     TRACE5(coin_selection, selected_coins, wallet.GetName().c_str(), GetAlgorithmName(result.GetAlgo()).c_str(), result.GetTarget(), result.GetWaste(), result.GetSelectedValue());
 
-    const CAmount change_amount = result.GetChange(coin_selection_params.min_viable_change, coin_selection_params.m_change_fee);
+    CAmount change_amount = result.GetChange(coin_selection_params.min_viable_change, coin_selection_params.m_change_fee);
+
+    // The change type was fixed before coin selection ran, so the
+    // input-following rule (Quarks F2.4) could only see preselected inputs.
+    // If selection added a P2MR input on its own and nothing pinned the change
+    // (no -changetype, no custom change address), swap the classical change
+    // script for a fresh P2MR one now. The P2MR script can be larger than the
+    // classical one the fee math assumed, so the size-delta fee comes out of
+    // the change; the overpayment branch below returns any overshoot.
+    if (change_amount > 0 && change_type != OutputType::P2MR &&
+        !coin_control.m_change_type &&
+        (std::get_if<CNoDestination>(&coin_control.destChange) || coin_control.m_change_reused_from_first_attempt) &&
+        !wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) &&
+        !wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
+        const bool selected_p2mr = std::any_of(result.GetInputSet().begin(), result.GetInputSet().end(),
+            [](const std::shared_ptr<COutput>& coin) {
+                CTxDestination input_dest;
+                return ExtractDestination(coin->txout.scriptPubKey, input_dest) &&
+                       (std::holds_alternative<WitnessV2P2MR>(input_dest) ||
+                        std::holds_alternative<DilithiumPKHash>(input_dest));
+            });
+        if (selected_p2mr) {
+            ReserveDestination p2mr_reservedest(&wallet, OutputType::P2MR);
+            auto p2mr_dest = p2mr_reservedest.GetReservedDestination(true);
+            if (!p2mr_dest) {
+                return util::Error{_("Transaction needs a change address, but we can't generate it.") + Untranslated(" ") + util::ErrorString(p2mr_dest)};
+            }
+            const CScript p2mr_script = GetScriptForDestination(*p2mr_dest);
+            const int size_delta = (int)::GetSerializeSize(CTxOut(0, p2mr_script)) - (int)coin_selection_params.change_output_size;
+            // One extra satoshi against GetFee rounding; the overpayment
+            // adjustment below hands it back to the change output.
+            const CAmount fee_delta = size_delta > 0 ? coin_selection_params.m_effective_feerate.GetFee(size_delta) + 1 : 0;
+            if (change_amount - fee_delta >= coin_selection_params.min_viable_change) {
+                scriptChange = p2mr_script;
+                change_amount -= fee_delta;
+            }
+            // Otherwise the change is too small to absorb the larger script;
+            // it stays classical rather than failing the send. The leak is
+            // bounded by min_viable_change.
+        }
+    }
+
     if (change_amount > 0) {
         CTxOut newTxOut(change_amount, scriptChange);
         if (nChangePosInOut == -1) {
@@ -1359,6 +1400,11 @@ util::Result<CreatedTransactionResult> CreateTransaction(
         const int ungrouped_change_pos = txr_ungrouped.change_pos;
         if (ungrouped_change_pos != -1) {
             ExtractDestination(txr_ungrouped.tx->vout[ungrouped_change_pos].scriptPubKey, tmp_cc.destChange);
+            // This pin comes from the wallet, not the user. The grouped pass
+            // may select different inputs, so if it picks quantum-safe ones
+            // the input-following change swap must still be allowed to replace
+            // a classical reused change script (Quarks F2.4).
+            tmp_cc.m_change_reused_from_first_attempt = std::get_if<CNoDestination>(&coin_control.destChange) != nullptr;
         }
 
         auto txr_grouped = CreateTransactionInternal(wallet, vecSend, change_pos, tmp_cc, sign);

@@ -206,6 +206,48 @@ class WalletDilithiumSendTest(BTQTestFramework):
         self.generate(node, 1)
         assert_equal(seq.gettransaction(spend_txid)["confirmations"], 1)
 
+        # F2.4: change follows the inputs. A preselected P2MR input paying a
+        # classical recipient must return its change to a P2MR script.
+        self.log.info("P2MR inputs force P2MR change")
+        change_addr = self.dilithium_address(repro)
+        funding.sendtoaddress(change_addr, Decimal("5"))
+        self.generate(node, 1)
+        p2mr_utxo = next(u for u in repro.listunspent() if u["address"] == change_addr)
+        raw = repro.createrawtransaction(
+            [{"txid": p2mr_utxo["txid"], "vout": p2mr_utxo["vout"]}],
+            [{repro.getnewaddress(): Decimal("0.5")}],
+        )
+        funded = repro.fundrawtransaction(raw, {"add_inputs": False})
+        decoded = repro.decoderawtransaction(funded["hex"])
+        change_out = decoded["vout"][funded["changepos"]]
+        assert_equal(change_out["scriptPubKey"]["type"], "witness_v2_p2mr")
+        # An explicit changetype still wins.
+        funded = repro.fundrawtransaction(raw, {"add_inputs": False, "change_type": "bech32m"})
+        decoded = repro.decoderawtransaction(funded["hex"])
+        change_out = decoded["vout"][funded["changepos"]]
+        assert_equal(change_out["scriptPubKey"]["type"], "witness_v1_taproot")
+
+        # Automatically selected P2MR inputs force P2MR change too. The seq
+        # wallet holds only P2MR coins, so sendtoaddress must auto-select one.
+        auto_txid = seq.sendtoaddress(repro.getnewaddress(), Decimal("0.1"))
+        auto_decoded = node.getrawtransaction(auto_txid, True)
+        auto_types = [v["scriptPubKey"]["type"] for v in auto_decoded["vout"]]
+        assert_equal(sorted(auto_types), ["witness_v0_keyhash", "witness_v2_p2mr"])
+        self.generate(node, 1)
+
+        # F2.4: a quantum_only wallet refuses to mint ECDSA destinations.
+        self.log.info("quantum_only wallets refuse ECDSA addresses")
+        node.createwallet(wallet_name="quantum", descriptors=True)
+        quantum = node.get_wallet_rpc("quantum")
+        assert_equal(quantum.setwalletflag("quantum_only")["flag_state"], True)
+        assert_raises_rpc_error(-12, "quantum-only", quantum.getnewaddress)
+        assert_raises_rpc_error(-12, "quantum-only", quantum.getrawchangeaddress)
+        assert quantum.getnewdilithiumaddress()["address"]
+        assert quantum.getnewaddress(address_type="p2mr")
+        # Unsetting the flag restores classical minting.
+        quantum.setwalletflag("quantum_only", False)
+        assert quantum.getnewaddress()
+
         # After a reload every Dilithium key record lands in an arbitrary
         # manager, so generation must check the whole wallet before storing:
         # a plaintext wallet otherwise errors on every already-materialized

@@ -157,10 +157,12 @@ static constexpr uint64_t KNOWN_WALLET_FLAGS =
     |   WALLET_FLAG_DISABLE_PRIVATE_KEYS
     |   WALLET_FLAG_DESCRIPTORS
     |   WALLET_FLAG_EXTERNAL_SIGNER
-    |   WALLET_FLAG_P2MR_METADATA;
+    |   WALLET_FLAG_P2MR_METADATA
+    |   WALLET_FLAG_QUANTUM_ONLY;
 
 static constexpr uint64_t MUTABLE_WALLET_FLAGS =
-        WALLET_FLAG_AVOID_REUSE;
+        WALLET_FLAG_AVOID_REUSE
+    |   WALLET_FLAG_QUANTUM_ONLY;
 
 static const std::map<std::string,WalletFlags> WALLET_FLAG_MAP{
     {"avoid_reuse", WALLET_FLAG_AVOID_REUSE},
@@ -170,7 +172,8 @@ static const std::map<std::string,WalletFlags> WALLET_FLAG_MAP{
     {"disable_private_keys", WALLET_FLAG_DISABLE_PRIVATE_KEYS},
     {"descriptor_wallet", WALLET_FLAG_DESCRIPTORS},
     {"external_signer", WALLET_FLAG_EXTERNAL_SIGNER},
-    {"p2mr_metadata", WALLET_FLAG_P2MR_METADATA}
+    {"p2mr_metadata", WALLET_FLAG_P2MR_METADATA},
+    {"quantum_only", WALLET_FLAG_QUANTUM_ONLY}
 };
 
 /** A wrapper to reserve an address from a wallet
@@ -651,7 +654,7 @@ public:
     bool ShouldResend() const;
     void ResubmitWalletTransactions(bool relay, bool force);
 
-    OutputType TransactionChangeType(const std::optional<OutputType>& change_type, const std::vector<CRecipient>& vecSend) const;
+    OutputType TransactionChangeType(const std::optional<OutputType>& change_type, const std::vector<CRecipient>& vecSend, const CCoinControl* coin_control = nullptr) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /** Fetch the inputs and sign with SIGHASH_ALL. */
     bool SignTransaction(CMutableTransaction& tx) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
