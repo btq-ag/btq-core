@@ -209,31 +209,12 @@ public:
         return begin() + size();
     }
     
-    // Serialization support
-    template<typename Stream>
-    void Serialize(Stream& s) const {
-        s << static_cast<uint8_t>(m_type);
-        std::visit([&s](const auto& key) { s << key; }, m_key);
-    }
-    
-    template<typename Stream>
-    void Unserialize(Stream& s) {
-        uint8_t type_byte;
-        s >> type_byte;
-        m_type = static_cast<KeyType>(type_byte);
-        
-        switch (m_type) {
-            case KeyType::ECDSA:
-                m_key = ECDSAKey{};
-                s >> std::get<ECDSAKey>(m_key);
-                break;
-            case KeyType::DILITHIUM:
-                m_key = DilithiumKey{};
-                s >> std::get<DilithiumKey>(m_key);
-                break;
-        }
-    }
-    
+    // No stream serialization. The old Serialize/Unserialize pair never
+    // compiled (CKey and CDilithiumKey have no stream serializers) and
+    // Unserialize cast the type byte into KeyType with no range check
+    // (Quarks F2.7). Any future implementation must validate the type
+    // byte and throw std::ios_base::failure on unknown values.
+
     // Comparison operators
     bool operator==(const CUnifiedKey& other) const {
         return m_type == other.m_type && m_key == other.m_key;
@@ -309,30 +290,7 @@ public:
         }
     }
     
-    // Serialization support
-    template<typename Stream>
-    void Serialize(Stream& s) const {
-        s << static_cast<uint8_t>(m_type);
-        std::visit([&s](const auto& extkey) { s << extkey; }, m_extkey);
-    }
-    
-    template<typename Stream>
-    void Unserialize(Stream& s) {
-        uint8_t type_byte;
-        s >> type_byte;
-        m_type = static_cast<KeyType>(type_byte);
-        
-        switch (m_type) {
-            case KeyType::ECDSA:
-                m_extkey = ECDSAExtKey{};
-                s >> std::get<ECDSAExtKey>(m_extkey);
-                break;
-            case KeyType::DILITHIUM:
-                m_extkey = DilithiumExtKey{};
-                s >> std::get<DilithiumExtKey>(m_extkey);
-                break;
-        }
-    }
+    // No stream serialization; see the note on CUnifiedKey.
 };
 
 } // namespace wallet
