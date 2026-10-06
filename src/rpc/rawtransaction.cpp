@@ -1041,6 +1041,16 @@ const RPCResult decodepsbt_outputs{
                     }},
                 }},
             }},
+            {RPCResult::Type::ARR, "p2mr_tree", /*optional=*/ true, "The tuples that make up the P2MR tree, in depth first search order",
+            {
+                {RPCResult::Type::OBJ, "tuple", /*optional=*/ true, "A single leaf script in the P2MR tree",
+                {
+                    {RPCResult::Type::NUM, "depth", "The depth of this element in the tree"},
+                    {RPCResult::Type::NUM, "leaf_ver", "The version of this leaf"},
+                    {RPCResult::Type::STR, "script", "The hex-encoded script itself"},
+                }},
+            }},
+            {RPCResult::Type::STR_HEX, "p2mr_merkle_root", /*optional=*/ true, "The hex-encoded P2MR merkle root (the witness v2 program of this output)"},
             {RPCResult::Type::OBJ_DYN, "unknown", /*optional=*/true, "The unknown output fields",
             {
                 {RPCResult::Type::STR_HEX, "key", "(key-value pair) An unknown key-value pair"},
@@ -1515,6 +1525,24 @@ static RPCHelpMan decodepsbt()
                 keypaths.push_back(path_obj);
             }
             out.pushKV("taproot_bip32_derivs", keypaths);
+        }
+
+        // P2MR tree
+        if (!output.m_p2mr_tree.empty()) {
+            UniValue p2mr_tree(UniValue::VARR);
+            for (const auto& [depth, leaf_ver, script] : output.m_p2mr_tree) {
+                UniValue elem(UniValue::VOBJ);
+                elem.pushKV("depth", (int)depth);
+                elem.pushKV("leaf_ver", (int)leaf_ver);
+                elem.pushKV("script", HexStr(script));
+                p2mr_tree.push_back(elem);
+            }
+            out.pushKV("p2mr_tree", p2mr_tree);
+        }
+
+        // P2MR merkle root
+        if (!output.m_p2mr_merkle_root.IsNull()) {
+            out.pushKV("p2mr_merkle_root", HexStr(output.m_p2mr_merkle_root));
         }
 
         // Proprietary

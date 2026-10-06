@@ -2284,6 +2284,18 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
         }
     }
 
+    // Outputs paying a tracked P2MR destination: record the script tree and
+    // merkle root so the receiving side can store the spend metadata it needs
+    // (Quarks F2.10). Like the input pass above, these scripts are owned via
+    // wallet metadata rather than a ScriptPubKeyMan, so the spk_man loop never
+    // fills them.
+    for (unsigned int i = 0; i < psbtx.tx->vout.size(); ++i) {
+        const auto entry{GetP2MRByScript(*this, psbtx.tx->vout[i].scriptPubKey)};
+        if (!entry) continue;
+        const FlatSigningProvider provider{BuildP2MRSigningProvider(*this, entry->id)};
+        UpdatePSBTOutput(HidingSigningProvider(&provider, /*hide_secret=*/true, /*hide_origin=*/!bip32derivs), psbtx, i);
+    }
+
     RemoveUnnecessaryTransactions(psbtx, sighash_type);
 
     // Complete if every input is now signed
