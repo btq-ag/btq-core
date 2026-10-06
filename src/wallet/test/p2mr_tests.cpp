@@ -411,6 +411,43 @@ BOOST_FIXTURE_TEST_CASE(produce_signature_preserves_p2mr_witness_stack, BasicTes
         ScriptErrorString(serror));
 }
 
+// A leaf of OP_2 <32-byte-push> is itself a witness v2 program. Signing it
+// used to re-enter SignP2MR over the same p2mr_spenddata.scripts map and
+// crash from stack exhaustion. It must fail to sign instead.
+BOOST_FIXTURE_TEST_CASE(produce_signature_rejects_p2mr_program_leaf, BasicTestingSetup)
+{
+    const std::vector<unsigned char> inner_program(32, 0xab);
+    const CScript leaf_script = CScript() << OP_2 << inner_program;
+    const std::vector<unsigned char> leaf_bytes{leaf_script.begin(), leaf_script.end()};
+
+    P2MRBuilder builder;
+    builder.Add(/*depth=*/0, leaf_bytes, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+    BOOST_REQUIRE(builder.IsValid());
+    BOOST_REQUIRE(builder.IsComplete());
+
+    const WitnessV2P2MR output = builder.GetOutput();
+    const CScript script_pubkey = GetScriptForDestination(output);
+    const CAmount amount = COIN;
+
+    FlatSigningProvider provider;
+    provider.p2mr_trees.emplace(output, builder);
+
+    CMutableTransaction tx_to;
+    tx_to.nVersion = 2;
+    tx_to.vin.emplace_back(COutPoint(uint256::ONE, 0));
+    tx_to.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.emplace_back(amount, script_pubkey);
+    PrecomputedTransactionData txdata;
+    txdata.Init(tx_to, std::move(spent_outputs), /*force=*/true);
+
+    SignatureData sigdata;
+    MutableTransactionSignatureCreator creator(tx_to, /*input_idx=*/0, amount, &txdata, SIGHASH_DEFAULT);
+    BOOST_CHECK(!ProduceSignature(provider, creator, script_pubkey, sigdata));
+    BOOST_CHECK(!sigdata.complete);
+}
+
 BOOST_FIXTURE_TEST_CASE(produce_signature_signs_dilithium_p2mr_leaf, BasicTestingSetup)
 {
     CDilithiumKey key;
