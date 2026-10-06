@@ -267,6 +267,49 @@ class WalletDilithiumSendTest(BTQTestFramework):
         # The PSBT still round-trips through a joinpsbts-style re-encode.
         assert_equal(repro.decodepsbt(repro.walletprocesspsbt(res["psbt"], False)["psbt"])["outputs"][idx]["p2mr_tree"], out["p2mr_tree"])
 
+# F2.2: the opt-in hybrid leaf needs a Dilithium signature AND a
+        # schnorr signature. A wallet holding both keys can spend it alone;
+        # a wallet holding only the Dilithium half cannot complete the input.
+        self.log.info("Hybrid Dilithium+schnorr P2MR leaf spends only with both signatures")
+        own_xonly = repro.getaddressinfo(repro.getnewaddress(address_type="bech32"))["pubkey"][2:]
+        hybrid = repro.getnewhybridp2mraddress(own_xonly)
+        funding.sendtoaddress(hybrid["address"], 1)
+        self.generate(node, 1)
+        hybrid_utxo = next(u for u in repro.listunspent() if u["address"] == hybrid["address"])
+        assert hybrid_utxo["spendable"]
+        res = repro.walletcreatefundedpsbt(
+            [{"txid": hybrid_utxo["txid"], "vout": hybrid_utxo["vout"]}],
+            [{funding.getnewaddress(): Decimal("0.5")}],
+            0,
+            {"add_inputs": False},
+        )
+        signed = repro.walletprocesspsbt(res["psbt"])
+        assert signed["complete"]
+        spend_txid = repro.sendrawtransaction(repro.finalizepsbt(signed["psbt"])["hex"])
+        self.generate(node, 1)
+        assert_equal(repro.gettransaction(spend_txid)["confirmations"], 1)
+
+        # Schnorr key held by another wallet: this wallet signs only the
+        # Dilithium half and the input stays incomplete.
+        foreign_xonly = funding.getaddressinfo(funding.getnewaddress(address_type="bech32"))["pubkey"][2:]
+        hybrid2 = repro.getnewhybridp2mraddress(foreign_xonly)
+        funding.sendtoaddress(hybrid2["address"], 1)
+        self.generate(node, 1)
+        hybrid2_utxo = next(
+            u for u in repro.listunspent(1, 9999999, [], True)
+            if u["address"] == hybrid2["address"]
+        )
+        unsigned = node.createpsbt(
+            [{"txid": hybrid2_utxo["txid"], "vout": hybrid2_utxo["vout"]}],
+            [{funding.getnewaddress(): Decimal("0.9")}],
+        )
+        half_signed = repro.walletprocesspsbt(unsigned)
+        assert not half_signed["complete"]
+        # The Dilithium half alone must not read as finalizable.
+        hybrid2_status = node.decodepsbt(half_signed["psbt"])["inputs"][0]["p2mr_dilithium"]
+        assert_equal(hybrid2_status["policy"], "dilithium_schnorr_hybrid")
+        assert_equal(hybrid2_status["status"], "partially_signed")
+
         # After a reload every Dilithium key record lands in an arbitrary
         # manager, so generation must check the whole wallet before storing:
         # a plaintext wallet otherwise errors on every already-materialized

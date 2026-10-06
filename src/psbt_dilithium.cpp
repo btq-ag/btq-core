@@ -115,9 +115,18 @@ P2MRInputInfo InspectP2MRInput(const PartiallySignedTransaction& psbt, unsigned 
         ++info.sigs_present;
     }
 
-    if (info.sigs_present == 0) {
+    // The hybrid leaf also needs a schnorr signature for its x-only key, so
+    // the Dilithium count alone must not report the input as finalizable.
+    bool schnorr_present = false;
+    bool schnorr_satisfied = true;
+    if (info.policy.type == P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR) {
+        schnorr_present = input.m_tap_script_sigs.count(std::make_pair(info.policy.schnorr_pubkeys[0], info.leaf_hash)) > 0;
+        schnorr_satisfied = schnorr_present;
+    }
+
+    if (info.sigs_present == 0 && !schnorr_present) {
         info.status = P2MRInputStatus::UNSIGNED;
-    } else if (info.sigs_present >= info.sigs_required) {
+    } else if (info.sigs_present >= info.sigs_required && schnorr_satisfied) {
         info.status = P2MRInputStatus::FINALIZABLE;
     } else {
         info.status = P2MRInputStatus::PARTIALLY_SIGNED;

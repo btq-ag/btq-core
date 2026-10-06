@@ -80,6 +80,62 @@ RPCHelpMan getnewp2mraddress()
     };
 }
 
+RPCHelpMan getnewhybridp2mraddress()
+{
+    return RPCHelpMan{
+        "getnewhybridp2mraddress",
+        "\nCreate and store an opt-in hybrid P2MR destination whose single leaf requires\n"
+        "both a Dilithium signature and a BIP340 (schnorr) signature to spend.\n"
+        "The wallet generates a fresh Dilithium key; the x-only key is supplied by the\n"
+        "caller and may belong to this wallet or an external cosigner.\n",
+        {
+            {"xonly_pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "32-byte BIP340 x-only public key, hex encoded"},
+            {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "address", "Generated P2MR address"},
+                {RPCResult::Type::STR, "p2mr_id", "Wallet-local metadata id"},
+                {RPCResult::Type::STR_HEX, "scriptPubKey", "P2MR scriptPubKey"},
+                {RPCResult::Type::STR_HEX, "merkle_root", "P2MR merkle root"},
+            }},
+        RPCExamples{HelpExampleCli("getnewhybridp2mraddress", "\"<64 hex characters>\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+            if (!pwallet) return UniValue::VNULL;
+
+            const std::string pubkey_hex = request.params[0].get_str();
+            if (!IsHex(pubkey_hex)) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "xonly_pubkey must be hex");
+            }
+            const std::vector<unsigned char> pubkey_bytes = ParseHex(pubkey_hex);
+            if (pubkey_bytes.size() != 32) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "xonly_pubkey must be 32 bytes");
+            }
+            const XOnlyPubKey xonly{Span<const unsigned char>{pubkey_bytes}};
+            if (!xonly.IsFullyValid()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "xonly_pubkey is not a valid BIP340 public key");
+            }
+            const std::string label = request.params[1].isNull() ? "" : LabelFromValue(request.params[1]);
+
+            LOCK(pwallet->cs_wallet);
+            auto created = CreateHybridDilithiumP2MRReceive(*pwallet, xonly, label);
+            if (!created) {
+                throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+            }
+
+            UniValue out(UniValue::VOBJ);
+            out.pushKV("address", created->address);
+            out.pushKV("p2mr_id", created->id);
+            out.pushKV("scriptPubKey", HexStr(created->script_pub_key));
+            out.pushKV("merkle_root", HexStr(created->merkle_root));
+            return out;
+        },
+    };
+}
+
 RPCHelpMan sendtop2mr()
 {
     return RPCHelpMan{
