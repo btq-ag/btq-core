@@ -170,8 +170,12 @@ bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<u
     // Create a unique key for this Dilithium key using the key ID
     const auto key = std::make_pair(DBKeys::DILITHIUM_KEY, keyID);
     
-    // Store the key metadata separately
-    if (!WriteIC(std::make_pair(DBKeys::DILITHIUM_KEYMETA, keyID), keyMeta, false)) {
+    // Store the key metadata separately. Overwrite like the crypted path
+    // does: a crash between this write and the key write below would
+    // otherwise leave a keymeta row that blocks recoverdilithiumkeys from
+    // ever re-adding this key. Re-deriving an index reproduces identical
+    // metadata, so overwriting loses nothing.
+    if (!WriteIC(std::make_pair(DBKeys::DILITHIUM_KEYMETA, keyID), keyMeta, true)) {
         return false;
     }
 

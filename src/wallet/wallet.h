@@ -497,6 +497,11 @@ public:
     /** P2MR tree metadata (JSON), kept out of the address book so
      *  GetAddressReceiveRequests never returns it (Quarks F2.17). */
     std::map<CTxDestination, std::map<std::string, std::string>> m_p2mr_metadata GUARDED_BY(cs_wallet);
+
+    /** Bumped on every P2MR metadata set or erase. Long-running consumers
+     *  (the fast rescan filter) use this to detect changes; comparing map
+     *  sizes misses an erase followed by an add. */
+    uint64_t m_p2mr_metadata_revision GUARDED_BY(cs_wallet){0};
     const CAddressBookData* FindAddressBookEntry(const CTxDestination&, bool allow_change = false) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /** Set of Coins owned by this wallet that we won't try to spend from. A

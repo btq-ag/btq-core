@@ -339,7 +339,7 @@ public:
         }
         // P2MR destinations can also be added while a scan is in progress
         // (e.g. recoverdilithiumkeys from another thread).
-        if (WITH_LOCK(m_wallet.cs_wallet, return m_wallet.m_p2mr_metadata.size()) != m_p2mr_dest_count) {
+        if (WITH_LOCK(m_wallet.cs_wallet, return m_wallet.m_p2mr_metadata_revision) != m_p2mr_revision_seen) {
             AddP2MRScripts();
         }
     }
@@ -360,8 +360,10 @@ private:
     std::map<uint256, int32_t> m_last_range_ends;
     GCSFilter::ElementSet m_filter_set;
 
-    /** Number of P2MR destinations already folded into the filter. */
-    size_t m_p2mr_dest_count{0};
+    /** Wallet P2MR metadata revision already folded into the filter. A
+     *  revision, not a size: an erase plus an add leaves the size unchanged
+     *  but the filter must still learn the new destination. */
+    uint64_t m_p2mr_revision_seen{0};
 
     void AddScriptPubKeys(const DescriptorScriptPubKeyMan* desc_spkm, int32_t last_range_end = 0)
     {
@@ -373,7 +375,7 @@ private:
     void AddP2MRScripts()
     {
         LOCK(m_wallet.cs_wallet);
-        m_p2mr_dest_count = m_wallet.m_p2mr_metadata.size();
+        m_p2mr_revision_seen = m_wallet.m_p2mr_metadata_revision;
         for (const auto& [dest, entries] : m_wallet.m_p2mr_metadata) {
             const CScript script_pub_key = GetScriptForDestination(dest);
             m_filter_set.emplace(script_pub_key.begin(), script_pub_key.end());
@@ -3027,6 +3029,7 @@ bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, co
         return false;
     }
     m_p2mr_metadata[dest][id] = value;
+    ++m_p2mr_metadata_revision;
     m_ismine_cache.erase(GetScriptForDestination(dest));
     return true;
 }
@@ -3039,6 +3042,7 @@ bool CWallet::EraseP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, 
         it->second.erase(id);
         if (it->second.empty()) m_p2mr_metadata.erase(it);
     }
+    ++m_p2mr_metadata_revision;
     m_ismine_cache.erase(GetScriptForDestination(dest));
     return true;
 }
@@ -3772,7 +3776,9 @@ bool CWallet::HaveDilithiumKeyAnywhere(const CKeyID& keyid) const
 {
     // May run while a manager holds its own cs_desc_man (the Dilithium key
     // generator skip-check); that re-lock is fine because cs_desc_man is
-    // recursive and generator calls are serialized under cs_wallet.
+    // recursive and generator calls are serialized under cs_wallet. Enforce
+    // the serialization instead of relying on convention.
+    AssertLockHeld(cs_wallet);
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
             LOCK(desc_spk_man->cs_desc_man);
