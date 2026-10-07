@@ -270,6 +270,29 @@ BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSet
         BOOST_REQUIRE(wallet->DelAddressBook(dest));
     }
 
+    // A pre-existing change entry (no label, no database rows) must come
+    // back in memory, and the rollback must remove the name/purpose rows
+    // CreateP2MR's SetAddressBook added.
+    {
+        LOCK(wallet->cs_wallet);
+        wallet->m_address_book[dest]; // plant an in-memory change entry
+        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control);
+        BOOST_REQUIRE(!funded);
+        const auto* entry = wallet->FindAddressBookEntry(dest, /*allow_change=*/true);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK(entry->IsChange());
+        BOOST_CHECK(!entry->purpose);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        // The change entry had no rows of its own, so after a reload the
+        // destination must be absent entirely: leaked rows would make it
+        // reappear as a labelled entry.
+        BOOST_CHECK(!wallet->FindAddressBookEntry(dest, /*allow_change=*/true));
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+    }
+
     // A pre-existing tree that the failing call reused stays.
     {
         LOCK(wallet->cs_wallet);

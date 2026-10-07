@@ -677,6 +677,40 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
     return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), label);
 }
 
+// Put the address book back to the state captured in prior_entry before a
+// failed call overwrote it. No prior entry: the entry this call added is
+// deleted, unless the destination is otherwise IsMine (another metadata
+// entry still tracks it; DelAddressBook would refuse and alarm the user).
+// Returns false when any restore step failed.
+static bool RestoreAddressBookEntry(CWallet& wallet, const CTxDestination& dest,
+                                    const std::optional<CAddressBookData>& prior_entry)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
+    bool ok = true;
+    if (prior_entry && !prior_entry->IsChange()) {
+        // Put back the label and purpose that were overwritten.
+        ok &= wallet.SetAddressBook(dest, prior_entry->GetLabel(), prior_entry->purpose);
+        if (!prior_entry->purpose) {
+            // The entry had no recorded purpose (pre-purpose wallet); drop
+            // the RECEIVE row this call added.
+            ok &= batch.ErasePurpose(EncodeDestination(dest));
+            wallet.m_address_book[dest].purpose = std::nullopt;
+        }
+    } else if (prior_entry) {
+        // A change entry has no label and no database rows; SetAddressBook
+        // added both. Remove them and put the in-memory entry back.
+        const std::string dest_str = EncodeDestination(dest);
+        ok &= batch.EraseName(dest_str);
+        ok &= batch.ErasePurpose(dest_str);
+        wallet.m_address_book[dest] = *prior_entry;
+    } else if (!wallet.IsMine(dest)) {
+        ok &= wallet.DelAddressBook(dest);
+    }
+    return ok;
+}
+
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
@@ -709,10 +743,20 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, label, leaves);
 
     WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
+    // SetAddressBook overwrites any existing label for the destination, so
+    // snapshot the entry first: if the metadata write below fails, this call
+    // must not leave the user's label clobbered on the way out.
+    std::optional<CAddressBookData> prior_entry;
+    if (const auto* entry = wallet.FindAddressBookEntry(out.dest, /*allow_change=*/true)) {
+        prior_entry = *entry;
+    }
     if (add_to_address_book && !wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
         return util::Error{Untranslated("failed to set P2MR address book entry")};
     }
     if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
+        if (add_to_address_book && !RestoreAddressBookEntry(wallet, out.dest, prior_entry)) {
+            wallet.WalletLogPrintf("CreateP2MR: failed to fully roll back address book entry for %s\n", out.address);
+        }
         return util::Error{Untranslated("failed to persist P2MR metadata")};
     }
     return out;
@@ -757,29 +801,7 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
         if (!created.reused) {
             WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
             bool rollback_ok = wallet.EraseP2MRMetadata(batch, created.dest, created.id);
-            if (prior_entry && !prior_entry->IsChange()) {
-                // Put back the label and purpose CreateP2MR overwrote.
-                rollback_ok &= wallet.SetAddressBook(created.dest, prior_entry->GetLabel(), prior_entry->purpose);
-                if (!prior_entry->purpose) {
-                    // The entry had no recorded purpose (pre-purpose wallet);
-                    // drop the RECEIVE row CreateP2MR added.
-                    batch.ErasePurpose(EncodeDestination(created.dest));
-                    wallet.m_address_book[created.dest].purpose = std::nullopt;
-                }
-            } else if (prior_entry) {
-                // A change entry has no label and no database rows;
-                // CreateP2MR's SetAddressBook added both. Remove them and
-                // put the in-memory entry back.
-                const std::string dest_str = EncodeDestination(created.dest);
-                batch.EraseName(dest_str);
-                batch.ErasePurpose(dest_str);
-                wallet.m_address_book[created.dest] = *prior_entry;
-            } else if (!wallet.IsMine(created.dest)) {
-                rollback_ok &= wallet.DelAddressBook(created.dest);
-            }
-            // else: another metadata entry still tracks this destination,
-            // so the address-book entry stays (DelAddressBook would refuse
-            // an IsMine address and ask the user to file a bug report).
+            rollback_ok &= RestoreAddressBookEntry(wallet, created.dest, prior_entry);
             if (!rollback_ok) {
                 wallet.WalletLogPrintf("FundP2MR: failed to fully roll back P2MR entry for %s\n", created.address);
             }
