@@ -86,7 +86,8 @@ static constexpr uint32_t PSBT_HIGHEST_VERSION = 0;
 // would accept.
 static constexpr size_t MAX_DILITHIUM_PARTIAL_SIG_VALUE_SIZE = CDilithiumPubKey::SIGNATURE_SIZE + 1;
 static constexpr size_t MAX_DILITHIUM_PARTIAL_SIGS_PER_INPUT = MAX_PUBKEYS_PER_MULTISIG;
-static constexpr size_t MAX_P2MR_LEAF_SCRIPT_SIZE = MAX_SCRIPT_SIZE;
+// MAX_P2MR_LEAF_SCRIPT_SIZE lives in script/interpreter.h so the wallet-side
+// tree builder enforces the same bound this parser does.
 
 /** A structure for PSBT proprietary types */
 struct PSBTProprietary
@@ -1073,7 +1074,10 @@ struct PSBTOutput
                             throw std::ios_base::failure("Output P2MR tree has a leaf script that is too large");
                         }
                         m_p2mr_tree.emplace_back(depth, leaf_ver, script);
-                        builder.Add((int)depth, script, (int)leaf_ver, /*track=*/true);
+                        // track=false: only completeness is checked here, and
+                        // tracking stores a merkle branch per leaf, letting a
+                        // ~3 MiB hostile PSBT allocate hundreds of MiB.
+                        builder.Add((int)depth, script, (int)leaf_ver, /*track=*/false);
                     }
                     if (!builder.IsComplete()) {
                         throw std::ios_base::failure("Output P2MR tree is malformed");

@@ -317,13 +317,13 @@ void PSBTOutput::Merge(const PSBTOutput& output)
     if (witness_script.empty() && !output.witness_script.empty()) witness_script = output.witness_script;
     if (m_tap_internal_key.IsNull() && !output.m_tap_internal_key.IsNull()) m_tap_internal_key = output.m_tap_internal_key;
     if (m_tap_tree.empty() && !output.m_tap_tree.empty()) m_tap_tree = output.m_tap_tree;
-    // Take the P2MR tree and merkle root as a pair so a merge cannot combine a
-    // tree from one PSBT with a root from another.
-    if (m_p2mr_tree.empty() && m_p2mr_merkle_root.IsNull() &&
-        (!output.m_p2mr_tree.empty() || !output.m_p2mr_merkle_root.IsNull())) {
-        m_p2mr_tree = output.m_p2mr_tree;
-        m_p2mr_merkle_root = output.m_p2mr_merkle_root;
-    }
+    // Merge the P2MR fields independently, like the taproot fields above:
+    // any present field was already bound to this output's witness program
+    // when its PSBT was parsed, so a root from one combiner and a tree from
+    // another cannot describe different trees. Pair-wise merging dropped the
+    // tree whenever the local side carried only the root.
+    if (m_p2mr_tree.empty() && !output.m_p2mr_tree.empty()) m_p2mr_tree = output.m_p2mr_tree;
+    if (m_p2mr_merkle_root.IsNull() && !output.m_p2mr_merkle_root.IsNull()) m_p2mr_merkle_root = output.m_p2mr_merkle_root;
 }
 
 bool PSBTInputSigned(const PSBTInput& input)
