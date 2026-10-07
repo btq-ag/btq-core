@@ -42,7 +42,9 @@ RPCHelpMan getnewp2mraddress()
 {
     return RPCHelpMan{
         "getnewp2mraddress",
-        "\nCreate and store a new wallet-managed P2MR destination.\n",
+        "\nCreate and store a new wallet-managed P2MR destination.\n"
+        "The tree is stored only in this wallet's database: restoring from the seed or\n"
+        "an importwallet dump does not recreate it, so keep a backupwallet copy.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
@@ -87,7 +89,12 @@ RPCHelpMan getnewhybridp2mraddress()
         "\nCreate and store an opt-in hybrid P2MR destination whose single leaf requires\n"
         "both a Dilithium signature and a BIP340 (schnorr) signature to spend.\n"
         "The wallet generates a fresh Dilithium key; the x-only key is supplied by the\n"
-        "caller and may belong to this wallet or an external cosigner.\n",
+        "caller and may belong to this wallet or an external cosigner.\n"
+        "Although the Dilithium key is seed-derived, the leaf pairing it with the\n"
+        "x-only key lives only in this wallet's database. Restoring from the seed or\n"
+        "an importwallet dump does not recreate the address (recoverdilithiumkeys\n"
+        "rebuilds the single-leaf address for that index, which is a different\n"
+        "program), so keep a backupwallet copy.\n",
         {
             {"xonly_pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "32-byte BIP340 x-only public key, hex encoded"},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
@@ -140,7 +147,9 @@ RPCHelpMan sendtop2mr()
 {
     return RPCHelpMan{
         "sendtop2mr",
-        "\nCreate a wallet-tracked P2MR destination and send funds to it.\n",
+        "\nCreate a wallet-tracked P2MR destination and send funds to it.\n"
+        "The tree is stored only in this wallet's database: restoring from the seed or\n"
+        "an importwallet dump does not recreate it, so keep a backupwallet copy.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "Amount to send"},

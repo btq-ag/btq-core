@@ -309,6 +309,46 @@ class WalletDilithiumSendTest(BTQTestFramework):
         hybrid2_status = node.decodepsbt(half_signed["psbt"])["inputs"][0]["p2mr_dilithium"]
         assert_equal(hybrid2_status["policy"], "dilithium_schnorr_hybrid")
         assert_equal(hybrid2_status["status"], "partially_signed")
+        # The schnorr cosigner has no record of the tree. The PSBT carries
+        # the leaf and control block, so its key is all it needs to finish.
+        done = funding.walletprocesspsbt(half_signed["psbt"])
+        assert done["complete"]
+        # createpsbt left a 0.1 coin fee, so bypass the maxfeerate sanity cap.
+        cosigned_txid = node.sendrawtransaction(funding.finalizepsbt(done["psbt"])["hex"], 0)
+        self.generate(node, 1)
+        assert_equal(repro.gettransaction(cosigned_txid)["confirmations"], 1)
+
+        # Opposite order: an updater fills the P2MR fields without signing,
+        # the schnorr cosigner signs first, the Dilithium wallet finishes.
+        hybrid3 = repro.getnewhybridp2mraddress(foreign_xonly)
+        funding.sendtoaddress(hybrid3["address"], 1)
+        self.generate(node, 1)
+        hybrid3_utxo = next(
+            u for u in repro.listunspent(1, 9999999, [], True)
+            if u["address"] == hybrid3["address"]
+        )
+        unsigned3 = node.createpsbt(
+            [{"txid": hybrid3_utxo["txid"], "vout": hybrid3_utxo["vout"]}],
+            [{funding.getnewaddress(): Decimal("0.9")}],
+        )
+        filled = repro.walletprocesspsbt(unsigned3, False)
+        schnorr_first = funding.walletprocesspsbt(filled["psbt"])
+        assert not schnorr_first["complete"]
+        # A schnorr-only signature still pins the leaf and reads as partial.
+        status3 = node.decodepsbt(schnorr_first["psbt"])["inputs"][0]["p2mr_dilithium"]
+        assert_equal(status3["status"], "partially_signed")
+        both = repro.walletprocesspsbt(schnorr_first["psbt"])
+        assert both["complete"]
+        txid3 = node.sendrawtransaction(repro.finalizepsbt(both["psbt"])["hex"], 0)
+        self.generate(node, 1)
+        assert_equal(repro.gettransaction(txid3)["confirmations"], 1)
+
+        # The hybrid leaf needs the schnorr key to spend, so a Dilithium-only
+        # message signature would overstate ownership; signing must refuse.
+        assert_raises_rpc_error(
+            -5, "not a Dilithium key address",
+            repro.signmessagewithdilithium, hybrid3["address"], "hello",
+        )
 
         # After a reload every Dilithium key record lands in an arbitrary
         # manager, so generation must check the whole wallet before storing:
