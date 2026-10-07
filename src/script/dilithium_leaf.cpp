@@ -106,6 +106,11 @@ bool ParseHybridLeaf(const CScript& script, P2MRDilithiumLeafPolicy& out)
     if (!script.GetOp(it, opcode, data) || opcode != OP_CHECKSIG) return false;
     if (it != script.end()) return false;
 
+    // GetOp accepts non-minimal pushes but MINIMALDATA rejects them at spend
+    // time, so a leaf that parses here could still never be satisfied. Only
+    // recognise the exact canonical encoding the wallet itself produces.
+    if (script != GetScriptForHybridDilithiumLeaf(dilithium_pubkey, schnorr_pubkey)) return false;
+
     out.type = P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR;
     out.m = 1;
     out.pubkeys = {dilithium_pubkey};

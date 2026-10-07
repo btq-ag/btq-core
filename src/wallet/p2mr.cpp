@@ -512,6 +512,9 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
     AssertLockHeld(wallet.cs_wallet);
     auto entry = GetP2MRByDestination(wallet, dest);
     if (!entry) return std::nullopt;
+    // A hybrid leaf also needs its schnorr key to spend, so a Dilithium-only
+    // message signature would prove less ownership than the address implies.
+    if (!GetP2MRKeyRequirements(entry->tree).xonly_pubkeys.empty()) return std::nullopt;
     const auto key_ids = GetP2MRDilithiumKeyIDs(entry->tree);
     if (key_ids.size() != 1) return std::nullopt;
     return *key_ids.begin();
@@ -519,25 +522,8 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
 
 // --- Signing provider ------------------------------------------------------
 
-static FlatSigningProvider BuildSigningProviderForEntries(const CWallet& wallet, const std::vector<P2MREntry>& entries)
+static void AddWalletKeysForRequirements(const CWallet& wallet, const P2MRKeyRequirements& requirements, FlatSigningProvider& provider)
 {
-    AssertLockHeld(wallet.cs_wallet);
-    FlatSigningProvider provider;
-    P2MRKeyRequirements requirements;
-    for (const auto& entry : entries) {
-        if (!std::holds_alternative<WitnessV2P2MR>(entry.dest)) continue;
-        const WitnessV2P2MR& output{std::get<WitnessV2P2MR>(entry.dest)};
-        auto builder_res = BuildP2MRTreeChecked(entry.tree);
-        if (!builder_res) continue;
-        // A stored tree with another root cannot spend this output, and it
-        // would replace the tree of an earlier record for the same output.
-        if (!(builder_res->GetOutput() == output)) continue;
-        provider.p2mr_trees[output] = std::move(*builder_res);
-        const auto entry_requirements = GetP2MRKeyRequirements(entry.tree);
-        requirements.dilithium_key_ids.insert(entry_requirements.dilithium_key_ids.begin(), entry_requirements.dilithium_key_ids.end());
-        requirements.xonly_pubkeys.insert(entry_requirements.xonly_pubkeys.begin(), entry_requirements.xonly_pubkeys.end());
-    }
-
     for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
         for (const XOnlyPubKey& xonly_pubkey : requirements.xonly_pubkeys) {
             CKey key;
@@ -571,6 +557,35 @@ static FlatSigningProvider BuildSigningProviderForEntries(const CWallet& wallet,
             provider.dilithium_keys.emplace(provider_keyid, std::move(key));
         }
     }
+}
+
+static FlatSigningProvider BuildSigningProviderForEntries(const CWallet& wallet, const std::vector<P2MREntry>& entries)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    FlatSigningProvider provider;
+    P2MRKeyRequirements requirements;
+    for (const auto& entry : entries) {
+        if (!std::holds_alternative<WitnessV2P2MR>(entry.dest)) continue;
+        const WitnessV2P2MR& output{std::get<WitnessV2P2MR>(entry.dest)};
+        auto builder_res = BuildP2MRTreeChecked(entry.tree);
+        if (!builder_res) continue;
+        // A stored tree with another root cannot spend this output, and it
+        // would replace the tree of an earlier record for the same output.
+        if (!(builder_res->GetOutput() == output)) continue;
+        provider.p2mr_trees[output] = std::move(*builder_res);
+        const auto entry_requirements = GetP2MRKeyRequirements(entry.tree);
+        requirements.dilithium_key_ids.insert(entry_requirements.dilithium_key_ids.begin(), entry_requirements.dilithium_key_ids.end());
+        requirements.xonly_pubkeys.insert(entry_requirements.xonly_pubkeys.begin(), entry_requirements.xonly_pubkeys.end());
+    }
+    AddWalletKeysForRequirements(wallet, requirements, provider);
+    return provider;
+}
+
+FlatSigningProvider BuildP2MRLeafKeyProvider(const CWallet& wallet, const std::vector<P2MRTreeLeaf>& leaves)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    FlatSigningProvider provider;
+    AddWalletKeysForRequirements(wallet, GetP2MRKeyRequirements(leaves), provider);
     return provider;
 }
 

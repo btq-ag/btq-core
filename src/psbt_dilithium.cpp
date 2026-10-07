@@ -83,6 +83,11 @@ P2MRInputInfo InspectP2MRInput(const PartiallySignedTransaction& psbt, unsigned 
     for (const auto& [keyid_leaf, _] : input.m_p2mr_dilithium_script_sigs) {
         sig_leaf_hashes.insert(keyid_leaf.second);
     }
+    // A hybrid leaf whose schnorr half was signed first pins the leaf choice
+    // just as well as a Dilithium signature does.
+    for (const auto& [key_leaf, _] : input.m_tap_script_sigs) {
+        sig_leaf_hashes.insert(key_leaf.second);
+    }
 
     info.status = P2MRInputStatus::UNKNOWN_LEAF;
     if (sig_leaf_hashes.size() > 1) return info;

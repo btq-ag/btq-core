@@ -1044,7 +1044,11 @@ public:
     }
     bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* tweak, SigVersion sigversion) const override
     {
-        sig.assign(64, '\000');
+        // P2MR tapscript rejects SIGHASH_DEFAULT, so a real signature always
+        // carries an explicit sighash byte. Reserve it, or every hybrid input
+        // in a maximum-size estimate comes up one byte short and the fee can
+        // underpay at minimum relay feerate.
+        sig.assign(sigversion == SigVersion::P2MR_TAPSCRIPT ? 65 : 64, '\000');
         return true;
     }
     bool CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion, const uint256* leaf_hash = nullptr) const override

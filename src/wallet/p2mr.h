@@ -246,6 +246,14 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet,
  */
 FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet, const CTxDestination& dest);
 
+/**
+ * Build a FlatSigningProvider holding only the wallet keys that the given
+ * leaves need, with no tree. Used to cosign a PSBT input whose tree is not
+ * tracked by this wallet: the PSBT carries the leaf and control block, so
+ * keys are all the signer has to contribute.
+ */
+FlatSigningProvider BuildP2MRLeafKeyProvider(const CWallet& wallet, const std::vector<P2MRTreeLeaf>& leaves);
+
 /** Return true if the script matches any wallet-tracked P2MR scriptPubKey. */
 bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script);
 

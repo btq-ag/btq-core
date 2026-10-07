@@ -692,6 +692,67 @@ BOOST_AUTO_TEST_CASE(hybrid_leaf_roundtrips_through_the_parser)
     short_key << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUMVERIFY
               << std::vector<unsigned char>(31, 0x02) << OP_CHECKSIG;
     BOOST_CHECK(!ParseP2MRDilithiumLeaf(short_key).IsValid());
+
+    // A 32-byte push above the field prime is not a BIP340 x coordinate.
+    // OP_CHECKSIG fails on any non-empty signature for it, so the leaf is
+    // unspendable and must not read as signable.
+    CScript bad_x;
+    bad_x << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUMVERIFY
+          << std::vector<unsigned char>(32, 0xff) << OP_CHECKSIG;
+    BOOST_CHECK(!ParseP2MRDilithiumLeaf(bad_x).IsValid());
+
+    // A non-minimal push of the x-only key parses with GetOp but fails
+    // MINIMALDATA at spend time, so the parser must not claim it.
+    CScript nonminimal;
+    nonminimal << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUMVERIFY;
+    nonminimal.push_back(OP_PUSHDATA1);
+    nonminimal.push_back(32);
+    nonminimal.insert(nonminimal.end(), xonly.begin(), xonly.end());
+    nonminimal.push_back(OP_CHECKSIG);
+    BOOST_CHECK(!ParseP2MRDilithiumLeaf(nonminimal).IsValid());
+}
+
+BOOST_AUTO_TEST_CASE(schnorr_only_signature_pins_the_leaf_choice)
+{
+    // Two-leaf tree: a plain Dilithium leaf and a hybrid leaf. With only the
+    // schnorr half of the hybrid leaf signed, inspection must still narrow
+    // the spend to the hybrid leaf and report a partial signature instead of
+    // unknown_leaf.
+    const Signer a = MakeSigner();
+    const Signer b = MakeSigner();
+    CKey schnorr_key;
+    schnorr_key.MakeNewKey(/*fCompressed=*/true);
+    const XOnlyPubKey xonly{schnorr_key.GetPubKey()};
+
+    CScript plain;
+    plain << ToByteVector(a.pubkey) << OP_CHECKSIGDILITHIUM;
+    const CScript hybrid = GetScriptForHybridDilithiumLeaf(b.pubkey, xonly);
+
+    P2MRBuilder builder;
+    builder.Add(1, plain, TAPROOT_LEAF_TAPSCRIPT);
+    builder.Add(1, hybrid, TAPROOT_LEAF_TAPSCRIPT);
+    builder.Finalize();
+    BOOST_REQUIRE(builder.IsComplete());
+
+    CMutableTransaction tx;
+    tx.nVersion = 2;
+    tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+    tx.vout.emplace_back(90000, CScript() << OP_TRUE);
+    PartiallySignedTransaction psbt{tx};
+    psbt.inputs[0].witness_utxo = CTxOut{100000, GetScriptForDestination(builder.GetOutput())};
+
+    const P2MRSpendData spenddata = builder.GetSpendData();
+    psbt.inputs[0].m_p2mr_merkle_root = spenddata.merkle_root;
+    for (const auto& [leaf, control_blocks] : spenddata.scripts) {
+        psbt.inputs[0].m_p2mr_scripts[leaf].insert(control_blocks.begin(), control_blocks.end());
+    }
+
+    const uint256 hybrid_hash = ComputeTapleafHash(TAPROOT_LEAF_TAPSCRIPT, std::vector<unsigned char>(hybrid.begin(), hybrid.end()));
+    psbt.inputs[0].m_tap_script_sigs[{xonly, hybrid_hash}] = std::vector<unsigned char>(65, 0xee);
+
+    const P2MRInputInfo info = InspectP2MRInput(psbt, 0);
+    BOOST_CHECK(info.status == P2MRInputStatus::PARTIALLY_SIGNED);
+    BOOST_CHECK(info.leaf_hash == hybrid_hash);
 }
 
 BOOST_AUTO_TEST_CASE(hybrid_witness_requires_both_signatures)
