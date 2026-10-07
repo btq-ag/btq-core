@@ -1040,7 +1040,22 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     coin_selection_params.m_long_term_feerate = wallet.m_consolidate_feerate;
 
     CAmount recipients_sum = 0;
-    const OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend, &coin_control);
+    OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend, &coin_control);
+    // A locked wallet cannot derive a Dilithium change key, and funding
+    // (fundrawtransaction, walletcreatefundedpsbt) never required unlocking.
+    // When P2MR change came only from the input-following rule (preselected
+    // quantum-safe inputs, nothing explicit), fall back to the classical
+    // choice and say so, instead of failing the funding. Explicit requests
+    // (-changetype, change_type, quantum_only) still fail loudly.
+    if (change_type == OutputType::P2MR && wallet.IsLocked() &&
+        !coin_control.m_change_type && !wallet.m_default_change_type &&
+        !wallet.IsWalletFlagSet(WALLET_FLAG_QUANTUM_ONLY)) {
+        const OutputType without_inputs = wallet.TransactionChangeType(std::nullopt, vecSend);
+        if (without_inputs != OutputType::P2MR) {
+            change_type = without_inputs;
+            wallet.WalletLogPrintf("Wallet is locked; quantum-safe inputs get classical change. Unlock the wallet or pass change_type to control this.\n");
+        }
+    }
     ReserveDestination reservedest(&wallet, change_type);
     unsigned int outputs_to_subtract_fee_from = 0; // The number of outputs which we are subtracting the fee from
     for (const auto& recipient : vecSend) {
@@ -1189,8 +1204,13 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     // script for a fresh P2MR one now. The P2MR script can be larger than the
     // classical one the fee math assumed, so the size-delta fee comes out of
     // the change; the overpayment branch below returns any overshoot.
+    CTxDestination pinned_change_dest;
+    const bool change_already_p2mr = ExtractDestination(scriptChange, pinned_change_dest) &&
+                                     std::holds_alternative<WitnessV2P2MR>(pinned_change_dest);
     if (change_amount > 0 && change_type != OutputType::P2MR &&
+        !change_already_p2mr &&
         !coin_control.m_change_type &&
+        !wallet.m_default_change_type &&
         (std::get_if<CNoDestination>(&coin_control.destChange) || coin_control.m_change_reused_from_first_attempt) &&
         !wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) &&
         !wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
@@ -1201,24 +1221,53 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
                        (std::holds_alternative<WitnessV2P2MR>(input_dest) ||
                         std::holds_alternative<DilithiumPKHash>(input_dest));
             });
-        if (selected_p2mr) {
-            ReserveDestination p2mr_reservedest(&wallet, OutputType::P2MR);
-            auto p2mr_dest = p2mr_reservedest.GetReservedDestination(true);
-            if (!p2mr_dest) {
-                return util::Error{_("Transaction needs a change address, but we can't generate it.") + Untranslated(" ") + util::ErrorString(p2mr_dest)};
-            }
-            const CScript p2mr_script = GetScriptForDestination(*p2mr_dest);
-            const int size_delta = (int)::GetSerializeSize(CTxOut(0, p2mr_script)) - (int)coin_selection_params.change_output_size;
+        if (selected_p2mr && wallet.IsLocked()) {
+            // Deriving a Dilithium change key needs the unlocked wallet, and
+            // funding paths (fundrawtransaction, walletcreatefundedpsbt)
+            // never required unlocking. Keep the change classical and say
+            // so, instead of failing the funding.
+            wallet.WalletLogPrintf("Wallet is locked; quantum-safe inputs get classical change. Unlock the wallet or pass change_type to control this.\n");
+        } else if (selected_p2mr) {
+            // Viability must be judged against the P2MR output, not the
+            // classical prototype the selection used: P2MR dust is higher
+            // and the future spend costs more. Size and dust do not depend
+            // on the key, so check them before minting one.
+            const CTxOut p2mr_prototype{0, GetScriptForDestination(WitnessV2P2MR{uint256::ONE})};
+            const int size_delta = (int)::GetSerializeSize(p2mr_prototype) - (int)coin_selection_params.change_output_size;
             // One extra satoshi against GetFee rounding; the overpayment
-            // adjustment below hands it back to the change output.
-            const CAmount fee_delta = size_delta > 0 ? coin_selection_params.m_effective_feerate.GetFee(size_delta) + 1 : 0;
-            if (change_amount - fee_delta >= coin_selection_params.min_viable_change) {
-                scriptChange = p2mr_script;
-                change_amount -= fee_delta;
+            // adjustment below hands it back to the change output. Under
+            // subtract-fee-from-outputs the recipients pay all fees, so
+            // nothing is taken from the change.
+            const CAmount fee_delta = (size_delta > 0 && !coin_selection_params.m_subtract_fee_outputs)
+                ? coin_selection_params.m_effective_feerate.GetFee(size_delta) + 1 : 0;
+            const CAmount p2mr_dust = GetDustThreshold(p2mr_prototype, coin_selection_params.m_discard_feerate);
+            if (change_amount - fee_delta < p2mr_dust) {
+                // Too small to live on a P2MR script. Dropping it to fees
+                // loses less than leaving a classical crumb of the
+                // quantum-safe balance behind.
+                change_amount = 0;
+            } else {
+                ReserveDestination p2mr_reservedest(&wallet, OutputType::P2MR);
+                auto p2mr_dest = p2mr_reservedest.GetReservedDestination(true);
+                if (!p2mr_dest) {
+                    return util::Error{_("Transaction needs a change address, but we can't generate it.") + Untranslated(" ") + util::ErrorString(p2mr_dest)};
+                }
+                const CScript p2mr_script = GetScriptForDestination(*p2mr_dest);
+                // At least 1 sat more than the future cost of spending it at
+                // the discard feerate, mirroring min_viable_change.
+                const int p2mr_spend_size{CalculateMaximumSignedInputSize(CTxOut(0, p2mr_script), &wallet, /*coin_control=*/nullptr)};
+                const CAmount p2mr_spend_fee = coin_selection_params.m_discard_feerate.GetFee(
+                    p2mr_spend_size > 0 ? (size_t)p2mr_spend_size : coin_selection_params.change_spend_size);
+                const CAmount p2mr_min_viable = std::max(p2mr_spend_fee + 1, p2mr_dust);
+                if (change_amount - fee_delta >= p2mr_min_viable) {
+                    scriptChange = p2mr_script;
+                    change_amount -= fee_delta;
+                } else {
+                    // Sub-viable for P2MR: drop to fees rather than leave it
+                    // classical. The minted key stays internal and unused.
+                    change_amount = 0;
+                }
             }
-            // Otherwise the change is too small to absorb the larger script;
-            // it stays classical rather than failing the send. The leak is
-            // bounded by min_viable_change.
         }
     }
 
