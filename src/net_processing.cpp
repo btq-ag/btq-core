@@ -11,7 +11,6 @@
 #include <blockfilter.h>
 #include <chainparams.h>
 #include <consensus/amount.h>
-#include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <deploymentstatus.h>
 #include <hash.h>
@@ -63,6 +62,10 @@ static constexpr auto HEADERS_RESPONSE_TIME{2min};
  * behind headers chain.
  */
 static constexpr int32_t MAX_OUTBOUND_PEERS_TO_PROTECT_FROM_DISCONNECT = 4;
+/** How deep below the tip a fork point may sit while its headers still pass
+ *  the anti-DoS work threshold without presync. A fork depth, not a time
+ *  window; upstream Bitcoin uses the same 144. */
+static constexpr int ANTI_DOS_FORK_DEPTH_BUFFER{144};
 /** Timeout for (unprotected) outbound peers to sync to our chainwork */
 static constexpr auto CHAIN_SYNC_TIMEOUT{20min};
 /** How frequently to check for stale tips */
@@ -2469,10 +2472,13 @@ arith_uint256 PeerManagerImpl::GetAntiDoSWorkThreshold()
     LOCK(cs_main);
     if (m_chainman.ActiveChain().Tip() != nullptr) {
         const CBlockIndex *tip = m_chainman.ActiveChain().Tip();
-        // Use a one-day buffer, so that we'll accept headers that fork from
-        // near our tip. Upstream uses 144 blocks for the same 24 hours; with
-        // 60-second spacing that is BLOCKS_PER_DAY (1440).
-        near_chaintip_work = tip->nChainWork - std::min<arith_uint256>(BLOCKS_PER_DAY*GetBlockProof(*tip), tip->nChainWork);
+        // Use a 144-block buffer, so that we'll accept headers that fork from
+        // near our tip. This is a fork DEPTH, not a day: reorg exposure
+        // scales with blocks of work, so BTQ's faster 60-second spacing is
+        // no reason to widen it. It also bounds which headers skip the
+        // low-work presync and which compact/unrequested blocks are
+        // processed, so widening it would weaken anti-DoS limits tenfold.
+        near_chaintip_work = tip->nChainWork - std::min<arith_uint256>(ANTI_DOS_FORK_DEPTH_BUFFER * GetBlockProof(*tip), tip->nChainWork);
     }
     return std::max(near_chaintip_work, m_chainman.MinimumChainWork());
 }
