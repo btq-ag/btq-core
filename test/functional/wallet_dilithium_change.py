@@ -166,6 +166,17 @@ class WalletDilithiumChangeTest(BTQTestFramework):
         )
         locked_change = node.decodepsbt(psbt["psbt"])["tx"]["vout"][psbt["changepos"]]
         assert locked_change["scriptPubKey"]["type"] != "witness_v2_p2mr"
+        # Paying a P2MR recipient while locked used to fail the funding: the
+        # change type followed the recipient and minting it needs the seed.
+        # Same fallback as the input case.
+        p2mr_out = [{funding.getnewaddress(address_type="p2mr"): Decimal("1")}]
+        psbt = locked.walletcreatefundedpsbt(
+            inputs=[{"txid": locked_utxo["txid"], "vout": locked_utxo["vout"]}],
+            outputs=p2mr_out,
+            options={"add_inputs": False},
+        )
+        locked_p2mr_change = node.decodepsbt(psbt["psbt"])["tx"]["vout"][psbt["changepos"]]
+        assert locked_p2mr_change["scriptPubKey"]["type"] != "witness_v2_p2mr"
         # Unlocked, the same funding returns quantum-safe change.
         locked.walletpassphrase("pass", 600)
         psbt = locked.walletcreatefundedpsbt(
@@ -198,7 +209,11 @@ class WalletDilithiumChangeTest(BTQTestFramework):
                 # spending a P2MR output: dropped to fees, never left as a
                 # classical crumb.
                 assert_equal(res["changepos"], -1)
-            elif res["changepos"] != -1:
+            else:
+                # Far above the viability floor: the change must exist, and
+                # it must be quantum-safe. A conditional check here would
+                # silently pass if the wallet wrongly dropped it to fees.
+                assert res["changepos"] != -1
                 change_out = node.decodepsbt(res["psbt"])["tx"]["vout"][res["changepos"]]
                 assert_equal(change_out["scriptPubKey"]["type"], "witness_v2_p2mr")
 
