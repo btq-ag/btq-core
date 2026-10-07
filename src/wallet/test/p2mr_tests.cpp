@@ -448,6 +448,68 @@ BOOST_FIXTURE_TEST_CASE(produce_signature_rejects_p2mr_program_leaf, BasicTestin
     BOOST_CHECK(!sigdata.complete);
 }
 
+// Only the Dilithium leaf templates may fall through to SignStep. An ECDSA
+// template such as P2PKH inside a P2MR leaf used to reach CreateSig, whose
+// sigversion assert (BASE or WITNESS_V0 only) aborts the node when the
+// provider knows the key. Signing must fail cleanly, and non-key leaf types
+// must not smuggle unrelated data into sigdata.
+BOOST_FIXTURE_TEST_CASE(produce_signature_rejects_ecdsa_template_leaves, BasicTestingSetup)
+{
+    CKey ecdsa_key;
+    ecdsa_key.MakeNewKey(/*fCompressed=*/true);
+    const CPubKey ecdsa_pubkey = ecdsa_key.GetPubKey();
+    const CAmount amount = COIN;
+
+    const auto try_leaf = [&](const CScript& leaf_script) {
+        const std::vector<unsigned char> leaf_bytes{leaf_script.begin(), leaf_script.end()};
+
+        P2MRBuilder builder;
+        builder.Add(/*depth=*/0, leaf_bytes, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+        BOOST_REQUIRE(builder.IsValid());
+        BOOST_REQUIRE(builder.IsComplete());
+
+        const WitnessV2P2MR output = builder.GetOutput();
+        const CScript script_pubkey = GetScriptForDestination(output);
+
+        FlatSigningProvider provider;
+        provider.p2mr_trees.emplace(output, builder);
+        provider.pubkeys.emplace(ecdsa_pubkey.GetID(), ecdsa_pubkey);
+        provider.keys.emplace(ecdsa_pubkey.GetID(), ecdsa_key);
+
+        CMutableTransaction tx_to;
+        tx_to.nVersion = 2;
+        tx_to.vin.emplace_back(COutPoint(uint256::ONE, 0));
+        tx_to.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+
+        std::vector<CTxOut> spent_outputs;
+        spent_outputs.emplace_back(amount, script_pubkey);
+        PrecomputedTransactionData txdata;
+        txdata.Init(tx_to, std::move(spent_outputs), /*force=*/true);
+
+        SignatureData sigdata;
+        MutableTransactionSignatureCreator creator(tx_to, /*input_idx=*/0, amount, &txdata, SIGHASH_DEFAULT);
+        // Without the whitelist this aborts via assert for key-based leaves.
+        BOOST_CHECK(!ProduceSignature(provider, creator, script_pubkey, sigdata));
+        BOOST_CHECK(!sigdata.complete);
+        return sigdata;
+    };
+
+    // P2PKH leaf with a known key: the assert repro from the review.
+    try_leaf(CScript() << OP_DUP << OP_HASH160
+                       << ToByteVector(ecdsa_pubkey.GetID()) << OP_EQUALVERIFY << OP_CHECKSIG);
+    // P2PK leaf with a known key.
+    try_leaf(CScript() << ToByteVector(ecdsa_pubkey) << OP_CHECKSIG);
+    // Bare 1-of-1 CHECKMULTISIG leaf with a known key.
+    try_leaf(CScript() << OP_1 << ToByteVector(ecdsa_pubkey) << OP_1 << OP_CHECKMULTISIG);
+
+    // A P2TR-program leaf must not deposit taproot spend data into sigdata.
+    const XOnlyPubKey xonly{ecdsa_pubkey};
+    const SignatureData tr_sigdata =
+        try_leaf(CScript() << OP_1 << ToByteVector(xonly));
+    BOOST_CHECK(tr_sigdata.taproot_key_path_sig.empty());
+    BOOST_CHECK(tr_sigdata.tr_spenddata.internal_key.IsNull());
+}
+
 BOOST_FIXTURE_TEST_CASE(produce_signature_signs_dilithium_p2mr_leaf, BasicTestingSetup)
 {
     CDilithiumKey key;

@@ -447,6 +447,20 @@ static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatu
         if (policy.type == P2MRLeafTemplate::THRESHOLD_ACCUMULATOR) {
             return SignDilithiumAccumulatorLeaf(provider, creator, sigdata, policy, script, leaf_hash, result);
         }
+        // Only Dilithium key templates may fall through to SignStep. Every
+        // other Solver-recognized type routes into ECDSA helpers that
+        // assert sigversion is BASE or WITNESS_V0 and would abort the node
+        // (PUBKEY/PUBKEYHASH/MULTISIG via CreateSig), or writes unrelated
+        // state into sigdata (SCRIPTHASH, WITNESS_*). BIP340 single-key and
+        // multi_a leaves are already handled by the miniscript satisfier
+        // above.
+        std::vector<valtype> leaf_solutions;
+        const TxoutType leaf_type = Solver(script, leaf_solutions);
+        if (leaf_type != TxoutType::DILITHIUM_PUBKEY &&
+            leaf_type != TxoutType::DILITHIUM_PUBKEYHASH &&
+            leaf_type != TxoutType::DILITHIUM_MULTISIG) {
+            return false;
+        }
         TxoutType which_type;
         return SignStep(provider, creator, script, result, which_type, sigversion, sigdata, &leaf_hash);
     }
