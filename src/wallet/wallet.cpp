@@ -317,6 +317,12 @@ public:
                 m_last_range_ends.emplace(desc_spkm->GetID(), desc_spkm->GetEndRange());
             }
         }
+
+        // P2MR destinations tracked through wallet metadata (imported or
+        // recovered Dilithium trees) belong to no descriptor, so without
+        // them the filter would skip blocks that pay only such addresses
+        // and the rescan would silently miss their transactions.
+        AddP2MRScripts();
     }
 
     void UpdateIfNeeded()
@@ -330,6 +336,11 @@ public:
                 AddScriptPubKeys(desc_spkm, last_range_end);
                 m_last_range_ends.at(desc_spkm->GetID()) = current_range_end;
             }
+        }
+        // P2MR destinations can also be added while a scan is in progress
+        // (e.g. recoverdilithiumkeys from another thread).
+        if (WITH_LOCK(m_wallet.cs_wallet, return m_wallet.m_p2mr_metadata.size()) != m_p2mr_dest_count) {
+            AddP2MRScripts();
         }
     }
 
@@ -349,9 +360,22 @@ private:
     std::map<uint256, int32_t> m_last_range_ends;
     GCSFilter::ElementSet m_filter_set;
 
+    /** Number of P2MR destinations already folded into the filter. */
+    size_t m_p2mr_dest_count{0};
+
     void AddScriptPubKeys(const DescriptorScriptPubKeyMan* desc_spkm, int32_t last_range_end = 0)
     {
         for (const auto& script_pub_key : desc_spkm->GetScriptPubKeys(last_range_end)) {
+            m_filter_set.emplace(script_pub_key.begin(), script_pub_key.end());
+        }
+    }
+
+    void AddP2MRScripts()
+    {
+        LOCK(m_wallet.cs_wallet);
+        m_p2mr_dest_count = m_wallet.m_p2mr_metadata.size();
+        for (const auto& [dest, entries] : m_wallet.m_p2mr_metadata) {
+            const CScript script_pub_key = GetScriptForDestination(dest);
             m_filter_set.emplace(script_pub_key.begin(), script_pub_key.end());
         }
     }
@@ -3019,6 +3043,11 @@ bool CWallet::EraseP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, 
     return true;
 }
 
+const std::map<std::string, std::string>* CWallet::GetP2MRMetadataForDest(const CTxDestination& dest) const
+{
+    return common::FindKey(m_p2mr_metadata, dest);
+}
+
 bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const
 {
     const auto* entry{common::FindKey(m_p2mr_metadata, dest)};
@@ -3737,6 +3766,22 @@ void CWallet::SetupLegacyScriptPubKeyMan()
 const CKeyingMaterial& CWallet::GetEncryptionKey() const
 {
     return vMasterKey;
+}
+
+bool CWallet::HaveDilithiumKeyAnywhere(const CKeyID& keyid) const
+{
+    // May run while a manager holds its own cs_desc_man (the Dilithium key
+    // generator skip-check); that re-lock is fine because cs_desc_man is
+    // recursive and generator calls are serialized under cs_wallet.
+    for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
+        if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+            LOCK(desc_spk_man->cs_desc_man);
+            if (desc_spk_man->HaveDilithiumKey(keyid)) return true;
+        } else if (auto* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
+            if (legacy_spk_man->HaveDilithiumKey(keyid)) return true;
+        }
+    }
+    return false;
 }
 
 bool CWallet::HasEncryptionKeys() const

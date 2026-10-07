@@ -36,15 +36,7 @@ namespace wallet {
 
 bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid)
 {
-    for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
-        if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-            LOCK(desc_spk_man->cs_desc_man);
-            if (desc_spk_man->HaveDilithiumKey(keyid)) return true;
-        } else if (auto legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
-            if (legacy_spk_man->HaveDilithiumKey(keyid)) return true;
-        }
-    }
-    return false;
+    return wallet.HaveDilithiumKeyAnywhere(keyid);
 }
 
 namespace {
@@ -441,21 +433,28 @@ std::optional<P2MREntry> GetP2MR(const CWallet& wallet, const std::string& id)
     return std::nullopt;
 }
 
-std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script)
-{
-    AssertLockHeld(wallet.cs_wallet);
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (entry.script_pub_key == script) return entry;
-    }
-    return std::nullopt;
-}
-
 std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDestination& dest)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!std::holds_alternative<WitnessV2P2MR>(dest)) return std::nullopt;
-    const CScript script = GetScriptForDestination(dest);
-    return GetP2MRByScript(wallet, script);
+    // Metadata is keyed by destination, so decode only this destination's
+    // rows instead of every record in the wallet.
+    const auto* entries = wallet.GetP2MRMetadataForDest(dest);
+    if (!entries) return std::nullopt;
+    for (const auto& [rid, raw] : *entries) {
+        UniValue meta;
+        if (!DecodeMetadata(raw, meta)) continue;
+        return MetadataToEntry(dest, meta, rid);
+    }
+    return std::nullopt;
+}
+
+std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    CTxDestination dest;
+    if (!ExtractDestination(script, dest)) return std::nullopt;
+    return GetP2MRByDestination(wallet, dest);
 }
 
 std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest)
@@ -723,7 +722,8 @@ static bool RestoreAddressBookEntry(CWallet& wallet, const CTxDestination& dest,
 
 util::Result<P2MRCreated> RecoverDilithiumKeyAsP2MR(CWallet& wallet,
                                                     DescriptorScriptPubKeyMan& manager,
-                                                    const CDilithiumKey& key)
+                                                    const CDilithiumKey& key,
+                                                    bool add_to_address_book)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!key.IsValid()) {
@@ -737,7 +737,7 @@ util::Result<P2MRCreated> RecoverDilithiumKeyAsP2MR(CWallet& wallet,
         !manager.AddDilithiumKeyPubKey(key)) {
         return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
     }
-    return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), /*label=*/"");
+    return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), /*label=*/"", add_to_address_book);
 }
 
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
@@ -757,14 +757,22 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const WitnessV2P2MR& w = std::get<WitnessV2P2MR>(out.dest);
     std::copy(w.begin(), w.end(), out.merkle_root.begin());
 
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (entry.script_pub_key == out.script_pub_key && SameP2MRTree(entry.tree, leaves)) {
-            out.id = entry.id;
-            out.address = entry.address;
-            out.merkle_root = entry.merkle_root;
-            out.dest = entry.dest;
-            out.reused = true;
-            return out;
+    // Reuse scan: only this destination's metadata rows can match, so skip
+    // the wallet-wide ListP2MR decode (recoverdilithiumkeys calls this once
+    // per index and a full scan made the recovery quadratic).
+    if (const auto* existing = wallet.GetP2MRMetadataForDest(out.dest)) {
+        for (const auto& [rid, raw] : *existing) {
+            UniValue decoded;
+            if (!DecodeMetadata(raw, decoded)) continue;
+            P2MREntry entry = MetadataToEntry(out.dest, decoded, rid);
+            if (entry.script_pub_key == out.script_pub_key && SameP2MRTree(entry.tree, leaves)) {
+                out.id = entry.id;
+                out.address = entry.address;
+                out.merkle_root = entry.merkle_root;
+                out.dest = entry.dest;
+                out.reused = true;
+                return out;
+            }
         }
     }
 

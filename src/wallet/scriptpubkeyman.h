@@ -49,6 +49,10 @@ public:
     virtual const CKeyingMaterial& GetEncryptionKey() const = 0;
     virtual bool HasEncryptionKeys() const = 0;
     virtual bool IsLocked() const = 0;
+    //! Whether any of the wallet's key managers holds this Dilithium key.
+    //! Key records do not say which manager derived them, so after a reload
+    //! they land in an arbitrary manager and per-manager checks miss them.
+    virtual bool HaveDilithiumKeyAnywhere(const CKeyID& keyid) const = 0;
 };
 
 //! Default for -keypool

@@ -224,8 +224,11 @@ RPCHelpMan recoverdilithiumkeys()
 
                 // Store the key (no-op when present) and create or reuse the
                 // canonical single-leaf P2MR tree and metadata, so the wallet
-                // matches these scripts from now on.
-                auto created = RecoverDilithiumKeyAsP2MR(*wallet, *desc, key_res.value());
+                // matches these scripts from now on. Change keys stay out of
+                // the address book, like GetReservedDestination: an entry
+                // would make historical change look like incoming payments
+                // and break ScriptIsChange.
+                auto created = RecoverDilithiumKeyAsP2MR(*wallet, *desc, key_res.value(), /*add_to_address_book=*/!internal);
                 if (!created) {
                     throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
                 }

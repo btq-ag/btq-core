@@ -177,7 +177,8 @@ class DescriptorScriptPubKeyMan;
  */
 util::Result<P2MRCreated> RecoverDilithiumKeyAsP2MR(CWallet& wallet,
                                                     DescriptorScriptPubKeyMan& manager,
-                                                    const CDilithiumKey& key);
+                                                    const CDilithiumKey& key,
+                                                    bool add_to_address_book = true);
 
 /** Create + persist + fund a P2MR destination in one call. */
 util::Result<P2MRFunded> FundP2MR(CWallet& wallet,

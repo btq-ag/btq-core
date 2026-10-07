@@ -2464,11 +2464,16 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     AssertLockHeld(cs_desc_man);
 
     // The Dilithium sequence has its own counter (Quarks F2.5). Wallets that
-    // predate the counter derived from the shared next_index, so some low
-    // indexes may already be materialized as keys; skip those rather than
-    // fail, keeping the sequence gap-free from here on.
-    constexpr int32_t MAX_INDEX_SKIPS{10000};
-    for (int32_t attempts = 0; attempts <= MAX_INDEX_SKIPS; ++attempts) {
+    // predate the counter derived from the shared next_index, and
+    // recoverdilithiumkeys materializes indexes ahead of the counter, so
+    // skip indexes whose keys exist rather than fail. The check has to be
+    // wallet-wide: loaded key records do not say which manager derived them
+    // and land in an arbitrary manager, so after a reload this manager's own
+    // maps miss keys it derived (plaintext wallets then fail the
+    // no-overwrite store, encrypted wallets silently re-issue an address).
+    // Every skipped index matches a distinct existing key, so the loop ends
+    // after at most as many iterations as the wallet has Dilithium keys.
+    while (true) {
         const int32_t index = m_dilithium_next_index;
         if (index < 0) {
             return util::Error{_("Error: Dilithium key index space exhausted")};
@@ -2485,8 +2490,8 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
             return util::Error{_("Error: Failed to persist Dilithium key index")};
         }
 
-        if (HaveDilithiumKey(keyid)) {
-            continue; // Already generated under the old shared counter.
+        if (m_storage.HaveDilithiumKeyAnywhere(keyid)) {
+            continue; // Already materialized; held by this or another manager.
         }
 
         if (!AddDilithiumKeyWithDB(batch, key_res.value(), keyid)) {
@@ -2494,7 +2499,6 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
         }
         return dilithium_pubkey;
     }
-    return util::Error{_("Error: Failed to generate unique Dilithium key")};
 }
 
 util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const OutputType type)
