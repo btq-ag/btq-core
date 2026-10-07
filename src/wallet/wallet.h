@@ -826,6 +826,9 @@ public:
     bool SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool EraseP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    //! All P2MR metadata rows (id -> JSON) for one destination, or nullptr.
+    //! Cheaper than ListP2MRMetadata for per-destination lookups.
+    const std::map<std::string, std::string>* GetP2MRMetadataForDest(const CTxDestination& dest) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     std::vector<std::tuple<CTxDestination, std::string, std::string>> ListP2MRMetadata() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     /** P2MR metadata stored under one destination. A map lookup, not an address book scan. */
     std::vector<std::tuple<CTxDestination, std::string, std::string>> ListP2MRMetadata(const CTxDestination& dest) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
@@ -988,6 +991,7 @@ public:
 
     bool WithEncryptionKey(std::function<bool (const CKeyingMaterial&)> cb) const override;
     bool HasEncryptionKeys() const override;
+    bool HaveDilithiumKeyAnywhere(const CKeyID& keyid) const override;
 
     /** Get last block processed height */
     int GetLastBlockHeight() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet)

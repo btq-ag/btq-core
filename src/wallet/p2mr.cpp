@@ -39,15 +39,7 @@ namespace wallet {
 
 bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid)
 {
-    for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
-        if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-            LOCK(desc_spk_man->cs_desc_man);
-            if (desc_spk_man->HaveDilithiumKey(keyid)) return true;
-        } else if (auto legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
-            if (legacy_spk_man->HaveDilithiumKey(keyid)) return true;
-        }
-    }
-    return false;
+    return wallet.HaveDilithiumKeyAnywhere(keyid);
 }
 
 namespace {
@@ -470,26 +462,28 @@ static std::vector<P2MREntry> ListP2MRForDestination(const CWallet& wallet, cons
     return out;
 }
 
-// GetSolvingProvider reaches this once per coin, so read only the entries for
-// the script's destination. CreateP2MR, the only writer of P2MR metadata,
-// stores it under the WitnessV2P2MR destination of the tree it built.
-std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script)
-{
-    AssertLockHeld(wallet.cs_wallet);
-    CTxDestination dest;
-    if (!ExtractDestination(script, dest) || !std::holds_alternative<WitnessV2P2MR>(dest)) return std::nullopt;
-    for (auto& entry : ListP2MRForDestination(wallet, dest)) {
-        if (entry.script_pub_key == script) return entry;
-    }
-    return std::nullopt;
-}
-
 std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDestination& dest)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!std::holds_alternative<WitnessV2P2MR>(dest)) return std::nullopt;
-    const CScript script = GetScriptForDestination(dest);
-    return GetP2MRByScript(wallet, script);
+    // Metadata is keyed by destination, so decode only this destination's
+    // rows instead of every record in the wallet.
+    const auto* entries = wallet.GetP2MRMetadataForDest(dest);
+    if (!entries) return std::nullopt;
+    for (const auto& [rid, raw] : *entries) {
+        UniValue meta;
+        if (!DecodeMetadata(raw, meta)) continue;
+        return MetadataToEntry(dest, meta, rid);
+    }
+    return std::nullopt;
+}
+
+std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    CTxDestination dest;
+    if (!ExtractDestination(script, dest)) return std::nullopt;
+    return GetP2MRByDestination(wallet, dest);
 }
 
 std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest)
@@ -814,7 +808,8 @@ static bool RestoreAddressBookEntry(CWallet& wallet, const CTxDestination& dest,
 
 util::Result<P2MRCreated> RecoverDilithiumKeyAsP2MR(CWallet& wallet,
                                                     DescriptorScriptPubKeyMan& manager,
-                                                    const CDilithiumKey& key)
+                                                    const CDilithiumKey& key,
+                                                    bool add_to_address_book)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!key.IsValid()) {
@@ -828,7 +823,7 @@ util::Result<P2MRCreated> RecoverDilithiumKeyAsP2MR(CWallet& wallet,
         !manager.AddDilithiumKeyPubKey(key)) {
         return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
     }
-    return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), /*label=*/"");
+    return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), /*label=*/"", add_to_address_book);
 }
 
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
