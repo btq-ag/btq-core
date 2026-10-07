@@ -28,9 +28,10 @@ static const std::map<uint64_t, std::string> WALLET_FLAG_CAVEATS{
      "destinations in the past. Until this is done, some destinations may "
      "be considered unused, even if the opposite is the case."},
     {WALLET_FLAG_QUANTUM_ONLY,
-     "The wallet will refuse to create ECDSA addresses, including change. "
-     "Older software that does not know this flag will refuse to open the "
-     "wallet while the flag is set."},
+     "The wallet will refuse to create any address other than P2MR; that "
+     "includes change, ECDSA types, and the deprecated dilithium-legacy "
+     "form. Older software that does not know this flag will refuse to "
+     "open the wallet while the flag is set."},
 };
 
 /** Checks if a CKey is in the given CWallet compressed or otherwise*/
@@ -65,6 +66,7 @@ static RPCHelpMan getwalletinfo()
                         {RPCResult::Type::STR_HEX, "hdseedid", /*optional=*/true, "the Hash160 of the HD seed (only present when HD is enabled)"},
                         {RPCResult::Type::BOOL, "private_keys_enabled", "false if privatekeys are disabled for this wallet (enforced watch-only wallet)"},
                         {RPCResult::Type::BOOL, "avoid_reuse", "whether this wallet tracks clean/dirty coins in terms of reuse"},
+                        {RPCResult::Type::BOOL, "quantum_only", "whether this wallet refuses to create any destination other than P2MR"},
                         {RPCResult::Type::OBJ, "scanning", "current scanning details, or false if no scan is in progress",
                         {
                             {RPCResult::Type::NUM, "duration", "elapsed seconds since scan start"},
@@ -125,6 +127,7 @@ static RPCHelpMan getwalletinfo()
     obj.pushKV("paytxfee", ValueFromAmount(pwallet->m_pay_tx_fee.GetFeePerK()));
     obj.pushKV("private_keys_enabled", !pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS));
     obj.pushKV("avoid_reuse", pwallet->IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE));
+    obj.pushKV("quantum_only", pwallet->IsWalletFlagSet(WALLET_FLAG_QUANTUM_ONLY));
     if (pwallet->IsScanning()) {
         UniValue scanning(UniValue::VOBJ);
         scanning.pushKV("duration", Ticks<std::chrono::seconds>(pwallet->ScanningDuration()));
