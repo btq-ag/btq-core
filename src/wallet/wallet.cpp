@@ -1689,6 +1689,14 @@ void CWallet::UnsetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
         throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
 }
 
+void CWallet::SetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
+{
+    LOCK(cs_wallet);
+    m_wallet_flags |= flag;
+    if (!batch.WriteWalletFlags(m_wallet_flags))
+        throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
+}
+
 void CWallet::UnsetBlankWalletFlag(WalletBatch& batch)
 {
     UnsetWalletFlagWithDB(batch, WALLET_FLAG_BLANK_WALLET);
@@ -2959,7 +2967,10 @@ bool CWallet::SetAddressReceiveRequest(WalletBatch& batch, const CTxDestination&
 bool CWallet::EraseAddressReceiveRequest(WalletBatch& batch, const CTxDestination& dest, const std::string& id)
 {
     if (!batch.EraseAddressReceiveRequest(dest, id)) return false;
-    m_address_book[dest].receive_requests.erase(id);
+    // FindKey first: operator[] would plant an empty address-book entry for
+    // destinations that never had one, and that ghost entry would differ
+    // from what a reload produces.
+    if (auto* entry{common::FindKey(m_address_book, dest)}) entry->receive_requests.erase(id);
     return true;
 }
 
@@ -2970,6 +2981,14 @@ void CWallet::LoadP2MRMetadata(const CTxDestination& dest, const std::string& id
 
 bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value)
 {
+    // Flag the wallet before the first p2mrmeta row hits disk. The flag is
+    // in the mandatory (upper-bit) range, so binaries that predate the
+    // record type refuse to open the wallet instead of silently hiding the
+    // P2MR balance they cannot see. Flag first: a crash in between leaves a
+    // flagged wallet with no metadata row, which only over-restricts.
+    if (!IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA)) {
+        SetWalletFlagWithDB(batch, WALLET_FLAG_P2MR_METADATA);
+    }
     if (!batch.WriteP2MRMetadata(dest, id, value)) return false;
     // Older wallets stored this as a receive request under "rrp2mr:<id>"
     // (Quarks F2.17). Drop any such row, in the DB and in memory, so the

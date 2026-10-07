@@ -223,17 +223,34 @@ BOOST_FIXTURE_TEST_CASE(p2mr_metadata_not_in_receive_requests, BasicTestingSetup
     std::string address;
     std::string legacy_json;
     MockableData records;
+    // The downgrade guard must sit in the mandatory flag range, where
+    // binaries that do not know it refuse to load the wallet.
+    static_assert((WALLET_FLAG_P2MR_METADATA >> 32) != 0);
+
     {
         auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
         wallet->LoadWallet();
         LOCK(wallet->cs_wallet);
+        BOOST_CHECK(!wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
         auto created = CreateP2MR(*wallet, leaves, "meta");
         BOOST_REQUIRE(created);
         address = created->address;
 
+        // The first p2mrmeta write marks the wallet so older binaries,
+        // which would silently hide the P2MR balance, refuse to open it.
+        BOOST_CHECK(wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+
         std::string value;
         BOOST_CHECK(wallet->GetP2MRMetadata(created->dest, created->id, value));
         BOOST_CHECK(wallet->GetAddressReceiveRequests().empty());
+
+        // Erasing a receive request for an unknown destination must not
+        // plant a ghost address-book entry (reload would not have one).
+        const CTxDestination unknown{PKHash{uint160{}}};
+        BOOST_CHECK(wallet->m_address_book.find(unknown) == wallet->m_address_book.end());
+        WalletBatch ghost_batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+        wallet->EraseAddressReceiveRequest(ghost_batch, unknown, "nope");
+        BOOST_CHECK(wallet->m_address_book.find(unknown) == wallet->m_address_book.end());
 
         // Simulate a pre-F2.17 wallet: metadata stored as a receive request.
         legacy_json = value;
@@ -255,6 +272,8 @@ BOOST_FIXTURE_TEST_CASE(p2mr_metadata_not_in_receive_requests, BasicTestingSetup
         BOOST_CHECK_EQUAL(wallet->ListP2MRMetadata().size(), 2U);
         // ...and receive requests stay empty.
         BOOST_CHECK(wallet->GetAddressReceiveRequests().empty());
+        // The downgrade guard survives the reload.
+        BOOST_CHECK(wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
     }
 }
 
