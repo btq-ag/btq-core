@@ -1043,18 +1043,24 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend, &coin_control);
     // A locked wallet cannot derive a Dilithium change key, and funding
     // (fundrawtransaction, walletcreatefundedpsbt) never required unlocking.
-    // When P2MR change came only from the input-following rule (preselected
-    // quantum-safe inputs, nothing explicit), fall back to the classical
-    // choice and say so, instead of failing the funding. Explicit requests
-    // (-changetype, change_type, quantum_only) still fail loudly.
+    // When P2MR change came from the automatic rule (a quantum-safe recipient
+    // or preselected quantum-safe inputs, nothing explicit), fall back to the
+    // classical choice and say so, instead of failing the funding. Explicit
+    // requests (-changetype, change_type, quantum_only) still fail loudly.
     if (change_type == OutputType::P2MR && wallet.IsLocked() &&
         !coin_control.m_change_type && !wallet.m_default_change_type &&
         !wallet.IsWalletFlagSet(WALLET_FLAG_QUANTUM_ONLY)) {
-        const OutputType without_inputs = wallet.TransactionChangeType(std::nullopt, vecSend);
-        if (without_inputs != OutputType::P2MR) {
-            change_type = without_inputs;
-            wallet.WalletLogPrintf("Wallet is locked; quantum-safe inputs get classical change. Unlock the wallet or pass change_type to control this.\n");
+        std::vector<CRecipient> classical_recipients;
+        classical_recipients.reserve(vecSend.size());
+        for (const auto& recipient : vecSend) {
+            if (std::holds_alternative<WitnessV2P2MR>(recipient.dest) ||
+                std::holds_alternative<DilithiumPKHash>(recipient.dest)) {
+                continue;
+            }
+            classical_recipients.push_back(recipient);
         }
+        change_type = wallet.TransactionChangeType(std::nullopt, classical_recipients);
+        wallet.WalletLogPrintf("Wallet is locked; quantum-safe change needs an unlocked wallet. Using classical change. Unlock the wallet or pass change_type to control this.\n");
     }
     ReserveDestination reservedest(&wallet, change_type);
     unsigned int outputs_to_subtract_fee_from = 0; // The number of outputs which we are subtracting the fee from
