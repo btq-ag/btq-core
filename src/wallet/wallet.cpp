@@ -1692,9 +1692,12 @@ void CWallet::UnsetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
 void CWallet::SetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
 {
     LOCK(cs_wallet);
-    m_wallet_flags |= flag;
-    if (!batch.WriteWalletFlags(m_wallet_flags))
+    // Disk first. Setting the in-memory bit before a failed write would make
+    // guards like SetP2MRMetadata's IsWalletFlagSet check pass for the rest
+    // of the session while the on-disk wallet never got the flag.
+    if (!batch.WriteWalletFlags(m_wallet_flags | flag))
         throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
+    m_wallet_flags |= flag;
 }
 
 void CWallet::UnsetBlankWalletFlag(WalletBatch& batch)
@@ -2992,8 +2995,12 @@ bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, co
     if (!batch.WriteP2MRMetadata(dest, id, value)) return false;
     // Older wallets stored this as a receive request under "rrp2mr:<id>"
     // (Quarks F2.17). Drop any such row, in the DB and in memory, so the
-    // two copies cannot diverge.
-    EraseAddressReceiveRequest(batch, dest, "rrp2mr:" + id);
+    // two copies cannot diverge. If the erase fails, take the new row back
+    // out rather than leaving both copies on disk.
+    if (!EraseAddressReceiveRequest(batch, dest, "rrp2mr:" + id)) {
+        batch.EraseP2MRMetadata(dest, id);
+        return false;
+    }
     m_p2mr_metadata[dest][id] = value;
     m_ismine_cache.erase(GetScriptForDestination(dest));
     return true;

@@ -385,8 +385,10 @@ private:
     //! Unsets a wallet flag and saves it to disk
     void UnsetWalletFlagWithDB(WalletBatch& batch, uint64_t flag);
 
-    /** Set a flag using the provided batch, so the flag write shares the
-     *  caller's database transaction. */
+    /** Set a flag using the caller's batch. Writes the flag to disk before
+     *  setting the in-memory bit; throws if the write fails. Atomicity with
+     *  the caller's other writes depends on the caller running a batch
+     *  transaction, which WalletBatch alone does not guarantee. */
     void SetWalletFlagWithDB(WalletBatch& batch, uint64_t flag);
 
     //! Unset the blank wallet flag and saves it to disk
