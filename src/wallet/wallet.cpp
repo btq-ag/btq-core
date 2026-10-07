@@ -3772,12 +3772,14 @@ const CKeyingMaterial& CWallet::GetEncryptionKey() const
     return vMasterKey;
 }
 
-bool CWallet::HaveDilithiumKeyAnywhere(const CKeyID& keyid) const
+bool CWallet::HaveDilithiumKeyAnywhere(const CKeyID& keyid) const NO_THREAD_SAFETY_ANALYSIS
 {
     // May run while a manager holds its own cs_desc_man (the Dilithium key
     // generator skip-check); that re-lock is fine because cs_desc_man is
-    // recursive and generator calls are serialized under cs_wallet. Enforce
-    // the serialization instead of relying on convention.
+    // recursive and generator calls are serialized under cs_wallet. The
+    // assert checks that. The analysis attribute is required because the
+    // virtual WalletStorage declaration has no mutex to name, so clang
+    // cannot see the cs_wallet requirement on this override.
     AssertLockHeld(cs_wallet);
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
