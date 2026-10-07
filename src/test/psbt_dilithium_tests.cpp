@@ -502,6 +502,48 @@ BOOST_AUTO_TEST_CASE(output_p2mr_tree_is_filled_and_roundtrips)
     BOOST_CHECK(bare.outputs[0].m_p2mr_merkle_root.IsNull());
 }
 
+BOOST_AUTO_TEST_CASE(output_p2mr_merge_fills_missing_fields_in_both_orders)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    CMutableTransaction tx;
+    tx.nVersion = 2;
+    tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+    tx.vout.emplace_back(90000, f.prevout.scriptPubKey);
+
+    const uint256 root{std::vector<unsigned char>(f.output.begin(), f.output.end())};
+
+    PartiallySignedTransaction root_only{tx};
+    root_only.outputs[0].m_p2mr_merkle_root = root;
+    PartiallySignedTransaction tree_and_root{tx};
+    tree_and_root.outputs[0].m_p2mr_tree = f.builder.GetTreeTuples();
+    tree_and_root.outputs[0].m_p2mr_merkle_root = root;
+
+    // combinepsbt([root_only, tree_and_root]) must not drop the tree.
+    PartiallySignedTransaction merged = root_only;
+    BOOST_REQUIRE(merged.Merge(tree_and_root));
+    BOOST_CHECK(merged.outputs[0].m_p2mr_tree == f.builder.GetTreeTuples());
+    BOOST_CHECK(merged.outputs[0].m_p2mr_merkle_root == root);
+
+    // The reverse order keeps both fields too.
+    PartiallySignedTransaction merged_rev = tree_and_root;
+    BOOST_REQUIRE(merged_rev.Merge(root_only));
+    BOOST_CHECK(merged_rev.outputs[0].m_p2mr_tree == f.builder.GetTreeTuples());
+    BOOST_CHECK(merged_rev.outputs[0].m_p2mr_merkle_root == root);
+
+    // The fields merge independently: a tree-only side completes a
+    // root-only side.
+    PartiallySignedTransaction tree_only{tx};
+    tree_only.outputs[0].m_p2mr_tree = f.builder.GetTreeTuples();
+    PartiallySignedTransaction cross = root_only;
+    BOOST_REQUIRE(cross.Merge(tree_only));
+    BOOST_CHECK(cross.outputs[0].m_p2mr_tree == f.builder.GetTreeTuples());
+    BOOST_CHECK(cross.outputs[0].m_p2mr_merkle_root == root);
+}
+
 BOOST_AUTO_TEST_CASE(output_p2mr_tree_disagreeing_with_the_root_is_rejected)
 {
     const Signer signer = MakeSigner();

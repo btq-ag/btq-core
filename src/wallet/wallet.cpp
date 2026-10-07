@@ -2291,9 +2291,15 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
     // fills them.
     for (unsigned int i = 0; i < psbtx.tx->vout.size(); ++i) {
         const auto entry{GetP2MRByScript(*this, psbtx.tx->vout[i].scriptPubKey)};
-        if (!entry) continue;
-        const FlatSigningProvider provider{BuildP2MRSigningProvider(*this, entry->id)};
-        UpdatePSBTOutput(HidingSigningProvider(&provider, /*hide_secret=*/true, /*hide_origin=*/!bip32derivs), psbtx, i);
+        if (!entry || !std::holds_alternative<WitnessV2P2MR>(entry->dest)) continue;
+        auto builder_res = BuildP2MRTreeChecked(entry->tree);
+        if (!builder_res) continue;
+        // Only the tree is wanted on an output; hand UpdatePSBTOutput a
+        // provider that holds nothing else, instead of collecting (and
+        // decrypting) every key behind the tree just to hide it again.
+        FlatSigningProvider tree_provider;
+        tree_provider.p2mr_trees[std::get<WitnessV2P2MR>(entry->dest)] = std::move(*builder_res);
+        UpdatePSBTOutput(tree_provider, psbtx, i);
     }
 
     RemoveUnnecessaryTransactions(psbtx, sighash_type);
