@@ -218,31 +218,77 @@ BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSet
 
 BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSetup)
 {
-    auto wallet = MakeP2MRTestWallet(*m_node.chain);
-    LOCK(wallet->cs_wallet);
     const auto leaves = MakeOpTrueTree();
     CCoinControl coin_control;
+    auto builder = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(builder);
+    const CTxDestination dest = builder->GetOutput();
+
+    auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet->LoadWallet();
+
+    // Reopens the wallet from its current records, so every assertion can
+    // also be checked against what a restart would load.
+    const auto reload = [&] {
+        MockableData records = GetMockableDatabase(*wallet).m_records;
+        wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+    };
 
     // The wallet has no coins, so CreateTransaction fails. The entry this
     // call created must be rolled back (Quarks F2.9).
-    auto funded = FundP2MR(*wallet, leaves, CENT, "fund-fail", /*subtract_fee_from_amount=*/false, coin_control);
-    BOOST_REQUIRE(!funded);
-    BOOST_CHECK(ListP2MR(*wallet).empty());
-    BOOST_CHECK(wallet->ListP2MRMetadata().empty());
-    auto builder = BuildP2MRTreeChecked(leaves);
-    BOOST_REQUIRE(builder);
-    BOOST_CHECK(!wallet->FindAddressBookEntry(builder->GetOutput()));
+    {
+        LOCK(wallet->cs_wallet);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "fund-fail", /*subtract_fee_from_amount=*/false, coin_control);
+        BOOST_REQUIRE(!funded);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK(ListP2MR(*wallet).empty());
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        BOOST_CHECK(!wallet->FindAddressBookEntry(dest));
+    }
+
+    // A pre-existing address-book entry (labelled, but not P2MR-tracked)
+    // must survive the rollback with its label and purpose intact, even
+    // though CreateP2MR overwrote them.
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
+        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control);
+        BOOST_REQUIRE(!funded);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        const auto* entry = wallet->FindAddressBookEntry(dest);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "pre-existing");
+        BOOST_CHECK(entry->purpose == AddressPurpose::SEND);
+        BOOST_REQUIRE(wallet->DelAddressBook(dest));
+    }
 
     // A pre-existing tree that the failing call reused stays.
-    auto created = CreateP2MR(*wallet, leaves, "keep");
-    BOOST_REQUIRE(created);
-    BOOST_CHECK(!created->reused);
-    funded = FundP2MR(*wallet, leaves, CENT, "keep", /*subtract_fee_from_amount=*/false, coin_control);
-    BOOST_REQUIRE(!funded);
-    BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
-    BOOST_CHECK(wallet->FindAddressBookEntry(created->dest));
-    std::string value;
-    BOOST_CHECK(wallet->GetP2MRMetadata(created->dest, created->id, value));
+    {
+        LOCK(wallet->cs_wallet);
+        auto created = CreateP2MR(*wallet, leaves, "keep");
+        BOOST_REQUIRE(created);
+        BOOST_CHECK(!created->reused);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "keep", /*subtract_fee_from_amount=*/false, coin_control);
+        BOOST_REQUIRE(!funded);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+        BOOST_CHECK(wallet->FindAddressBookEntry(dest));
+        const auto metadata = wallet->ListP2MRMetadata();
+        BOOST_REQUIRE_EQUAL(metadata.size(), 1U);
+        std::string value;
+        BOOST_CHECK(wallet->GetP2MRMetadata(dest, std::get<1>(metadata.front()), value));
+    }
 }
 
 BOOST_FIXTURE_TEST_CASE(p2mr_metadata_not_in_receive_requests, BasicTestingSetup)

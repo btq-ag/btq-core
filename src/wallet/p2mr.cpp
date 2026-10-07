@@ -730,6 +730,19 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
         return util::Error{_("Wallet is locked")};
     }
 
+    // CreateP2MR overwrites any existing label for the destination, and the
+    // rollback below must know whether the address-book entry predates this
+    // call: a user may have labelled the destination without tracking it as
+    // a P2MR tree, and deleting that entry would also wipe its destdata.
+    std::optional<CAddressBookData> prior_entry;
+    {
+        auto tree_res = BuildP2MRTreeChecked(leaves);
+        if (!tree_res) return util::Error{util::ErrorString(tree_res)};
+        if (const auto* entry = wallet.FindAddressBookEntry(tree_res->GetOutput(), /*allow_change=*/true)) {
+            prior_entry = *entry;
+        }
+    }
+
     auto created_res = CreateP2MR(wallet, leaves, label);
     if (!created_res) return util::Error{util::ErrorString(created_res)};
     P2MRCreated created = std::move(*created_res);
@@ -737,13 +750,39 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
     std::vector<CRecipient> recipients{{created.dest, amount, subtract_fee_from_amount}};
     auto tx_res = CreateTransaction(wallet, recipients, /*change_pos=*/-1, coin_control, /*sign=*/true);
     if (!tx_res) {
-        // Funding failed, so drop the entry this call just created instead
-        // of leaving an orphaned tree and address-book row behind (Quarks
-        // F2.9). A pre-existing tree that CreateP2MR reused stays.
+        // Funding failed, so drop what this call just created instead of
+        // leaving an orphaned tree and address-book row behind (Quarks
+        // F2.9). A pre-existing tree that CreateP2MR reused stays, and a
+        // pre-existing address-book entry is restored rather than deleted.
         if (!created.reused) {
             WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
-            wallet.EraseP2MRMetadata(batch, created.dest, created.id);
-            wallet.DelAddressBook(created.dest);
+            bool rollback_ok = wallet.EraseP2MRMetadata(batch, created.dest, created.id);
+            if (prior_entry && !prior_entry->IsChange()) {
+                // Put back the label and purpose CreateP2MR overwrote.
+                rollback_ok &= wallet.SetAddressBook(created.dest, prior_entry->GetLabel(), prior_entry->purpose);
+                if (!prior_entry->purpose) {
+                    // The entry had no recorded purpose (pre-purpose wallet);
+                    // drop the RECEIVE row CreateP2MR added.
+                    batch.ErasePurpose(EncodeDestination(created.dest));
+                    wallet.m_address_book[created.dest].purpose = std::nullopt;
+                }
+            } else if (prior_entry) {
+                // A change entry has no label and no database rows;
+                // CreateP2MR's SetAddressBook added both. Remove them and
+                // put the in-memory entry back.
+                const std::string dest_str = EncodeDestination(created.dest);
+                batch.EraseName(dest_str);
+                batch.ErasePurpose(dest_str);
+                wallet.m_address_book[created.dest] = *prior_entry;
+            } else if (!wallet.IsMine(created.dest)) {
+                rollback_ok &= wallet.DelAddressBook(created.dest);
+            }
+            // else: another metadata entry still tracks this destination,
+            // so the address-book entry stays (DelAddressBook would refuse
+            // an IsMine address and ask the user to file a bug report).
+            if (!rollback_ok) {
+                wallet.WalletLogPrintf("FundP2MR: failed to fully roll back P2MR entry for %s\n", created.address);
+            }
         }
         return util::Error{util::ErrorString(tx_res)};
     }
