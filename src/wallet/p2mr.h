@@ -232,7 +232,7 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet,
  * tracked by this wallet: the PSBT carries the leaf and control block, so
  * keys are all the signer has to contribute.
  */
-FlatSigningProvider BuildP2MRLeafKeyProvider(const CWallet& wallet, const std::vector<P2MRTreeLeaf>& leaves);
+FlatSigningProvider BuildP2MRLeafKeyProvider(const CWallet& wallet, const std::vector<P2MRTreeLeaf>& leaves) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Return true if the script matches any wallet-tracked P2MR scriptPubKey. */
 bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
