@@ -75,6 +75,12 @@ enum WalletFlags : uint64_t {
 
     //! Indicates that the wallet needs an external signer
     WALLET_FLAG_EXTERNAL_SIGNER = (1ULL << 35),
+
+    //! Indicates that the wallet contains P2MR metadata records
+    //! ("p2mrmeta"). Mandatory (upper-bit) so binaries that predate the
+    //! record type refuse to open the wallet instead of silently hiding
+    //! the P2MR balance they cannot see.
+    WALLET_FLAG_P2MR_METADATA = (1ULL << 36),
 };
 
 //! Get the path of the wallet directory.
