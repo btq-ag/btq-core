@@ -1015,7 +1015,10 @@ struct PSBTOutput
                             throw std::ios_base::failure("Output Taproot tree has a leaf with an invalid leaf version");
                         }
                         m_tap_tree.emplace_back(depth, leaf_ver, script);
-                        builder.Add((int)depth, script, (int)leaf_ver, /*track=*/true);
+                        // track=false: only completeness is checked here, and
+                        // tracking stores a merkle branch per leaf, letting a
+                        // ~3 MiB hostile PSBT allocate hundreds of MiB.
+                        builder.Add((int)depth, script, (int)leaf_ver, /*track=*/false);
                     }
                     if (!builder.IsComplete()) {
                         throw std::ios_base::failure("Output Taproot tree is malformed");
