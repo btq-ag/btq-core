@@ -1073,8 +1073,12 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         }
     }
 
-    // Create change script that will be used if we need change
+    // Create change script that will be used if we need change.
+    // reserved_script is the classical keypool reservation, when we made one.
+    // The P2MR swap below replaces scriptChange; that reservation must be
+    // returned rather than marked used.
     CScript scriptChange;
+    CScript reserved_script;
     bilingual_str error; // possible error str
 
     // coin control: send change to custom address
@@ -1097,6 +1101,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         } else {
             dest = *op_dest;
             scriptChange = GetScriptForDestination(dest);
+            reserved_script = scriptChange;
         }
         // A valid destination implies a change script (and
         // vice-versa). An empty change script will abort later, if the
@@ -1409,8 +1414,15 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     }
 
     // Before we return success, we assume any change key will be used to prevent
-    // accidental re-use.
-    reservedest.KeepDestination();
+    // accidental re-use. A quantum-safe swap publishes a different script, so
+    // the classical reservation was never used: handing it back keeps that
+    // keypool index available. Coin control and a failed reservation leave
+    // reserved_script empty, and KeepDestination is a no-op there.
+    if (reserved_script.empty() || scriptChange == reserved_script) {
+        reservedest.KeepDestination();
+    } else {
+        reservedest.ReturnDestination();
+    }
 
     wallet.WalletLogPrintf("Fee Calculation: Fee:%d Bytes:%u Tgt:%d (requested %d) Reason:\"%s\" Decay %.5f: Estimation: (%g - %g) %.2f%% %.1f/(%.1f %d mem %.1f out) Fail: (%g - %g) %.2f%% %.1f/(%.1f %d mem %.1f out)\n",
               current_fee, nBytes, feeCalc.returnedTarget, feeCalc.desiredTarget, StringForFeeReason(feeCalc.reason), feeCalc.est.decay,

@@ -72,7 +72,12 @@ class WalletDilithiumChangeTest(BTQTestFramework):
 
         self.log.info("Paying a Dilithium destination returns the change to P2MR, not Taproot")
         recipient = sender.getnewdilithiumaddress()["address"]
+        # The swap reserves a classical change key, then replaces the script.
+        # That reservation has to go back to the pool. Keeping it burns an
+        # internal index that never appears in the transaction.
+        internal_before = sender.getwalletinfo()["keypoolsize_hd_internal"]
         txid = sender.sendtoaddress(recipient, Decimal("1"))
+        assert_equal(sender.getwalletinfo()["keypoolsize_hd_internal"], internal_before)
         change = self.change_output(node, sender, txid)
         assert_equal(change["scriptPubKey"]["type"], "witness_v2_p2mr")
         # The point of the change being P2MR rather than merely witness v2: the
@@ -108,6 +113,8 @@ class WalletDilithiumChangeTest(BTQTestFramework):
         funding.sendtoaddress(classical_addr, Decimal("3"))
         self.generate(node, 1, sync_fun=self.no_op)
         classical_utxo = next(u for u in sender.listunspent() if u["address"] == classical_addr)
+        # Same reservation, no swap: the classical change key stays used.
+        internal_before = sender.getwalletinfo()["keypoolsize_hd_internal"]
         raw = sender.createrawtransaction(
             [{"txid": classical_utxo["txid"], "vout": classical_utxo["vout"]}],
             [{funding.getnewaddress(address_type="bech32m"): Decimal("1")}],
@@ -115,6 +122,7 @@ class WalletDilithiumChangeTest(BTQTestFramework):
         funded = sender.fundrawtransaction(raw, {"add_inputs": False})
         classical_change = sender.decoderawtransaction(funded["hex"])["vout"][funded["changepos"]]
         assert classical_change["scriptPubKey"]["type"] != "witness_v2_p2mr"
+        assert_equal(sender.getwalletinfo()["keypoolsize_hd_internal"], internal_before - 1)
 
         self.log.info("An explicit change_type still wins over the Dilithium rule")
         outputs = [{sender.getnewdilithiumaddress()["address"]: Decimal("1")}]
