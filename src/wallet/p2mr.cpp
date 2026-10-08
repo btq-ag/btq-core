@@ -483,9 +483,21 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
     AssertLockHeld(wallet.cs_wallet);
     auto entry = GetP2MRByDestination(wallet, dest);
     if (!entry) return std::nullopt;
-    // A hybrid leaf also needs its schnorr key to spend, so a Dilithium-only
-    // message signature would prove less ownership than the address implies.
-    if (!GetP2MRKeyRequirements(entry->tree).xonly_pubkeys.empty()) return std::nullopt;
+    // A message signature only proves the Dilithium key. That matches the
+    // address when some leaf can be spent with that key alone. A hybrid-only
+    // tree also needs its schnorr key, so signing would claim more than the
+    // signature proves. An OR of a single-key leaf and a hybrid leaf stays
+    // signable: the single-key leaf spends without the schnorr key.
+    bool spendable_alone = false;
+    for (const P2MRTreeLeaf& leaf : entry->tree) {
+        if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT) continue;
+        const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(CScript{leaf.script.begin(), leaf.script.end()});
+        if (policy.type == P2MRLeafTemplate::SINGLE_CHECKSIGDILITHIUM) {
+            spendable_alone = true;
+            break;
+        }
+    }
+    if (!spendable_alone) return std::nullopt;
     const auto key_ids = GetP2MRDilithiumKeyIDs(entry->tree);
     if (key_ids.size() != 1) return std::nullopt;
     return *key_ids.begin();
