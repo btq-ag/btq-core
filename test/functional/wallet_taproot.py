@@ -182,7 +182,7 @@ def compute_taproot_address(pubkey, scripts):
     return output_key_to_p2tr(taproot_construct(pubkey, scripts).output_pubkey)
 
 def compute_raw_taproot_address(pubkey):
-    return encode_segwit_address("bcrt", 1, pubkey)
+    return encode_segwit_address("qcrt", 1, pubkey)
 
 class WalletTaprootTest(BTQTestFramework):
     """Test generation and spending of P2TR address outputs."""
@@ -299,13 +299,13 @@ class WalletTaprootTest(BTQTestFramework):
             self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
             test_balance = int(rpc_online.getbalance() * 100000000)
             ret_amnt = random.randrange(100000, test_balance)
-            # Increase fee_rate to compensate for the wallet's inability to estimate fees for script path spends.
-            res = rpc_online.sendtoaddress(address=self.boring.getnewaddress(), amount=Decimal(ret_amnt) / 100000000, subtractfeefromamount=True, fee_rate=200)
+            res = rpc_online.sendtoaddress(address=self.boring.getnewaddress(), amount=Decimal(ret_amnt) / 100000000, subtractfeefromamount=True)
             self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
             assert rpc_online.gettransaction(res)["confirmations"] > 0
 
-        # Cleanup
+        # Cleanup also exercises automatic fee selection for script-path inputs.
         txid = rpc_online.sendall(recipients=[self.boring.getnewaddress()])["txid"]
+        assert txid in self.nodes[0].getrawmempool(), self.nodes[0].testmempoolaccept([rpc_online.gettransaction(txid)["hex"]])
         self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
         assert rpc_online.gettransaction(txid)["confirmations"] > 0
         rpc_online.unloadwallet()
@@ -351,8 +351,7 @@ class WalletTaprootTest(BTQTestFramework):
             self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
             test_balance = int(psbt_online.getbalance() * 100000000)
             ret_amnt = random.randrange(100000, test_balance)
-            # Increase fee_rate to compensate for the wallet's inability to estimate fees for script path spends.
-            psbt = psbt_online.walletcreatefundedpsbt([], [{self.boring.getnewaddress(): Decimal(ret_amnt) / 100000000}], None, {"subtractFeeFromOutputs":[0], "fee_rate": 200, "change_type": address_type})['psbt']
+            psbt = psbt_online.walletcreatefundedpsbt([], [{self.boring.getnewaddress(): Decimal(ret_amnt) / 100000000}], None, {"subtractFeeFromOutputs":[0], "change_type": address_type})['psbt']
             res = psbt_offline.walletprocesspsbt(psbt=psbt, finalize=False)
             for wallet in [psbt_offline, key_only_wallet]:
                 res = wallet.walletprocesspsbt(psbt=psbt, finalize=False)
@@ -394,6 +393,39 @@ class WalletTaprootTest(BTQTestFramework):
         self.do_test_sendtoaddress(comment, pattern, privmap, treefn, keys[0:nkeys], keys[nkeys:2*nkeys])
         self.do_test_psbt(comment, pattern, privmap, treefn, keys[2*nkeys:3*nkeys], keys[3*nkeys:4*nkeys])
 
+    def test_script_path_fee_boundaries(self):
+        self.log.info("Testing deterministic large script-path sendall fee sizing")
+        node = self.nodes[0]
+        node.createwallet("taproot_fee_boundaries", descriptors=True, blank=True)
+        wallet = node.get_wallet_rpc("taproot_fee_boundaries")
+        # The internal key and all sibling leaves are unspendable. The only
+        # available path has 251 stack items, an 8,536-byte script and a depth-7
+        # control block. Both stack count and control length need CompactSize=3.
+        keys = [KEYS[0]["xprv"] + "/0"] + [H_POINT] * 250
+        tree = "multi_a(1," + ",".join(keys) + ")"
+        for _ in range(7):
+            tree = "{pk(" + H_POINT + ")," + tree + "}"
+        descriptor = descsum_create("tr(" + H_POINT + "," + tree + ")")
+        assert wallet.importdescriptors([{"desc": descriptor, "timestamp": "now"}])[0]["success"]
+        address = node.deriveaddresses(descriptor)[0]
+        self.boring.sendtoaddress(address, 1)
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        relay_rate = node.getnetworkinfo()["relayfee"]
+        wallet.settxfee(relay_rate)
+        txid = wallet.sendall(recipients=[self.boring.getnewaddress()])["txid"]
+        transaction = wallet.gettransaction(txid)
+        decoded = node.decoderawtransaction(transaction["hex"])
+        assert_equal(len(decoded["vin"]), 1)
+        witness = decoded["vin"][0]["txinwitness"]
+        assert_equal(len(witness), 253)
+        assert_equal(len(bytes.fromhex(witness[-2])), 8536)
+        assert_equal(len(bytes.fromhex(witness[-1])), 257)
+        assert -transaction["fee"] >= relay_rate * decoded["vsize"] / 1000
+        assert txid in node.getrawmempool(), node.testmempoolaccept([transaction["hex"]])
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        assert wallet.gettransaction(txid)["confirmations"] > 0
+        wallet.unloadwallet()
+
     def run_test(self):
         self.nodes[0].createwallet(wallet_name="boring")
         self.boring = self.nodes[0].get_wallet_rpc("boring")
@@ -401,6 +433,8 @@ class WalletTaprootTest(BTQTestFramework):
         self.log.info("Mining blocks...")
         gen_addr = self.boring.getnewaddress()
         self.generatetoaddress(self.nodes[0], 101, gen_addr, sync_fun=self.no_op)
+
+        self.test_script_path_fee_boundaries()
 
         self.do_test(
             "tr(XPRV)",
