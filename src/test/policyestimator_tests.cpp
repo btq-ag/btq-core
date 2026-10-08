@@ -68,8 +68,9 @@ BOOST_AUTO_TEST_CASE(BlockPolicyEstimates)
     };
 
     // Loop through 200 epochs
-    // At a decay .99952 per block and 4 transactions per ten-block epoch
-    // This makes the tx count about 2.5 per bucket, well above the 0.1 threshold
+    // Four transactions per fee level per ten-block epoch is 0.4 per block,
+    // 40 times the SUFFICIENT_FEETXS rate of 0.01 per block (the same ratio as
+    // upstream's 4 per block against 0.1).
     while (blocknum < 200) {
         for (int j = 0; j < 10; j++) { // For each fee
             for (int k = 0; k < 4; k++) { // add 4 fee txs

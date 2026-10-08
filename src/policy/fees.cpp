@@ -493,12 +493,13 @@ void TxConfirmStats::removeTx(unsigned int entryHeight, unsigned int nBestSeenHe
                      blockIndex, bucketindex);
         }
     }
-    if (!inBlock && (unsigned int)blocksAgo >= 1) {
-        // Count any unmined removal after one block as a failure. SHORT_SCALE
-        // is 10 for 60s blocks, so the old `blocksAgo >= scale` skip left 1-9
-        // block RBF/eviction looking like 100% success.
+    if (!inBlock && (unsigned int)blocksAgo >= scale) {
+        // A removal before one full period says nothing about whether the tx
+        // would have confirmed within that period, so it is not a failure.
+        // SHORT_SCALE is 1, so the short horizon still counts a removal after
+        // one block.
         assert(scale != 0);
-        unsigned int periodsAgo = std::max(1u, (unsigned int)blocksAgo / scale);
+        unsigned int periodsAgo = blocksAgo / scale;
         for (size_t i = 0; i < periodsAgo && i < failAvg.size(); i++) {
             failAvg[i][bucketindex]++;
         }
