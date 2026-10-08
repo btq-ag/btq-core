@@ -9,7 +9,7 @@ import json
 import os
 
 from test_framework.address import address_to_scriptpubkey
-from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.blocktools import COINBASE_MATURITY, cumulative_block_subsidy
 from test_framework.authproxy import JSONRPCException
 from test_framework.descriptors import descsum_create, drop_origins
 from test_framework.key import ECPubKey
@@ -144,7 +144,7 @@ class RpcCreateMultiSigTest(BTQTestFramework):
 
         height = node0.getblockchaininfo()["blocks"]
         assert 150 < height < 350
-        total = 149 * 50 + (height - 149 - 100) * 25
+        total = cumulative_block_subsidy(1, height - COINBASE_MATURITY)
         assert bal1 == 0
         assert bal2 == self.moved
         assert_equal(bal0 + bal1 + bal2 + balw, total)
@@ -180,7 +180,7 @@ class RpcCreateMultiSigTest(BTQTestFramework):
         mredeem = msig["redeemScript"]
         assert_equal(desc, msig['descriptor'])
         if self.output_type == 'bech32':
-            assert madd[0:4] == "bcrt"  # actually a bech32 address
+            assert madd.startswith("qcrt1")  # BTQ regtest bech32 address
 
         if self.is_bdb_compiled():
             # compare against addmultisigaddress

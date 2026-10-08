@@ -8,22 +8,17 @@
 from test_framework.util import assert_equal, assert_raises_rpc_error
 from test_framework.blocktools import (
     COINBASE_MATURITY,
-    create_block
 )
-from test_framework.blocktools import create_coinbase
+from test_framework.pruning import LargeBlockBuilder
 from test_framework.test_framework import BTQTestFramework
 
-from test_framework.script import (
-    CScript,
-    OP_RETURN,
-    OP_TRUE,
-)
 
 class WalletPruningTest(BTQTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, descriptors=False)
 
     def set_test_params(self):
+        self.large_block_builder = LargeBlockBuilder()
         self.setup_clean_chain = True
         self.num_nodes = 2
         self.wallet_names = []
@@ -42,17 +37,16 @@ class WalletPruningTest(BTQTestFramework):
         height = int(best_block["height"]) + 1
         self.nTime = max(self.nTime, int(best_block["time"])) + 1
         previousblockhash = int(best_block["hash"], 16)
-        big_script = CScript([OP_RETURN] + [OP_TRUE] * 950000)
         # Set mocktime to accept all future blocks
         for i in self.nodes:
             if i.running:
                 i.setmocktime(self.nTime + 600 * n)
         for _ in range(n):
-            block = create_block(hashprev=previousblockhash, ntime=self.nTime, coinbase=create_coinbase(height, script_pubkey=big_script))
+            block = self.large_block_builder.build(node, previousblockhash=previousblockhash, ntime=self.nTime, height=height)
             block.solve()
 
             # Submit to the node
-            node.submitblock(block.serialize().hex())
+            assert_equal(node.submitblock(block.serialize().hex()), None)
 
             previousblockhash = block.sha256
             height += 1
@@ -90,9 +84,9 @@ class WalletPruningTest(BTQTestFramework):
         assert_raises_rpc_error(-1, "Block not available (pruned data)", self.nodes[1].getblock, self.nodes[1].getblockhash(wallet_birthheight))
 
         # Make sure wallet cannot be imported because of missing blocks
-        # This will try to rescan blocks `TIMESTAMP_WINDOW` (2h) before the wallet birthheight.
-        # There are 6 blocks an hour, so 11 blocks (excluding birthheight).
-        assert_raises_rpc_error(-4, f"Pruned blocks from height {wallet_birthheight - 11} required to import keys. Use RPC call getblockchaininfo to determine your pruned height.", self.nodes[1].importwallet, self.nodes[0].datadir_path / wallet_file)
+        # BTQ's timestamp window is 15 minutes. With 10-minute blocks and
+        # mocktime one block ahead, the earliest required block is the birth block.
+        assert_raises_rpc_error(-4, f"Pruned blocks from height {wallet_birthheight} required to import keys. Use RPC call getblockchaininfo to determine your pruned height.", self.nodes[1].importwallet, self.nodes[0].datadir_path / wallet_file)
         self.log.info("- Done")
 
     def get_birthheight(self, wallet_file):

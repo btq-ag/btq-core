@@ -367,8 +367,11 @@ class AvoidReuseTest(BTQTestFramework):
         ret_addr = self.nodes[0].getnewaddress()
 
         # Send 202 outputs of 1 BTQ to the same, reused address in the wallet
-        for _ in range(202):
+        for i in range(202):
             self.nodes[0].sendtoaddress(new_addr, 1)
+            # Confirm funding batches before the change chain hits the ancestor limit.
+            if (i + 1) % 20 == 0:
+                self.generate(self.nodes[0], 1)
 
         self.generate(self.nodes[0], 1)
 

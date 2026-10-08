@@ -127,10 +127,10 @@ class BumpFeeTest(BTQTestFramework):
             assert_raises_rpc_error(-3, "Unexpected key {}".format(key), rbf_node.bumpfee, rbfid, {key: NORMAL})
 
         # Bumping to just above minrelay should fail to increase the total fee enough.
-        assert_raises_rpc_error(-8, "Insufficient total fee 0.00000141", rbf_node.bumpfee, rbfid, fee_rate=INSUFFICIENT)
+        assert_raises_rpc_error(-8, "Insufficient total fee 0.0000012", rbf_node.bumpfee, rbfid, fee_rate=INSUFFICIENT)
 
         self.log.info("Test invalid fee rate settings")
-        assert_raises_rpc_error(-4, "Specified or calculated fee 0.141 is too high (cannot be higher than -maxtxfee 0.10",
+        assert_raises_rpc_error(-4, "Specified or calculated fee 0.12 is too high (cannot be higher than -maxtxfee 0.10",
             rbf_node.bumpfee, rbfid, fee_rate=TOO_HIGH)
         # Test fee_rate with zero values.
         msg = "Insufficient total fee 0.00"
@@ -283,7 +283,7 @@ class BumpFeeTest(BTQTestFramework):
         tx = wallet.sendall(recipients=[wallet.getnewaddress()], fee_rate=2, options={"inputs": [utxos[0]]})
 
         # Set the only output with a crazy high feerate as change, should fail as the output would be dust
-        assert_raises_rpc_error(-4, "The transaction amount is too small to pay the fee", wallet.bumpfee, txid=tx["txid"], options={"fee_rate": 1100, "original_change_index": 0})
+        assert_raises_rpc_error(-4, "The transaction amount is too small to pay the fee", wallet.bumpfee, txid=tx["txid"], options={"fee_rate": 1200, "original_change_index": 0})
 
         # Specify single output as change successfully
         bumped = wallet.bumpfee(txid=tx["txid"], options={"fee_rate": 10, "original_change_index": 0})
@@ -511,17 +511,11 @@ def test_dust_to_fee(self, rbf_node, dest_address):
     self.log.info('Test that bumped output that is dust is dropped to fee')
     rbfid = spend_one_input(rbf_node, dest_address)
     fulltx = rbf_node.getrawtransaction(rbfid, 1)
-    # The DER formatting used by BTQ to serialize ECDSA signatures means that signatures can have a
-    # variable size of 70-72 bytes (or possibly even less), with most being 71 or 72 bytes. The signature
-    # in the witness is divided by 4 for the vsize, so this variance can take the weight across a 4-byte
-    # boundary. Thus expected transaction size (p2wpkh, 1 input, 2 outputs) is 140-141 vbytes, usually 141.
-    if not 140 <= fulltx["vsize"] <= 141:
-        raise AssertionError("Invalid tx vsize of {} (140-141 expected), full tx: {}".format(fulltx["vsize"], fulltx))
-    # Bump with fee_rate of 350.25 sat/vB vbytes to create dust.
-    # Expected fee is 141 vbytes * fee_rate 0.00350250 BTQ / 1000 vbytes = 0.00049385 BTQ.
-    # or occasionally 140 vbytes * fee_rate 0.00350250 BTQ / 1000 vbytes = 0.00049035 BTQ.
-    # Dust should be dropped to the fee, so actual bump fee is 0.00050000 BTQ.
-    bumped_tx = rbf_node.bumpfee(rbfid, fee_rate=350.25)
+    # A P2WPKH input's witness is discounted by BTQ's factor of 16.
+    assert_equal(fulltx["vsize"], 120)
+    # 120 vbytes * 415 sat/vB = 49,800 sat, leaving 200 sat of dust change.
+    # The change must be dropped, adding it to the fee.
+    bumped_tx = rbf_node.bumpfee(rbfid, fee_rate=415)
     full_bumped_tx = rbf_node.getrawtransaction(bumped_tx["txid"], 1)
     assert_equal(bumped_tx["fee"], Decimal("0.00050000"))
     assert_equal(len(fulltx["vout"]), 2)
@@ -546,7 +540,7 @@ def test_settxfee(self, rbf_node, dest_address):
     rbf_node.settxfee(Decimal("0.00000000"))  # unset paytxfee
 
     # check that settxfee respects -maxtxfee
-    self.restart_node(1, ['-maxtxfee=0.000025'] + self.extra_args[1])
+    self.restart_node(1, ['-maxtxfee=0.000023'] + self.extra_args[1])
     assert_raises_rpc_error(-8, "txfee cannot be more than wallet max tx fee", rbf_node.settxfee, Decimal('0.00003'))
     self.restart_node(1, self.extra_args[1])
     rbf_node.walletpassphrase(WALLET_PASSPHRASE, WALLET_PASSPHRASE_TIMEOUT)
@@ -556,10 +550,10 @@ def test_settxfee(self, rbf_node, dest_address):
 
 def test_maxtxfee_fails(self, rbf_node, dest_address):
     self.log.info('Test that bumpfee fails when it hits -maxtxfee')
-    # size of bumped transaction (p2wpkh, 1 input, 2 outputs): 141 vbytes
-    # expected bump fee of 141 vbytes * 0.00200000 BTQ / 1000 vbytes = 0.00002820 BTQ
+    # size of bumped transaction (p2wpkh, 1 input, 2 outputs): 120 vbytes
+    # expected bump fee of 120 vbytes * 0.00020000 BTQ / 1000 vbytes = 0.00002400 BTQ
     # which exceeds maxtxfee and is expected to raise
-    self.restart_node(1, ['-maxtxfee=0.000025'] + self.extra_args[1])
+    self.restart_node(1, ['-maxtxfee=0.000023'] + self.extra_args[1])
     rbf_node.walletpassphrase(WALLET_PASSPHRASE, WALLET_PASSPHRASE_TIMEOUT)
     rbfid = spend_one_input(rbf_node, dest_address)
     assert_raises_rpc_error(-4, "Unable to create transaction. Fee exceeds maximum configured by user (e.g. -maxtxfee, maxfeerate)", rbf_node.bumpfee, rbfid)
@@ -644,7 +638,7 @@ def test_watchonly_psbt(self, peer_node, rbf_node, dest_address):
     assert_raises_rpc_error(-4, "bumpfee is not available with wallets that have private keys disabled. Use psbtbumpfee instead.", watcher.bumpfee, original_txid)
 
     # Bump fee, obnoxiously high to add additional watchonly input
-    bumped_psbt = watcher.psbtbumpfee(original_txid, fee_rate=HIGH)
+    bumped_psbt = watcher.psbtbumpfee(original_txid, fee_rate=HIGH * 2)
     assert_greater_than(len(watcher.decodepsbt(bumped_psbt['psbt'])["tx"]["vin"]), 1)
     assert "txid" not in bumped_psbt
     assert_equal(bumped_psbt["origfee"], -watcher.gettransaction(original_txid)["fee"])
