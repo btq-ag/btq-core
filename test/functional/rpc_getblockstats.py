@@ -11,6 +11,7 @@ from test_framework.blocktools import COINBASE_MATURITY, TIME_GENESIS_BLOCK
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
+    assert_greater_than,
     assert_raises_rpc_error,
 )
 import json
@@ -37,8 +38,10 @@ class GetblockstatsTest(BTQTestFramework):
         self.setup_clean_chain = True
         self.supports_cli = False
         # Fixture replay does not need a wallet; generation imports a fixed key.
+        # BTQ's legacy wallet defaults to P2PKH change; use P2WPKH so the
+        # fixture has SegWit spends.
         if self.options.gen_test_data:
-            self.extra_args = [['-disablewallet=0']]
+            self.extra_args = [['-disablewallet=0', '-changetype=bech32']]
 
     def get_stats(self):
         return [self.nodes[0].getblockstats(hash_or_height=self.start_height + i) for i in range(self.max_stat_pos+1)]
@@ -56,6 +59,11 @@ class GetblockstatsTest(BTQTestFramework):
         self.nodes[0].sendtoaddress(address=address, amount=1, subtractfeefromamount=True)
         self.generate(self.nodes[0], 1)
 
+        # Lock the P2PKH coins so the next block's transactions spend P2WPKH
+        # change and cover the swtxs/swtotal_* statistics.
+        legacy_coins = [{"txid": u["txid"], "vout": u["vout"]} for u in self.nodes[0].listunspent()
+                        if not u["scriptPubKey"].startswith("0014")]
+        self.nodes[0].lockunspent(False, legacy_coins)
         self.nodes[0].sendtoaddress(address=address, amount=1, subtractfeefromamount=True)
         self.nodes[0].sendtoaddress(address=address, amount=1, subtractfeefromamount=False)
         self.nodes[0].settxfee(amount=0.003)
@@ -116,6 +124,8 @@ class GetblockstatsTest(BTQTestFramework):
 
         assert_equal(stats[0]['height'], self.start_height)
         assert_equal(stats[self.max_stat_pos]['height'], self.start_height + self.max_stat_pos)
+        # The last block must cover the SegWit statistics.
+        assert_greater_than(stats[self.max_stat_pos]['swtxs'], 0)
 
         for i in range(self.max_stat_pos+1):
             self.log.info('Checking block %d\n' % (i))
