@@ -2943,11 +2943,22 @@ bool DescriptorScriptPubKeyMan::AddDilithiumKeyWithDB(WalletBatch& batch, const 
         }
 
         m_map_crypted_dilithium_keys[keyid] = make_pair(CPubKey(), crypted_secret);
-        return batch.WriteCryptedDilithiumKeyByID(keyid, crypted_secret, CKeyMetadata(GetTime()));
+        if (!batch.WriteCryptedDilithiumKeyByID(keyid, crypted_secret, CKeyMetadata(GetTime()))) {
+            // The index was already bumped. Leaving the key in memory makes
+            // HaveDilithiumKey true, so recoverdilithiumkeys in this session
+            // skips the store and still writes a P2MR row the reload cannot spend.
+            m_map_crypted_dilithium_keys.erase(keyid);
+            return false;
+        }
+        return true;
     } else {
         m_map_dilithium_keys[keyid] = key;
         std::vector<unsigned char> dilithium_privkey(key.begin(), key.end());
-        return batch.WriteDilithiumKeyByID(keyid, dilithium_privkey, CKeyMetadata(GetTime()));
+        if (!batch.WriteDilithiumKeyByID(keyid, dilithium_privkey, CKeyMetadata(GetTime()))) {
+            m_map_dilithium_keys.erase(keyid);
+            return false;
+        }
+        return true;
     }
 }
 
