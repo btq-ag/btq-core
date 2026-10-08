@@ -19,6 +19,7 @@
 #include <util/time.h>
 #include <util/translation.h>
 #include <wallet/scriptpubkeyman.h>
+#include <wallet/wallet.h>
 #include <wallet/key_types.h>
 #include <addresstype.h>
 
@@ -2398,6 +2399,12 @@ bool LegacyScriptPubKeyMan::DeleteRecords()
 
 util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKey()
 {
+    // cs_wallet before cs_desc_man. HaveDilithiumKeyAnywhere asserts the
+    // wallet lock; taking only cs_desc_man aborts that under DEBUG_LOCKORDER
+    // (the unit tests call this after releasing cs_wallet). Callers that
+    // already hold cs_wallet re-lock a recursive mutex.
+    CWallet& wallet = static_cast<CWallet&>(m_storage);
+    LOCK(wallet.cs_wallet);
     LOCK(cs_desc_man);
     return GenerateNewDilithiumKeyLocked();
 }
