@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <algorithm>
 #include <key.h>
 #include <key_io.h>
 #include <addresstype.h>
@@ -602,6 +603,52 @@ BOOST_AUTO_TEST_CASE(migrate_legacy_dilithium_keeps_p2mr)
     const auto reloaded_entries = ListP2MR(loaded);
     BOOST_REQUIRE_EQUAL(reloaded_entries.size(), 1);
     BOOST_CHECK(reloaded_entries[0].dest == dest);
+}
+
+BOOST_AUTO_TEST_CASE(descriptor_dilithium_key_write_failure_drops_memory)
+{
+    // WriteDilithiumKeyByID fails after the generator has inserted the key
+    // and persisted index+1. The key must not stay in the map: same-session
+    // recovery would treat it as stored and still write P2MR metadata.
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    DescriptorScriptPubKeyMan* keyman{nullptr};
+    {
+        LOCK(wallet.cs_wallet);
+        wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+        wallet.SetupDescriptorScriptPubKeyMans();
+        keyman = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+    }
+    BOOST_REQUIRE(keyman);
+
+    // The private-key record only. keymeta ("dilithiumkeymeta") serializes
+    // with a different compact-size byte, so the index and keymeta writes
+    // still commit.
+    DataStream prefix{};
+    prefix << std::string{"dilithiumkey"};
+    const SerializeData prefix_bytes{prefix.begin(), prefix.end()};
+    GetMockableDatabase(wallet).m_fail_write = [prefix_bytes](const SerializeData& key) {
+        return key.size() >= prefix_bytes.size() &&
+               std::equal(prefix_bytes.begin(), prefix_bytes.end(), key.begin());
+    };
+
+    BOOST_CHECK(!keyman->GenerateNewDilithiumKey());
+    // Index 0 is the one the failed write was for. It must not stay in the map.
+    const util::Result<CDilithiumKey> skipped = keyman->GetDilithiumKeyForIndex(0);
+    BOOST_REQUIRE(skipped);
+    const CKeyID skipped_id{skipped->GetPubKey().GetID()};
+    {
+        LOCK(keyman->cs_desc_man);
+        BOOST_CHECK(!keyman->HaveDilithiumKey(skipped_id));
+    }
+
+    GetMockableDatabase(wallet).m_fail_write = nullptr;
+    const util::Result<CDilithiumPubKey> pubkey = keyman->GenerateNewDilithiumKey();
+    BOOST_REQUIRE(pubkey);
+    {
+        LOCK(keyman->cs_desc_man);
+        BOOST_CHECK(keyman->HaveDilithiumKey(CKeyID{pubkey->GetID()}));
+        BOOST_CHECK(!keyman->HaveDilithiumKey(skipped_id));
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()
