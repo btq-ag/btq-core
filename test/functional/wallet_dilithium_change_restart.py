@@ -2,7 +2,7 @@
 # Copyright (c) 2026 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Recovered internal Dilithium keys must not be reissued after wallet reload."""
+"""Recovered Dilithium keys in either sequence must not be reissued after wallet reload."""
 
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import assert_equal
@@ -40,8 +40,8 @@ class DilithiumChangeRestartTest(BTQTestFramework):
         assert external_addresses.isdisjoint(internal_addresses)
         issued |= external_addresses | internal_addresses
 
-        # No internal address has been issued through normal generation yet:
-        # its counter must skip all fifteen already-materialized keys.
+        # No address has been issued through normal generation in this seed's
+        # sequences yet: each counter must skip all fifteen materialized keys.
         if self.options.encrypted:
             node.unloadwallet("sequence")
         else:
@@ -51,14 +51,23 @@ class DilithiumChangeRestartTest(BTQTestFramework):
         if self.options.encrypted:
             wallet.walletpassphrase("test-only-change-sequence", 600)
 
-        for index in range(15, 18):
-            address = wallet.getrawchangeaddress("p2mr")
-            assert address not in issued, "reissued a materialized Dilithium change address"
-            issued.add(address)
-            assert_equal(wallet.getaddressinfo(address)["ismine"], True)
-            recovered = wallet.recoverdilithiumkeys(index, index, True)[0]
-            assert_equal(recovered["address"], address)
-            assert_equal(recovered["recovered"], False)
+        # Loading puts every Dilithium key into the first descriptor manager in
+        # pointer order, which varies between runs. Generating from both
+        # sequences makes at least one deriving manager depend on keys held by
+        # another manager in every run, so a manager-local skip check fails.
+        sequences = [
+            (True, lambda: wallet.getrawchangeaddress("p2mr")),
+            (False, lambda: wallet.getnewdilithiumaddress()["address"]),
+        ]
+        for internal, generate in sequences:
+            for index in range(15, 18):
+                address = generate()
+                assert address not in issued, f"reissued a materialized Dilithium address (internal={internal})"
+                issued.add(address)
+                assert_equal(wallet.getaddressinfo(address)["ismine"], True)
+                recovered = wallet.recoverdilithiumkeys(index, index, internal)[0]
+                assert_equal(recovered["address"], address)
+                assert_equal(recovered["recovered"], False)
 
         # Both original sequences remain materialized and disjoint.
         assert not any(entry["recovered"] for entry in wallet.recoverdilithiumkeys(0, 14))
