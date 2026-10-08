@@ -130,6 +130,8 @@ BASE_SCRIPTS = [
     'wallet_fundrawtransaction.py --legacy-wallet',
     'wallet_fundrawtransaction.py --descriptors',
     'wallet_dilithium_send.py --descriptors',
+    'wallet_dilithium_change_restart.py --descriptors',
+    'wallet_dilithium_change_restart.py --descriptors --encrypted',
     'wallet_dilithium_change.py --descriptors',
     'wallet_dilithium_signmessage.py --descriptors',
     'wallet_dilithium_psbt.py --descriptors',
