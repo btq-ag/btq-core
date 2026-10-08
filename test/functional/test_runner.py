@@ -188,6 +188,11 @@ BASE_SCRIPTS = [
     'wallet_abandonconflict.py --legacy-wallet',
     'wallet_abandonconflict.py --descriptors',
     'feature_reindex.py',
+    'feature_unsupported_utxo_db.py',
+    'p2p_dos_header_tree.py',
+    'feature_release_compatibility.py --descriptors',
+    'feature_release_compatibility.py --legacy-wallet',
+    'rpc_psbt_nowallet.py',
     'feature_reindex_readonly.py',
     'wallet_labels.py --legacy-wallet',
     'wallet_labels.py --descriptors',
@@ -226,6 +231,8 @@ BASE_SCRIPTS = [
     'wallet_createwallet.py --usecli',
     'wallet_createwallet.py --descriptors',
     'wallet_watchonly.py --legacy-wallet',
+    'wallet_upgradewallet.py --legacy-wallet',
+    'wallet_upgradewallet.py --descriptors',
     'wallet_watchonly.py --usecli --legacy-wallet',
     'wallet_reorgsrestore.py',
     'wallet_conflicts.py --legacy-wallet',
@@ -581,7 +588,7 @@ def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=
     result = unittest.TextTestRunner(verbosity=1, failfast=True).run(test_framework_tests)
     if not result.wasSuccessful():
         logging.debug("Early exiting after failure in TestFramework unit tests")
-        sys.exit(False)
+        sys.exit(1)
 
     flags = ['--cachedir={}'.format(cache_dir)] + args
 
@@ -670,6 +677,7 @@ def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=
     if not os.getenv("CI_FAILFAST_TEST_LEAVE_DANGLING") and len(job_queue.jobs):
         os.killpg(os.getpgid(0), signal.SIGKILL)
 
+    print("Functional test runner completed.")
     sys.exit(not all_passed)
 
 

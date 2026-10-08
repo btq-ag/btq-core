@@ -160,6 +160,8 @@ public:
         std::unordered_map<Consensus::DeploymentPos, VersionBitsParameters> version_bits_parameters{};
         std::unordered_map<Consensus::BuriedDeployment, int> activation_heights{};
         bool fastprune{false};
+        //! Optional checkpoint for isolated regtest header-validation tests.
+        std::optional<std::pair<int, uint256>> test_checkpoint{};
     };
 
     /**

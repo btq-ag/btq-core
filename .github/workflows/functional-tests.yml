@@ -2,9 +2,8 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #
-# Run the whole functional test suite. Many tests still fail on master
-# (#104), so the job does not use test_runner.py's exit code. It fails
-# only when a test fails that is not in test/functional/known_failures.txt.
+# Run the whole functional suite and independently validate completion, test
+# inventory and RPC coverage. Existing production dependencies retain their explicit failure allowances.
 
 name: functional-tests
 
@@ -40,7 +39,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential libtool autotools-dev automake pkg-config \
             bsdmainutils ccache python3-zmq \
-            libevent-dev libboost-dev libsqlite3-dev libdb++-dev
+            libevent-dev libboost-dev libsqlite3-dev libdb++-dev libzmq3-dev
 
       # Same configure flags as build-and-address-tests.yml, so this job
       # can start from that job's ccache.
@@ -62,6 +61,7 @@ jobs:
             --disable-fuzz-binary \
             --without-gui \
             --with-incompatible-bdb \
+            --with-zmq \
             CC="ccache gcc" \
             CXX="ccache g++"
 
@@ -69,15 +69,16 @@ jobs:
         run: make $MAKEJOBS
 
       - name: Run functional tests
-        # test_runner.py exits non-zero while known failures remain, so
-        # ignore its exit code here. The next step decides pass or fail.
+        # Preserve the log even on failure. The next step rejects unexpected
+        # failures, incomplete runs, missing variants and missing RPC coverage.
         run: |
-          test/functional/test_runner.py --ci --quiet --jobs 8 \
+          python3 ci/test/test_functional_test_harness.py
+          test/functional/test_runner.py --ci --quiet --extended --coverage --jobs 8 \
             --tmpdirprefix "$RUNNER_TEMP" --timeout-factor=4 \
             2>&1 | tee "$RUNNER_TEMP/functional.log" || true
 
       - name: Compare with known failures
-        run: python3 ci/test/check_known_failures.py "$RUNNER_TEMP/functional.log" test/functional/known_failures.txt
+        run: python3 ci/test/check_known_failures.py --extended --coverage "$RUNNER_TEMP/functional.log" test/functional/known_failures.txt
 
       - name: Upload test_runner output
         if: always()

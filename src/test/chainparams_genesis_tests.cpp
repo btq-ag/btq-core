@@ -4,6 +4,8 @@
 
 #include <chain.h>
 #include <chainparams.h>
+#include <chainparamsbase.h>
+#include <common/args.h>
 #include <consensus/params.h>
 #include <pow.h>
 #include <test/util/setup_common.h>
@@ -58,6 +60,35 @@ BOOST_AUTO_TEST_CASE(signet_wif_prefix_distinct_from_p2sh)
     BOOST_REQUIRE_EQUAL(p2sh_prefix.size(), 1);
     BOOST_CHECK_NE(wif_prefix[0], p2sh_prefix[0]);
     BOOST_CHECK_EQUAL(wif_prefix[0], 239);
+}
+
+BOOST_AUTO_TEST_CASE(test_checkpoint_is_regtest_only)
+{
+    ArgsManager args;
+    SetupChainParamsBaseOptions(args);
+    const std::string hash(64, '1');
+    args.ForceSetArg("-testcheckpoint", "10:" + hash);
+    const auto params = CreateChainParams(args, ChainType::BTQREGTEST);
+    BOOST_CHECK_EQUAL(params->Checkpoints().mapCheckpoints.size(), 2U);
+    BOOST_CHECK_EQUAL(params->Checkpoints().mapCheckpoints.at(0), params->GenesisBlock().GetHash());
+    BOOST_CHECK_EQUAL(params->Checkpoints().mapCheckpoints.at(10), uint256S(hash));
+    for (const auto chain : {ChainType::BTQMAIN, ChainType::BTQTEST, ChainType::BTQSIGNET}) {
+        BOOST_CHECK_EXCEPTION(CreateChainParams(args, chain), std::runtime_error,
+            [](const auto& e) { return std::string(e.what()) == "-testcheckpoint is only available on regtest."; });
+    }
+    for (const auto& value : {"0:" + hash, "-1:" + hash, "2147483648:" + hash,
+                              std::string{"10:abcd"}, "10:" + std::string(64, 'g'), "10:" + hash + ":extra"}) {
+        args.ForceSetArg("-testcheckpoint", value);
+        BOOST_CHECK_THROW(CreateChainParams(args, ChainType::BTQREGTEST), std::runtime_error);
+    }
+    ArgsManager duplicate_args;
+    SetupChainParamsBaseOptions(duplicate_args);
+    const std::string checkpoint_arg = "-testcheckpoint=10:" + hash;
+    const char* argv[]{"test", checkpoint_arg.c_str(), checkpoint_arg.c_str()};
+    std::string error;
+    BOOST_REQUIRE(duplicate_args.ParseParameters(3, argv, error));
+    BOOST_CHECK_EXCEPTION(CreateChainParams(duplicate_args, ChainType::BTQREGTEST), std::runtime_error,
+        [](const auto& e) { return std::string(e.what()) == "-testcheckpoint requires exactly one height:hash value."; });
 }
 
 BOOST_AUTO_TEST_SUITE_END()

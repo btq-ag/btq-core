@@ -1,0 +1,44 @@
+name: release-compatibility
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  historical-releases:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libtool \
+            autotools-dev automake pkg-config bsdextrautils libevent-dev \
+            libboost-dev libsqlite3-dev libdb++-dev
+      - name: Build current and pinned historical releases
+        run: |
+          ./autogen.sh
+          ./configure --without-gui --disable-tests --disable-bench \
+            --disable-fuzz --disable-fuzz-binary --without-zmq --with-incompatible-bdb
+          make -j2 -C src btqd btq-cli
+          python3 test/build_previous_releases.py --jobs=2 --output="$RUNNER_TEMP/releases"
+      - name: Exercise both wallet formats through both historical releases
+        env:
+          BTQ_PREVIOUS_RELEASES: ${{ runner.temp }}/releases
+        run: |
+          set -o pipefail
+          for mode in descriptors legacy-wallet; do
+            python3 test/functional/feature_release_compatibility.py --"$mode" \
+              --tmpdir="$RUNNER_TEMP/compat-$mode" 2>&1 | tee "$RUNNER_TEMP/compat-$mode.log"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-compatibility-evidence
+          path: |
+            ${{ runner.temp }}/compat-*.log
+            ${{ runner.temp }}/releases/manifest.json

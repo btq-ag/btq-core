@@ -65,6 +65,20 @@ void ReadRegTestArgs(const ArgsManager& args, CChainParams::RegTestOptions& opti
 {
     if (auto value = args.GetBoolArg("-fastprune")) options.fastprune = *value;
 
+    if (args.IsArgSet("-testcheckpoint")) {
+        const auto checkpoints = args.GetArgs("-testcheckpoint");
+        if (checkpoints.size() != 1) {
+            throw std::runtime_error("-testcheckpoint requires exactly one height:hash value.");
+        }
+        const auto parts = SplitString(checkpoints.front(), ':');
+        int32_t height;
+        if (parts.size() != 2 || !ParseInt32(parts[0], &height) || height <= 0 ||
+            parts[1].size() != 64 || !IsHex(parts[1])) {
+            throw std::runtime_error("Invalid -testcheckpoint: expected a positive height and a 64-character hexadecimal hash.");
+        }
+        options.test_checkpoint = std::make_pair(height, uint256S(parts[1]));
+    }
+
     for (const std::string& arg : args.GetArgs("-testactivationheight")) {
         const auto found{arg.find('@')};
         if (found == std::string::npos) {
@@ -135,6 +149,9 @@ const CChainParams &Params() {
 
 std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, const ChainType chain)
 {
+    if (args.IsArgSet("-testcheckpoint") && chain != ChainType::BTQREGTEST) {
+        throw std::runtime_error("-testcheckpoint is only available on regtest.");
+    }
     switch (chain) {
     case ChainType::BTQMAIN:
         return CChainParams::Main();
