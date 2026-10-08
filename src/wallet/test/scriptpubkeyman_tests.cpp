@@ -56,6 +56,8 @@ BOOST_AUTO_TEST_CASE(dilithium_hd_wallet_derivation_deterministic)
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
     LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
 
+    // CanSupportFeature asserts cs_wallet. Take it before cs_KeyStore.
+    LOCK(wallet.cs_wallet);
     LOCK(keyman.cs_KeyStore);
     BOOST_REQUIRE(keyman.SetupGeneration(true));
     BOOST_REQUIRE(keyman.IsHDEnabled());
@@ -100,6 +102,8 @@ BOOST_AUTO_TEST_CASE(dilithium_getnewdestination_uses_hd_seed)
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
     LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
 
+    // CanSupportFeature asserts cs_wallet. Take it before cs_KeyStore.
+    LOCK(wallet.cs_wallet);
     LOCK(keyman.cs_KeyStore);
     BOOST_REQUIRE(keyman.SetupGeneration(true));
     BOOST_REQUIRE(keyman.IsHDEnabled());
@@ -149,6 +153,8 @@ BOOST_AUTO_TEST_CASE(dilithium_legacy_generation_disabled_on_p2mr_only_chain)
     CWallet legacy_wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
     LegacyScriptPubKeyMan& legacy_keyman = *legacy_wallet.GetOrCreateLegacyScriptPubKeyMan();
     {
+        // CanSupportFeature asserts cs_wallet. Take it before cs_KeyStore.
+        LOCK(legacy_wallet.cs_wallet);
         LOCK(legacy_keyman.cs_KeyStore);
         BOOST_REQUIRE(legacy_keyman.SetupGeneration(true));
     }
@@ -203,6 +209,8 @@ BOOST_AUTO_TEST_CASE(legacy_encrypt_migrates_dilithium_keys)
     CKeyID key_id;
     CDilithiumKey before_encrypt;
     {
+        // CanSupportFeature asserts cs_wallet. Take it before cs_KeyStore.
+        LOCK(wallet.cs_wallet);
         LOCK(keyman.cs_KeyStore);
         BOOST_REQUIRE(keyman.SetupGeneration(true));
 
@@ -242,6 +250,8 @@ BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
 
     CDilithiumKey before_encrypt;
     {
+        // IsLocked takes cs_wallet, so it has to be held before cs_desc_man.
+        LOCK(wallet.cs_wallet);
         LOCK(keyman->cs_desc_man);
         BOOST_REQUIRE(keyman->GetDilithiumKey(key_id, before_encrypt));
     }
@@ -250,6 +260,7 @@ BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
     BOOST_CHECK(wallet.IsCrypted());
     BOOST_CHECK(wallet.IsLocked());
     {
+        LOCK(wallet.cs_wallet);
         LOCK(keyman->cs_desc_man);
         CDilithiumKey locked_key;
         BOOST_CHECK(keyman->HaveDilithiumKey(key_id));
@@ -259,6 +270,7 @@ BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
     BOOST_REQUIRE(wallet.Unlock("encrypt"));
     CDilithiumKey after_encrypt;
     {
+        LOCK(wallet.cs_wallet);
         LOCK(keyman->cs_desc_man);
         BOOST_REQUIRE(keyman->GetDilithiumKey(key_id, after_encrypt));
     }
@@ -307,6 +319,8 @@ BOOST_AUTO_TEST_CASE(legacy_dilithium_signing_provider_produces_signature)
     CDilithiumPubKey dilithium_pubkey;
     DilithiumPKHash key_hash;
     {
+        // CanSupportFeature asserts cs_wallet. Take it before cs_KeyStore.
+        LOCK(wallet.cs_wallet);
         LOCK(keyman.cs_KeyStore);
         BOOST_REQUIRE(keyman.SetupGeneration(true));
 
