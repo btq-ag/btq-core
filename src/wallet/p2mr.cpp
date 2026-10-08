@@ -753,7 +753,17 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     if (add_to_address_book && !wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
         return util::Error{Untranslated("failed to set P2MR address book entry")};
     }
-    if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
+    // SetWalletFlagWithDB throws when the mandatory P2MR flag cannot be
+    // written. SetAddressBook has already committed its own batch, so a
+    // throw has to take the same rollback as a false return. A later
+    // metadata write (the flag is already set) still returns false.
+    bool metadata_ok = false;
+    try {
+        metadata_ok = wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write());
+    } catch (const std::runtime_error&) {
+        metadata_ok = false;
+    }
+    if (!metadata_ok) {
         if (add_to_address_book && !RestoreAddressBookEntry(wallet, out.dest, prior_entry)) {
             wallet.WalletLogPrintf("CreateP2MR: failed to fully roll back address book entry for %s\n", out.address);
         }

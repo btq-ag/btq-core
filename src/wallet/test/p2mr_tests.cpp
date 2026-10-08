@@ -314,6 +314,69 @@ BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSet
     }
 }
 
+BOOST_FIXTURE_TEST_CASE(create_p2mr_rolls_back_when_flag_write_throws, BasicTestingSetup)
+{
+    // The first metadata write sets WALLET_FLAG_P2MR_METADATA, and that write
+    // throws rather than returning false. SetAddressBook has already
+    // committed. Dropping the catch in CreateP2MR leaves the new label in
+    // place and this case fails.
+    const auto leaves = MakeOpTrueTree();
+    auto builder = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(builder);
+    const CTxDestination dest = builder->GetOutput();
+
+    auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet->LoadWallet();
+
+    DataStream flags_key{};
+    flags_key << DBKeys::FLAGS;
+    const SerializeData flags_bytes{flags_key.begin(), flags_key.end()};
+    GetMockableDatabase(*wallet).m_fail_write = [flags_bytes](const SerializeData& key) {
+        return key == flags_bytes;
+    };
+
+    {
+        LOCK(wallet->cs_wallet);
+        auto created = CreateP2MR(*wallet, leaves, "new-label");
+        BOOST_REQUIRE(!created);
+        BOOST_CHECK(!wallet->FindAddressBookEntry(dest));
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        BOOST_CHECK(!wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+    }
+
+    GetMockableDatabase(*wallet).m_fail_write = nullptr;
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
+    }
+    GetMockableDatabase(*wallet).m_fail_write = [flags_bytes](const SerializeData& key) {
+        return key == flags_bytes;
+    };
+    {
+        LOCK(wallet->cs_wallet);
+        auto created = CreateP2MR(*wallet, leaves, "overwrite");
+        BOOST_REQUIRE(!created);
+        const auto* entry = wallet->FindAddressBookEntry(dest);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "pre-existing");
+        BOOST_CHECK(entry->purpose == AddressPurpose::SEND);
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        BOOST_CHECK(!wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+    }
+
+    MockableData records = GetMockableDatabase(*wallet).m_records;
+    wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+    BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+    {
+        LOCK(wallet->cs_wallet);
+        const auto* entry = wallet->FindAddressBookEntry(dest);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "pre-existing");
+        BOOST_CHECK(entry->purpose == AddressPurpose::SEND);
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+    }
+}
+
 BOOST_FIXTURE_TEST_CASE(p2mr_metadata_not_in_receive_requests, BasicTestingSetup)
 {
     // F2.17: P2MR metadata has its own record type; the GUI-facing receive
