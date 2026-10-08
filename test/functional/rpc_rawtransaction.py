@@ -16,6 +16,7 @@ from collections import OrderedDict
 from decimal import Decimal
 from itertools import product
 
+from test_framework.blocktools import COINBASE_MATURITY, block_subsidy
 from test_framework.messages import (
     MAX_BIP125_RBF_SEQUENCE,
     COIN,
@@ -538,7 +539,7 @@ class RawTransactionsTest(BTQTestFramework):
 
         bal = self.nodes[0].getbalance()
         inputs = [{"txid": txId, "vout": vout['n'], "scriptPubKey": vout['scriptPubKey']['hex'], "amount": vout['value']}]
-        outputs = {self.nodes[0].getnewaddress(): 2.19}
+        outputs = {self.nodes[0].getnewaddress(): Decimal("2.199")}
         rawTx = self.nodes[2].createrawtransaction(inputs, outputs)
         rawTxPartialSigned = self.nodes[1].signrawtransactionwithwallet(rawTx, inputs)
         assert_equal(rawTxPartialSigned['complete'], False)  # node1 only has one key, can't comp. sign the tx
@@ -549,7 +550,7 @@ class RawTransactionsTest(BTQTestFramework):
         rawTx = self.nodes[0].decoderawtransaction(rawTxSigned['hex'])
         self.sync_all()
         self.generate(self.nodes[0], 1)
-        assert_equal(self.nodes[0].getbalance(), bal + Decimal('50.00000000') + Decimal('2.19000000'))  # block reward + tx
+        assert_equal(self.nodes[0].getbalance(), bal + block_subsidy(self.nodes[0].getblockcount() - COINBASE_MATURITY) + Decimal('2.199'))  # block reward + tx
 
         # 2of2 test for combining transactions
         bal = self.nodes[2].getbalance()
@@ -577,7 +578,7 @@ class RawTransactionsTest(BTQTestFramework):
 
         bal = self.nodes[0].getbalance()
         inputs = [{"txid": txId, "vout": vout['n'], "scriptPubKey": vout['scriptPubKey']['hex'], "redeemScript": mSigObjValid['hex'], "amount": vout['value']}]
-        outputs = {self.nodes[0].getnewaddress(): 2.19}
+        outputs = {self.nodes[0].getnewaddress(): Decimal("2.199")}
         rawTx2 = self.nodes[2].createrawtransaction(inputs, outputs)
         rawTxPartialSigned1 = self.nodes[1].signrawtransactionwithwallet(rawTx2, inputs)
         self.log.debug(rawTxPartialSigned1)
@@ -592,7 +593,7 @@ class RawTransactionsTest(BTQTestFramework):
         rawTx2 = self.nodes[0].decoderawtransaction(rawTxComb)
         self.sync_all()
         self.generate(self.nodes[0], 1)
-        assert_equal(self.nodes[0].getbalance(), bal + Decimal('50.00000000') + Decimal('2.19000000'))  # block reward + tx
+        assert_equal(self.nodes[0].getbalance(), bal + block_subsidy(self.nodes[0].getblockcount() - COINBASE_MATURITY) + Decimal('2.199'))  # block reward + tx
 
 
 if __name__ == '__main__':
