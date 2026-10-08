@@ -270,7 +270,8 @@ class BIP68Test(BTQTestFramework):
         self.nodes[0].prioritisetransaction(txid=tx2.hash, fee_delta=int(-self.relayfee*COIN))
         cur_time = int(time.time())
         for _ in range(10):
-            self.nodes[0].setmocktime(cur_time + 600)
+            for node in self.nodes:
+                node.setmocktime(cur_time + 600)
             self.generate(self.wallet, 1, sync_fun=self.no_op)
             cur_time += 600
 
@@ -283,7 +284,8 @@ class BIP68Test(BTQTestFramework):
         self.nodes[0].prioritisetransaction(txid=tx2.hash, fee_delta=int(self.relayfee*COIN))
 
         # Advance the time on the node so that we can test timelocks
-        self.nodes[0].setmocktime(cur_time+600)
+        for node in self.nodes:
+            node.setmocktime(cur_time + 600)
         # Save block template now to use for the reorg later
         tmpl = self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
         self.generate(self.nodes[0], 1)
@@ -344,7 +346,8 @@ class BIP68Test(BTQTestFramework):
         assert tx2.hash in mempool
 
         # Reset the chain and get rid of the mocktimed-blocks
-        self.nodes[0].setmocktime(0)
+        for node in self.nodes:
+            node.setmocktime(0)
         self.nodes[0].invalidateblock(self.nodes[0].getblockhash(cur_height+1))
         self.generate(self.wallet, 10, sync_fun=self.no_op)
 

@@ -7,7 +7,7 @@ a serialized version of the UTXO set at a certain height, which corresponds
 to a hash that has been compiled into btqd.
 
 The assumeutxo value generated and used here is committed to in
-`CRegTestParams::m_assumeutxo_data` in `src/chainparams.cpp`.
+`CRegTestParams::m_assumeutxo_data` in `src/kernel/chainparams.cpp`.
 
 ## Possible test improvements
 
@@ -96,10 +96,10 @@ class AssumeutxoTest(BTQTestFramework):
 
         self.log.info("  - snapshot file with alternated UTXO data")
         cases = [
-            [b"\xff" * 32, 0, "05030e506678f2eca8d624ffed97090ab3beadad1b51ee6e5985ba91c5720e37"], # wrong outpoint hash
-            [(1).to_bytes(4, "little"), 32, "7d29cfe2c1e242bc6f103878bb70cfffa8b4dac20dbd001ff6ce24b7de2d2399"], # wrong outpoint index
-            [b"\x81", 36, "f03939a195531f96d5dff983e294a1af62af86049fa7a19a7627246f237c03f1"], # wrong coin code VARINT((coinbase ? 1 : 0) | (height << 1))
-            [b"\x83", 36, "e4577da84590fb288c0f7967e89575e1b0aa46624669640f6f5dfef028d39930"], # another wrong coin code
+            [b"\xff" * 32, 0, "4f31383102de57802f9b1036a20dc467cba8e72ae48bbd0f53f18c5f9859ba34"], # wrong outpoint hash
+            [(1).to_bytes(4, "little"), 32, "ddbed5651f45085b5ab9435e88480802bc89f730c61f09608b1f14d0b8add902"], # wrong outpoint index
+            [b"\x5f", 36, "d5d3c68ccbb2ba17a36d2f47b20abf07df1b1c687fc6389bb99548208b50a900"], # wrong coin code VARINT((coinbase ? 1 : 0) | (height << 1))
+            [b"\x61", 36, "cdc3290953890ee646d27f8dc00fe32560bb1636e262c7741a8a06f4b21b2779"], # another wrong coin code
         ]
 
         for content, offset, wrong_hash in cases:
@@ -107,7 +107,7 @@ class AssumeutxoTest(BTQTestFramework):
                 f.write(valid_snapshot_contents[:(32 + 8 + offset)])
                 f.write(content)
                 f.write(valid_snapshot_contents[(32 + 8 + offset + len(content)):])
-            expected_error(log_msg=f"[snapshot] bad snapshot content hash: expected 61d9c2b29a2571a5fe285fe2d8554f91f93309666fc9b8223ee96338de25ff53, got {wrong_hash}")
+            expected_error(log_msg=f"[snapshot] bad snapshot content hash: expected 67d34d66e24f805fceee2fab4d9667a9efae69502a62e72ed405e1f9732475f0, got {wrong_hash}")
 
     def test_invalid_chainstate_scenarios(self):
         self.log.info("Test different scenarios of invalid snapshot chainstate in datadir")
@@ -170,7 +170,7 @@ class AssumeutxoTest(BTQTestFramework):
 
         assert_equal(
             dump_output['txoutset_hash'],
-            '61d9c2b29a2571a5fe285fe2d8554f91f93309666fc9b8223ee96338de25ff53')
+            '67d34d66e24f805fceee2fab4d9667a9efae69502a62e72ed405e1f9732475f0')
         assert_equal(dump_output['nchaintx'], 300)
         assert_equal(n0.getblockchaininfo()["blocks"], SNAPSHOT_BASE_HEIGHT)
 

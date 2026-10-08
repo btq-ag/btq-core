@@ -55,8 +55,10 @@ class MempoolPackageLimitsTest(BTQTestFramework):
         self.test_anc_count_limits_2()
         self.test_anc_count_limits_bushy()
 
-        # The node will accept (nonstandard) extra large OP_RETURN outputs
-        self.restart_node(0, extra_args=["-datacarriersize=100000"])
+        # Pin size limits so individually standard BTQ transactions can cross
+        # the limit only when their in-mempool and in-package sizes are combined.
+        # The node will accept extra large OP_RETURN outputs
+        self.restart_node(0, extra_args=["-datacarriersize=100000", "-limitancestorsize=75", "-limitdescendantsize=75"])
         self.test_anc_size_limits()
         self.test_desc_size_limits()
 
@@ -277,7 +279,7 @@ class MempoolPackageLimitsTest(BTQTestFramework):
     @check_package_limits
     def test_anc_size_limits(self):
         """Test Case with 2 independent transactions in the mempool and a parent + child in the
-        package, where the package parent is the child of both mempool transactions (30KvB each):
+        package, where the package parent is the child of both mempool transactions (20KvB each):
               A     B
                ^   ^
                  C
@@ -288,7 +290,7 @@ class MempoolPackageLimitsTest(BTQTestFramework):
         """
         node = self.nodes[0]
         parent_utxos = []
-        target_vsize = 30_000
+        target_vsize = 20_000
         high_fee = 10 * target_vsize  # 10 sats/vB
         target_weight = target_vsize * WITNESS_SCALE_FACTOR
         self.log.info("Check that in-mempool and in-package ancestor size limits are calculated properly in packages")
@@ -309,7 +311,7 @@ class MempoolPackageLimitsTest(BTQTestFramework):
 
     @check_package_limits
     def test_desc_size_limits(self):
-        """Create 3 mempool transactions and 2 package transactions (21KvB each):
+        """Create 3 mempool transactions and 2 package transactions (16KvB each):
               Ma
              ^ ^
             Mb  Mc
@@ -319,7 +321,7 @@ class MempoolPackageLimitsTest(BTQTestFramework):
         and in-package descendants are all considered together.
         """
         node = self.nodes[0]
-        target_vsize = 21_000
+        target_vsize = 16_000
         high_fee = 10 * target_vsize  # 10 sats/vB
         target_weight = target_vsize * WITNESS_SCALE_FACTOR
         self.log.info("Check that in-mempool and in-package descendant sizes are calculated properly in packages")

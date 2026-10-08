@@ -12,14 +12,8 @@ import os
 
 from test_framework.blocktools import (
     MIN_BLOCKS_TO_KEEP,
-    create_block,
-    create_coinbase,
 )
-from test_framework.script import (
-    CScript,
-    OP_NOP,
-    OP_RETURN,
-)
+from test_framework.pruning import LargeBlockBuilder
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
@@ -27,35 +21,38 @@ from test_framework.util import (
     assert_raises_rpc_error,
 )
 
-# Rescans start at the earliest block up to 2 hours before a key timestamp, so
+# Rescans start at the earliest block up to 15 minutes before a key timestamp, so
 # the manual prune RPC avoids pruning blocks in the same window to be
 # compatible with pruning based on key creation time.
-TIMESTAMP_WINDOW = 2 * 60 * 60
+TIMESTAMP_WINDOW = 15 * 60
 
 def mine_large_blocks(node, n):
-    # Make a large scriptPubKey for the coinbase transaction. This is OP_RETURN
-    # followed by 950k of OP_NOP. This would be non-standard in a non-coinbase
-    # transaction but is consensus valid.
+    # Use witness data to create 950k blocks within BTQ's weight limit.
 
     # Set the nTime if this is the first time this function has been called.
     # A static variable ensures that time is monotonicly increasing and is therefore
     # different for each block created => blockhash is unique.
-    if "nTimes" not in mine_large_blocks.__dict__:
+    if "nTime" not in mine_large_blocks.__dict__:
         mine_large_blocks.nTime = 0
+        mine_large_blocks.builder = LargeBlockBuilder()
 
     # Get the block parameters for the first block
-    big_script = CScript([OP_RETURN] + [OP_NOP] * 950000)
     best_block = node.getblock(node.getbestblockhash())
     height = int(best_block["height"]) + 1
     mine_large_blocks.nTime = max(mine_large_blocks.nTime, int(best_block["time"])) + 1
     previousblockhash = int(best_block["hash"], 16)
 
+    for peer in mine_large_blocks.nodes:
+        if peer.running:
+            peer.setmocktime(mine_large_blocks.nTime + n)
+
     for _ in range(n):
-        block = create_block(hashprev=previousblockhash, ntime=mine_large_blocks.nTime, coinbase=create_coinbase(height, script_pubkey=big_script))
+        node.setmocktime(mine_large_blocks.nTime)
+        block = mine_large_blocks.builder.build(node, previousblockhash=previousblockhash, ntime=mine_large_blocks.nTime, height=height)
         block.solve()
 
         # Submit to the node
-        node.submitblock(block.serialize().hex())
+        assert_equal(node.submitblock(block.serialize().hex()), None)
 
         previousblockhash = block.sha256
         height += 1
@@ -88,6 +85,12 @@ class PruneTest(BTQTestFramework):
         ]
         self.rpc_timeout = 120
 
+    def start_node(self, i, extra_args=None, **kwargs):
+        args = list(self.extra_args[i] if extra_args is None else extra_args)
+        if self.nodes[i].mocktime is not None:
+            args.append(f"-mocktime={self.nodes[i].mocktime}")
+        super().start_node(i, extra_args=args, **kwargs)
+
     def setup_network(self):
         self.setup_nodes()
 
@@ -102,6 +105,7 @@ class PruneTest(BTQTestFramework):
 
     def setup_nodes(self):
         self.add_nodes(self.num_nodes, self.extra_args)
+        mine_large_blocks.nodes = self.nodes
         self.start_nodes()
         if self.is_wallet_compiled():
             self.import_deterministic_coinbase_privkeys()
@@ -475,6 +479,12 @@ class PruneTest(BTQTestFramework):
 
             self.log.info("Test it's not possible to rescan beyond pruned data")
             self.test_rescan_blockchain()
+        else:
+            # scanblocks also needs node 5 to have synced and pruned. In a
+            # wallet build wallet_test performs this setup before its rescan.
+            self.connect_nodes(0, 5)
+            self.sync_blocks([self.nodes[0], self.nodes[5]], wait=5, timeout=300)
+            self.restart_node(5, extra_args=["-prune=550", "-blockfilterindex=1"])
 
         self.log.info("Test invalid pruning command line options")
         self.test_invalid_command_line_options()
@@ -486,8 +496,9 @@ class PruneTest(BTQTestFramework):
     def test_scanblocks_pruned(self):
         node = self.nodes[5]
         genesis_blockhash = node.getblockhash(0)
+        assert_raises_rpc_error(-1, "Block not available (pruned data)", node.getblock, genesis_blockhash)
         # Use a descriptor that is expected to return false positives under basic filters
-        false_positive_spk = bytes.fromhex("001400000000000000000000000000000000000cadcb")
+        false_positive_spk = bytes.fromhex("0014000000000000000000000000000000000002f783")
 
         assert genesis_blockhash in node.scanblocks(
             "start", [{"desc": f"raw({false_positive_spk.hex()})"}], 0, 0)['relevant_blocks']

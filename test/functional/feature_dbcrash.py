@@ -33,6 +33,7 @@ import time
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.messages import (
     COIN,
+    MAX_BLOCK_WEIGHT,
 )
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
@@ -40,7 +41,6 @@ from test_framework.util import (
 )
 from test_framework.wallet import (
     MiniWallet,
-    MiniWalletMode,
     getnewdestination,
 )
 
@@ -66,7 +66,7 @@ class ChainstateWriteCrashTest(BTQTestFramework):
 
         # Node3 is a normal node with default args, except will mine full blocks
         # and txs with "dust" outputs
-        self.node3_args = ["-blockmaxweight=4000000", "-dustrelayfee=0"]
+        self.node3_args = [f"-blockmaxweight={MAX_BLOCK_WEIGHT}", "-dustrelayfee=0"]
         self.extra_args = [self.node0_args, self.node1_args, self.node2_args, self.node3_args]
 
     def setup_network(self):
@@ -204,11 +204,10 @@ class ChainstateWriteCrashTest(BTQTestFramework):
             num_transactions += 1
 
     def run_test(self):
-        # BTQ: Avoid witness/taproot; use legacy P2PK outputs
-        self.wallet = MiniWallet(self.nodes[3], mode=MiniWalletMode.RAW_P2PK)
+        self.wallet = MiniWallet(self.nodes[3])
         initial_height = self.nodes[3].getblockcount()
         # Mine coinbases directly to the MiniWallet descriptor so it owns UTXOs
-        self.generatetodescriptor(self.nodes[3], COINBASE_MATURITY, self.wallet.get_descriptor(), sync_fun=self.no_op)
+        self.generate(self.wallet, COINBASE_MATURITY + 10, sync_fun=self.no_op)
 
         # Track test coverage statistics
         self.restart_counts = [0, 0, 0]  # Track the restarts for nodes 0-2
@@ -216,10 +215,11 @@ class ChainstateWriteCrashTest(BTQTestFramework):
 
         # Start by creating a lot of utxos on node3
         utxo_list = []
-        for _ in range(5):
-            utxo_list.extend(self.wallet.send_self_transfer_multi(from_node=self.nodes[3], num_outputs=1000)['new_utxos'])
-        self.generate(self.nodes[3], 1, sync_fun=self.no_op)
-        assert_equal(len(self.nodes[3].getrawmempool()), 0)
+        for _ in range(10):
+            utxo_list.extend(self.wallet.send_self_transfer_multi(from_node=self.nodes[3], num_outputs=500)['new_utxos'])
+        while self.nodes[3].getrawmempool():
+            self.generate(self.nodes[3], 1, sync_fun=self.no_op)
+        assert_equal(len(utxo_list), 5000)
         self.log.info(f"Prepped {len(utxo_list)} utxo entries")
 
         # Sync these blocks with the other nodes
@@ -254,10 +254,10 @@ class ChainstateWriteCrashTest(BTQTestFramework):
             # Now generate new blocks until we pass the old tip height
             self.log.debug("Mining longer tip")
             block_hashes = []
-            while current_height + 1 > self.nodes[3].getblockcount():
+            while current_height + 1 > self.nodes[3].getblockcount() or self.nodes[3].getrawmempool():
                 block_hashes.extend(self.generatetoaddress(
                     self.nodes[3],
-                    nblocks=min(10, current_height + 1 - self.nodes[3].getblockcount()),
+                    nblocks=max(1, min(10, current_height + 1 - self.nodes[3].getblockcount())),
                     # new legacy address to avoid mining a block that has just been invalidated
                     address=getnewdestination('legacy')[2],
                     sync_fun=self.no_op,
