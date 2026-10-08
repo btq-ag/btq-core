@@ -104,6 +104,45 @@ static std::optional<int64_t> DummySignInputWeight(const SigningProvider& provid
     return nonwitness_bytes * WITNESS_SCALE_FACTOR + witness_bytes;
 }
 
+/** Weight of a signed Taproot key-path input: outpoint, sequence, empty scriptSig,
+ *  witness stack count and a 65-byte signature with its length prefix. */
+static constexpr int64_t TAPROOT_KEY_PATH_INPUT_WEIGHT{(32 + 4 + 4 + 1) * WITNESS_SCALE_FACTOR + 1 + 1 + 65};
+
+/**
+ * Whether the wallet will sign this Taproot output through the key path.
+ * SignTaproot tries the key path before any script path, so when the wallet
+ * holds the private key for the internal (or output) key, the descriptor's
+ * script-path bound overstates the signed size. Locked and watch-only wallets
+ * return false and keep the script-path bound.
+ */
+static bool WalletSignsTaprootKeyPath(const CWallet& wallet, const CScript& script_pub_key)
+{
+    for (ScriptPubKeyMan* spkm : wallet.GetScriptPubKeyMans(script_pub_key)) {
+        const auto* desc_spkm{dynamic_cast<DescriptorScriptPubKeyMan*>(spkm)};
+        if (desc_spkm && desc_spkm->CanSignTaprootKeyPath(script_pub_key)) return true;
+    }
+    return false;
+}
+
+/** Use the key-path weight when it is smaller than the inferred bound and the wallet signs that way. */
+static int64_t ApplyTaprootKeyPath(const CWallet& wallet, const CScript& script_pub_key, int64_t weight)
+{
+    if (weight > TAPROOT_KEY_PATH_INPUT_WEIGHT && WalletSignsTaprootKeyPath(wallet, script_pub_key)) {
+        return TAPROOT_KEY_PATH_INPUT_WEIGHT;
+    }
+    return weight;
+}
+
+/** Same as ApplyTaprootKeyPath, for a virtual size from CalculateMaximumSignedInputSize (-1 passes through). */
+static int ApplyTaprootKeyPathVsize(const CWallet& wallet, const CScript& script_pub_key, int input_bytes)
+{
+    const int key_path_vsize{static_cast<int>(GetVirtualTransactionSize(TAPROOT_KEY_PATH_INPUT_WEIGHT, 0, 0))};
+    if (input_bytes > key_path_vsize && WalletSignsTaprootKeyPath(wallet, script_pub_key)) {
+        return key_path_vsize;
+    }
+    return input_bytes;
+}
+
 int CalculateMaximumSignedInputSize(const CTxOut& txout, const COutPoint outpoint, const SigningProvider* provider, bool can_grind_r, const CCoinControl* coin_control)
 {
     if (!provider) return -1;
@@ -127,7 +166,8 @@ int CalculateMaximumSignedInputSize(const CTxOut& txout, const COutPoint outpoin
 int CalculateMaximumSignedInputSize(const CTxOut& txout, const CWallet* wallet, const CCoinControl* coin_control)
 {
     const std::unique_ptr<SigningProvider> provider = wallet->GetSolvingProvider(txout.scriptPubKey);
-    return CalculateMaximumSignedInputSize(txout, COutPoint(), provider.get(), wallet->CanGrindR(), coin_control);
+    const int input_bytes{CalculateMaximumSignedInputSize(txout, COutPoint(), provider.get(), wallet->CanGrindR(), coin_control)};
+    return ApplyTaprootKeyPathVsize(*wallet, txout.scriptPubKey, input_bytes);
 }
 
 /** Infer a descriptor for the given output script. */
@@ -162,7 +202,7 @@ static std::optional<int64_t> GetSignedTxinWeight(const CWallet* wallet, const C
     std::unique_ptr<Descriptor> desc{GetDescriptor(wallet, coin_control, txo.scriptPubKey)};
     if (desc) {
         if (auto weight = MaxInputWeight(*desc, {txin}, coin_control, tx_is_segwit, can_grind_r)) {
-            return weight;
+            return ApplyTaprootKeyPath(*wallet, txo.scriptPubKey, *weight);
         }
     }
 
@@ -464,6 +504,7 @@ CoinsResult AvailableCoins(const CWallet& wallet,
             std::unique_ptr<SigningProvider> provider = wallet.GetSolvingProvider(output.scriptPubKey);
 
             int input_bytes = CalculateMaximumSignedInputSize(output, COutPoint(), provider.get(), can_grind_r, coinControl);
+            input_bytes = ApplyTaprootKeyPathVsize(wallet, output.scriptPubKey, input_bytes);
             // Because CalculateMaximumSignedInputSize infers a solvable descriptor to get the satisfaction size,
             // it is safe to assume that this input is solvable if input_bytes is greater than -1.
             bool solvable = input_bytes > -1;

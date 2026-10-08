@@ -2692,6 +2692,24 @@ std::map<CKeyID, CKey> DescriptorScriptPubKeyMan::GetKeys() const
     return m_map_keys;
 }
 
+bool DescriptorScriptPubKeyMan::CanSignTaprootKeyPath(const CScript& script) const
+{
+    int version;
+    std::vector<unsigned char> program;
+    if (!script.IsWitnessProgram(version, program) || version != 1 || program.size() != WITNESS_V1_TAPROOT_SIZE) {
+        return false;
+    }
+    const auto provider{GetSigningProvider(script, /*include_private=*/true)};
+    if (!provider) return false;
+    const XOnlyPubKey output_key{program};
+    CKey key;
+    TaprootSpendData spenddata;
+    if (provider->GetTaprootSpendData(output_key, spenddata) && provider->GetKeyByXOnly(spenddata.internal_key, key)) {
+        return true;
+    }
+    return provider->GetKeyByXOnly(output_key, key);
+}
+
 bool DescriptorScriptPubKeyMan::HaveKeyByXOnly(const XOnlyPubKey& pubkey) const
 {
     AssertLockHeld(cs_desc_man);

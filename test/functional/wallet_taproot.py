@@ -426,6 +426,49 @@ class WalletTaprootTest(BTQTestFramework):
         assert wallet.gettransaction(txid)["confirmations"] > 0
         wallet.unloadwallet()
 
+    def test_key_path_with_large_script_tree(self):
+        self.log.info("Testing key-path fee sizing when the script-path bound exceeds the standard weight")
+        node = self.nodes[0]
+        node.createwallet("taproot_key_path_sizing", descriptors=True, blank=True)
+        wallet = node.get_wallet_rpc("taproot_key_path_sizing")
+        # The wallet holds the internal key, so it signs through the key path.
+        # The 999-key leaf alone bounds each input at about 2,200 vbytes, so
+        # twelve inputs would exceed MAX_STANDARD_TX_WEIGHT if sized by it.
+        leaf_keys = [KEYS[0]["xprv"] + "/0"] + [H_POINT] * (MAX_PUBKEYS_PER_MULTI_A - 1)
+        descriptor = descsum_create("tr(" + KEYS[1]["xprv"] + "/0,multi_a(1," + ",".join(leaf_keys) + "))")
+        assert wallet.importdescriptors([{"desc": descriptor, "timestamp": "now"}])[0]["success"]
+        address = node.deriveaddresses(descriptor)[0]
+        relay_rate = node.getnetworkinfo()["relayfee"]
+        wallet.settxfee(relay_rate)
+
+        def fund(count):
+            for _ in range(count):
+                self.boring.sendtoaddress(address, 1)
+            self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+
+        def check_key_path_spend(txid, input_count):
+            transaction = wallet.gettransaction(txid)
+            decoded = node.decoderawtransaction(transaction["hex"])
+            assert_equal(len(decoded["vin"]), input_count)
+            for vin in decoded["vin"]:
+                assert_equal(len(vin["txinwitness"]), 1)
+            fee = -transaction["fee"]
+            assert relay_rate * decoded["vsize"] / 1000 <= fee <= 2 * relay_rate * decoded["vsize"] / 1000
+            assert txid in node.getrawmempool()
+            self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+
+        # Coin selection must pick all twelve inputs. The blank wallet has no
+        # change descriptor, so change returns to the same address.
+        fund(12)
+        txid = wallet.send(outputs=[{self.boring.getnewaddress(): Decimal("11.9")}],
+                           options={"change_address": address})["txid"]
+        check_key_path_spend(txid, 12)
+
+        fund(12)
+        txid = wallet.sendall(recipients=[self.boring.getnewaddress()])["txid"]
+        check_key_path_spend(txid, 13)
+        wallet.unloadwallet()
+
     def run_test(self):
         self.nodes[0].createwallet(wallet_name="boring")
         self.boring = self.nodes[0].get_wallet_rpc("boring")
@@ -435,6 +478,7 @@ class WalletTaprootTest(BTQTestFramework):
         self.generatetoaddress(self.nodes[0], 101, gen_addr, sync_fun=self.no_op)
 
         self.test_script_path_fee_boundaries()
+        self.test_key_path_with_large_script_tree()
 
         self.do_test(
             "tr(XPRV)",

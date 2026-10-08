@@ -683,6 +683,8 @@ public:
     bool HaveDilithiumKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool HaveKeyByXOnly(const XOnlyPubKey& pubkey) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool GetKeyByXOnly(const XOnlyPubKey& pubkey, CKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    /** Whether the private key for this Taproot output's key path is available (false when locked). */
+    bool CanSignTaprootKeyPath(const CScript& script) const;
 
     bool CheckDecryptionKey(const CKeyingMaterial& master_key, bool accept_no_keys = false) override;
     bool Encrypt(const CKeyingMaterial& master_key, WalletBatch* batch) override;
