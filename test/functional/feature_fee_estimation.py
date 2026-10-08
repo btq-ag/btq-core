@@ -5,12 +5,17 @@
 """Test fee estimation code."""
 from copy import deepcopy
 from decimal import Decimal
+import gzip
 import os
+from pathlib import Path
+import struct
 import random
 import time
 
+from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.messages import (
     COIN,
+    WITNESS_SCALE_FACTOR,
 )
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
@@ -20,7 +25,7 @@ from test_framework.util import (
     assert_raises_rpc_error,
     satoshi_round,
 )
-from test_framework.wallet import MiniWallet, MiniWalletMode
+from test_framework.wallet import MiniWallet
 
 MAX_FILE_AGE = 60
 SECONDS_PER_HOUR = 60 * 60
@@ -135,8 +140,8 @@ class EstimateFeeTest(BTQTestFramework):
         # Force fSendTrickle to true (via whitelist.noban)
         self.extra_args = [
             ["-whitelist=noban@127.0.0.1"],
-            ["-whitelist=noban@127.0.0.1", "-blockmaxweight=68000"],
-            ["-whitelist=noban@127.0.0.1", "-blockmaxweight=32000"],
+            ["-whitelist=noban@127.0.0.1", f"-blockmaxweight={4000 + 64000 * WITNESS_SCALE_FACTOR // 4}"],
+            ["-whitelist=noban@127.0.0.1", f"-blockmaxweight={4000 + 28000 * WITNESS_SCALE_FACTOR // 4}"],
         ]
 
     def setup_network(self):
@@ -191,10 +196,16 @@ class EstimateFeeTest(BTQTestFramework):
 
     def initial_split(self, node):
         """Split two coinbase UTxOs into many small coins"""
-        self.confutxo = self.wallet.send_self_transfer_multi(
+        split_utxos = self.wallet.send_self_transfer_multi(
             from_node=node,
             utxos_to_spend=[self.wallet.get_utxo() for _ in range(2)],
-            num_outputs=2048)['new_utxos']
+            num_outputs=8)['new_utxos']
+        # Keep each split below the standard transaction weight limit.
+        self.confutxo = []
+        for utxo in split_utxos:
+            self.confutxo.extend(self.wallet.send_self_transfer_multi(
+                from_node=node, utxos_to_spend=[utxo], num_outputs=256)['new_utxos'])
+        assert_equal(len(self.confutxo), 2048)
         while len(node.getrawmempool()) > 0:
             self.generate(node, 1, sync_fun=self.no_op)
 
@@ -251,7 +262,12 @@ class EstimateFeeTest(BTQTestFramework):
         utxos_to_respend = []
         txids_to_replace = []
 
+        # Earlier randomized splits leave small change outputs. Select the
+        # largest inputs so raising a fee cannot turn an output into dust;
+        # retain all 250 samples and the exact low/high-feerate expectations.
+        utxos = sorted(utxos, key=lambda utxo: utxo["value"], reverse=True)
         assert_greater_than_or_equal(len(utxos), 250)
+        assert_greater_than_or_equal(utxos[249]["value"], Decimal("0.00002"))
         for _ in range(5):
             # Broadcast 45 low fee transactions that will need to be RBF'd
             txs = []
@@ -388,8 +404,8 @@ class EstimateFeeTest(BTQTestFramework):
 
         # Split two coinbases into many small utxos
         self.start_node(0)
-        # BTQ: Avoid segwit/taproot witness by using legacy P2PK outputs
-        self.wallet = MiniWallet(self.nodes[0], mode=MiniWalletMode.RAW_P2PK)
+        self.wallet = MiniWallet(self.nodes[0])
+        self.generate(self.wallet, COINBASE_MATURITY + 2, sync_fun=self.no_op)
         self.initial_split(self.nodes[0])
         self.log.info("Finished splitting")
 
@@ -430,6 +446,20 @@ class EstimateFeeTest(BTQTestFramework):
 
         self.log.info("Testing estimates with RBF.")
         self.sanity_check_rbf_estimates(self.confutxo + self.memutxo)
+
+        self.log.info("Rejecting genuine format-2 cache and writing format 3")
+        self.stop_node(0)
+        cache_path = self.nodes[0].chain_path / "fee_estimates.dat"
+        old_cache = gzip.decompress((Path(__file__).parent / "data" / "fee_estimates_format2.dat.gz").read_bytes())
+        assert_equal(struct.unpack("<i", old_cache[:4])[0], 2)
+        cache_path.write_bytes(old_cache)
+        with self.nodes[0].assert_debug_log(["incompatible fee estimation data (non-fatal). Format: 2"]):
+            self.start_node(0)
+        assert "feerate" not in self.nodes[0].estimatesmartfee(2)
+        self.stop_node(0)
+        assert_equal(struct.unpack("<i", cache_path.read_bytes()[:4])[0], 3)
+        with self.nodes[0].assert_debug_log(expected_msgs=[], unexpected_msgs=["incompatible fee estimation data"]):
+            self.start_node(0)
 
         self.log.info("Testing that fee estimation is disabled in blocksonly.")
         self.restart_node(0, ["-blocksonly"])
