@@ -1044,10 +1044,10 @@ public:
     }
     bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* tweak, SigVersion sigversion) const override
     {
-        // P2MR tapscript rejects SIGHASH_DEFAULT, so a real signature always
-        // carries an explicit sighash byte. Reserve it, or every hybrid input
-        // in a maximum-size estimate comes up one byte short and the fee can
-        // underpay at minimum relay feerate.
+        // A P2MR schnorr signature is 64 bytes for SIGHASH_DEFAULT and 65
+        // when the sighash is explicit. Reserve the longer one so a maximum
+        // size estimate cannot underpay; DEFAULT spends over-reserve by one
+        // byte.
         sig.assign(sigversion == SigVersion::P2MR_TAPSCRIPT ? 65 : 64, '\000');
         return true;
     }

@@ -748,11 +748,33 @@ BOOST_AUTO_TEST_CASE(schnorr_only_signature_pins_the_leaf_choice)
     }
 
     const uint256 hybrid_hash = ComputeTapleafHash(TAPROOT_LEAF_TAPSCRIPT, std::vector<unsigned char>(hybrid.begin(), hybrid.end()));
-    psbt.inputs[0].m_tap_script_sigs[{xonly, hybrid_hash}] = std::vector<unsigned char>(65, 0xee);
+    // 64 zero bytes plus SIGHASH_ALL: a well-formed signature that does not verify.
+    std::vector<unsigned char> bogus_sig(64, 0x00);
+    bogus_sig.push_back(SIGHASH_ALL);
+    psbt.inputs[0].m_tap_script_sigs[{xonly, hybrid_hash}] = bogus_sig;
 
     const P2MRInputInfo info = InspectP2MRInput(psbt, 0);
     BOOST_CHECK(info.status == P2MRInputStatus::PARTIALLY_SIGNED);
     BOOST_CHECK(info.leaf_hash == hybrid_hash);
+
+    // A tap signature for a leaf this tree does not contain must not hide
+    // the hybrid leaf the real signature pinned.
+    CKey stray_key;
+    stray_key.MakeNewKey(/*fCompressed=*/true);
+    psbt.inputs[0].m_tap_script_sigs[{XOnlyPubKey{stray_key.GetPubKey()}, uint256::ONE}] =
+        std::vector<unsigned char>(64, 0x11);
+    const P2MRInputInfo with_stray = InspectP2MRInput(psbt, 0);
+    BOOST_CHECK(with_stray.status == P2MRInputStatus::PARTIALLY_SIGNED);
+    BOOST_CHECK(with_stray.leaf_hash == hybrid_hash);
+
+    // The cached schnorr half does not verify, so decode must reject the
+    // PSBT instead of handing signers a signature they will trust forever.
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    ss << psbt;
+    PartiallySignedTransaction decoded;
+    std::string error;
+    BOOST_CHECK(!DecodeBase64PSBT(decoded, EncodeBase64(MakeUCharSpan(ss)), error));
+    BOOST_CHECK(error.find("does not verify") != std::string::npos);
 }
 
 BOOST_AUTO_TEST_CASE(hybrid_witness_requires_both_signatures)
