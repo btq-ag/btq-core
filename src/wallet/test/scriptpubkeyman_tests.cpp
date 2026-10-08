@@ -228,7 +228,12 @@ BOOST_AUTO_TEST_CASE(legacy_encrypt_migrates_dilithium_keys)
 
     BOOST_REQUIRE(wallet.Unlock("encrypt"));
     CDilithiumKey after_encrypt;
-    BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, after_encrypt));
+    {
+        // GetDilithiumKey takes cs_KeyStore, then IsLocked takes cs_wallet.
+        // Hold cs_wallet first so that matches the order used above.
+        LOCK(wallet.cs_wallet);
+        BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, after_encrypt));
+    }
     BOOST_CHECK(after_encrypt == before_encrypt);
 }
 
@@ -283,7 +288,10 @@ BOOST_AUTO_TEST_CASE(dilithium_encrypt_wallet_roundtrip)
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
     LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
 
-    LOCK2(wallet.cs_wallet, keyman.cs_KeyStore);
+    // Explicit order: cs_wallet before cs_KeyStore. LOCK2 sorts by address
+    // and can invert the order already used by EncryptWallet.
+    LOCK(wallet.cs_wallet);
+    LOCK(keyman.cs_KeyStore);
     BOOST_REQUIRE(keyman.SetupGeneration(true));
 
     WalletBatch batch(wallet.GetDatabase());
