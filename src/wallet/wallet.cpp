@@ -2254,7 +2254,7 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
             return TransactionError::SIGHASH_MISMATCH;
         }
 
-        const FlatSigningProvider provider{BuildP2MRSigningProvider(*this, entry->id)};
+        const FlatSigningProvider provider{BuildP2MRSigningProviderForDestination(*this, entry->dest)};
         if (SignPSBTInput(HidingSigningProvider(&provider, /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs),
                           psbtx, i, &txdata, sighash_type, /*out_sigdata=*/nullptr, finalize) &&
             n_signed) {
@@ -3670,7 +3670,7 @@ std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& scri
     {
         LOCK(cs_wallet);
         if (auto entry = GetP2MRByScript(*this, script)) {
-            return std::make_unique<FlatSigningProvider>(BuildP2MRSigningProvider(*this, entry->id));
+            return std::make_unique<FlatSigningProvider>(BuildP2MRSigningProviderForDestination(*this, entry->dest));
         }
     }
     return nullptr;
