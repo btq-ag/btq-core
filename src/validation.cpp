@@ -1033,12 +1033,10 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
     const CTransaction& tx = *ws.m_ptx;
     TxValidationState& state = ws.m_state;
 
+    // SCRIPT_VERIFY_DILITHIUM is already in MANDATORY_SCRIPT_VERIFY_FLAGS,
+    // which STANDARD_SCRIPT_VERIFY_FLAGS includes. Block consensus still
+    // gates the flag in GetBlockScriptFlags.
     unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
-    if (const CBlockIndex* tip = m_active_chainstate.m_chain.Tip()) {
-        if (DeploymentActiveAt(*tip, m_active_chainstate.m_chainman, Consensus::DEPLOYMENT_DILITHIUM)) {
-            scriptVerifyFlags |= SCRIPT_VERIFY_DILITHIUM;
-        }
-    }
 
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
