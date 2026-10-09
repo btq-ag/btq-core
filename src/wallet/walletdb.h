@@ -96,6 +96,7 @@ extern const std::string DILITHIUM_CRYPTED_KEY;
 extern const std::string DILITHIUM_KEYMETA;
 extern const std::string DILITHIUM_HDCHAIN;
 extern const std::string DILITHIUM_POOL;
+extern const std::string DILITHIUM_DESC_INDEX;
 
 // Keys in this set pertain only to the legacy wallet (LegacyScriptPubKeyMan) and are removed during migration from legacy to descriptors.
 extern const std::unordered_set<std::string> LEGACY_TYPES;
@@ -277,6 +278,8 @@ public:
     bool WriteDescriptorParentCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index);
     bool WriteDescriptorLastHardenedCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index);
     bool WriteDescriptorCacheItems(const uint256& desc_id, const DescriptorCache& cache);
+    //! Persist the next index of a descriptor manager's Dilithium key sequence.
+    bool WriteDilithiumDescriptorIndex(const uint256& desc_id, int32_t index);
 
     bool WriteLockedUTXO(const COutPoint& output);
     bool EraseLockedUTXO(const COutPoint& output);

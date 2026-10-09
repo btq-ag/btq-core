@@ -36,15 +36,7 @@ namespace wallet {
 
 bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid)
 {
-    for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
-        if (auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-            LOCK(desc_spk_man->cs_desc_man);
-            if (desc_spk_man->HaveDilithiumKey(keyid)) return true;
-        } else if (auto legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
-            if (legacy_spk_man->HaveDilithiumKey(keyid)) return true;
-        }
-    }
-    return false;
+    return wallet.HaveDilithiumKeyAnywhere(keyid);
 }
 
 namespace {
@@ -441,21 +433,28 @@ std::optional<P2MREntry> GetP2MR(const CWallet& wallet, const std::string& id)
     return std::nullopt;
 }
 
-std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script)
-{
-    AssertLockHeld(wallet.cs_wallet);
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (entry.script_pub_key == script) return entry;
-    }
-    return std::nullopt;
-}
-
 std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDestination& dest)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!std::holds_alternative<WitnessV2P2MR>(dest)) return std::nullopt;
-    const CScript script = GetScriptForDestination(dest);
-    return GetP2MRByScript(wallet, script);
+    // Metadata is keyed by destination, so decode only this destination's
+    // rows instead of every record in the wallet.
+    const auto* entries = wallet.GetP2MRMetadataForDest(dest);
+    if (!entries) return std::nullopt;
+    for (const auto& [rid, raw] : *entries) {
+        UniValue meta;
+        if (!DecodeMetadata(raw, meta)) continue;
+        return MetadataToEntry(dest, meta, rid);
+    }
+    return std::nullopt;
+}
+
+std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    CTxDestination dest;
+    if (!ExtractDestination(script, dest)) return std::nullopt;
+    return GetP2MRByDestination(wallet, dest);
 }
 
 std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest)
@@ -617,7 +616,7 @@ bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
     return legacy && legacy->AddDilithiumKeyPubKey(key);
 }
 
-util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)
+util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet, bool internal)
 {
     AssertLockHeld(wallet.cs_wallet);
 
@@ -628,7 +627,7 @@ util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)
         }
         WalletBatch batch(wallet.GetDatabase());
         CHDChain hd_chain = legacy->GetHDChain();
-        CDilithiumPubKey pubkey = legacy->GenerateNewDilithiumKey(batch, hd_chain, /*internal=*/false);
+        CDilithiumPubKey pubkey = legacy->GenerateNewDilithiumKey(batch, hd_chain, internal);
         if (!pubkey.IsValid()) {
             return util::Error{Untranslated("Failed to generate Dilithium key")};
         }
@@ -636,8 +635,13 @@ util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)
     }
 
     // Descriptor wallets: derive a deterministic Dilithium key from the active
-    // LEGACY descriptor's private material.
-    ScriptPubKeyMan* spk_man = wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false);
+    // LEGACY descriptor's private material. Change and return keys come from
+    // the internal manager so they live in their own sequence (Quarks F2.5);
+    // wallets without an internal manager fall back to the external one.
+    ScriptPubKeyMan* spk_man = wallet.GetScriptPubKeyMan(OutputType::LEGACY, internal);
+    if (!spk_man && internal) {
+        spk_man = wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false);
+    }
     auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
     if (!desc) {
         return util::Error{Untranslated("No ScriptPubKeyMan available for Dilithium key generation")};
@@ -655,10 +659,11 @@ util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)
 
 util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
                                                      const std::string& label,
-                                                     bool add_to_address_book)
+                                                     bool add_to_address_book,
+                                                     bool internal)
 {
     AssertLockHeld(wallet.cs_wallet);
-    auto pubkey = GenerateWalletDilithiumPubKey(wallet);
+    auto pubkey = GenerateWalletDilithiumPubKey(wallet, internal);
     if (!pubkey) return util::Error{util::ErrorString(pubkey)};
     return CreateSingleLeafDilithiumP2MR(wallet, *pubkey, label, add_to_address_book);
 }
@@ -671,7 +676,11 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
     if (!key.IsValid()) {
         return util::Error{Untranslated("Invalid Dilithium private key")};
     }
-    if (!StoreDilithiumKeyInWallet(wallet, key)) {
+    // Skip the store when the wallet already has the key: re-adding it through
+    // a manager that does not hold it would re-insert the DB record without
+    // overwrite and fail on the unique-key constraint.
+    if (!WalletHaveDilithiumKey(wallet, CKeyID{key.GetPubKey().GetID()}) &&
+        !StoreDilithiumKeyInWallet(wallet, key)) {
         return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
     }
     return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), label);
@@ -711,6 +720,26 @@ static bool RestoreAddressBookEntry(CWallet& wallet, const CTxDestination& dest,
     return ok;
 }
 
+util::Result<P2MRCreated> RecoverDilithiumKeyAsP2MR(CWallet& wallet,
+                                                    DescriptorScriptPubKeyMan& manager,
+                                                    const CDilithiumKey& key,
+                                                    bool add_to_address_book)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    if (!key.IsValid()) {
+        return util::Error{Untranslated("Invalid Dilithium private key")};
+    }
+    // Store the key into the manager whose sequence derived it, so that
+    // manager's already-materialized check sees the index and skips it when
+    // handing out new addresses. StoreDilithiumKeyInWallet would pick an
+    // arbitrary manager and leave the deriving one blind to the index.
+    if (!WalletHaveDilithiumKey(wallet, CKeyID{key.GetPubKey().GetID()}) &&
+        !manager.AddDilithiumKeyPubKey(key)) {
+        return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
+    }
+    return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), /*label=*/"", add_to_address_book);
+}
+
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
@@ -728,14 +757,22 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const WitnessV2P2MR& w = std::get<WitnessV2P2MR>(out.dest);
     std::copy(w.begin(), w.end(), out.merkle_root.begin());
 
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (entry.script_pub_key == out.script_pub_key && SameP2MRTree(entry.tree, leaves)) {
-            out.id = entry.id;
-            out.address = entry.address;
-            out.merkle_root = entry.merkle_root;
-            out.dest = entry.dest;
-            out.reused = true;
-            return out;
+    // Reuse scan: only this destination's metadata rows can match, so skip
+    // the wallet-wide ListP2MR decode (recoverdilithiumkeys calls this once
+    // per index and a full scan made the recovery quadratic).
+    if (const auto* existing = wallet.GetP2MRMetadataForDest(out.dest)) {
+        for (const auto& [rid, raw] : *existing) {
+            UniValue decoded;
+            if (!DecodeMetadata(raw, decoded)) continue;
+            P2MREntry entry = MetadataToEntry(out.dest, decoded, rid);
+            if (entry.script_pub_key == out.script_pub_key && SameP2MRTree(entry.tree, leaves)) {
+                out.id = entry.id;
+                out.address = entry.address;
+                out.merkle_root = entry.merkle_root;
+                out.dest = entry.dest;
+                out.reused = true;
+                return out;
+            }
         }
     }
 

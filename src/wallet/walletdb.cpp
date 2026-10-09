@@ -69,6 +69,7 @@ const std::string DILITHIUM_CRYPTED_KEY{"dilithiumckey"};
 const std::string DILITHIUM_KEYMETA{"dilithiumkeymeta"};
 const std::string DILITHIUM_HDCHAIN{"dilithiumhdchain"};
 const std::string DILITHIUM_POOL{"dilithiumpool"};
+const std::string DILITHIUM_DESC_INDEX{"dilithiumdescindex"};
 
 const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS};
 } // namespace DBKeys
@@ -169,8 +170,12 @@ bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<u
     // Create a unique key for this Dilithium key using the key ID
     const auto key = std::make_pair(DBKeys::DILITHIUM_KEY, keyID);
     
-    // Store the key metadata separately
-    if (!WriteIC(std::make_pair(DBKeys::DILITHIUM_KEYMETA, keyID), keyMeta, false)) {
+    // Store the key metadata separately. Overwrite like the crypted path
+    // does: a crash between this write and the key write below would
+    // otherwise leave a keymeta row that blocks recoverdilithiumkeys from
+    // ever re-adding this key. Re-deriving an index reproduces identical
+    // metadata, so overwriting loses nothing.
+    if (!WriteIC(std::make_pair(DBKeys::DILITHIUM_KEYMETA, keyID), keyMeta, true)) {
         return false;
     }
 
@@ -313,6 +318,11 @@ bool WalletBatch::WriteCryptedDescriptorKey(const uint256& desc_id, const CPubKe
 bool WalletBatch::WriteDescriptor(const uint256& desc_id, const WalletDescriptor& descriptor)
 {
     return WriteIC(make_pair(DBKeys::WALLETDESCRIPTOR, desc_id), descriptor);
+}
+
+bool WalletBatch::WriteDilithiumDescriptorIndex(const uint256& desc_id, int32_t index)
+{
+    return WriteIC(std::make_pair(DBKeys::DILITHIUM_DESC_INDEX, desc_id), index);
 }
 
 bool WalletBatch::WriteDescriptorDerivedCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index, uint32_t der_index)
@@ -1100,6 +1110,14 @@ static DBErrors LoadDescriptorWalletRecords(CWallet* pwallet, DatabaseBatch& bat
         auto spk_man = (DescriptorScriptPubKeyMan*)pwallet->GetScriptPubKeyMan(id);
         assert(spk_man);
         spk_man->SetCache(cache);
+
+        // Dedicated Dilithium derivation counter (Quarks F2.5). Absent in
+        // wallets from before the split; those start at 0 and the generator
+        // skips indexes whose keys already exist.
+        int32_t dilithium_next_index{0};
+        if (batch.Read(std::make_pair(DBKeys::DILITHIUM_DESC_INDEX, id), dilithium_next_index)) {
+            spk_man->LoadDilithiumNextIndex(dilithium_next_index);
+        }
 
         // Get unencrypted keys
         prefix = PrefixStream(DBKeys::WALLETDESCRIPTORKEY, id);

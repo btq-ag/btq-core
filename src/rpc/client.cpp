@@ -313,6 +313,9 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "createp2mrspend", 3, "fee" },
     // Dilithium wallet RPCs
     { "importdilithiumkey", 2, "rescan" },
+    { "recoverdilithiumkeys", 0, "start" },
+    { "recoverdilithiumkeys", 1, "stop" },
+    { "recoverdilithiumkeys", 2, "internal" },
     { "signtransactionwithdilithium", 1, "prevtxs" },
     { "signtransactionwithdilithium", 3, "force_dilithium" },
 };

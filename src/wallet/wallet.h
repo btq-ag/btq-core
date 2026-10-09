@@ -497,6 +497,11 @@ public:
     /** P2MR tree metadata (JSON), kept out of the address book so
      *  GetAddressReceiveRequests never returns it (Quarks F2.17). */
     std::map<CTxDestination, std::map<std::string, std::string>> m_p2mr_metadata GUARDED_BY(cs_wallet);
+
+    /** Bumped on every P2MR metadata set or erase. Long-running consumers
+     *  (the fast rescan filter) use this to detect changes; comparing map
+     *  sizes misses an erase followed by an add. */
+    uint64_t m_p2mr_metadata_revision GUARDED_BY(cs_wallet){0};
     const CAddressBookData* FindAddressBookEntry(const CTxDestination&, bool allow_change = false) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /** Set of Coins owned by this wallet that we won't try to spend from. A
@@ -814,6 +819,9 @@ public:
     bool SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool EraseP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    //! All P2MR metadata rows (id -> JSON) for one destination, or nullptr.
+    //! Cheaper than ListP2MRMetadata for per-destination lookups.
+    const std::map<std::string, std::string>* GetP2MRMetadataForDest(const CTxDestination& dest) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     std::vector<std::tuple<CTxDestination, std::string, std::string>> ListP2MRMetadata() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     unsigned int GetKeyPoolSize() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
@@ -974,6 +982,7 @@ public:
 
     const CKeyingMaterial& GetEncryptionKey() const override;
     bool HasEncryptionKeys() const override;
+    bool HaveDilithiumKeyAnywhere(const CKeyID& keyid) const override;
 
     /** Get last block processed height */
     int GetLastBlockHeight() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet)

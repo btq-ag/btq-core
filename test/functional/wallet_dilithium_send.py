@@ -158,6 +158,116 @@ class WalletDilithiumSendTest(BTQTestFramework):
         self.generate(node, 1)
         assert_equal(repro.gettransaction(many_txid)["confirmations"], 1)
 
+        # F2.5: the Dilithium sequence has its own counter, so ECDSA address
+        # generation must not create gaps in it, and a scan of indexes 0..N
+        # must find every Dilithium key the wallet ever derived.
+        self.log.info("recoverdilithiumkeys scans the dedicated Dilithium sequence")
+        node.createwallet(wallet_name="seq", descriptors=True)
+        seq = node.get_wallet_rpc("seq")
+        # Dilithium derivation hangs off the LEGACY descriptor, so advance
+        # that one: with the old shared counter these calls created the gaps.
+        for _ in range(5):
+            seq.getnewaddress(address_type="legacy")
+        first = seq.getnewdilithiumaddress()["address"]
+        for _ in range(5):
+            seq.getnewaddress(address_type="legacy")
+        second = seq.getnewdilithiumaddress()["address"]
+
+        scan = seq.recoverdilithiumkeys(0, 9)
+        assert_equal(len(scan), 10)
+        # Indexes 0 and 1 are the two keys above; the ECDSA calls in between
+        # left no holes.
+        assert_equal(scan[0]["address"], first)
+        assert_equal(scan[1]["address"], second)
+        assert_equal(scan[0]["recovered"], False)
+        assert_equal(scan[1]["recovered"], False)
+        assert all(entry["recovered"] for entry in scan[2:])
+        # Idempotent: a second scan recovers nothing new.
+        rescan = seq.recoverdilithiumkeys(0, 9)
+        assert not any(entry["recovered"] for entry in rescan)
+        # Scanned-ahead keys are already materialized, so the next new address
+        # skips past them rather than reusing one.
+        assert seq.getnewdilithiumaddress()["address"] not in {e["address"] for e in scan}
+        # The internal (change) sequence is distinct from the external one.
+        internal_scan = seq.recoverdilithiumkeys(0, 9, True)
+        assert not (
+            {entry["address"] for entry in internal_scan}
+            & {entry["address"] for entry in scan}
+        )
+        assert_raises_rpc_error(-8, "Invalid index range", seq.recoverdilithiumkeys, 5, 4)
+        assert_raises_rpc_error(-8, "Index range too large", seq.recoverdilithiumkeys, 0, 20000)
+        # A recovered address is spendable: fund it and send the coins onward.
+        self.generate(node, 1)
+        fund_txid = repro.sendtoaddress(scan[3]["address"], Decimal("1.0"))
+        self.generate(node, 1)
+        assert fund_txid in {u["txid"] for u in seq.listunspent()}
+        spend_txid = seq.sendtoaddress(repro.getnewaddress(), Decimal("0.5"))
+        assert spend_txid in node.getrawmempool()
+        self.generate(node, 1)
+        assert_equal(seq.gettransaction(spend_txid)["confirmations"], 1)
+
+        # After a reload every Dilithium key record lands in an arbitrary
+        # manager, so generation must check the whole wallet before storing:
+        # a plaintext wallet otherwise errors on every already-materialized
+        # index, an encrypted one silently re-issues an address.
+        self.log.info("Dilithium sequence skips materialized keys after restart")
+        issued = {e["address"] for e in seq.recoverdilithiumkeys(0, 14)}
+        issued |= {e["address"] for e in seq.recoverdilithiumkeys(0, 14, True)}
+        self.restart_node(0)
+        node = self.nodes[0]
+        node.loadwallet("seq")
+        seq = node.get_wallet_rpc("seq")
+        assert seq.getnewdilithiumaddress()["address"] not in issued
+        # Both sequences stay intact: rescans recover nothing new and the
+        # next index extends the scan.
+        assert not any(e["recovered"] for e in seq.recoverdilithiumkeys(0, 14))
+        assert not any(e["recovered"] for e in seq.recoverdilithiumkeys(0, 14, True))
+        assert_equal(seq.recoverdilithiumkeys(15, 15, True)[0]["recovered"], True)
+
+        self.log.info("Dilithium sequence skips materialized keys after encryption")
+        node.createwallet(wallet_name="enc", descriptors=True)
+        enc = node.get_wallet_rpc("enc")
+        enc_first = enc.getnewdilithiumaddress()["address"]
+        enc.encryptwallet("pass")
+        enc.walletpassphrase("pass", 600)
+        # Encrypting rotates the active descriptors to a new seed, so the
+        # active Dilithium sequence starts over. The pre-encryption key is
+        # already materialized in the wallet and needs no recovery.
+        enc_scan = enc.recoverdilithiumkeys(0, 4)
+        assert all(e["recovered"] for e in enc_scan)
+        assert enc_first not in {e["address"] for e in enc_scan}
+        assert enc.getaddressinfo(enc_first)["ismine"]
+        # Reload, then generate: the encrypted store path overwrites instead
+        # of failing, so a missed skip would hand out a duplicate address.
+        node.unloadwallet("enc")
+        node.loadwallet("enc")
+        enc = node.get_wallet_rpc("enc")
+        enc.walletpassphrase("pass", 600)
+        assert enc.getnewdilithiumaddress()["address"] not in {e["address"] for e in enc_scan}
+
+        # Recovered P2MR scripts belong to no descriptor; the block-filter
+        # fast rescan must still see them or rescanblockchain silently
+        # misses the blocks that pay them.
+        self.log.info("Recovered P2MR scripts are found by block-filter rescans")
+        self.restart_node(0, ["-blockfilterindex=1"])
+        node = self.nodes[0]
+        self.wait_until(lambda: node.getindexinfo()["basic block filter index"]["synced"])
+        node.loadwallet("seq")
+        node.loadwallet("funding")
+        seq = node.get_wallet_rpc("seq")
+        funding = node.get_wallet_rpc("funding")
+        target = seq.recoverdilithiumkeys(20, 20)[0]["address"]
+        node.unloadwallet("seq")
+        filter_txid = funding.sendtoaddress(target, Decimal("2.0"))
+        self.generate(node, 1)
+        # The rescan consults the filter only for blocks the index has
+        # covered; wait so the funding block is filtered, not fallback-read.
+        self.wait_until(lambda: node.getindexinfo()["basic block filter index"]["synced"])
+        node.loadwallet("seq")
+        seq = node.get_wallet_rpc("seq")
+        seq.rescanblockchain(node.getblockcount() - 2)
+        assert filter_txid in {u["txid"] for u in seq.listunspent()}
+
 
 if __name__ == "__main__":
     WalletDilithiumSendTest().main()

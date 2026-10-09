@@ -25,6 +25,8 @@
 
 #include <univalue.h>
 
+#include <limits>
+
 namespace wallet {
 
 RPCHelpMan getnewdilithiumaddress()
@@ -142,6 +144,102 @@ RPCHelpMan importdilithiumkey()
             UniValue result(UniValue::VOBJ);
             result.pushKV("address", created->address);
             result.pushKV("p2mr_id", created->id);
+            return result;
+        },
+    };
+}
+
+RPCHelpMan recoverdilithiumkeys()
+{
+    return RPCHelpMan{"recoverdilithiumkeys",
+        "\nDerive the Dilithium keys at the given index range of this wallet's deterministic\n"
+        "Dilithium key sequence and add any that are missing, each with its single-leaf\n"
+        "P2MR receive destination. Older wallets shared the sequence counter with ECDSA\n"
+        "address derivation, which left Dilithium keys at scattered indexes; this scans a\n"
+        "past or ahead range and recovers them. Descriptor wallets only.\n"
+        "Run rescanblockchain afterwards to find historical transactions to the recovered\n"
+        "addresses.\n",
+        {
+            {"start", RPCArg::Type::NUM, RPCArg::Optional::NO, "First sequence index to derive (inclusive)"},
+            {"stop", RPCArg::Type::NUM, RPCArg::Optional::NO, "Last sequence index to derive (inclusive)"},
+            {"internal", RPCArg::Type::BOOL, RPCArg::Default{false}, "Scan the internal (change) manager's sequence instead of the external one"},
+        },
+        RPCResult{
+            RPCResult::Type::ARR, "", "",
+            {
+                {RPCResult::Type::OBJ, "", "",
+                {
+                    {RPCResult::Type::NUM, "index", "Sequence index"},
+                    {RPCResult::Type::STR, "address", "The P2MR address for the key at this index"},
+                    {RPCResult::Type::STR, "p2mr_id", "Wallet-local P2MR metadata id"},
+                    {RPCResult::Type::BOOL, "recovered", "True if the key was missing and has been added, false if the wallet already had it"},
+                }},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("recoverdilithiumkeys", "0 49")
+            + HelpExampleRpc("recoverdilithiumkeys", "0, 49, true")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
+            if (!wallet) return UniValue::VNULL;
+
+            LOCK(wallet->cs_wallet);
+            EnsureWalletIsUnlocked(*wallet);
+
+            if (!wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "recoverdilithiumkeys requires a descriptor wallet");
+            }
+
+            const int64_t start{request.params[0].getInt<int64_t>()};
+            const int64_t stop{request.params[1].getInt<int64_t>()};
+            const bool internal{request.params[2].isNull() ? false : request.params[2].get_bool()};
+
+            constexpr int64_t MAX_RANGE{10000};
+            if (start < 0 || stop < start || stop > std::numeric_limits<int32_t>::max()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid index range");
+            }
+            if (stop - start + 1 > MAX_RANGE) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER,
+                    strprintf("Index range too large (at most %d indexes per call)", MAX_RANGE));
+            }
+
+            auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(
+                wallet->GetScriptPubKeyMan(OutputType::LEGACY, internal));
+            if (!desc) {
+                throw JSONRPCError(RPC_WALLET_ERROR,
+                    internal ? "No internal descriptor manager available for Dilithium key derivation"
+                             : "No descriptor manager available for Dilithium key derivation");
+            }
+
+            UniValue result(UniValue::VARR);
+            for (int64_t index = start; index <= stop; ++index) {
+                auto key_res = desc->GetDilithiumKeyForIndex(static_cast<int32_t>(index));
+                if (!key_res) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(key_res).original);
+                }
+                const CKeyID keyid{key_res->GetPubKey().GetID()};
+                const bool known{WalletHaveDilithiumKey(*wallet, keyid)};
+
+                // Store the key (no-op when present) and create or reuse the
+                // canonical single-leaf P2MR tree and metadata, so the wallet
+                // matches these scripts from now on. Change keys stay out of
+                // the address book, like GetReservedDestination: an entry
+                // would make historical change look like incoming payments
+                // and break ScriptIsChange.
+                auto created = RecoverDilithiumKeyAsP2MR(*wallet, *desc, key_res.value(), /*add_to_address_book=*/!internal);
+                if (!created) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+                }
+
+                UniValue entry(UniValue::VOBJ);
+                entry.pushKV("index", index);
+                entry.pushKV("address", created->address);
+                entry.pushKV("p2mr_id", created->id);
+                entry.pushKV("recovered", !known);
+                result.push_back(entry);
+            }
             return result;
         },
     };
