@@ -81,6 +81,13 @@ enum WalletFlags : uint64_t {
     //! record type refuse to open the wallet instead of silently hiding
     //! the P2MR balance they cannot see.
     WALLET_FLAG_P2MR_METADATA = (1ULL << 36),
+
+    //! The wallet refuses to mint any destination other than P2MR, including
+    //! change: that covers every ECDSA type and the deprecated
+    //! dilithium-legacy base58 form (Quarks F2.4). Upper section on purpose:
+    //! software that does not know the flag must not open the wallet and
+    //! start handing out ECDSA addresses.
+    WALLET_FLAG_QUANTUM_ONLY = (1ULL << 37),
 };
 
 //! Get the path of the wallet directory.

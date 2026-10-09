@@ -2308,11 +2308,20 @@ SigningResult CWallet::SignMessage(const std::string& message, const PKHash& pkh
     return SigningResult::PRIVATE_KEY_NOT_AVAILABLE;
 }
 
-OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& change_type, const std::vector<CRecipient>& vecSend) const
+OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& change_type, const std::vector<CRecipient>& vecSend, const CCoinControl* coin_control) const
 {
-    // If -changetype is specified, always use that change type.
+    AssertLockHeld(cs_wallet);
+
+    // If -changetype is specified, always use that change type. When the
+    // wallet is quantum-only and the explicit type is classical, the reserve
+    // step below refuses to mint it, so the send fails loudly instead of the
+    // preference being silently overridden.
     if (change_type) {
         return *change_type;
+    }
+
+    if (IsWalletFlagSet(WALLET_FLAG_QUANTUM_ONLY)) {
+        return OutputType::P2MR;
     }
 
     bool any_tr{false};
@@ -2333,6 +2342,30 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
         } else if (std::get_if<WitnessV2P2MR>(&recipient.dest) ||
                    std::get_if<DilithiumPKHash>(&recipient.dest)) {
             any_quantum_safe = true;
+        }
+    }
+
+    // Change follows the inputs too (Quarks F2.4): spending a P2MR UTXO to a
+    // classical recipient must not move the remainder of the quantum-safe
+    // balance onto an ECDSA script. Only preselected inputs can be inspected
+    // here; automatic selection has not run yet.
+    if (coin_control && !any_quantum_safe) {
+        for (const COutPoint& outpoint : coin_control->ListSelected()) {
+            CTxOut prevout;
+            if (const CWalletTx* wtx = GetWalletTx(outpoint.hash); wtx && outpoint.n < wtx->tx->vout.size()) {
+                prevout = wtx->tx->vout[outpoint.n];
+            } else if (auto ext = coin_control->GetExternalOutput(outpoint)) {
+                prevout = *ext;
+            } else {
+                continue;
+            }
+            CTxDestination input_dest;
+            if (ExtractDestination(prevout.scriptPubKey, input_dest) &&
+                (std::holds_alternative<WitnessV2P2MR>(input_dest) ||
+                 std::holds_alternative<DilithiumPKHash>(input_dest))) {
+                any_quantum_safe = true;
+                break;
+            }
         }
     }
 
@@ -2592,6 +2625,9 @@ util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, c
         if (!created) return util::Error{util::ErrorString(created)};
         return created->dest;
     }
+    if (IsWalletFlagSet(WALLET_FLAG_QUANTUM_ONLY)) {
+        return util::Error{strprintf(_("This wallet is quantum-only and will not create a %s address. Use address type \"p2mr\"."), FormatOutputType(type))};
+    }
     // No spk manager is registered under the Dilithium types; the Dilithium
     // destinations are minted by the manager of the matching classical type
     // (see rpc/dilithium.cpp). Look that one up, so a refusal comes back as the
@@ -2708,6 +2744,10 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
             fInternal = internal;
         }
         return address;
+    }
+
+    if (pwallet->IsWalletFlagSet(WALLET_FLAG_QUANTUM_ONLY)) {
+        return util::Error{strprintf(_("This wallet is quantum-only and will not create a %s address. Use address type \"p2mr\"."), FormatOutputType(type))};
     }
 
     m_spk_man = pwallet->GetScriptPubKeyMan(type, internal);

@@ -1051,7 +1051,28 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     coin_selection_params.m_long_term_feerate = wallet.m_consolidate_feerate;
 
     CAmount recipients_sum = 0;
-    const OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend);
+    OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend, &coin_control);
+    // A locked wallet cannot derive a Dilithium change key, and funding
+    // (fundrawtransaction, walletcreatefundedpsbt) never required unlocking.
+    // When P2MR change came from the automatic rule (a quantum-safe recipient
+    // or preselected quantum-safe inputs, nothing explicit), fall back to the
+    // classical choice and say so, instead of failing the funding. Explicit
+    // requests (-changetype, change_type, quantum_only) still fail loudly.
+    if (change_type == OutputType::P2MR && wallet.IsLocked() &&
+        !coin_control.m_change_type && !wallet.m_default_change_type &&
+        !wallet.IsWalletFlagSet(WALLET_FLAG_QUANTUM_ONLY)) {
+        std::vector<CRecipient> classical_recipients;
+        classical_recipients.reserve(vecSend.size());
+        for (const auto& recipient : vecSend) {
+            if (std::holds_alternative<WitnessV2P2MR>(recipient.dest) ||
+                std::holds_alternative<DilithiumPKHash>(recipient.dest)) {
+                continue;
+            }
+            classical_recipients.push_back(recipient);
+        }
+        change_type = wallet.TransactionChangeType(std::nullopt, classical_recipients);
+        wallet.WalletLogPrintf("Wallet is locked; quantum-safe change needs an unlocked wallet. Using classical change. Unlock the wallet or pass change_type to control this.\n");
+    }
     ReserveDestination reservedest(&wallet, change_type);
     unsigned int outputs_to_subtract_fee_from = 0; // The number of outputs which we are subtracting the fee from
     for (const auto& recipient : vecSend) {
@@ -1063,8 +1084,12 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         }
     }
 
-    // Create change script that will be used if we need change
+    // Create change script that will be used if we need change.
+    // reserved_script is the classical keypool reservation, when we made one.
+    // The P2MR swap below replaces scriptChange; that reservation must be
+    // returned rather than marked used.
     CScript scriptChange;
+    CScript reserved_script;
     bilingual_str error; // possible error str
 
     // coin control: send change to custom address
@@ -1087,6 +1112,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         } else {
             dest = *op_dest;
             scriptChange = GetScriptForDestination(dest);
+            reserved_script = scriptChange;
         }
         // A valid destination implies a change script (and
         // vice-versa). An empty change script will abort later, if the
@@ -1191,7 +1217,82 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     const SelectionResult& result = *select_coins_res;
     TRACE5(coin_selection, selected_coins, wallet.GetName().c_str(), GetAlgorithmName(result.GetAlgo()).c_str(), result.GetTarget(), result.GetWaste(), result.GetSelectedValue());
 
-    const CAmount change_amount = result.GetChange(coin_selection_params.min_viable_change, coin_selection_params.m_change_fee);
+    CAmount change_amount = result.GetChange(coin_selection_params.min_viable_change, coin_selection_params.m_change_fee);
+
+    // The change type was fixed before coin selection ran, so the
+    // input-following rule (Quarks F2.4) could only see preselected inputs.
+    // If selection added a P2MR input on its own and nothing pinned the change
+    // (no -changetype, no custom change address), swap the classical change
+    // script for a fresh P2MR one now. The P2MR script can be larger than the
+    // classical one the fee math assumed, so the size-delta fee comes out of
+    // the change; the overpayment branch below returns any overshoot.
+    CTxDestination pinned_change_dest;
+    const bool change_already_p2mr = ExtractDestination(scriptChange, pinned_change_dest) &&
+                                     std::holds_alternative<WitnessV2P2MR>(pinned_change_dest);
+    if (change_amount > 0 && change_type != OutputType::P2MR &&
+        !change_already_p2mr &&
+        !coin_control.m_change_type &&
+        !wallet.m_default_change_type &&
+        (std::get_if<CNoDestination>(&coin_control.destChange) || coin_control.m_change_reused_from_first_attempt) &&
+        !wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) &&
+        !wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
+        const bool selected_p2mr = std::any_of(result.GetInputSet().begin(), result.GetInputSet().end(),
+            [](const std::shared_ptr<COutput>& coin) {
+                CTxDestination input_dest;
+                return ExtractDestination(coin->txout.scriptPubKey, input_dest) &&
+                       (std::holds_alternative<WitnessV2P2MR>(input_dest) ||
+                        std::holds_alternative<DilithiumPKHash>(input_dest));
+            });
+        if (selected_p2mr && wallet.IsLocked()) {
+            // Deriving a Dilithium change key needs the unlocked wallet, and
+            // funding paths (fundrawtransaction, walletcreatefundedpsbt)
+            // never required unlocking. Keep the change classical and say
+            // so, instead of failing the funding.
+            wallet.WalletLogPrintf("Wallet is locked; quantum-safe inputs get classical change. Unlock the wallet or pass change_type to control this.\n");
+        } else if (selected_p2mr) {
+            // Viability must be judged against the P2MR output, not the
+            // classical prototype the selection used: P2MR dust is higher
+            // and the future spend costs more. Size and dust do not depend
+            // on the key, so check them before minting one.
+            const CTxOut p2mr_prototype{0, GetScriptForDestination(WitnessV2P2MR{uint256::ONE})};
+            const int size_delta = (int)::GetSerializeSize(p2mr_prototype) - (int)coin_selection_params.change_output_size;
+            // One extra satoshi against GetFee rounding; the overpayment
+            // adjustment below hands it back to the change output. Under
+            // subtract-fee-from-outputs the recipients pay all fees, so
+            // nothing is taken from the change.
+            const CAmount fee_delta = (size_delta > 0 && !coin_selection_params.m_subtract_fee_outputs)
+                ? coin_selection_params.m_effective_feerate.GetFee(size_delta) + 1 : 0;
+            const CAmount p2mr_dust = GetDustThreshold(p2mr_prototype, coin_selection_params.m_discard_feerate);
+            if (change_amount - fee_delta < p2mr_dust) {
+                // Too small to live on a P2MR script. Dropping it to fees
+                // loses less than leaving a classical crumb of the
+                // quantum-safe balance behind.
+                change_amount = 0;
+            } else {
+                ReserveDestination p2mr_reservedest(&wallet, OutputType::P2MR);
+                auto p2mr_dest = p2mr_reservedest.GetReservedDestination(true);
+                if (!p2mr_dest) {
+                    return util::Error{_("Transaction needs a change address, but we can't generate it.") + Untranslated(" ") + util::ErrorString(p2mr_dest)};
+                }
+                const CScript p2mr_script = GetScriptForDestination(*p2mr_dest);
+                // At least 1 sat more than the future cost of spending it at
+                // the discard feerate, mirroring min_viable_change.
+                const int p2mr_spend_size{CalculateMaximumSignedInputSize(CTxOut(0, p2mr_script), &wallet, /*coin_control=*/nullptr)};
+                const CAmount p2mr_spend_fee = coin_selection_params.m_discard_feerate.GetFee(
+                    p2mr_spend_size > 0 ? (size_t)p2mr_spend_size : coin_selection_params.change_spend_size);
+                const CAmount p2mr_min_viable = std::max(p2mr_spend_fee + 1, p2mr_dust);
+                if (change_amount - fee_delta >= p2mr_min_viable) {
+                    scriptChange = p2mr_script;
+                    change_amount -= fee_delta;
+                } else {
+                    // Sub-viable for P2MR: drop to fees rather than leave it
+                    // classical. The minted key stays internal and unused.
+                    change_amount = 0;
+                }
+            }
+        }
+    }
+
     if (change_amount > 0) {
         CTxOut newTxOut(change_amount, scriptChange);
         if (nChangePosInOut == -1) {
@@ -1324,8 +1425,15 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     }
 
     // Before we return success, we assume any change key will be used to prevent
-    // accidental re-use.
-    reservedest.KeepDestination();
+    // accidental re-use. A quantum-safe swap publishes a different script, so
+    // the classical reservation was never used: handing it back keeps that
+    // keypool index available. Coin control and a failed reservation leave
+    // reserved_script empty, and KeepDestination is a no-op there.
+    if (reserved_script.empty() || scriptChange == reserved_script) {
+        reservedest.KeepDestination();
+    } else {
+        reservedest.ReturnDestination();
+    }
 
     wallet.WalletLogPrintf("Fee Calculation: Fee:%d Bytes:%u Tgt:%d (requested %d) Reason:\"%s\" Decay %.5f: Estimation: (%g - %g) %.2f%% %.1f/(%.1f %d mem %.1f out) Fail: (%g - %g) %.2f%% %.1f/(%.1f %d mem %.1f out)\n",
               current_fee, nBytes, feeCalc.returnedTarget, feeCalc.desiredTarget, StringForFeeReason(feeCalc.reason), feeCalc.est.decay,
@@ -1370,6 +1478,11 @@ util::Result<CreatedTransactionResult> CreateTransaction(
         const int ungrouped_change_pos = txr_ungrouped.change_pos;
         if (ungrouped_change_pos != -1) {
             ExtractDestination(txr_ungrouped.tx->vout[ungrouped_change_pos].scriptPubKey, tmp_cc.destChange);
+            // This pin comes from the wallet, not the user. The grouped pass
+            // may select different inputs, so if it picks quantum-safe ones
+            // the input-following change swap must still be allowed to replace
+            // a classical reused change script (Quarks F2.4).
+            tmp_cc.m_change_reused_from_first_attempt = std::get_if<CNoDestination>(&coin_control.destChange) != nullptr;
         }
 
         auto txr_grouped = CreateTransactionInternal(wallet, vecSend, change_pos, tmp_cc, sign);

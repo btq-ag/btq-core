@@ -188,5 +188,62 @@ BOOST_FIXTURE_TEST_CASE(dilithium_send_returns_change_to_p2mr, TestChain100Setup
     BOOST_CHECK(WITH_LOCK(wallet->cs_wallet, return wallet->IsMine(change_out.scriptPubKey)) == ISMINE_SPENDABLE);
 }
 
+/**
+ * Quarks F2.4: change follows the inputs. Spending a P2MR UTXO to a classical
+ * recipient must not move the remainder onto an ECDSA script.
+ */
+BOOST_AUTO_TEST_CASE(p2mr_inputs_force_quantum_safe_change)
+{
+    auto wallet = CreateDescriptorWallet(m_node.chain.get());
+    LOCK(wallet->cs_wallet);
+
+    CKey key;
+    key.MakeNewKey(/*fCompressed=*/true);
+    const std::vector<CRecipient> classical{Pay(WitnessV1Taproot{XOnlyPubKey(uint256::ONE)})};
+
+    const COutPoint p2mr_outpoint{uint256::ONE, 0};
+    CCoinControl with_p2mr_input;
+    with_p2mr_input.SelectExternal(p2mr_outpoint, CTxOut{COIN, GetScriptForDestination(ForeignP2MR())});
+    BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, classical, &with_p2mr_input) == OutputType::P2MR);
+
+    // A classical input changes nothing.
+    CCoinControl with_classical_input;
+    with_classical_input.SelectExternal(p2mr_outpoint, CTxOut{COIN, GetScriptForDestination(WitnessV0KeyHash(key.GetPubKey()))});
+    BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, classical, &with_classical_input) == OutputType::BECH32M);
+
+    // An explicit change type still wins over the input rule.
+    BOOST_CHECK(wallet->TransactionChangeType(OutputType::BECH32M, classical, &with_p2mr_input) == OutputType::BECH32M);
+
+    // Legacy Dilithium P2PKH inputs are quantum-safe too, matching the
+    // recipient-side rule.
+    CCoinControl with_dilithium_pkh_input;
+    with_dilithium_pkh_input.SelectExternal(p2mr_outpoint, CTxOut{COIN, GetScriptForDestination(DilithiumPKHash{})});
+    BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, classical, &with_dilithium_pkh_input) == OutputType::P2MR);
+}
+
+/** Quarks F2.4: a quantum-only wallet refuses to mint ECDSA destinations. */
+BOOST_AUTO_TEST_CASE(quantum_only_wallet_refuses_ecdsa_destinations)
+{
+    auto wallet = CreateDescriptorWallet(m_node.chain.get());
+    LOCK(wallet->cs_wallet);
+    wallet->SetWalletFlag(WALLET_FLAG_QUANTUM_ONLY);
+
+    // Change defaults to P2MR regardless of recipients.
+    BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, {Pay(WitnessV1Taproot{XOnlyPubKey(uint256::ONE)})}) == OutputType::P2MR);
+
+    // Receive and change minting of classical types is refused...
+    BOOST_CHECK(!wallet->GetNewDestination(OutputType::BECH32, ""));
+    BOOST_CHECK(!wallet->GetNewDestination(OutputType::LEGACY, ""));
+    BOOST_CHECK(!wallet->GetNewChangeDestination(OutputType::BECH32M));
+
+    // ...while P2MR still works, so the wallet stays usable.
+    BOOST_CHECK(wallet->GetNewDestination(OutputType::P2MR, ""));
+    BOOST_CHECK(wallet->GetNewChangeDestination(OutputType::P2MR));
+
+    // Dropping the flag restores classical minting.
+    wallet->UnsetWalletFlag(WALLET_FLAG_QUANTUM_ONLY);
+    BOOST_CHECK(wallet->GetNewDestination(OutputType::BECH32, ""));
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 } // namespace wallet

@@ -24,6 +24,7 @@
 #include <util/time.h>
 #include <util/translation.h>
 #include <wallet/coincontrol.h>
+#include <wallet/fees.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/spend.h>
 #include <wallet/wallet.h>
@@ -41,7 +42,6 @@ bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid)
 
 namespace {
 constexpr const char* P2MR_STATE_CREATED{"created"};
-constexpr CAmount DEFAULT_P2MR_DUST_THRESHOLD{546};
 
 struct P2MRKeyRequirements {
     std::set<CKeyID> dilithium_key_ids;
@@ -923,8 +923,24 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     }
     out.tx.vout.emplace_back(send_amount, GetScriptForDestination(to_dest));
 
-    if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
-        auto change_dest = wallet.GetNewChangeDestination(OutputType::BECH32);
+    // Quantum change must clear the same bar as the automatic swap in
+    // CreateTransaction: the P2MR dust threshold plus what spending the
+    // change later will cost at the discard feerate. The old flat 546-sat
+    // gate minted change that cost more to spend than it was worth. The
+    // spent entry's own script stands in for the future change output: the
+    // dust threshold only depends on the 34-byte scriptPubKey, and a fresh
+    // single-leaf change spend costs at most what this entry's spend does.
+    const CTxOut change_prototype{0, target_spk};
+    const CFeeRate discard_feerate = GetDiscardRate(wallet);
+    CAmount min_viable_change = GetDustThreshold(change_prototype, discard_feerate);
+    const int64_t change_spend_size = CalculateMaximumSignedInputSize(change_prototype, &wallet, /*coin_control=*/nullptr);
+    if (change_spend_size > 0) {
+        min_viable_change = std::max(min_viable_change, discard_feerate.GetFee(change_spend_size) + 1);
+    }
+    if (change > min_viable_change) {
+        // Change from a P2MR spend stays quantum-safe (Quarks F2.4); a bech32
+        // change output would move the remainder onto an ECDSA script.
+        auto change_dest = wallet.GetNewChangeDestination(OutputType::P2MR);
         if (!change_dest) return util::Error{util::ErrorString(change_dest)};
         out.tx.vout.emplace_back(change, GetScriptForDestination(*change_dest));
         out.has_change = true;
