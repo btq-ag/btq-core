@@ -251,9 +251,8 @@ bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned i
     }
 
     if ((flags & (SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S | SCRIPT_VERIFY_STRICTENC)) != 0) {
-        if ((flags & SCRIPT_VERIFY_STRICTENC) != 0 && vchSig.size() != 0 && (vchSig.size() < 9 || vchSig.size() > 73)) {
-            return set_error(serror, SCRIPT_ERR_SIG_DER);
-        }
+        // Empty signatures already returned. IsValidSignatureEncoding covers
+        // the 9..73 length window and the DER shape.
         if (!IsValidSignatureEncoding(vchSig)) {
             return set_error(serror, SCRIPT_ERR_SIG_DER);
         }
