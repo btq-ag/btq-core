@@ -1,8 +1,9 @@
 # Functional tests that fail on master today. Tracked in #104.
 #
-# The "functional tests" CI job runs the whole suite. It fails only when a
-# test fails that is not on this list, so a PR cannot break a test that
-# passes today.
+# The "functional tests" CI job runs BASE_SCRIPTS and the "extended
+# functional tests" job runs BASE_SCRIPTS plus EXTENDED_SCRIPTS. Both use
+# this list and fail only when a test fails that is not on it, so a PR
+# cannot break a test that passes today.
 #
 # One test per line, written as test_runner.py prints it, with any
 # arguments (for example "wallet_basic.py --descriptors").

@@ -1,12 +1,40 @@
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Round-trip the two pinned historical releases through the current
+# chainstate, txindex and wallets (feature_release_compatibility.py). It
+# builds the current btqd and both releases from source, so it runs on pushes
+# to master, nightly, on manual dispatch, and on pull requests labelled
+# ci:extended, not on every pull request.
+#
+# Adding another label to a pull request that has ci:extended posts a skipped
+# result for this check on the same commit, which hides the earlier result in
+# the pull request's checks list. Re-run the earlier run from the Actions tab
+# to show it again.
+
 name: release-compatibility
 
 on:
   push:
     branches: [master]
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  # Adding any other label must not cancel a running check.
+  group: release-compatibility-${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name != 'ci:extended')) && github.run_id || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   historical-releases:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (contains(github.event.pull_request.labels.*.name, 'ci:extended') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ci:extended'))
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
