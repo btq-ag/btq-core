@@ -75,6 +75,7 @@ public:
     /** Create a new P2MR address. Returns descriptive error on failure. */
     bool createVault(const std::vector<interfaces::WalletP2MRTreeLeaf>& leaves,
                      const QString& label,
+                     bool allow_trivial_leaves,
                      interfaces::WalletP2MRCreated& out,
                      QString& error);
 
