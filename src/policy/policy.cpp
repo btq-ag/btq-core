@@ -50,7 +50,7 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     // public key + an ECDSA signature). For Segwit v1 Taproot outputs the minimum
     // satisfaction is lower (a single BIP340 signature) but this computation was
     // kept to not further reduce the dust level.
-    // See discussion in https://github.com/btq/btq/pull/22779 for details.
+    // See discussion in https://github.com/bitcoin/bitcoin/pull/22779 for details.
     if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
         // sum the sizes of the parts of a transaction input
         // with witness discount applied to the script size (1/WITNESS_SCALE_FACTOR weight).
@@ -302,6 +302,9 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
                 const auto& control_block = SpanPopBack(stack);
                 SpanPopBack(stack);
                 if (control_block.empty()) return false;
+                // BIP360 fixes this bit to 1. Consensus already rejects the
+                // other value; don't relay a witness that can only fail there.
+                if ((control_block[0] & 1) != 1) return false;
                 if ((control_block[0] & TAPROOT_LEAF_MASK) == TAPROOT_LEAF_TAPSCRIPT) {
                     for (const auto& item : stack) {
                         if (item.size() > MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE) return false;
