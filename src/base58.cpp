@@ -5,6 +5,7 @@
 #include <base58.h>
 
 #include <hash.h>
+#include <support/cleanse.h>
 #include <uint256.h>
 #include <util/strencodings.h>
 #include <util/string.h>
@@ -13,6 +14,15 @@
 #include <string.h>
 
 #include <limits>
+
+// Wipe a temporary buffer that may have held key material.
+struct CleanseOnExit {
+    std::vector<unsigned char>& buf;
+    ~CleanseOnExit()
+    {
+        if (!buf.empty()) memory_cleanse(buf.data(), buf.size());
+    }
+};
 
 /** All alphanumeric characters except for "0", "I", "O", and "l" */
 static const char* pszBase58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -51,6 +61,7 @@ static const int8_t mapBase58[256] = {
     // Allocate enough space in big-endian base256 representation.
     int size = strlen(psz) * 733 /1000 + 1; // log(58) / log(256), rounded up.
     std::vector<unsigned char> b256(size);
+    CleanseOnExit wipe_b256{b256};
     // Process the characters.
     static_assert(std::size(mapBase58) == 256, "mapBase58.size() should be 256"); // guarantee not out of range
     while (*psz && !IsSpace(*psz)) {
@@ -96,6 +107,7 @@ std::string EncodeBase58(Span<const unsigned char> input)
     // Allocate enough space in big-endian base58 representation.
     int size = input.size() * 138 / 100 + 1; // log(256) / log(58), rounded up.
     std::vector<unsigned char> b58(size);
+    CleanseOnExit wipe_b58{b58};
     // Process the bytes.
     while (input.size() > 0) {
         int carry = input[0];
@@ -136,24 +148,33 @@ std::string EncodeBase58Check(Span<const unsigned char> input)
 {
     // add 4-byte hash check to the end
     std::vector<unsigned char> vch(input.begin(), input.end());
+    CleanseOnExit wipe_vch{vch};
     uint256 hash = Hash(vch);
     vch.insert(vch.end(), (unsigned char*)&hash, (unsigned char*)&hash + 4);
-    return EncodeBase58(vch);
+    std::string ret = EncodeBase58(vch);
+    memory_cleanse(hash.begin(), hash.size());
+    return ret;
 }
 
 [[nodiscard]] static bool DecodeBase58Check(const char* psz, std::vector<unsigned char>& vchRet, int max_ret_len)
 {
     if (!DecodeBase58(psz, vchRet, max_ret_len > std::numeric_limits<int>::max() - 4 ? std::numeric_limits<int>::max() : max_ret_len + 4) ||
         (vchRet.size() < 4)) {
+        if (!vchRet.empty()) memory_cleanse(vchRet.data(), vchRet.size());
         vchRet.clear();
         return false;
     }
     // re-calculate the checksum, ensure it matches the included 4-byte checksum
     uint256 hash = Hash(Span{vchRet}.first(vchRet.size() - 4));
     if (memcmp(&hash, &vchRet[vchRet.size() - 4], 4) != 0) {
+        memory_cleanse(hash.begin(), hash.size());
+        memory_cleanse(vchRet.data(), vchRet.size());
         vchRet.clear();
         return false;
     }
+    memory_cleanse(hash.begin(), hash.size());
+    // Drop the checksum without leaving it in the vector's spare capacity.
+    memory_cleanse(vchRet.data() + vchRet.size() - 4, 4);
     vchRet.resize(vchRet.size() - 4);
     return true;
 }
