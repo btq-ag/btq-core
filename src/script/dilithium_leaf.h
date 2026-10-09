@@ -6,6 +6,7 @@
 #define BTQ_SCRIPT_DILITHIUM_LEAF_H
 
 #include <crypto/dilithium_key.h>
+#include <pubkey.h>
 #include <script/script.h>
 
 #include <cstddef>
@@ -27,6 +28,10 @@ enum class P2MRLeafTemplate {
     CHECKMULTISIGDILITHIUM,
     //! Accumulator m-of-n, see GetScriptForDilithiumThreshold
     THRESHOLD_ACCUMULATOR,
+    //! <dilithium_pubkey> OP_CHECKSIGDILITHIUMVERIFY <32-byte xonly> OP_CHECKSIG
+    //! Both signatures are required (Quarks F2.2). Opt-in: default receive
+    //! stays Dilithium-only.
+    HYBRID_DILITHIUM_SCHNORR,
     UNKNOWN,
 };
 
@@ -37,6 +42,8 @@ struct P2MRDilithiumLeafPolicy {
     int m{0};
     //! Public keys in script order; index 0 is evaluated first.
     std::vector<CDilithiumPubKey> pubkeys;
+    //! BIP340 keys the leaf also requires (HYBRID_DILITHIUM_SCHNORR only).
+    std::vector<XOnlyPubKey> schnorr_pubkeys;
 
     int n() const { return static_cast<int>(pubkeys.size()); }
     bool IsValid() const { return type != P2MRLeafTemplate::UNKNOWN; }
@@ -56,6 +63,16 @@ struct P2MRDilithiumLeafPolicy {
  */
 CScript GetScriptForDilithiumThreshold(int m, const std::vector<CDilithiumPubKey>& pubkeys);
 
+/**
+ * Build the opt-in hybrid leaf (Quarks F2.2):
+ *
+ *   <dilithium_pubkey> OP_CHECKSIGDILITHIUMVERIFY <32-byte xonly> OP_CHECKSIG
+ *
+ * A spend needs a valid Dilithium signature AND a valid BIP340 signature, so
+ * the output stays safe while either scheme remains unbroken.
+ */
+CScript GetScriptForHybridDilithiumLeaf(const CDilithiumPubKey& dilithium_pubkey, const XOnlyPubKey& schnorr_pubkey);
+
 /** Classify a leaf script. Returns type UNKNOWN when nothing matches. */
 P2MRDilithiumLeafPolicy ParseP2MRDilithiumLeaf(const CScript& script);
 
@@ -72,10 +89,14 @@ std::optional<size_t> FindPolicyKeyIndex(const P2MRDilithiumLeafPolicy& policy, 
  * key did not sign. On success `stack_out` holds the elements that go below the
  * leaf script and control block, in push order (stack bottom first).
  *
+ * `schnorr_sigs_by_key_index` is parallel to policy.schnorr_pubkeys and only
+ * consulted for HYBRID_DILITHIUM_SCHNORR, which needs both signatures.
+ *
  * Returns false when the available signatures cannot satisfy the policy.
  */
 bool BuildDilithiumLeafWitness(const P2MRDilithiumLeafPolicy& policy,
                                const std::vector<std::vector<unsigned char>>& sigs_by_key_index,
-                               std::vector<std::vector<unsigned char>>& stack_out);
+                               std::vector<std::vector<unsigned char>>& stack_out,
+                               const std::vector<std::vector<unsigned char>>& schnorr_sigs_by_key_index = {});
 
 #endif // BTQ_SCRIPT_DILITHIUM_LEAF_H

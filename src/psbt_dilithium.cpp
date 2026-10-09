@@ -83,6 +83,19 @@ P2MRInputInfo InspectP2MRInput(const PartiallySignedTransaction& psbt, unsigned 
     for (const auto& [keyid_leaf, _] : input.m_p2mr_dilithium_script_sigs) {
         sig_leaf_hashes.insert(keyid_leaf.second);
     }
+    // A hybrid leaf whose schnorr half was signed first pins the leaf choice
+    // just as well as a Dilithium signature does. A tap signature for a leaf
+    // this input does not contain must not: it would hide the real leaf and
+    // report unknown_leaf.
+    std::set<uint256> p2mr_leaf_hashes;
+    for (const auto& [leaf, control_blocks] : input.m_p2mr_scripts) {
+        if (control_blocks.empty()) continue;
+        const auto& [script, leaf_ver] = leaf;
+        p2mr_leaf_hashes.insert(ComputeTapleafHash(static_cast<uint8_t>(leaf_ver), script));
+    }
+    for (const auto& [key_leaf, _] : input.m_tap_script_sigs) {
+        if (p2mr_leaf_hashes.count(key_leaf.second)) sig_leaf_hashes.insert(key_leaf.second);
+    }
 
     info.status = P2MRInputStatus::UNKNOWN_LEAF;
     if (sig_leaf_hashes.size() > 1) return info;
@@ -115,9 +128,18 @@ P2MRInputInfo InspectP2MRInput(const PartiallySignedTransaction& psbt, unsigned 
         ++info.sigs_present;
     }
 
-    if (info.sigs_present == 0) {
+    // The hybrid leaf also needs a schnorr signature for its x-only key, so
+    // the Dilithium count alone must not report the input as finalizable.
+    bool schnorr_present = false;
+    bool schnorr_satisfied = true;
+    if (info.policy.type == P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR) {
+        schnorr_present = input.m_tap_script_sigs.count(std::make_pair(info.policy.schnorr_pubkeys[0], info.leaf_hash)) > 0;
+        schnorr_satisfied = schnorr_present;
+    }
+
+    if (info.sigs_present == 0 && !schnorr_present) {
         info.status = P2MRInputStatus::UNSIGNED;
-    } else if (info.sigs_present >= info.sigs_required) {
+    } else if (info.sigs_present >= info.sigs_required && schnorr_satisfied) {
         info.status = P2MRInputStatus::FINALIZABLE;
     } else {
         info.status = P2MRInputStatus::PARTIALLY_SIGNED;
@@ -219,6 +241,36 @@ bool ValidateP2MRDilithiumInput(const PartiallySignedTransaction& psbt, unsigned
         }
         if (!pubkey.Verify(sighash, std::vector<unsigned char>(sig.begin(), sig.end() - 1))) {
             return fail("Dilithium partial signature does not verify");
+        }
+    }
+
+    // Schnorr partial signatures live in the shared taproot map and used to
+    // skip this check. Signers prefer a cached signature and Merge never
+    // replaces one, so a garbage entry for the hybrid leaf's x-only key
+    // blocked that input from ever finalizing.
+    for (const auto& [key_leaf, sig] : input.m_tap_script_sigs) {
+        const uint256& leaf_hash = key_leaf.second;
+        if (!leaves.count(leaf_hash)) continue;
+        if (sig.size() != 64 && sig.size() != 65) {
+            return fail("schnorr partial signature has an invalid size");
+        }
+        std::vector<unsigned char> sig64(sig.begin(), sig.begin() + 64);
+        uint8_t hash_type = SIGHASH_DEFAULT;
+        if (sig.size() == 65) {
+            hash_type = sig.back();
+            if (hash_type == SIGHASH_DEFAULT) {
+                return fail("schnorr partial signature uses an invalid sighash type");
+            }
+        }
+        if (!psbt.tx || !txdata) {
+            return fail("cannot verify schnorr partial signatures without every input amount");
+        }
+        uint256 sighash;
+        if (!ComputeLeafSighash(*psbt.tx, index, *txdata, leaf_hash, hash_type, sighash)) {
+            return fail("cannot compute the P2MR sighash needed to verify schnorr partial signatures");
+        }
+        if (!key_leaf.first.VerifySchnorr(sighash, sig64)) {
+            return fail("schnorr partial signature does not verify");
         }
     }
 

@@ -891,6 +891,7 @@ RPCHelpMan signtransactionwithdilithium();
 
 // p2mr
 RPCHelpMan getnewp2mraddress();
+RPCHelpMan getnewhybridp2mraddress();
 RPCHelpMan sendtop2mr();
 RPCHelpMan listp2mr();
 RPCHelpMan getp2mrinfo();
@@ -977,6 +978,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &createdilithiummultisig},
         {"wallet", &signtransactionwithdilithium},
         {"wallet", &getnewp2mraddress},
+        {"wallet", &getnewhybridp2mraddress},
         {"wallet", &sendtop2mr},
         {"wallet", &listp2mr},
         {"wallet", &getp2mrinfo},

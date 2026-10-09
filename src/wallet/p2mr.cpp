@@ -139,10 +139,11 @@ std::set<CKeyID> GetP2MRDilithiumKeyIDs(const std::vector<P2MRTreeLeaf>& leaves)
             }
             break;
         default: {
-            // Threshold accumulator leaves spell out their key checks opcode by
-            // opcode, so Solver does not recognize them as a template.
+            // Threshold accumulator and hybrid leaves spell out their key
+            // checks opcode by opcode, so Solver does not recognize them.
             const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
-            if (policy.type != P2MRLeafTemplate::THRESHOLD_ACCUMULATOR) break;
+            if (policy.type != P2MRLeafTemplate::THRESHOLD_ACCUMULATOR &&
+                policy.type != P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR) break;
             for (const CDilithiumPubKey& pubkey : policy.pubkeys) {
                 AddDilithiumKeyIDFromPubKey(pubkey, key_ids);
             }
@@ -164,6 +165,12 @@ void AddP2MRXOnlyKeys(const CScript& script, std::set<XOnlyPubKey>& out)
 {
     if (script.size() == 34 && script[0] == XOnlyPubKey::size() && script[33] == OP_CHECKSIG) {
         AddXOnlyKeyIfValid(Span<const unsigned char>{script.data() + 1, XOnlyPubKey::size()}, out);
+    }
+
+    // The hybrid Dilithium+schnorr leaf also commits to a BIP340 key.
+    const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
+    for (const XOnlyPubKey& pubkey : policy.schnorr_pubkeys) {
+        if (pubkey.IsFullyValid()) out.insert(pubkey);
     }
 
     const auto multi_a = MatchMultiA(script);
@@ -271,6 +278,15 @@ bool IsP2MRLeafSpendable(const CWallet& wallet, const P2MRTreeLeaf& leaf)
     if (IsOpTrueLeaf(leaf)) return true;
     if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT) return false;
     const CScript script{leaf.script.begin(), leaf.script.end()};
+    const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
+    if (policy.type == P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR) {
+        // The hybrid leaf needs both signatures, so it is only spendable when
+        // the wallet holds both keys.
+        CKeyID keyid;
+        const uint160 id = policy.pubkeys[0].GetID();
+        std::copy(id.begin(), id.end(), keyid.begin());
+        return WalletHaveDilithiumKey(wallet, keyid) && WalletHaveXOnlyKey(wallet, policy.schnorr_pubkeys[0]);
+    }
     return IsXOnlyLeafSpendable(wallet, script) || IsDilithiumLeafSpendable(wallet, script);
 }
 
@@ -467,6 +483,21 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
     AssertLockHeld(wallet.cs_wallet);
     auto entry = GetP2MRByDestination(wallet, dest);
     if (!entry) return std::nullopt;
+    // A message signature only proves the Dilithium key. That matches the
+    // address when some leaf can be spent with that key alone. A hybrid-only
+    // tree also needs its schnorr key, so signing would claim more than the
+    // signature proves. An OR of a single-key leaf and a hybrid leaf stays
+    // signable: the single-key leaf spends without the schnorr key.
+    bool spendable_alone = false;
+    for (const P2MRTreeLeaf& leaf : entry->tree) {
+        if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT) continue;
+        const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(CScript{leaf.script.begin(), leaf.script.end()});
+        if (policy.type == P2MRLeafTemplate::SINGLE_CHECKSIGDILITHIUM) {
+            spendable_alone = true;
+            break;
+        }
+    }
+    if (!spendable_alone) return std::nullopt;
     const auto key_ids = GetP2MRDilithiumKeyIDs(entry->tree);
     if (key_ids.size() != 1) return std::nullopt;
     return *key_ids.begin();
@@ -474,22 +505,8 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
 
 // --- Signing provider ------------------------------------------------------
 
-FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::optional<std::string>& only_id)
+static void AddWalletKeysForRequirements(const CWallet& wallet, const P2MRKeyRequirements& requirements, FlatSigningProvider& provider)
 {
-    AssertLockHeld(wallet.cs_wallet);
-    FlatSigningProvider provider;
-    P2MRKeyRequirements requirements;
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (only_id && entry.id != *only_id) continue;
-        if (!std::holds_alternative<WitnessV2P2MR>(entry.dest)) continue;
-        auto builder_res = BuildP2MRTreeChecked(entry.tree);
-        if (!builder_res) continue;
-        provider.p2mr_trees[std::get<WitnessV2P2MR>(entry.dest)] = std::move(*builder_res);
-        const auto entry_requirements = GetP2MRKeyRequirements(entry.tree);
-        requirements.dilithium_key_ids.insert(entry_requirements.dilithium_key_ids.begin(), entry_requirements.dilithium_key_ids.end());
-        requirements.xonly_pubkeys.insert(entry_requirements.xonly_pubkeys.begin(), entry_requirements.xonly_pubkeys.end());
-    }
-
     for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
         for (const XOnlyPubKey& xonly_pubkey : requirements.xonly_pubkeys) {
             CKey key;
@@ -523,6 +540,32 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::o
             provider.dilithium_keys.emplace(provider_keyid, std::move(key));
         }
     }
+}
+
+FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::optional<std::string>& only_id)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    FlatSigningProvider provider;
+    P2MRKeyRequirements requirements;
+    for (const auto& entry : ListP2MR(wallet)) {
+        if (only_id && entry.id != *only_id) continue;
+        if (!std::holds_alternative<WitnessV2P2MR>(entry.dest)) continue;
+        auto builder_res = BuildP2MRTreeChecked(entry.tree);
+        if (!builder_res) continue;
+        provider.p2mr_trees[std::get<WitnessV2P2MR>(entry.dest)] = std::move(*builder_res);
+        const auto entry_requirements = GetP2MRKeyRequirements(entry.tree);
+        requirements.dilithium_key_ids.insert(entry_requirements.dilithium_key_ids.begin(), entry_requirements.dilithium_key_ids.end());
+        requirements.xonly_pubkeys.insert(entry_requirements.xonly_pubkeys.begin(), entry_requirements.xonly_pubkeys.end());
+    }
+    AddWalletKeysForRequirements(wallet, requirements, provider);
+    return provider;
+}
+
+FlatSigningProvider BuildP2MRLeafKeyProvider(const CWallet& wallet, const std::vector<P2MRTreeLeaf>& leaves)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    FlatSigningProvider provider;
+    AddWalletKeysForRequirements(wallet, GetP2MRKeyRequirements(leaves), provider);
     return provider;
 }
 
@@ -671,6 +714,27 @@ util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
     auto pubkey = GenerateWalletDilithiumPubKey(wallet, internal);
     if (!pubkey) return util::Error{util::ErrorString(pubkey)};
     return CreateSingleLeafDilithiumP2MR(wallet, *pubkey, label, add_to_address_book);
+}
+
+util::Result<P2MRCreated> CreateHybridDilithiumP2MRReceive(CWallet& wallet,
+                                                           const XOnlyPubKey& schnorr_pubkey,
+                                                           const std::string& label,
+                                                           bool add_to_address_book)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    if (!schnorr_pubkey.IsFullyValid()) {
+        return util::Error{Untranslated("invalid x-only public key")};
+    }
+    auto pubkey = GenerateWalletDilithiumPubKey(wallet, /*internal=*/false);
+    if (!pubkey) return util::Error{util::ErrorString(pubkey)};
+    const CScript leaf_script = GetScriptForHybridDilithiumLeaf(*pubkey, schnorr_pubkey);
+    std::vector<P2MRTreeLeaf> leaves;
+    leaves.push_back(P2MRTreeLeaf{
+        /*depth=*/0,
+        /*leaf_version=*/TAPROOT_LEAF_TAPSCRIPT,
+        /*script=*/std::vector<unsigned char>{leaf_script.begin(), leaf_script.end()},
+    });
+    return CreateP2MR(wallet, leaves, label, add_to_address_book);
 }
 
 util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,

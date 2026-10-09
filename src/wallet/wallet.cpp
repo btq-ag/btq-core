@@ -2270,13 +2270,33 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
         }
 
         const auto entry{GetP2MRByScript(*this, *script)};
-        if (!entry) continue;
+        int witness_version{0};
+        std::vector<unsigned char> witness_program;
+        const bool is_p2mr{script->IsWitnessProgram(witness_version, witness_program) &&
+                           witness_version == 2 && witness_program.size() == WITNESS_V2_P2MR_SIZE};
+        if (!entry && (!is_p2mr || input.m_p2mr_scripts.empty())) continue;
 
         if (sign && input.sighash_type && *input.sighash_type != sighash_type) {
             return TransactionError::SIGHASH_MISMATCH;
         }
 
-        const FlatSigningProvider provider{BuildP2MRSigningProvider(*this, entry->id)};
+        FlatSigningProvider provider;
+        if (entry) {
+            provider = BuildP2MRSigningProvider(*this, entry->id);
+        } else {
+            // External cosigner: this wallet holds a key behind one of the
+            // leaves (e.g. the schnorr half of a hybrid leaf) but has no
+            // record of the tree. The PSBT carries the leaf scripts and
+            // control blocks, which the decoder already bound to the input's
+            // witness program, so keys are all this wallet can add.
+            std::vector<P2MRTreeLeaf> leaves;
+            leaves.reserve(input.m_p2mr_scripts.size());
+            for (const auto& [leaf, _] : input.m_p2mr_scripts) {
+                leaves.push_back({/*depth=*/0, /*leaf_version=*/static_cast<uint8_t>(leaf.second), /*script=*/leaf.first});
+            }
+            provider = BuildP2MRLeafKeyProvider(*this, leaves);
+            if (provider.keys.empty() && provider.dilithium_keys.empty()) continue;
+        }
         if (SignPSBTInput(HidingSigningProvider(&provider, /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs),
                           psbtx, i, &txdata, sighash_type, /*out_sigdata=*/nullptr, finalize) &&
             n_signed) {

@@ -425,6 +425,23 @@ static bool SignDilithiumAccumulatorLeaf(const SigningProvider& provider, const 
     return BuildDilithiumLeafWitness(policy, sigs_by_key_index, result);
 }
 
+/**
+ * Sign the opt-in hybrid leaf (Quarks F2.2). Both signatures are required, so
+ * each is still attempted when the other is unavailable: a partial signer
+ * leaves its contribution in sigdata for a later signer to complete.
+ */
+static bool SignHybridDilithiumLeaf(const SigningProvider& provider, const BaseSignatureCreator& creator, SignatureData& sigdata,
+                                    const P2MRDilithiumLeafPolicy& policy, const CScript& script, const uint256& leaf_hash,
+                                    std::vector<valtype>& result)
+{
+    std::vector<unsigned char> dilithium_sig;
+    const bool have_dilithium = CreateDilithiumSig(creator, sigdata, provider, dilithium_sig, policy.pubkeys[0], script, SigVersion::P2MR_TAPSCRIPT, &leaf_hash);
+    std::vector<unsigned char> schnorr_sig;
+    const bool have_schnorr = CreateTaprootScriptSig(creator, sigdata, provider, schnorr_sig, policy.schnorr_pubkeys[0], leaf_hash, SigVersion::P2MR_TAPSCRIPT);
+    if (!have_dilithium || !have_schnorr) return false;
+    return BuildDilithiumLeafWitness(policy, {dilithium_sig}, result, {schnorr_sig});
+}
+
 static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatureCreator& creator, SignatureData& sigdata, int leaf_version, Span<const unsigned char> script_bytes, SigVersion sigversion, std::vector<valtype>& result)
 {
     // Only BIP342 tapscript signing is supported for now.
@@ -446,6 +463,9 @@ static bool SignTaprootScript(const SigningProvider& provider, const BaseSignatu
         const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
         if (policy.type == P2MRLeafTemplate::THRESHOLD_ACCUMULATOR) {
             return SignDilithiumAccumulatorLeaf(provider, creator, sigdata, policy, script, leaf_hash, result);
+        }
+        if (policy.type == P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR) {
+            return SignHybridDilithiumLeaf(provider, creator, sigdata, policy, script, leaf_hash, result);
         }
         // Only Dilithium key templates may fall through to SignStep. Every
         // other Solver-recognized type routes into ECDSA helpers that
@@ -1024,7 +1044,11 @@ public:
     }
     bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* tweak, SigVersion sigversion) const override
     {
-        sig.assign(64, '\000');
+        // A P2MR schnorr signature is 64 bytes for SIGHASH_DEFAULT and 65
+        // when the sighash is explicit. Reserve the longer one so a maximum
+        // size estimate cannot underpay; DEFAULT spends over-reserve by one
+        // byte.
+        sig.assign(sigversion == SigVersion::P2MR_TAPSCRIPT ? 65 : 64, '\000');
         return true;
     }
     bool CreateDilithiumSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const DilithiumPKHash& keyid, const CScript& scriptCode, SigVersion sigversion, const uint256* leaf_hash = nullptr) const override
