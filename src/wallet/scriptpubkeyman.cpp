@@ -2180,6 +2180,47 @@ std::unordered_set<CScript, SaltedSipHasher> LegacyScriptPubKeyMan::GetNotMineSc
     return spks;
 }
 
+std::unordered_set<CScript, SaltedSipHasher> LegacyScriptPubKeyMan::GetDilithiumIndexScriptPubKeys(const CKey& seed_key, int chain_index, uint32_t chain_counter) const
+{
+    AssertLockHeld(cs_KeyStore);
+    std::unordered_set<CScript, SaltedSipHasher> spks;
+    if (mapDilithiumKeys.empty() && mapCryptedDilithiumKeys.empty()) return spks;
+
+    // Derive both key types along m/0'/<chain_index>', as DeriveNewChildKey and
+    // DeriveNewDilithiumChildKey do
+    const uint32_t chain_child{uint32_t(chain_index) | BIP32_HARDENED_KEY_LIMIT};
+    CExtKey master_key, account_key, chain_key;
+    master_key.SetSeed(seed_key);
+    CDilithiumExtKey dilithium_master_key, dilithium_account_key, dilithium_chain_key;
+    dilithium_master_key.SetSeed(seed_key);
+    if (!master_key.Derive(account_key, BIP32_HARDENED_KEY_LIMIT) || !account_key.Derive(chain_key, chain_child) ||
+        !dilithium_master_key.Derive(dilithium_account_key, BIP32_HARDENED_KEY_LIMIT) ||
+        !dilithium_account_key.Derive(dilithium_chain_key, chain_child)) {
+        assert(false);
+    }
+
+    for (uint32_t index = 0; index < chain_counter; ++index) {
+        CExtKey child;
+        if (!chain_key.Derive(child, index | BIP32_HARDENED_KEY_LIMIT)) assert(false);
+        const CPubKey pubkey{child.key.GetPubKey()};
+        if (HaveKey(pubkey.GetID())) continue;
+
+        // Only an index that this wallet's Dilithium key took explains the gap
+        CDilithiumExtKey dilithium_child;
+        if (!dilithium_chain_key.Derive(dilithium_child, index | BIP32_HARDENED_KEY_LIMIT)) assert(false);
+        if (!HaveDilithiumKey(CKeyID(dilithium_child.key.GetPubKey().GetID()))) continue;
+
+        FlatSigningProvider keys;
+        std::string error;
+        std::unique_ptr<Descriptor> desc = Parse("combo(" + HexStr(pubkey) + ")", keys, error, false);
+        std::vector<CScript> scripts;
+        FlatSigningProvider out_keys;
+        if (!desc || !desc->Expand(0, DUMMY_SIGNING_PROVIDER, scripts, out_keys)) assert(false);
+        spks.insert(scripts.begin(), scripts.end());
+    }
+    return spks;
+}
+
 std::optional<MigrationData> LegacyScriptPubKeyMan::MigrateToDescriptor()
 {
     LOCK(cs_KeyStore);
@@ -2297,9 +2338,16 @@ std::optional<MigrationData> LegacyScriptPubKeyMan::MigrateToDescriptor()
             desc_spk_man->TopUp();
             auto desc_spks = desc_spk_man->GetScriptPubKeys();
 
+            // Dilithium keys use the same chain counters as the secp256k1 keys
+            // (see DeriveNewDilithiumChildKey), so the secp256k1 keys at the indexes
+            // they took were never derived and their scriptPubKeys are not in spks.
+            // Some of those scriptPubKeys may be watched; the descriptor now has their key.
+            const auto dilithium_index_spks{GetDilithiumIndexScriptPubKeys(seed_key, i, chain_counter)};
+
             // Remove the scriptPubKeys from our current set
             for (const CScript& spk : desc_spks) {
                 size_t erased = spks.erase(spk);
+                if (dilithium_index_spks.count(spk) > 0) continue;
                 assert(erased == 1);
                 assert(IsMine(spk) == ISMINE_SPENDABLE);
             }
