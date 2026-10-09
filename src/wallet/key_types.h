@@ -161,8 +161,20 @@ public:
         if (pubkey.size() == CDilithiumPubKey::SIZE) {
             m_type = KeyType::DILITHIUM;
             m_key = DilithiumKey{};
-            CDilithiumPubKey dilithium_pubkey(pubkey);
-            return std::get<DilithiumKey>(m_key).Load(Span<const unsigned char>(privkey.data(), privkey.size()));
+            DilithiumKey& loaded = std::get<DilithiumKey>(m_key);
+            if (!loaded.Load(Span<const unsigned char>(privkey.data(), privkey.size()))) {
+                return false;
+            }
+            // Same association check CKey::Load does, unless the caller
+            // already verified a stored hash of the pair.
+            if (!fSkipCheck) {
+                CDilithiumPubKey dilithium_pubkey(pubkey);
+                if (!loaded.VerifyPubKey(dilithium_pubkey)) {
+                    m_key = DilithiumKey{};
+                    return false;
+                }
+            }
+            return true;
         } else {
             m_type = KeyType::ECDSA;
             m_key = ECDSAKey{};
