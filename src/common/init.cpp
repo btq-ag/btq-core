@@ -52,7 +52,7 @@ std::optional<ConfigError> InitConfig(ArgsManager& args, SettingsAbortFn setting
             // wallets could be mixed up with other files. For backwards
             // compatibility, wallet code will use the "wallets" subdirectory only
             // if it already exists, but never create it itself. There is discussion
-            // in https://github.com/btq/btq/issues/16220 about ways to
+            // in https://github.com/bitcoin/bitcoin/issues/16220 about ways to
             // change wallet code so it would no longer be necessary to create
             // "wallets" subdirectories here.
             fs::create_directories(base_path / "wallets");

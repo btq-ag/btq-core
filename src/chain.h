@@ -35,7 +35,7 @@ static constexpr int64_t TIMESTAMP_WINDOW = MAX_FUTURE_BLOCK_TIME;
  * Maximum gap between node time and block time used
  * for the "Catching up..." mode in GUI.
  *
- * Ref: https://github.com/btq/btq/pull/1026
+ * Ref: https://github.com/bitcoin/bitcoin/pull/1026
  */
 static constexpr int64_t MAX_BLOCK_TIME_GAP = 15 * 60;
 

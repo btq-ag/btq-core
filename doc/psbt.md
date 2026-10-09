@@ -2,7 +2,7 @@
 
 Since BTQ Core 0.17, an RPC interface exists for Partially Signed BTQ
 Transactions (PSBTs, as specified in
-[BIP 174](https://github.com/btq/bips/blob/master/bip-0174.mediawiki)).
+[BIP 174](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki)).
 
 This document describes the overall workflow for producing signed transactions
 through the use of PSBT, and the specific RPC commands used in typical
