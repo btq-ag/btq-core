@@ -57,7 +57,7 @@ class MempoolAcceptanceTest(BTQTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[
-            '-txindex','-permitbaremultisig=0',
+            '-txindex','-permitbaremultisig=0','-mempoolfullrbf=0',
         ]] * self.num_nodes
         self.supports_cli = False
 

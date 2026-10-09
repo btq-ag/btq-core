@@ -14,6 +14,7 @@
 //! compiled out and unrun on every machine this suite is likely to run on,
 //! which is the same shape of untested guard the cap exists to replace.
 
+#include <kernel/mempool_options.h>
 #include <node/mempool_args.h>
 
 #include <test/util/setup_common.h>
@@ -60,6 +61,13 @@ BOOST_AUTO_TEST_CASE(maxmempool_is_capped_on_32bit)
         BOOST_CHECK_MESSAGE(message.find("32-bit") != std::string::npos,
                             "error does not mention the architecture: " + message);
     }
+}
+
+BOOST_AUTO_TEST_CASE(full_rbf_is_on_when_unset)
+{
+    kernel::MemPoolOptions opts;
+    BOOST_CHECK(DEFAULT_MEMPOOL_FULL_RBF);
+    BOOST_CHECK(opts.full_rbf);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
