@@ -2161,6 +2161,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
 
 bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors) const
 {
+    AssertLockHeld(cs_wallet);
     // Try to sign with all ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         // spk_man->SignTransaction will return true if the transaction is complete,
@@ -2173,7 +2174,18 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     // P2MR destinations are tracked outside ScriptPubKeyMans. Merge their
     // builders/keys and retry so ordinary send/fund paths can spend Dilithium
     // (and other) P2MR leaves without requiring signp2mrtransaction.
-    FlatSigningProvider p2mr_provider = BuildP2MRSigningProvider(*this, /*only_id=*/std::nullopt);
+    // Read only the entries for the coins being spent, once per destination.
+    std::set<WitnessV2P2MR> p2mr_outputs;
+    for (const auto& [outpoint, coin] : coins) {
+        CTxDestination dest;
+        if (ExtractDestination(coin.out.scriptPubKey, dest) && std::holds_alternative<WitnessV2P2MR>(dest)) {
+            p2mr_outputs.insert(std::get<WitnessV2P2MR>(dest));
+        }
+    }
+    FlatSigningProvider p2mr_provider;
+    for (const WitnessV2P2MR& output : p2mr_outputs) {
+        p2mr_provider.Merge(BuildP2MRSigningProviderForDestination(*this, output));
+    }
     if (!p2mr_provider.p2mr_trees.empty()) {
         if (::SignTransaction(tx, &p2mr_provider, coins, sighash, input_errors)) {
             return true;
@@ -2254,7 +2266,7 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
             return TransactionError::SIGHASH_MISMATCH;
         }
 
-        const FlatSigningProvider provider{BuildP2MRSigningProvider(*this, entry->id)};
+        const FlatSigningProvider provider{BuildP2MRSigningProviderForDestination(*this, entry->dest)};
         if (SignPSBTInput(HidingSigningProvider(&provider, /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs),
                           psbtx, i, &txdata, sighash_type, /*out_sigdata=*/nullptr, finalize) &&
             n_signed) {
@@ -2676,6 +2688,9 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::optional<AddressPur
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool internal)
 {
+    // Not an EXCLUSIVE_LOCKS_REQUIRED annotation: CWallet is incomplete where
+    // ReserveDestination is declared, so pwallet->cs_wallet cannot be named there.
+    AssertLockHeld(pwallet->cs_wallet);
     if (type == OutputType::P2MR) {
         // P2MR destinations are not keypool-backed: each is a freshly derived
         // Dilithium key plus a script tree persisted as wallet metadata. There
@@ -2688,7 +2703,6 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
             address = created->dest;
             fInternal = internal;
             // Minting the script can make a previously seen output ours.
-            AssertLockHeld(pwallet->cs_wallet);
             pwallet->m_ismine_cache.clear();
         }
         return address;
@@ -2708,7 +2722,6 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         // GetReservedDestination tops up the keypool. CWallet::TopUpKeyPool
         // would have cleared the ownership cache; this path does not.
         // CreateTransaction reserves change here, not via GetNewChangeDestination.
-        AssertLockHeld(pwallet->cs_wallet);
         pwallet->m_ismine_cache.clear();
     }
     return address;
@@ -3670,7 +3683,7 @@ std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& scri
     {
         LOCK(cs_wallet);
         if (auto entry = GetP2MRByScript(*this, script)) {
-            return std::make_unique<FlatSigningProvider>(BuildP2MRSigningProvider(*this, entry->id));
+            return std::make_unique<FlatSigningProvider>(BuildP2MRSigningProviderForDestination(*this, entry->dest));
         }
     }
     return nullptr;
@@ -4116,6 +4129,8 @@ bool CWallet::ApplyMigrationData(MigrationData& data, bilingual_str& error)
     m_spk_managers.erase(legacy_spkm->GetID());
     m_external_spk_managers.clear();
     m_internal_spk_managers.clear();
+    // Scripts the legacy manager owned may not be owned by the descriptors.
+    m_ismine_cache.clear();
 
     // Setup new descriptors
     SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
