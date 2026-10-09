@@ -2688,6 +2688,9 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::optional<AddressPur
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool internal)
 {
+    // Not an EXCLUSIVE_LOCKS_REQUIRED annotation: CWallet is incomplete where
+    // ReserveDestination is declared, so pwallet->cs_wallet cannot be named there.
+    AssertLockHeld(pwallet->cs_wallet);
     if (type == OutputType::P2MR) {
         // P2MR destinations are not keypool-backed: each is a freshly derived
         // Dilithium key plus a script tree persisted as wallet metadata. There
@@ -2700,7 +2703,6 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
             address = created->dest;
             fInternal = internal;
             // Minting the script can make a previously seen output ours.
-            AssertLockHeld(pwallet->cs_wallet);
             pwallet->m_ismine_cache.clear();
         }
         return address;
@@ -2720,7 +2722,6 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         // GetReservedDestination tops up the keypool. CWallet::TopUpKeyPool
         // would have cleared the ownership cache; this path does not.
         // CreateTransaction reserves change here, not via GetNewChangeDestination.
-        AssertLockHeld(pwallet->cs_wallet);
         pwallet->m_ismine_cache.clear();
     }
     return address;
@@ -4128,6 +4129,8 @@ bool CWallet::ApplyMigrationData(MigrationData& data, bilingual_str& error)
     m_spk_managers.erase(legacy_spkm->GetID());
     m_external_spk_managers.clear();
     m_internal_spk_managers.clear();
+    // Scripts the legacy manager owned may not be owned by the descriptors.
+    m_ismine_cache.clear();
 
     // Setup new descriptors
     SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
