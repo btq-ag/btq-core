@@ -1600,8 +1600,23 @@ isminetype CWallet::IsMine(const CScript& script) const
         result = GetTrackedP2MRScriptIsMine(*this, script);
     }
 
-    m_ismine_cache[script] = result;
+    // Only spendable hits stay in the map. A miss goes stale when the key is
+    // derived later, and it is also almost every output in a block. A
+    // watch-only hit goes stale when the spending key is imported: coin
+    // selection then keeps skipping the output.
+    if ((result & ISMINE_SPENDABLE) != 0) {
+        if (m_ismine_cache.size() >= ISMINE_CACHE_MAX) {
+            m_ismine_cache.clear();
+        }
+        m_ismine_cache.emplace(script, result);
+    }
     return result;
+}
+
+void CWallet::ClearIsMineCache()
+{
+    AssertLockHeld(cs_wallet);
+    m_ismine_cache.clear();
 }
 
 bool CWallet::IsMine(const CTransaction& tx) const
@@ -2571,6 +2586,10 @@ util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, c
 
     auto op_dest = spk_man->GetNewDestination(type);
     if (op_dest) {
+        // Top-up ran in the script pubkey manager, not CWallet::TopUpKeyPool,
+        // which is the path that clears the ownership cache. SetAddressBook
+        // below calls IsMine on the new destination.
+        m_ismine_cache.clear();
         SetAddressBook(*op_dest, label, AddressPurpose::RECEIVE);
     }
 
@@ -2668,6 +2687,9 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
             if (!created) return util::Error{util::ErrorString(created)};
             address = created->dest;
             fInternal = internal;
+            // Minting the script can make a previously seen output ours.
+            AssertLockHeld(pwallet->cs_wallet);
+            pwallet->m_ismine_cache.clear();
         }
         return address;
     }
@@ -2683,6 +2705,11 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         if (!op_address) return op_address;
         address = *op_address;
         fInternal = keypool.fInternal;
+        // GetReservedDestination tops up the keypool. CWallet::TopUpKeyPool
+        // would have cleared the ownership cache; this path does not.
+        // CreateTransaction reserves change here, not via GetNewChangeDestination.
+        AssertLockHeld(pwallet->cs_wallet);
+        pwallet->m_ismine_cache.clear();
     }
     return address;
 }
@@ -2983,6 +3010,18 @@ bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id,
     if (!request) return false;
     value = *request;
     return true;
+}
+
+std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata(const CTxDestination& dest) const
+{
+    std::vector<std::tuple<CTxDestination, std::string, std::string>> out;
+    const auto* entry{common::FindKey(m_address_book, dest)};
+    if (!entry) return out;
+    for (const auto& [id, request] : entry->receive_requests) {
+        if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) != 0) continue;
+        out.emplace_back(dest, id.substr(P2MR_RECEIVE_REQUEST_PREFIX.size()), request);
+    }
+    return out;
 }
 
 std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata() const

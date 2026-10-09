@@ -524,25 +524,34 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::o
 
 // --- Balance helpers -------------------------------------------------------
 
-bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script)
+// IsMine reaches this for every output that is not ours, and misses are not
+// cached, so look up the one address book entry for the script's destination
+// instead of decoding every P2MR entry. Only a WitnessV2P2MR destination can
+// pass IsP2MREntryValid, and its script is the script it was extracted from.
+static std::optional<P2MREntry> FindTrackedP2MREntry(const CWallet& wallet, const CScript& script)
 {
     AssertLockHeld(wallet.cs_wallet);
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (entry.script_pub_key != script) continue;
-        if (IsP2MREntryValid(entry)) return true;
+    CTxDestination dest;
+    if (!ExtractDestination(script, dest) || !std::holds_alternative<WitnessV2P2MR>(dest)) return std::nullopt;
+    for (const auto& [entry_dest, id, raw] : wallet.ListP2MRMetadata(dest)) {
+        UniValue meta;
+        if (!DecodeMetadata(raw, meta)) continue;
+        P2MREntry entry = MetadataToEntry(entry_dest, meta, id);
+        if (IsP2MREntryValid(entry)) return entry;
     }
-    return false;
+    return std::nullopt;
+}
+
+bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script)
+{
+    return FindTrackedP2MREntry(wallet, script).has_value();
 }
 
 isminetype GetTrackedP2MRScriptIsMine(const CWallet& wallet, const CScript& script)
 {
-    AssertLockHeld(wallet.cs_wallet);
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (entry.script_pub_key != script) continue;
-        if (!IsP2MREntryValid(entry)) continue;
-        return IsP2MREntrySpendable(wallet, entry) ? ISMINE_SPENDABLE : ISMINE_WATCH_ONLY;
-    }
-    return ISMINE_NO;
+    const auto entry = FindTrackedP2MREntry(wallet, script);
+    if (!entry) return ISMINE_NO;
+    return IsP2MREntrySpendable(wallet, *entry) ? ISMINE_SPENDABLE : ISMINE_WATCH_ONLY;
 }
 
 static CAmount SumUnspentForScript(const CWallet& wallet, const CScript& script, int min_depth)
@@ -605,16 +614,25 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
 bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
 {
     AssertLockHeld(wallet.cs_wallet);
+    bool stored = false;
     if (wallet.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
         for (auto* spk_man : wallet.GetAllScriptPubKeyMans()) {
             if (auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) return true;
+                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) {
+                    stored = true;
+                    break;
+                }
             }
         }
-        return false;
+    } else {
+        LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
+        stored = legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
     }
-    LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
-    return legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
+    // One key can make every tracked P2MR that uses it spendable. CreateP2MR
+    // only returns the script it was asked about, and a duplicate tree returns
+    // before SetP2MRMetadata erases that one entry.
+    if (stored) wallet.ClearIsMineCache();
+    return stored;
 }
 
 util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)

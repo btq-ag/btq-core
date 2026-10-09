@@ -314,6 +314,7 @@ private:
     std::atomic<SteadyClock::time_point> m_scanning_start{SteadyClock::time_point{}};
     std::atomic<double> m_scanning_progress{0};
     friend class WalletRescanReserver;
+    friend class ReserveDestination;
 
     //! the current wallet version: clients below this version are not able to load the wallet
     int nWalletVersion GUARDED_BY(cs_wallet){FEATURE_BASE};
@@ -418,7 +419,15 @@ private:
     // ScriptPubKeyMan::GetID. In many cases it will be the hash of an internal structure
     std::map<uint256, std::unique_ptr<ScriptPubKeyMan>> m_spk_managers;
 
-    /** Cache IsMine results to avoid repeated lookups across all SPK managers during rescan */
+    /**
+     * Cached IsMine results for scripts this wallet can spend.
+     * ISMINE_NO is not stored: it goes stale when a later derivation makes the
+     * script ours, and every output in every block would otherwise stay here.
+     * ISMINE_WATCH_ONLY is not stored either. Importing the spending key turns
+     * it into ISMINE_SPENDABLE, and that import does not always reach a clear.
+     * Capped so a large keypool cannot grow it without bound.
+     */
+    static constexpr size_t ISMINE_CACHE_MAX{100000};
     mutable std::map<CScript, isminetype> m_ismine_cache GUARDED_BY(cs_wallet);
 
     // Appends spk managers into the main 'm_spk_managers'.
@@ -772,6 +781,8 @@ public:
 
     isminetype IsMine(const CTxDestination& dest) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     isminetype IsMine(const CScript& script) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    /** Drop cached IsMine hits. A newly added key can turn watch-only scripts spendable. */
+    void ClearIsMineCache() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     /**
      * Returns amount of debit if the input matches the
      * filter, otherwise returns 0
@@ -801,6 +812,8 @@ public:
     bool SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     std::vector<std::tuple<CTxDestination, std::string, std::string>> ListP2MRMetadata() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    /** P2MR metadata stored under one destination. A map lookup, not an address book scan. */
+    std::vector<std::tuple<CTxDestination, std::string, std::string>> ListP2MRMetadata(const CTxDestination& dest) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     unsigned int GetKeyPoolSize() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
