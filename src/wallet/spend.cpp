@@ -114,14 +114,24 @@ static constexpr int64_t TAPROOT_KEY_PATH_INPUT_WEIGHT{(32 + 4 + 4 + 1) * WITNES
  * holds the private key for the internal (or output) key, the descriptor's
  * script-path bound overstates the signed size. Locked and watch-only wallets
  * return false and keep the script-path bound.
+ *
+ * CWallet::SignTransaction and FillPSBT keep the first complete signature, and
+ * visit ScriptPubKeyMans in no fixed order. A ScriptPubKeyMan for the same
+ * output that holds only leaf keys would sign through a script path, so every
+ * ScriptPubKeyMan for the output must be able to sign the key path.
  */
 static bool WalletSignsTaprootKeyPath(const CWallet& wallet, const CScript& script_pub_key)
 {
-    for (ScriptPubKeyMan* spkm : wallet.GetScriptPubKeyMans(script_pub_key)) {
+    int version;
+    std::vector<unsigned char> program;
+    if (!script_pub_key.IsWitnessProgram(version, program) || version != 1) return false;
+    const auto spk_mans{wallet.GetScriptPubKeyMans(script_pub_key)};
+    if (spk_mans.empty()) return false;
+    for (ScriptPubKeyMan* spkm : spk_mans) {
         const auto* desc_spkm{dynamic_cast<DescriptorScriptPubKeyMan*>(spkm)};
-        if (desc_spkm && desc_spkm->CanSignTaprootKeyPath(script_pub_key)) return true;
+        if (!desc_spkm || !desc_spkm->CanSignTaprootKeyPath(script_pub_key)) return false;
     }
-    return false;
+    return true;
 }
 
 /** Use the key-path weight when it is smaller than the inferred bound and the wallet signs that way. */

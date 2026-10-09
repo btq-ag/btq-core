@@ -469,6 +469,49 @@ class WalletTaprootTest(BTQTestFramework):
         check_key_path_spend(txid, 13)
         wallet.unloadwallet()
 
+    def test_key_path_with_leaf_only_descriptor(self):
+        self.log.info("Testing that a leaf-only descriptor for the same output keeps the script-path size")
+        node = self.nodes[0]
+
+        def big_leaf(key):
+            return "multi_a(1," + ",".join([key + "/0"] + [H_POINT] * 20) + ")"
+
+        # Swapped sibling leaves give the same output under different descriptor
+        # IDs, so the wallet keeps two ScriptPubKeyMans: one holds the internal
+        # key, the other only a leaf key and would sign through the script path.
+        with_internal = descsum_create(f"tr({KEYS[1]['xprv']}/0,{{{big_leaf(KEYS[0]['xpub'])},pk({H_POINT})}})")
+        leaf_only = descsum_create(f"tr({KEYS[1]['xpub']}/0,{{pk({H_POINT}),{big_leaf(KEYS[0]['xprv'])}}})")
+        address = node.deriveaddresses(with_internal)[0]
+        assert_equal(node.deriveaddresses(leaf_only)[0], address)
+
+        wallets = {}
+        for name, descriptors in (("two_descriptors", [with_internal, leaf_only]), ("leaf_only", [leaf_only])):
+            node.createwallet(f"taproot_{name}", descriptors=True, blank=True)
+            wallets[name] = node.get_wallet_rpc(f"taproot_{name}")
+            result = wallets[name].importdescriptors([{"desc": desc, "timestamp": "now"} for desc in descriptors])
+            assert all(r["success"] for r in result)
+        assert_equal(len(wallets["two_descriptors"].listdescriptors()["descriptors"]), 2)
+
+        txid = self.boring.sendtoaddress(address, 1)
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        vout = next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)
+        fee_rate = 2 * node.getnetworkinfo()["relayfee"]
+
+        def funded_fee(wallet):
+            return wallet.walletcreatefundedpsbt(
+                inputs=[{"txid": txid, "vout": vout}], outputs=[{self.boring.getnewaddress(): Decimal("0.5")}],
+                options={"add_inputs": False, "change_address": address, "feeRate": fee_rate})["fee"]
+
+        # Signing may complete the input through either ScriptPubKeyMan, so the
+        # fee must cover the script path, as for the leaf-only wallet.
+        assert_equal(funded_fee(wallets["two_descriptors"]), funded_fee(wallets["leaf_only"]))
+        sent = wallets["two_descriptors"].send(outputs=[{self.boring.getnewaddress(): Decimal("0.5")}],
+                                              options={"change_address": address, "fee_rate": 10})
+        assert sent["txid"] in node.getrawmempool()
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        for wallet in wallets.values():
+            wallet.unloadwallet()
+
     def run_test(self):
         self.nodes[0].createwallet(wallet_name="boring")
         self.boring = self.nodes[0].get_wallet_rpc("boring")
@@ -479,6 +522,7 @@ class WalletTaprootTest(BTQTestFramework):
 
         self.test_script_path_fee_boundaries()
         self.test_key_path_with_large_script_tree()
+        self.test_key_path_with_leaf_only_descriptor()
 
         self.do_test(
             "tr(XPRV)",
