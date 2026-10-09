@@ -521,7 +521,8 @@ class WalletTaprootTest(BTQTestFramework):
             node.createwallet(f"taproot_wpkh_leaf_{i}", descriptors=True, blank=True)
             wallet = node.get_wallet_rpc(f"taproot_wpkh_leaf_{i}")
             leaf_key = descsum_create(f"wpkh({KEYS[0]['xprv']}/0)")
-            # Import the leaf key first; descriptors are usually visited in import order.
+            # ScriptPubKeyMans are visited in pointer order, which varies, so
+            # repeat the spend to make it likely the wpkh one is visited first.
             result = wallet.importdescriptors([{"desc": desc, "timestamp": 0} for desc in (leaf_key, with_internal)])
             assert all(r["success"] for r in result)
             vout = next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)
@@ -532,6 +533,38 @@ class WalletTaprootTest(BTQTestFramework):
             assert_equal(len(witness), 1)
             wallet.unloadwallet()
         self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+
+    def test_key_path_with_cross_key_leaves(self):
+        self.log.info("Testing that each Taproot input is signed through its key path when the other output's leaf holds its key")
+        node = self.nodes[0]
+        # Use different master keys: a descriptor holding a master xprv can
+        # derive the private key of any other key from that master.
+        key_a = f"{KEYS[0]['xprv']}/1"
+        key_b = f"{KEYS[1]['xprv']}/1"
+        pub_a = f"{KEYS[0]['xpub']}/1"
+        pub_b = f"{KEYS[1]['xpub']}/1"
+        # Each output's leaf uses the other output's internal key, so whichever
+        # ScriptPubKeyMan signs first can complete both inputs: its own through
+        # the key path and the other through the leaf.
+        desc_a = descsum_create(f"tr({key_a},pk({pub_b}))")
+        desc_b = descsum_create(f"tr({key_b},pk({pub_a}))")
+        node.createwallet("taproot_cross_key", descriptors=True, blank=True)
+        wallet = node.get_wallet_rpc("taproot_cross_key")
+        result = wallet.importdescriptors([{"desc": desc, "timestamp": "now"} for desc in (desc_a, desc_b)])
+        assert all(r["success"] for r in result)
+
+        address_a = node.deriveaddresses(desc_a)[0]
+        address_b = node.deriveaddresses(desc_b)[0]
+        txids = [self.boring.sendtoaddress(address, 1) for address in (address_a, address_b)]
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        inputs = [{"txid": txid, "vout": next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)}
+                  for txid, address in zip(txids, (address_a, address_b))]
+        sent = wallet.send(outputs=[{self.boring.getnewaddress(): Decimal("1.5")}],
+                           options={"inputs": inputs, "add_inputs": False, "change_address": address_a, "fee_rate": 10})
+        for vin in node.getrawtransaction(sent["txid"], True)["vin"]:
+            assert_equal(len(vin["txinwitness"]), 1)
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        wallet.unloadwallet()
 
     def run_test(self):
         self.nodes[0].createwallet(wallet_name="boring")
@@ -544,6 +577,7 @@ class WalletTaprootTest(BTQTestFramework):
         self.test_script_path_fee_boundaries()
         self.test_key_path_with_large_script_tree()
         self.test_key_path_with_leaf_only_descriptor()
+        self.test_key_path_with_cross_key_leaves()
 
         self.do_test(
             "tr(XPRV)",

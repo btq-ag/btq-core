@@ -2710,6 +2710,13 @@ bool DescriptorScriptPubKeyMan::CanSignTaprootKeyPath(const CScript& script) con
     return provider->GetKeyByXOnly(output_key, key);
 }
 
+void DescriptorScriptPubKeyMan::SignPSBTInputWithOwnKeys(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, unsigned int input_index, const CScript& script, int sighash_type, bool bip32derivs, bool finalize) const
+{
+    const auto keys{GetSigningProvider(script, /*include_private=*/true)};
+    if (!keys) return;
+    SignPSBTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/false, /*hide_origin=*/!bip32derivs), psbtx, input_index, &txdata, sighash_type, nullptr, finalize);
+}
+
 bool DescriptorScriptPubKeyMan::HaveKeyByXOnly(const XOnlyPubKey& pubkey) const
 {
     AssertLockHeld(cs_desc_man);
