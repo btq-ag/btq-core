@@ -2195,7 +2195,8 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     // P2MR destinations are tracked outside ScriptPubKeyMans. Merge their
     // builders/keys and retry so ordinary send/fund paths can spend Dilithium
     // (and other) P2MR leaves without requiring signp2mrtransaction.
-    FlatSigningProvider p2mr_provider = BuildP2MRSigningProvider(*this, /*only_id=*/std::nullopt);
+    // cs_wallet is recursive; the keyed overload above may already hold it.
+    FlatSigningProvider p2mr_provider = WITH_LOCK(cs_wallet, return BuildP2MRSigningProvider(*this, /*only_id=*/std::nullopt));
     if (!p2mr_provider.p2mr_trees.empty()) {
         if (::SignTransaction(tx, &p2mr_provider, coins, sighash, input_errors)) {
             return true;
@@ -2774,9 +2775,10 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         // is nothing to hand back, so nIndex stays -1 and KeepDestination() /
         // ReturnDestination() are no-ops for this type.
         if (!IsValidDestination(address)) {
-            auto created = CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
-                                                      /*add_to_address_book=*/!internal,
-                                                      internal);
+            auto created = WITH_LOCK(pwallet->cs_wallet,
+                                     return CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
+                                                                       /*add_to_address_book=*/!internal,
+                                                                       internal));
             if (!created) return util::Error{util::ErrorString(created)};
             address = created->dest;
             fInternal = internal;
@@ -3824,7 +3826,8 @@ LegacyScriptPubKeyMan* CWallet::GetOrCreateLegacyScriptPubKeyMan()
 void CWallet::AddScriptPubKeyMan(const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man)
 {
     const auto& spkm = m_spk_managers[id] = std::move(spkm_man);
-    m_ismine_cache.clear();
+    // cs_wallet is recursive; some callers already hold it, wallet setup does not.
+    WITH_LOCK(cs_wallet, m_ismine_cache.clear());
 
     // Update birth time if needed
     FirstKeyTimeChanged(spkm.get(), spkm->GetTimeFirstKey());
@@ -3845,9 +3848,10 @@ void CWallet::SetupLegacyScriptPubKeyMan()
     AddScriptPubKeyMan(id, std::move(spk_manager));
 }
 
-const CKeyingMaterial& CWallet::GetEncryptionKey() const
+bool CWallet::WithEncryptionKey(std::function<bool (const CKeyingMaterial&)> cb) const
 {
-    return vMasterKey;
+    LOCK(cs_wallet);
+    return cb(vMasterKey);
 }
 
 bool CWallet::HaveDilithiumKeyAnywhere(const CKeyID& keyid) const NO_THREAD_SAFETY_ANALYSIS

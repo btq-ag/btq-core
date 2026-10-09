@@ -409,6 +409,7 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, Walle
         BOOST_REQUIRE(spk_man);
         BOOST_REQUIRE(spk_man->GetDilithiumKey(keyid, recovered));
         BOOST_CHECK(recovered == key);
+        LOCK(wallet->cs_wallet);
         const auto* address_book_entry = wallet->FindAddressBookEntry(destination);
         BOOST_REQUIRE(address_book_entry);
         BOOST_CHECK_EQUAL(address_book_entry->GetLabel(), "dilithium backup");
@@ -466,6 +467,7 @@ BOOST_FIXTURE_TEST_CASE(importwallet_tolerates_empty_tokens, WalletTestingSetup)
     CDilithiumKey recovered;
     BOOST_REQUIRE(spk_man->GetDilithiumKey(dilithium_keyid, recovered));
     BOOST_CHECK(recovered == dilithium_key);
+    LOCK(wallet->cs_wallet);
     const auto* entry = wallet->FindAddressBookEntry(PKHash(keyid));
     BOOST_REQUIRE(entry);
     BOOST_CHECK_EQUAL(entry->GetLabel(), "spaced");

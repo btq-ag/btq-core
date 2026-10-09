@@ -593,7 +593,9 @@ isminetype GetTrackedP2MRScriptIsMine(const CWallet& wallet, const CScript& scri
 }
 
 static CAmount SumUnspentForScript(const CWallet& wallet, const CScript& script, int min_depth)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
+    AssertLockHeld(wallet.cs_wallet);
     CAmount total{0};
     for (const auto& [txid, wtx] : wallet.mapWallet) {
         if (!wtx.tx) continue;
@@ -634,6 +636,7 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
                                                         const CDilithiumPubKey& pubkey,
                                                         const std::string& label,
                                                         bool add_to_address_book = true)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!pubkey.IsValid()) {
@@ -650,6 +653,7 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
 }
 
 bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (wallet.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
@@ -665,6 +669,7 @@ bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
 }
 
 util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet, bool internal)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
 

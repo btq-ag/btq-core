@@ -22,6 +22,7 @@
 
 #include <boost/signals2/signal.hpp>
 
+#include <functional>
 #include <optional>
 #include <unordered_map>
 
@@ -46,7 +47,8 @@ public:
     virtual void UnsetBlankWalletFlag(WalletBatch&) = 0;
     virtual bool CanSupportFeature(enum WalletFeature) const = 0;
     virtual void SetMinVersion(enum WalletFeature, WalletBatch* = nullptr) = 0;
-    virtual const CKeyingMaterial& GetEncryptionKey() const = 0;
+    //! Pass the encryption key to cb().
+    virtual bool WithEncryptionKey(std::function<bool (const CKeyingMaterial&)> cb) const = 0;
     virtual bool HasEncryptionKeys() const = 0;
     virtual bool IsLocked() const = 0;
     //! Whether any of the wallet's key managers holds this Dilithium key.
@@ -316,7 +318,7 @@ private:
     // derived from the Dilithium pubkey; there is no CPubKey involved
     // (Quarks F2.11).
     bool AddDilithiumKeyPubKeyInner(const CDilithiumKey& key);
-    bool AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, const CDilithiumKey& secret);
+    bool AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, const CDilithiumKey& secret) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
 
     /**
      * Private version of AddWatchOnly method which does not accept a
