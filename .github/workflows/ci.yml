@@ -52,8 +52,10 @@ jobs:
           # Full history. In a shallow clone, a commit on the shallow boundary
           # loses its parents, so merge-base can return an older commit than
           # the real divergence point, and the rebase below then replays
-          # base-branch commits (including merge commits, which conflict).
-          # This happened on PRs far behind their base (#188).
+          # base-branch commits. On #188, far behind its base, it stopped on a
+          # conflict replaying a merge commit whose parents had been cut off.
+          # With fetch-depth 0, checkout also fetches every branch, including
+          # the base branch as origin/$BASE_REF.
           fetch-depth: 0
       - name: Determine commit range
         env:
@@ -69,8 +71,10 @@ jobs:
           # divergence point, all of those commits will be tested. If it
           # contains more, only the most recent MAX_COUNT commits will be
           # tested.
-          git fetch origin "refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
-          MERGE_BASE=$(git merge-base HEAD "origin/$BASE_REF")
+          if ! MERGE_BASE=$(git merge-base HEAD "origin/$BASE_REF"); then
+            echo "::error::could not locate the merge base of the pull request branch and $BASE_REF"
+            exit 1
+          fi
           #
           # Exclude all parents of the merge base (^@), not only the first
           # (^). The merge base is usually a merge commit. With ^ alone, the
