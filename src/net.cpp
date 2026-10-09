@@ -3623,9 +3623,13 @@ bool CConnman::OutboundTargetReached(bool historicalBlockServingLimit) const
 
     if (historicalBlockServingLimit)
     {
-        // keep a large enough buffer to at least relay each block once
+        // keep a large enough buffer to at least relay each block once.
+        // Derive the expected block count from the chain's target spacing:
+        // the old 10-minute literal made the buffer 10x too small for BTQ's
+        // 60-second blocks (Quarks F2.18).
         const std::chrono::seconds timeLeftInCycle = GetMaxOutboundTimeLeftInCycle_();
-        const uint64_t buffer = timeLeftInCycle / std::chrono::minutes{10} * MAX_BLOCK_SERIALIZED_SIZE;
+        const std::chrono::seconds spacing{m_params.GetConsensus().nPowTargetSpacing};
+        const uint64_t buffer = timeLeftInCycle / spacing * MAX_BLOCK_SERIALIZED_SIZE;
         if (buffer >= nMaxOutboundLimit || nMaxOutboundTotalBytesSentInCycle >= nMaxOutboundLimit - buffer)
             return true;
     }
