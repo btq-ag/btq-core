@@ -128,24 +128,11 @@ bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet)
         addressRet = hash;
         return true;
     }
-    case TxoutType::DILITHIUM_SCRIPTHASH: {
-        DilithiumScriptHash hash;
-        std::copy(vSolutions[0].begin(), vSolutions[0].end(), hash.begin());
-        addressRet = hash;
-        return true;
-    }
-    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH: {
-        DilithiumWitnessV0KeyHash hash;
-        std::copy(vSolutions[0].begin(), vSolutions[0].end(), hash.begin());
-        addressRet = hash;
-        return true;
-    }
-    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH: {
-        DilithiumWitnessV0ScriptHash hash;
-        std::copy(vSolutions[0].begin(), vSolutions[0].end(), hash.begin());
-        addressRet = hash;
-        return true;
-    }
+    case TxoutType::DILITHIUM_SCRIPTHASH:
+    case TxoutType::DILITHIUM_WITNESS_V0_KEYHASH:
+    case TxoutType::DILITHIUM_WITNESS_V0_SCRIPTHASH:
+        // Solver does not return these. Fail closed instead of copying
+        // vSolutions[0], which is empty if the type is ever produced.
     case TxoutType::DILITHIUM_MULTISIG:
     case TxoutType::MULTISIG:
     case TxoutType::NULL_DATA:
