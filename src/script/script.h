@@ -236,7 +236,10 @@ enum opcodetype
     OP_INVALIDOPCODE = 0xff,
 };
 
-// Maximum value that an opcode can be
+// Highest opcode byte this tree treats as defined.
+// Dilithium opcodes are 0xbb-0xbf, so the ceiling has to sit past
+// OP_CHECKSIGADD (0xba). That opcode stays tapscript-only: the name
+// parser and HasValidOps reject it, and GetSigOpCount still charges it.
 static const unsigned int MAX_OPCODE = OP_DILITHIUM_PUBKEY;
 
 std::string GetOpName(opcodetype opcode);

@@ -172,6 +172,10 @@ unsigned int CScript::GetSigOpCount(bool fAccurate) const
             break;
         if (opcode == OP_CHECKSIG || opcode == OP_CHECKSIGVERIFY)
             n++;
+        // P2MR leaf accounting calls GetSigOpCount. A tapscript
+        // OP_CHECKSIGADD in that leaf is a real signature check.
+        else if (opcode == OP_CHECKSIGADD)
+            n++;
         else if (opcode == OP_CHECKSIGDILITHIUM || opcode == OP_CHECKSIGDILITHIUMVERIFY)
             n += DILITHIUM_SIGOP_COST;
         else if (opcode == OP_CHECKMULTISIG || opcode == OP_CHECKMULTISIGVERIFY)
@@ -291,7 +295,9 @@ bool CScript::HasValidOps() const
     while (it < end()) {
         opcodetype opcode;
         std::vector<unsigned char> item;
-        if (!GetOp(it, opcode, item) || opcode > MAX_OPCODE || item.size() > MAX_SCRIPT_ELEMENT_SIZE) {
+        // OP_CHECKSIGADD is inside the MAX_OPCODE range only because the
+        // Dilithium opcodes follow it. It is not valid in a generic script.
+        if (!GetOp(it, opcode, item) || opcode == OP_CHECKSIGADD || opcode > MAX_OPCODE || item.size() > MAX_SCRIPT_ELEMENT_SIZE) {
             return false;
         }
     }
