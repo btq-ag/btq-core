@@ -93,6 +93,8 @@ static bool MatchMultisig(const CScript& script, int& required_sigs, std::vector
 {
     opcodetype opcode;
     valtype data;
+    // The size check below counts only keys this call parsed.
+    pubkeys.clear();
 
     CScript::const_iterator it = script.begin();
     if (script.size() < 1 || script.back() != OP_CHECKMULTISIG) return false;
@@ -137,6 +139,8 @@ static bool MatchDilithiumMultisig(const CScript& script, int& required_sigs, st
 {
     opcodetype opcode;
     valtype data;
+    // Solver may call this with whatever MatchMultisig appended on failure.
+    pubkeys.clear();
 
     CScript::const_iterator it = script.begin();
     if (script.size() < 1 || script.back() != OP_CHECKMULTISIGDILITHIUM) return false;
