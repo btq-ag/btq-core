@@ -112,7 +112,7 @@ Keep the transaction memory pool below <n> megabytes (default: 300)
 .HP
 \fB\-maxorphantx=\fR<n>
 .IP
-Keep at most <n> unconnectable transactions in memory (default: 100)
+Keep at most <n> unconnectable transactions in memory (deprecated; ignored. Orphanage eviction is by unique weight and latency score)
 .HP
 \fB\-mempoolexpiry=\fR<n>
 .IP
