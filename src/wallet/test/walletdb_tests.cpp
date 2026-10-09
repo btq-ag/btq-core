@@ -101,6 +101,68 @@ BOOST_AUTO_TEST_CASE(walletdb_loads_dilithium_key_metadata)
     }
 }
 
+BOOST_AUTO_TEST_CASE(walletdb_checks_dilithium_key_checksum)
+{
+    CDilithiumKey key;
+    key.MakeNewKey();
+    BOOST_REQUIRE(key.IsValid());
+    const CKeyID key_id{key.GetPubKey().GetID()};
+    CKeyMetadata metadata{123456789};
+    const std::vector<unsigned char> secret{key.begin(), key.end()};
+
+    MockableData records;
+    {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        LOCK(wallet->cs_wallet);
+        wallet->SetupLegacyScriptPubKeyMan();
+        WalletBatch batch{wallet->GetDatabase()};
+        BOOST_REQUIRE(batch.WriteDilithiumKeyByID(key_id, secret, metadata));
+        wallet->Flush();
+        records = GetMockableDatabase(*wallet).m_records;
+    }
+
+    // Locate the dilithiumkey record so the trailing checksum can be mangled.
+    const std::string type{DBKeys::DILITHIUM_KEY};
+    auto record = records.end();
+    for (auto it = records.begin(); it != records.end(); ++it) {
+        if (it->first.size() > type.size() &&
+            std::equal(type.begin(), type.end(), reinterpret_cast<const char*>(it->first.data()) + 1)) {
+            record = it;
+            break;
+        }
+    }
+    BOOST_REQUIRE(record != records.end());
+
+    {
+        // Flipped checksum byte: load must fail.
+        MockableData tampered{records};
+        tampered.at(record->first).back() ^= std::byte{0x01};
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(tampered));
+        {
+            LOCK(wallet->cs_wallet);
+            wallet->SetupLegacyScriptPubKeyMan();
+        }
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::CORRUPT);
+    }
+
+    {
+        // Record without the trailing hash (pre-checksum wallets): still loads.
+        MockableData truncated{records};
+        auto& value = truncated.at(record->first);
+        BOOST_REQUIRE(value.size() > 32);
+        value.resize(value.size() - 32);
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(truncated));
+        {
+            LOCK(wallet->cs_wallet);
+            wallet->SetupLegacyScriptPubKeyMan();
+        }
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+        CDilithiumKey loaded_key;
+        BOOST_REQUIRE(wallet->GetLegacyScriptPubKeyMan()->GetDilithiumKey(key_id, loaded_key));
+        BOOST_CHECK(loaded_key == key);
+    }
+}
+
 BOOST_AUTO_TEST_CASE(walletdb_rejects_invalid_dilithium_key_record)
 {
     // A record with the right length but garbage key material makes
