@@ -4,7 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 """  Tests the mempool:* tracepoint API interface.
-     See https://github.com/btq/btq/blob/master/doc/tracing.md#context-mempool
+     See https://github.com/btq-ag/btq-core/blob/master/doc/tracing.md#context-mempool
 """
 
 from decimal import Decimal
@@ -298,7 +298,7 @@ class MempoolTracepointTest(BTQTestFramework):
         assert_equal(bytes(event.hash)[::-1].hex(), tx["tx"].hash)
         # The next test is already known to fail, so disable it to avoid
         # wasting CPU time and developer time. See
-        # https://github.com/btq/btq/issues/27380
+        # https://github.com/bitcoin/bitcoin/issues/27380
         #assert_equal(event.reason.decode("UTF-8"), "min relay fee not met")
 
         bpf.cleanup()

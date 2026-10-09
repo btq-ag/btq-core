@@ -100,5 +100,5 @@ class btq-qt,btqd,btq-cli,btq-wallet bold
 
 ## Work in progress
 
-- Validation code is moving from *libbtq_node* to *libbtq_kernel* as part of [The libbtqkernel Project #24303](https://github.com/btq/btq/issues/24303)
-- Source code organization is discussed in general in [Library source code organization #15732](https://github.com/btq/btq/issues/15732)
+- Validation code is moving from *libbtq_node* to *libbtq_kernel* as part of [The libbtqkernel Project #24303](https://github.com/bitcoin/bitcoin/issues/24303)
+- Source code organization is discussed in general in [Library source code organization #15732](https://github.com/bitcoin/bitcoin/issues/15732)
