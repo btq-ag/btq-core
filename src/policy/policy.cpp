@@ -302,6 +302,9 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
                 const auto& control_block = SpanPopBack(stack);
                 SpanPopBack(stack);
                 if (control_block.empty()) return false;
+                // BIP360 fixes this bit to 1. Consensus already rejects the
+                // other value; don't relay a witness that can only fail there.
+                if ((control_block[0] & 1) != 1) return false;
                 if ((control_block[0] & TAPROOT_LEAF_MASK) == TAPROOT_LEAF_TAPSCRIPT) {
                     for (const auto& item : stack) {
                         if (item.size() > MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE) return false;
