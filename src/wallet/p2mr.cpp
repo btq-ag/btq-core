@@ -747,7 +747,7 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const WitnessV2P2MR& w = std::get<WitnessV2P2MR>(out.dest);
     std::copy(w.begin(), w.end(), out.merkle_root.begin());
 
-    for (const auto& entry : ListP2MR(wallet)) {
+    for (const auto& entry : ListP2MRForDestination(wallet, out.dest)) {
         if (entry.script_pub_key == out.script_pub_key && SameP2MRTree(entry.tree, leaves)) {
             out.id = entry.id;
             out.address = entry.address;

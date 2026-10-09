@@ -415,6 +415,39 @@ BOOST_FIXTURE_TEST_CASE(p2mr_provider_skips_bad_records_under_the_same_destinati
     BOOST_CHECK(builder.GetOutput() == output);
 }
 
+// CWallet::SignTransaction builds its P2MR provider from the destinations of
+// the coins being spent, not from every entry.
+BOOST_FIXTURE_TEST_CASE(sign_transaction_reads_the_spent_p2mr_entry, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    wallet->SetupLegacyScriptPubKeyMan();
+
+    std::vector<P2MRCreated> created;
+    for (int i = 0; i < 3; ++i) {
+        CDilithiumKey key;
+        BOOST_REQUIRE(key.MakeNewKey());
+        auto entry = ImportDilithiumKeyAsP2MR(*wallet, key, "owned");
+        BOOST_REQUIRE(entry);
+        created.push_back(*entry);
+    }
+
+    // Two inputs at one destination and one at another; created[0] is not spent.
+    std::map<COutPoint, Coin> coins;
+    CMutableTransaction tx;
+    for (const auto& [n, index] : std::vector<std::pair<uint32_t, size_t>>{{0, 1}, {1, 1}, {2, 2}}) {
+        const COutPoint prevout{uint256::ONE, n};
+        coins[prevout] = Coin(CTxOut{COIN, created[index].script_pub_key}, /*nHeightIn=*/1, /*fCoinBaseIn=*/false);
+        tx.vin.emplace_back(prevout);
+    }
+    tx.vout.emplace_back(COIN, created[0].script_pub_key);
+
+    std::map<int, bilingual_str> input_errors;
+    BOOST_CHECK(wallet->SignTransaction(tx, coins, SIGHASH_DEFAULT, input_errors));
+    BOOST_CHECK(input_errors.empty());
+    for (const CTxIn& txin : tx.vin) BOOST_CHECK(!txin.scriptWitness.IsNull());
+}
+
 // importdilithiumkey stores the key and then CreateP2MR finds the existing
 // tree and returns before SetP2MRMetadata. A cached watch-only hit would
 // still be there, and coin selection would skip the output.

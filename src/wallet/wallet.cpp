@@ -2161,6 +2161,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
 
 bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors) const
 {
+    AssertLockHeld(cs_wallet);
     // Try to sign with all ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         // spk_man->SignTransaction will return true if the transaction is complete,
@@ -2173,7 +2174,18 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     // P2MR destinations are tracked outside ScriptPubKeyMans. Merge their
     // builders/keys and retry so ordinary send/fund paths can spend Dilithium
     // (and other) P2MR leaves without requiring signp2mrtransaction.
-    FlatSigningProvider p2mr_provider = BuildP2MRSigningProvider(*this, /*only_id=*/std::nullopt);
+    // Read only the entries for the coins being spent, once per destination.
+    std::set<WitnessV2P2MR> p2mr_outputs;
+    for (const auto& [outpoint, coin] : coins) {
+        CTxDestination dest;
+        if (ExtractDestination(coin.out.scriptPubKey, dest) && std::holds_alternative<WitnessV2P2MR>(dest)) {
+            p2mr_outputs.insert(std::get<WitnessV2P2MR>(dest));
+        }
+    }
+    FlatSigningProvider p2mr_provider;
+    for (const WitnessV2P2MR& output : p2mr_outputs) {
+        p2mr_provider.Merge(BuildP2MRSigningProviderForDestination(*this, output));
+    }
     if (!p2mr_provider.p2mr_trees.empty()) {
         if (::SignTransaction(tx, &p2mr_provider, coins, sighash, input_errors)) {
             return true;
