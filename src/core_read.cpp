@@ -31,6 +31,11 @@ public:
             if (op < OP_NOP && op != OP_RESERVED) {
                 continue;
             }
+            // Tapscript-only. Kept out of the generic name table even
+            // though MAX_OPCODE sits past it for the Dilithium opcodes.
+            if (op == OP_CHECKSIGADD) {
+                continue;
+            }
 
             std::string strName = GetOpName(static_cast<opcodetype>(op));
             if (strName == "OP_UNKNOWN") {
