@@ -79,6 +79,11 @@ static constexpr auto EXTRA_BLOCK_RELAY_ONLY_PEER_INTERVAL = 5min;
 static const unsigned int MAX_PROTOCOL_MESSAGE_LENGTH = MAX_BLOCK_SERIALIZED_SIZE + 1 * 1000 * 1000; // 9 MB
 static_assert(MAX_PROTOCOL_MESSAGE_LENGTH <= MAX_SIZE,
               "message length cap above MAX_SIZE would be ineffective (see V1Transport header checks)");
+// BIP324 stores the payload length in 3 bytes (max 0xffffff, just under 16 MiB).
+// A larger cap cannot be sent on v2 transport. MAX_SIZE stays at 32 MiB because
+// it bounds deserialization, not the wire.
+static_assert(MAX_PROTOCOL_MESSAGE_LENGTH <= 0xffffff,
+              "BIP324 cannot carry a longer message");
 /** Maximum length of the user agent string in `version` message */
 static const unsigned int MAX_SUBVERSION_LENGTH = 256;
 /** Maximum number of automatic outgoing nodes over which we'll relay everything (blocks, tx, addrs, etc) */
@@ -709,7 +714,7 @@ public:
      * `shared_ptr` (instead of `unique_ptr`) is used to avoid premature close of
      * the underlying file descriptor by one thread while another thread is
      * poll(2)-ing it for activity.
-     * @see https://github.com/btq/btq/issues/21744 for details.
+     * @see https://github.com/bitcoin/bitcoin/issues/21744 for details.
      */
     std::shared_ptr<Sock> m_sock GUARDED_BY(m_sock_mutex);
 
