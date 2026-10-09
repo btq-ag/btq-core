@@ -46,12 +46,17 @@ jobs:
     env:
       MAX_COUNT: 6
     steps:
-      - name: Determine fetch depth
-        run: echo "FETCH_DEPTH=$((${{ github.event.pull_request.commits }} + 2))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ env.FETCH_DEPTH }}
+          # Full history. In a shallow clone, a commit on the shallow boundary
+          # loses its parents, so merge-base can return an older commit than
+          # the real divergence point, and the rebase below then replays
+          # base-branch commits. On #188, far behind its base, it stopped on a
+          # conflict replaying a merge commit whose parents had been cut off.
+          # With fetch-depth 0, checkout also fetches every branch, including
+          # the base branch as origin/$BASE_REF.
+          fetch-depth: 0
       - name: Determine commit range
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -60,29 +65,16 @@ jobs:
           # head commit that are already run by other jobs.
           git checkout HEAD~
           # The test base is the commit where this branch diverged from the
-          # PR's base branch. Locate it with merge-base, deepening the shallow
-          # base-branch history until the divergence point is visible.
-          #
-          # Scanning the shallow history for the most recent merge commit is
-          # not reliable here: a commit on the shallow boundary loses its
-          # parents, which hides that it is a merge, and the base branch tip
-          # is not required to be a merge commit. With a non-merge tip the
-          # test base resolves empty and the rebase below fails.
+          # PR's base branch.
           #
           # If the branch contains up to MAX_COUNT commits after the
           # divergence point, all of those commits will be tested. If it
           # contains more, only the most recent MAX_COUNT commits will be
           # tested.
-          git fetch --depth "$FETCH_DEPTH" origin "refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
-          attempts=0
-          until MERGE_BASE=$(git merge-base HEAD "origin/$BASE_REF" 2>/dev/null); do
-            attempts=$((attempts + 1))
-            if [ "$attempts" -eq 8 ]; then
-              echo "::error::could not locate the merge base of the pull request branch and $BASE_REF"
-              exit 1
-            fi
-            git fetch --depth $(( FETCH_DEPTH << (attempts + 1) )) origin "refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
-          done
+          if ! MERGE_BASE=$(git merge-base HEAD "origin/$BASE_REF"); then
+            echo "::error::could not locate the merge base of the pull request branch and $BASE_REF"
+            exit 1
+          fi
           #
           # Exclude all parents of the merge base (^@), not only the first
           # (^). The merge base is usually a merge commit. With ^ alone, the
