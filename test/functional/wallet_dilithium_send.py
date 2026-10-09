@@ -55,6 +55,26 @@ class WalletDilithiumSendTest(BTQTestFramework):
             dilithium_address,
             sig,
         )
+        # F2.1: with an explicit pubkey, verification needs neither the private
+        # key nor the signer's wallet metadata.
+        created = repro.getnewdilithiumaddress()
+        pubkey_hex = repro.getdilithiumpubkey(created["p2mr_id"])["pubkeys"][0]["pubkey"]
+        pk_sig = repro.signmessagewithdilithium(created["address"], msg)
+        assert funding.verifymessagewithdilithium(created["address"], pk_sig, msg, pubkey_hex)
+        assert not funding.verifymessagewithdilithium(created["address"], pk_sig, msg + "!", pubkey_hex)
+        # A pubkey that does not belong to the address is rejected, not verified.
+        other = repro.getnewdilithiumaddress()
+        other_pubkey = repro.getdilithiumpubkey(other["p2mr_id"])["pubkeys"][0]["pubkey"]
+        assert_raises_rpc_error(
+            -5,
+            "Dilithium public key does not match the address",
+            funding.verifymessagewithdilithium,
+            created["address"],
+            pk_sig,
+            msg,
+            other_pubkey,
+        )
+
         repro.encryptwallet("pass")
         assert_raises_rpc_error(
             -13,

@@ -246,6 +246,7 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
                                        const std::string& strAddress,
                                        const std::string& strSignature,
                                        const std::string& strMessage,
+                                       const UniValue& pubkey_param,
                                        const char* usage)
 {
     // Get the wallet to look up the Dilithium key
@@ -260,6 +261,7 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
     // destinations remain decodable for message verification even though
     // they are no longer valid payment destinations.
     CKeyID keyID;
+    bool have_keyid = true;
     if (auto p2mr_key = GetSingleDilithiumKeyIDForP2MR(*pwallet, dest)) {
         keyID = *p2mr_key;
     } else if (std::holds_alternative<DilithiumPKHash>(dest)) {
@@ -268,13 +270,60 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
     } else if (std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) {
         DilithiumWitnessV0KeyHash witness_dest = std::get<DilithiumWitnessV0KeyHash>(dest);
         keyID = CKeyID(static_cast<uint160>(witness_dest));
+    } else if (!pubkey_param.isNull() && std::holds_alternative<WitnessV2P2MR>(dest)) {
+        // A P2MR address this wallet does not track. With an explicit pubkey
+        // the binding is checked below by rebuilding the canonical
+        // single-leaf program instead of through wallet metadata.
+        have_keyid = false;
     } else {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
             strprintf("Address is not a Dilithium key address (use a Dilithium P2MR receive "
                       "address, or a historical DilithiumPKHash). Expected argument order: %s", usage));
     }
 
-    // Look up the Dilithium key in the wallet
+    // With an explicit pubkey the signature verifies against it directly;
+    // only the address binding is checked. Verification must not need the
+    // signer's private key (Quarks F2.1): neither address form carries the
+    // 1312-byte pubkey, so a verifier who is not the signer supplies it here.
+    if (!pubkey_param.isNull()) {
+        const std::string pubkey_hex = pubkey_param.get_str();
+        if (!IsHex(pubkey_hex)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Dilithium pubkey must be a hex string");
+        }
+        const std::vector<unsigned char> pubkey_bytes = ParseHex(pubkey_hex);
+        const CDilithiumPubKey dilithium_pubkey{Span{pubkey_bytes}};
+        if (!dilithium_pubkey.IsFullyValid()) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dilithium public key");
+        }
+        if (have_keyid) {
+            if (CKeyID(dilithium_pubkey.GetID()) != keyID) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Dilithium public key does not match the address");
+            }
+        } else {
+            // Untracked P2MR address: it matches the pubkey iff it is the
+            // canonical single-leaf tree over <pubkey> OP_CHECKSIGDILITHIUM,
+            // the form getnewdilithiumaddress creates.
+            const CScript leaf_script = CScript() << ToByteVector(dilithium_pubkey) << OP_CHECKSIGDILITHIUM;
+            std::vector<P2MRTreeLeaf> leaves;
+            leaves.push_back(P2MRTreeLeaf{
+                /*depth=*/0,
+                /*leaf_version=*/TAPROOT_LEAF_TAPSCRIPT,
+                /*script=*/std::vector<unsigned char>{leaf_script.begin(), leaf_script.end()},
+            });
+            auto builder_res = BuildP2MRTreeChecked(leaves);
+            if (!builder_res || !(builder_res->GetOutput() == std::get<WitnessV2P2MR>(dest))) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Dilithium public key does not match the address");
+            }
+        }
+        if (!DecodeBase64(strSignature)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid signature encoding");
+        }
+        // Paired with DilithiumMessageSign, so the domain the signature is
+        // checked against is by construction the one it was made in.
+        return DilithiumMessageVerify(dilithium_pubkey, strMessage, strSignature);
+    }
+
+    // No pubkey given: fall back to the wallet, which stores the full key.
     CDilithiumKey dilithium_key;
     bool key_found = false;
 
@@ -331,6 +380,7 @@ RPCHelpMan verifydilithiumsignature()
             {"message", RPCArg::Type::STR, RPCArg::Optional::NO, "The message that was signed."},
             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Dilithium address that signed the message."},
             {"signature", RPCArg::Type::STR, RPCArg::Optional::NO, "The signature to verify (base64 encoded)."},
+            {"pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "The signer's Dilithium public key (hex). When given, verification checks the key against the address and does not need the key in the wallet."},
         },
         RPCResult{
             RPCResult::Type::BOOL, "", "If the signature is verified or not."
@@ -345,6 +395,7 @@ RPCHelpMan verifydilithiumsignature()
                                           /*strAddress=*/request.params[1].get_str(),
                                           /*strSignature=*/request.params[2].get_str(),
                                           /*strMessage=*/request.params[0].get_str(),
+                                          /*pubkey_param=*/request.params[3],
                                           "verifydilithiumsignature \"message\" \"address\" \"signature\"");
         },
     };
@@ -360,6 +411,7 @@ RPCHelpMan verifymessagewithdilithium()
             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Dilithium address that signed the message."},
             {"signature", RPCArg::Type::STR, RPCArg::Optional::NO, "The signature provided by the signer in base 64 encoding (see signmessagewithdilithium)."},
             {"message", RPCArg::Type::STR, RPCArg::Optional::NO, "The message that was signed."},
+            {"pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "The signer's Dilithium public key (hex, see getdilithiumpubkey). When given, verification checks the key against the address and does not need the key in the wallet."},
         },
         RPCResult{
             RPCResult::Type::BOOL, "", "If the signature is verified or not."
@@ -380,6 +432,7 @@ RPCHelpMan verifymessagewithdilithium()
                                           /*strAddress=*/request.params[0].get_str(),
                                           /*strSignature=*/request.params[1].get_str(),
                                           /*strMessage=*/request.params[2].get_str(),
+                                          /*pubkey_param=*/request.params[3],
                                           "verifymessagewithdilithium \"address\" \"signature\" \"message\"");
         },
     };
