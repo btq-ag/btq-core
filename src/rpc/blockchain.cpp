@@ -765,7 +765,7 @@ static RPCHelpMan pruneblockchain()
     return RPCHelpMan{"pruneblockchain", "",
                 {
                     {"height", RPCArg::Type::NUM, RPCArg::Optional::NO, "The block height to prune up to. May be set to a discrete height, or to a " + UNIX_EPOCH_TIME + "\n"
-            "                  to prune blocks whose block time is at least 2 hours older than the provided timestamp."},
+            "                  to prune blocks whose block time is at least 15 minutes older than the provided timestamp."},
                 },
                 RPCResult{
                     RPCResult::Type::NUM, "", "Height of the last block pruned"},
@@ -792,7 +792,7 @@ static RPCHelpMan pruneblockchain()
     // Height value more than a billion is too high to be a block height, and
     // too low to be a block time (corresponds to timestamp from Sep 2001).
     if (heightParam > 1000000000) {
-        // Add a 2 hour buffer to include blocks which might have had old timestamps
+        // TIMESTAMP_WINDOW buffer for blocks whose timestamps sit ahead of our clock
         const CBlockIndex* pindex = active_chain.FindEarliestAtLeast(heightParam - TIMESTAMP_WINDOW, 0);
         if (!pindex) {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Could not find block with at least the specified timestamp.");
