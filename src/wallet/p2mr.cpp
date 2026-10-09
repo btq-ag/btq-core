@@ -608,13 +608,13 @@ bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
     if (wallet.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
         for (auto* spk_man : wallet.GetAllScriptPubKeyMans()) {
             if (auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) return true;
+                if (desc->AddDilithiumKeyPubKey(key)) return true;
             }
         }
         return false;
     }
     LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
-    return legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
+    return legacy && legacy->AddDilithiumKeyPubKey(key);
 }
 
 util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)

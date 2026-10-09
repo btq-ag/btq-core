@@ -159,64 +159,10 @@ bool WalletBatch::WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey)
     return WriteIC(std::make_pair(DBKeys::MASTER_KEY, nID), kMasterKey, true);
 }
 
-// Dilithium key storage methods
-bool WalletBatch::WriteDilithiumKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey, const CKeyMetadata& keyMeta)
-{
-    if (!WriteDilithiumKeyMetadata(keyMeta, vchPubKey, false)) {
-        return false;
-    }
-
-    // hash pubkey/privkey to accelerate wallet load
-    std::vector<unsigned char> vchKey;
-    vchKey.reserve(vchPubKey.size() + vchPrivKey.size());
-    vchKey.insert(vchKey.end(), vchPubKey.begin(), vchPubKey.end());
-    vchKey.insert(vchKey.end(), vchPrivKey.begin(), vchPrivKey.end());
-
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_KEY, vchPubKey), std::make_pair(vchPrivKey, Hash(vchKey)), false);
-}
-
-bool WalletBatch::WriteDilithiumKeyRaw(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata& keyMeta)
-{
-    if (!WriteDilithiumKeyMetadata(keyMeta, vchPubKey, false)) {
-        return false;
-    }
-
-    // hash pubkey/privkey to accelerate wallet load
-    std::vector<unsigned char> vchKey;
-    vchKey.reserve(vchPubKey.size() + vchPrivKey.size());
-    vchKey.insert(vchKey.end(), vchPubKey.begin(), vchPubKey.end());
-    vchKey.insert(vchKey.end(), vchPrivKey.begin(), vchPrivKey.end());
-
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_KEY, vchPubKey), std::make_pair(vchPrivKey, Hash(vchKey)), false);
-}
-
-bool WalletBatch::WriteCryptedDilithiumKey(const CPubKey& vchPubKey,
-                                          const std::vector<unsigned char>& vchCryptedSecret,
-                                          const CKeyMetadata& keyMeta)
-{
-    if (!WriteDilithiumKeyMetadata(keyMeta, vchPubKey, true)) {
-        return false;
-    }
-
-    // Compute a checksum of the encrypted key
-    uint256 checksum = Hash(vchCryptedSecret);
-
-    const auto key = std::make_pair(DBKeys::DILITHIUM_CRYPTED_KEY, vchPubKey);
-    if (!WriteIC(key, std::make_pair(vchCryptedSecret, checksum), false)) {
-        // It may already exist, so try writing just the checksum
-        std::vector<unsigned char> val;
-        if (!m_batch->Read(key, val)) {
-            return false;
-        }
-        if (!WriteIC(key, std::make_pair(val, checksum), true)) {
-            return false;
-        }
-    }
-    EraseIC(std::make_pair(DBKeys::DILITHIUM_KEY, vchPubKey));
-    return true;
-}
-
-// Proper Dilithium key storage methods that use CKeyID instead of dummy CPubKey
+// Dilithium key storage. Records are keyed by CKeyID only; the old CPubKey
+// overloads (WriteDilithiumKey, WriteDilithiumKeyRaw, WriteCryptedDilithiumKey)
+// stored under a dummy CPubKey and could erase a different key's record on
+// re-encryption (Quarks F2.11).
 bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata& keyMeta)
 {
     // Create a unique key for this Dilithium key using the key ID
@@ -261,11 +207,6 @@ bool WalletBatch::WriteCryptedDilithiumKeyByID(const CKeyID& keyID, const std::v
     }
     EraseIC(std::make_pair(DBKeys::DILITHIUM_KEY, keyID));
     return true;
-}
-
-bool WalletBatch::WriteDilithiumKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubkey, const bool overwrite)
-{
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_KEYMETA, pubkey), meta, overwrite);
 }
 
 bool WalletBatch::WriteDilithiumHDChain(const CHDChain& chain)
@@ -628,14 +569,14 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         if (pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
             for (auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
                 auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
-                if (desc_spk_man && desc_spk_man->LoadDilithiumKey(dilithiumKey, CPubKey())) {
+                if (desc_spk_man && desc_spk_man->LoadDilithiumKey(dilithiumKey)) {
                     return true;
                 }
             }
             strErr = "Error reading wallet database: Failed to load Dilithium key into any descriptor key manager";
             return false;
         }
-        if (!pwallet->GetOrCreateLegacyScriptPubKeyMan()->LoadDilithiumKey(dilithiumKey, CPubKey())) {
+        if (!pwallet->GetOrCreateLegacyScriptPubKeyMan()->LoadDilithiumKey(dilithiumKey)) {
             strErr = "Error reading wallet database: Failed to load Dilithium key into the legacy key manager";
             return false;
         }

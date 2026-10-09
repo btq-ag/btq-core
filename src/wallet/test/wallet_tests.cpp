@@ -359,7 +359,7 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, Walle
         {
             LOCK2(wallet->cs_wallet, spk_man->cs_KeyStore);
             spk_man->mapKeyMetadata[keyid].nCreateTime = key_time;
-            BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(key, CPubKey(pubkey.begin(), pubkey.end())));
+            BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(key));
             BOOST_REQUIRE(wallet->SetAddressBook(destination, "dilithium backup", AddressPurpose::RECEIVE));
             AddWallet(context, wallet);
             LOCK(Assert(m_node.chainman)->GetMutex());
