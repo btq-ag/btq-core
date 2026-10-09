@@ -276,6 +276,40 @@ BOOST_FIXTURE_TEST_CASE(wallet_is_mine_tracks_unowned_p2mr_metadata_as_watchonly
     BOOST_CHECK(!spend);
 }
 
+// Tracked P2MR metadata is looked up by the script's destination. Scripts that
+// only resemble the tracked one must not match it.
+BOOST_FIXTURE_TEST_CASE(tracked_p2mr_lookup_matches_only_its_script, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+
+    CKey external_key;
+    external_key.MakeNewKey(/*fCompressedIn=*/true);
+    const auto leaves = MakeXOnlyChecksigTree(XOnlyPubKey{external_key.GetPubKey()});
+
+    LOCK(wallet->cs_wallet);
+    auto created = CreateP2MR(*wallet, leaves, "external");
+    BOOST_REQUIRE(created);
+    const CScript& tracked = created->script_pub_key;
+    int version;
+    std::vector<unsigned char> program;
+    BOOST_REQUIRE(tracked.IsWitnessProgram(version, program));
+    BOOST_REQUIRE_EQUAL(version, 2);
+    BOOST_REQUIRE_EQUAL(program.size(), 32U);
+
+    BOOST_CHECK(IsTrackedP2MRScript(*wallet, tracked));
+    BOOST_CHECK_EQUAL(wallet->IsMine(tracked), ISMINE_WATCH_ONLY);
+
+    std::vector<unsigned char> other{program};
+    other[0] ^= 1;
+    const CScript untracked = CScript() << OP_2 << other;
+    const CScript short_program = CScript() << OP_2 << std::vector<unsigned char>(program.begin(), program.end() - 1);
+    const CScript v1_program = CScript() << OP_1 << program;
+    for (const CScript& script : {untracked, short_program, v1_program}) {
+        BOOST_CHECK(!IsTrackedP2MRScript(*wallet, script));
+        BOOST_CHECK_EQUAL(wallet->IsMine(script), ISMINE_NO);
+    }
+}
+
 // importdilithiumkey stores the key and then CreateP2MR finds the existing
 // tree and returns before SetP2MRMetadata. A cached watch-only hit would
 // still be there, and coin selection would skip the output.
