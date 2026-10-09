@@ -37,13 +37,13 @@ static const CoinEligibilityFilter filter_confirmed(1, 1, 0);
 static const CoinEligibilityFilter filter_standard_extra(6, 6, 0);
 static int nextLockTime = 0;
 
-static void add_coin(const CAmount& nValue, int nInput, std::vector<COutput>& set)
+static void add_coin(const CAmount& nValue, int nInput, std::vector<COutput>& set, int input_bytes = -1)
 {
     CMutableTransaction tx;
     tx.vout.resize(nInput + 1);
     tx.vout[nInput].nValue = nValue;
     tx.nLockTime = nextLockTime++;        // so all transactions get different hashes
-    set.emplace_back(COutPoint(tx.GetHash(), nInput), tx.vout.at(nInput), /*depth=*/ 1, /*input_bytes=*/ -1, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, /*fees=*/ 0);
+    set.emplace_back(COutPoint(tx.GetHash(), nInput), tx.vout.at(nInput), /*depth=*/ 1, /*input_bytes=*/ input_bytes, /*spendable=*/ true, /*solvable=*/ true, /*safe=*/ true, /*time=*/ 0, /*from_me=*/ false, /*fees=*/ 0);
 }
 
 static void add_coin(const CAmount& nValue, int nInput, SelectionResult& result)
@@ -185,6 +185,23 @@ static std::unique_ptr<CWallet> NewWallet(const node::NodeContext& m_node, const
     wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
     wallet->SetupDescriptorScriptPubKeyMans();
     return wallet;
+}
+
+BOOST_AUTO_TEST_CASE(coingrinder_min_weight_test)
+{
+    std::vector<COutput> utxo_pool;
+    // 148-byte ECDSA-sized inputs vs one 4000-byte Dilithium-sized input.
+    add_coin(1 * CENT, 1, utxo_pool, /*input_bytes=*/ 148);
+    add_coin(2 * CENT, 2, utxo_pool, /*input_bytes=*/ 148);
+    add_coin(3 * CENT, 3, utxo_pool, /*input_bytes=*/ 4000);
+
+    auto groups = GroupCoins(utxo_pool);
+    const auto result = CoinGrinder(groups, 3 * CENT, /*change_target=*/0, MAX_STANDARD_TX_WEIGHT);
+    BOOST_CHECK(result);
+    BOOST_CHECK_EQUAL(result->GetAlgo(), SelectionAlgorithm::CG);
+    BOOST_CHECK_EQUAL(result->GetSelectedValue(), 3 * CENT);
+    BOOST_CHECK_EQUAL(result->GetInputSet().size(), 2U);
+    BOOST_CHECK_EQUAL(result->GetWeight(), 148 * WITNESS_SCALE_FACTOR * 2);
 }
 
 // Branch and bound coin selection tests
