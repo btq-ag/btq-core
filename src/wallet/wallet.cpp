@@ -2199,8 +2199,29 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
 
     const PrecomputedTransactionData txdata = PrecomputePSBTData(psbtx);
 
+    // Coin selection sizes a Taproot input at the key path when the wallet can
+    // sign it (WalletSignsTaprootKeyPath in spend.cpp). A ScriptPubKeyMan that
+    // holds only a leaf key can sign the input through a larger script path
+    // from the PSBT's Taproot data, and later ScriptPubKeyMans skip a finalized
+    // input, so run the ScriptPubKeyMans that sign a Taproot key path first.
+    std::set<ScriptPubKeyMan*> other_spk_mans{GetAllScriptPubKeyMans()};
+    std::vector<ScriptPubKeyMan*> spk_mans;
+    if (sign) {
+        for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
+            CTxOut utxo;
+            if (PSBTInputSigned(psbtx.inputs.at(i)) || !psbtx.GetInputUTXO(utxo, i)) continue;
+            for (ScriptPubKeyMan* spk_man : GetScriptPubKeyMans(utxo.scriptPubKey)) {
+                const auto* desc_spk_man{dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)};
+                if (desc_spk_man && desc_spk_man->CanSignTaprootKeyPath(utxo.scriptPubKey) && other_spk_mans.erase(spk_man)) {
+                    spk_mans.push_back(spk_man);
+                }
+            }
+        }
+    }
+    spk_mans.insert(spk_mans.end(), other_spk_mans.begin(), other_spk_mans.end());
+
     // Fill in information from ScriptPubKeyMans
-    for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
+    for (ScriptPubKeyMan* spk_man : spk_mans) {
         int n_signed_this_spkm = 0;
         TransactionError res = spk_man->FillPSBT(psbtx, txdata, sighash_type, sign, bip32derivs, &n_signed_this_spkm, finalize);
         if (res != TransactionError::OK) {

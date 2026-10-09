@@ -119,6 +119,8 @@ static constexpr int64_t TAPROOT_KEY_PATH_INPUT_WEIGHT{(32 + 4 + 4 + 1) * WITNES
  * visit ScriptPubKeyMans in no fixed order. A ScriptPubKeyMan for the same
  * output that holds only leaf keys would sign through a script path, so every
  * ScriptPubKeyMan for the output must be able to sign the key path.
+ * CWallet::FillPSBT runs these ScriptPubKeyMans first, because a
+ * ScriptPubKeyMan for a different output can sign a leaf from the PSBT.
  */
 static bool WalletSignsTaprootKeyPath(const CWallet& wallet, const CScript& script_pub_key)
 {

@@ -512,6 +512,27 @@ class WalletTaprootTest(BTQTestFramework):
         for wallet in wallets.values():
             wallet.unloadwallet()
 
+        # A wpkh descriptor holding the leaf key does not produce the Taproot
+        # output, but it can sign the leaf from the PSBT's Taproot data. The
+        # key-path signer must run first, so each spend has a key-path witness.
+        txids = [self.boring.sendtoaddress(address, 1) for _ in range(4)]
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        for i, txid in enumerate(txids):
+            node.createwallet(f"taproot_wpkh_leaf_{i}", descriptors=True, blank=True)
+            wallet = node.get_wallet_rpc(f"taproot_wpkh_leaf_{i}")
+            leaf_key = descsum_create(f"wpkh({KEYS[0]['xprv']}/0)")
+            # Import the leaf key first; descriptors are usually visited in import order.
+            result = wallet.importdescriptors([{"desc": desc, "timestamp": 0} for desc in (leaf_key, with_internal)])
+            assert all(r["success"] for r in result)
+            vout = next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)
+            sent = wallet.send(outputs=[{self.boring.getnewaddress(): Decimal("0.5")}],
+                               options={"inputs": [{"txid": txid, "vout": vout}], "add_inputs": False,
+                                        "change_address": address, "fee_rate": 10})
+            witness = node.getrawtransaction(sent["txid"], True)["vin"][0]["txinwitness"]
+            assert_equal(len(witness), 1)
+            wallet.unloadwallet()
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+
     def run_test(self):
         self.nodes[0].createwallet(wallet_name="boring")
         self.boring = self.nodes[0].get_wallet_rpc("boring")
