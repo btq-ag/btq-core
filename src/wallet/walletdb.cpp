@@ -929,7 +929,17 @@ static DBErrors LoadLegacyWalletRecords(CWallet* pwallet, DatabaseBatch& batch, 
 
         CKeyMetadata key_meta;
         value >> key_meta;
-        pwallet->GetOrCreateLegacyScriptPubKeyMan()->LoadKeyMetadata(key_id, key_meta);
+        if (pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+            // Descriptor Dilithium keys write the same meta records. There is
+            // no LegacyScriptPubKeyMan to attach them to.
+            return DBErrors::LOAD_OK;
+        }
+        auto* legacy = pwallet->GetOrCreateLegacyScriptPubKeyMan();
+        if (!legacy) {
+            strErr = "Error reading wallet database: no ScriptPubKeyMan for Dilithium key metadata";
+            return DBErrors::CORRUPT;
+        }
+        legacy->LoadKeyMetadata(key_id, key_meta);
         return DBErrors::LOAD_OK;
     });
     result = std::max(result, dilithium_keymeta_res.m_result);

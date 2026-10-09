@@ -677,6 +677,8 @@ public:
 
     // Dilithium key management
     bool AddDilithiumKeyPubKey(const CDilithiumKey& key, const CPubKey& pubkey);
+    /** Lower this descriptor's birth time and persist it. Timestamp 1 means unknown. */
+    void UpdateTimeFirstKey(int64_t nCreateTime);
     bool LoadDilithiumKey(const CDilithiumKey& key, const CPubKey& pubkey);
     bool LoadCryptedDilithiumKey(const CKeyID& keyid, const std::vector<unsigned char>& vchCryptedSecret, bool checksum_valid);
     bool GetDilithiumKey(const CKeyID& keyid, CDilithiumKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);

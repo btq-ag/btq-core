@@ -317,6 +317,7 @@ public:
                 m_last_range_ends.emplace(desc_spkm->GetID(), desc_spkm->GetEndRange());
             }
         }
+        AddP2MRScriptPubKeys();
     }
 
     void UpdateIfNeeded()
@@ -331,6 +332,7 @@ public:
                 m_last_range_ends.at(desc_spkm->GetID()) = current_range_end;
             }
         }
+        AddP2MRScriptPubKeys();
     }
 
     std::optional<bool> MatchesBlock(const uint256& block_hash) const
@@ -348,6 +350,16 @@ private:
       */
     std::map<uint256, int32_t> m_last_range_ends;
     GCSFilter::ElementSet m_filter_set;
+
+    void AddP2MRScriptPubKeys()
+    {
+        LOCK(m_wallet.cs_wallet);
+        for (const auto& record : m_wallet.ListP2MRMetadata()) {
+            const CTxDestination& dest = std::get<0>(record);
+            const CScript script_pub_key = GetScriptForDestination(dest);
+            m_filter_set.emplace(script_pub_key.begin(), script_pub_key.end());
+        }
+    }
 
     void AddScriptPubKeys(const DescriptorScriptPubKeyMan* desc_spkm, int32_t last_range_end = 0)
     {
