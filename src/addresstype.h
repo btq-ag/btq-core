@@ -195,6 +195,7 @@ public:
  *  * WitnessV0ScriptHash: TxoutType::WITNESS_V0_SCRIPTHASH destination (P2WSH address)
  *  * WitnessV0KeyHash: TxoutType::WITNESS_V0_KEYHASH destination (P2WPKH address)
  *  * WitnessV1Taproot: TxoutType::WITNESS_V1_TAPROOT destination (P2TR address)
+ *  * WitnessV2P2MR: TxoutType::WITNESS_V2_P2MR destination (P2MR address)
  *  * WitnessUnknown: TxoutType::WITNESS_UNKNOWN destination (P2W??? address)
  *  * DilithiumPubKeyDestination: TxoutType::DILITHIUM_PUBKEY (P2DPK), no corresponding address
  *  * DilithiumPKHash: TxoutType::DILITHIUM_PUBKEYHASH destination (P2DPKH address)
