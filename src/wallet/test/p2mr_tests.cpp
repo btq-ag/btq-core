@@ -215,6 +215,68 @@ BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSet
     BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
 }
 
+BOOST_FIXTURE_TEST_CASE(p2mr_metadata_not_in_receive_requests, BasicTestingSetup)
+{
+    // F2.17: P2MR metadata has its own record type; the GUI-facing receive
+    // request list must never see it, including rows written by old wallets.
+    const auto leaves = MakeOpTrueTree();
+    std::string address;
+    std::string legacy_json;
+    MockableData records;
+    // The downgrade guard must sit in the mandatory flag range, where
+    // binaries that do not know it refuse to load the wallet.
+    static_assert((WALLET_FLAG_P2MR_METADATA >> 32) != 0);
+
+    {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->LoadWallet();
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK(!wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+        auto created = CreateP2MR(*wallet, leaves, "meta");
+        BOOST_REQUIRE(created);
+        address = created->address;
+
+        // The first p2mrmeta write marks the wallet so older binaries,
+        // which would silently hide the P2MR balance, refuse to open it.
+        BOOST_CHECK(wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+
+        std::string value;
+        BOOST_CHECK(wallet->GetP2MRMetadata(created->dest, created->id, value));
+        BOOST_CHECK(wallet->GetAddressReceiveRequests().empty());
+
+        // Erasing a receive request for an unknown destination must not
+        // plant a ghost address-book entry (reload would not have one).
+        const CTxDestination unknown{PKHash{uint160{}}};
+        BOOST_CHECK(wallet->m_address_book.find(unknown) == wallet->m_address_book.end());
+        WalletBatch ghost_batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+        wallet->EraseAddressReceiveRequest(ghost_batch, unknown, "nope");
+        BOOST_CHECK(wallet->m_address_book.find(unknown) == wallet->m_address_book.end());
+
+        // Simulate a pre-F2.17 wallet: metadata stored as a receive request.
+        legacy_json = value;
+        WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+        BOOST_REQUIRE(wallet->SetAddressReceiveRequest(batch, created->dest, "rrp2mr:legacy-id", legacy_json));
+        records = GetMockableDatabase(*wallet).m_records;
+    }
+
+    {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+        LOCK(wallet->cs_wallet);
+        const CTxDestination dest = DecodeDestination(address);
+        std::string value;
+        // The legacy row is routed into the metadata map on load...
+        BOOST_CHECK(wallet->GetP2MRMetadata(dest, "legacy-id", value));
+        BOOST_CHECK_EQUAL(value, legacy_json);
+        // ...together with the natively stored entry...
+        BOOST_CHECK_EQUAL(wallet->ListP2MRMetadata().size(), 2U);
+        // ...and receive requests stay empty.
+        BOOST_CHECK(wallet->GetAddressReceiveRequests().empty());
+        // The downgrade guard survives the reload.
+        BOOST_CHECK(wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+    }
+}
+
 BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);

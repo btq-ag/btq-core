@@ -78,6 +78,7 @@ extern const std::string MINVERSION;
 extern const std::string NAME;
 extern const std::string OLD_KEY;
 extern const std::string ORDERPOSNEXT;
+extern const std::string P2MR_METADATA;
 extern const std::string POOL;
 extern const std::string PURPOSE;
 extern const std::string SETTINGS;
@@ -283,6 +284,8 @@ public:
     bool WriteAddressPreviouslySpent(const CTxDestination& dest, bool previously_spent);
     bool WriteAddressReceiveRequest(const CTxDestination& dest, const std::string& id, const std::string& receive_request);
     bool EraseAddressReceiveRequest(const CTxDestination& dest, const std::string& id);
+    bool WriteP2MRMetadata(const CTxDestination& dest, const std::string& id, const std::string& value);
+    bool EraseP2MRMetadata(const CTxDestination& dest, const std::string& id);
     bool EraseAddressData(const CTxDestination& dest);
 
     bool WriteActiveScriptPubKeyMan(uint8_t type, const uint256& id, bool internal);

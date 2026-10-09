@@ -156,7 +156,8 @@ static constexpr uint64_t KNOWN_WALLET_FLAGS =
     |   WALLET_FLAG_LAST_HARDENED_XPUB_CACHED
     |   WALLET_FLAG_DISABLE_PRIVATE_KEYS
     |   WALLET_FLAG_DESCRIPTORS
-    |   WALLET_FLAG_EXTERNAL_SIGNER;
+    |   WALLET_FLAG_EXTERNAL_SIGNER
+    |   WALLET_FLAG_P2MR_METADATA;
 
 static constexpr uint64_t MUTABLE_WALLET_FLAGS =
         WALLET_FLAG_AVOID_REUSE;
@@ -168,7 +169,8 @@ static const std::map<std::string,WalletFlags> WALLET_FLAG_MAP{
     {"last_hardened_xpub_cached", WALLET_FLAG_LAST_HARDENED_XPUB_CACHED},
     {"disable_private_keys", WALLET_FLAG_DISABLE_PRIVATE_KEYS},
     {"descriptor_wallet", WALLET_FLAG_DESCRIPTORS},
-    {"external_signer", WALLET_FLAG_EXTERNAL_SIGNER}
+    {"external_signer", WALLET_FLAG_EXTERNAL_SIGNER},
+    {"p2mr_metadata", WALLET_FLAG_P2MR_METADATA}
 };
 
 /** A wrapper to reserve an address from a wallet
@@ -383,6 +385,12 @@ private:
     //! Unsets a wallet flag and saves it to disk
     void UnsetWalletFlagWithDB(WalletBatch& batch, uint64_t flag);
 
+    /** Set a flag using the caller's batch. Writes the flag to disk before
+     *  setting the in-memory bit; throws if the write fails. Atomicity with
+     *  the caller's other writes depends on the caller running a batch
+     *  transaction, which WalletBatch alone does not guarantee. */
+    void SetWalletFlagWithDB(WalletBatch& batch, uint64_t flag);
+
     //! Unset the blank wallet flag and saves it to disk
     void UnsetBlankWalletFlag(WalletBatch& batch) override;
 
@@ -486,6 +494,9 @@ public:
     int64_t nOrderPosNext GUARDED_BY(cs_wallet) = 0;
 
     std::map<CTxDestination, CAddressBookData> m_address_book GUARDED_BY(cs_wallet);
+    /** P2MR tree metadata (JSON), kept out of the address book so
+     *  GetAddressReceiveRequests never returns it (Quarks F2.17). */
+    std::map<CTxDestination, std::map<std::string, std::string>> m_p2mr_metadata GUARDED_BY(cs_wallet);
     const CAddressBookData* FindAddressBookEntry(const CTxDestination&, bool allow_change = false) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /** Set of Coins owned by this wallet that we won't try to spend from. A
@@ -565,6 +576,8 @@ public:
     void LoadAddressPreviouslySpent(const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     //! Appends payment request to destination.
     void LoadAddressReceiveRequest(const CTxDestination& dest, const std::string& id, const std::string& request) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    //! Loads a P2MR metadata record (new p2mrmeta rows and legacy rrp2mr: receive requests).
+    void LoadP2MRMetadata(const CTxDestination& dest, const std::string& id, const std::string& value) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! Holds a timestamp at which point the wallet is scheduled (externally) to be relocked. Caller must arrange for actual relocking to occur via Lock().
     int64_t nRelockTime GUARDED_BY(cs_wallet){0};

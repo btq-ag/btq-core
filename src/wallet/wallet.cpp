@@ -1689,6 +1689,17 @@ void CWallet::UnsetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
         throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
 }
 
+void CWallet::SetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
+{
+    LOCK(cs_wallet);
+    // Disk first. Setting the in-memory bit before a failed write would make
+    // guards like SetP2MRMetadata's IsWalletFlagSet check pass for the rest
+    // of the session while the on-disk wallet never got the flag.
+    if (!batch.WriteWalletFlags(m_wallet_flags | flag))
+        throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
+    m_wallet_flags |= flag;
+}
+
 void CWallet::UnsetBlankWalletFlag(WalletBatch& batch)
 {
     UnsetWalletFlagWithDB(batch, WALLET_FLAG_BLANK_WALLET);
@@ -2959,39 +2970,58 @@ bool CWallet::SetAddressReceiveRequest(WalletBatch& batch, const CTxDestination&
 bool CWallet::EraseAddressReceiveRequest(WalletBatch& batch, const CTxDestination& dest, const std::string& id)
 {
     if (!batch.EraseAddressReceiveRequest(dest, id)) return false;
-    m_address_book[dest].receive_requests.erase(id);
+    // FindKey first: operator[] would plant an empty address-book entry for
+    // destinations that never had one, and that ghost entry would differ
+    // from what a reload produces.
+    if (auto* entry{common::FindKey(m_address_book, dest)}) entry->receive_requests.erase(id);
     return true;
 }
 
-namespace {
-static constexpr std::string_view P2MR_RECEIVE_REQUEST_PREFIX{"rrp2mr:"};
+void CWallet::LoadP2MRMetadata(const CTxDestination& dest, const std::string& id, const std::string& value)
+{
+    m_p2mr_metadata[dest][id] = value;
 }
 
 bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value)
 {
-    const bool result = SetAddressReceiveRequest(batch, dest, std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id, value);
-    if (result) m_ismine_cache.erase(GetScriptForDestination(dest));
-    return result;
+    // Flag the wallet before the first p2mrmeta row hits disk. The flag is
+    // in the mandatory (upper-bit) range, so binaries that predate the
+    // record type refuse to open the wallet instead of silently hiding the
+    // P2MR balance they cannot see. Flag first: a crash in between leaves a
+    // flagged wallet with no metadata row, which only over-restricts.
+    if (!IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA)) {
+        SetWalletFlagWithDB(batch, WALLET_FLAG_P2MR_METADATA);
+    }
+    if (!batch.WriteP2MRMetadata(dest, id, value)) return false;
+    // Older wallets stored this as a receive request under "rrp2mr:<id>"
+    // (Quarks F2.17). Drop any such row, in the DB and in memory, so the
+    // two copies cannot diverge. If the erase fails, take the new row back
+    // out rather than leaving both copies on disk.
+    if (!EraseAddressReceiveRequest(batch, dest, "rrp2mr:" + id)) {
+        batch.EraseP2MRMetadata(dest, id);
+        return false;
+    }
+    m_p2mr_metadata[dest][id] = value;
+    m_ismine_cache.erase(GetScriptForDestination(dest));
+    return true;
 }
 
 bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const
 {
-    const auto* entry{common::FindKey(m_address_book, dest)};
+    const auto* entry{common::FindKey(m_p2mr_metadata, dest)};
     if (!entry) return false;
-    const auto full_id = std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id;
-    const auto* request{common::FindKey(entry->receive_requests, full_id)};
-    if (!request) return false;
-    value = *request;
+    const auto* meta{common::FindKey(*entry, id)};
+    if (!meta) return false;
+    value = *meta;
     return true;
 }
 
 std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata() const
 {
     std::vector<std::tuple<CTxDestination, std::string, std::string>> out;
-    for (const auto& [dest, entry] : m_address_book) {
-        for (const auto& [id, request] : entry.receive_requests) {
-            if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) != 0) continue;
-            out.emplace_back(dest, id.substr(P2MR_RECEIVE_REQUEST_PREFIX.size()), request);
+    for (const auto& [dest, entries] : m_p2mr_metadata) {
+        for (const auto& [id, value] : entries) {
+            out.emplace_back(dest, id, value);
         }
     }
     return out;
