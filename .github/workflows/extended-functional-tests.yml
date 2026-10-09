@@ -2,30 +2,44 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #
-# Run the base functional suite (BASE_SCRIPTS) and independently validate
-# completion, test inventory and RPC coverage. Existing production
-# dependencies retain their explicit failure allowances.
+# Run the functional suite with --extended: BASE_SCRIPTS plus the slow tests
+# in EXTENDED_SCRIPTS. This takes about twice as long as the base suite in
+# functional-tests.yml, so it runs on pushes to master, nightly, on manual
+# dispatch, and on pull requests labelled ci:extended, not on every pull
+# request. The build steps match functional-tests.yml; keep them in step.
+# The checker's own unit tests (test_functional_test_harness.py) run only in
+# functional-tests.yml.
 #
-# The slow tests in EXTENDED_SCRIPTS run in extended-functional-tests.yml,
-# on pushes to master, nightly, on manual dispatch, and on pull requests
-# labelled ci:extended.
+# Adding another label to a pull request that has ci:extended posts a skipped
+# result for this check on the same commit, which hides the earlier result in
+# the pull request's checks list. Re-run the earlier run from the Actions tab
+# to show it again.
 
-name: functional-tests
+name: extended-functional-tests
 
 on:
   push:
     branches: [master]
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
 
 concurrency:
-  group: functional-${{ github.workflow }}-${{ github.event_name != 'pull_request' && github.run_id || github.ref }}
+  # Adding any other label must not cancel a running check.
+  group: extended-functional-${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name != 'ci:extended')) && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  functional-tests:
-    name: functional tests
+  extended-functional-tests:
+    name: extended functional tests
+    if: >-
+      github.event_name != 'pull_request' ||
+      (contains(github.event.pull_request.labels.*.name, 'ci:extended') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ci:extended'))
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -46,10 +60,11 @@ jobs:
             bsdmainutils ccache python3-zmq \
             libevent-dev libboost-dev libsqlite3-dev libdb++-dev libzmq3-dev
 
-      # Same configure flags as build-and-address-tests.yml, so this job
-      # can start from that job's ccache.
       - name: Restore ccache
-        uses: actions/cache@v4
+        # Restore only. The configure flags match functional-tests.yml, so
+        # its cache serves this job and a second entry per commit would only
+        # use up the repository's cache quota.
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-functional-${{ runner.os }}-${{ github.sha }}
@@ -77,19 +92,18 @@ jobs:
         # Preserve the log even on failure. The next step rejects unexpected
         # failures, incomplete runs, missing variants and missing RPC coverage.
         run: |
-          python3 ci/test/test_functional_test_harness.py
-          test/functional/test_runner.py --ci --quiet --coverage --jobs 8 \
+          test/functional/test_runner.py --ci --quiet --extended --coverage --jobs 8 \
             --tmpdirprefix "$RUNNER_TEMP" --timeout-factor=4 \
             2>&1 | tee "$RUNNER_TEMP/functional.log" || true
 
       - name: Compare with known failures
-        run: python3 ci/test/check_known_failures.py --coverage "$RUNNER_TEMP/functional.log" test/functional/known_failures.txt
+        run: python3 ci/test/check_known_failures.py --extended --coverage "$RUNNER_TEMP/functional.log" test/functional/known_failures.txt
 
       - name: Upload test_runner output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: functional-log
+          name: extended-functional-log
           path: ${{ runner.temp }}/functional.log
           if-no-files-found: ignore
 

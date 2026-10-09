@@ -518,6 +518,10 @@ public:
             }
         };
 
+        if (opts.test_checkpoint) {
+            checkpointData.mapCheckpoints.emplace(*opts.test_checkpoint);
+        }
+
         // Scaffolding for the assumeutxo tests, which mine to this height and
         // then snapshot. Every chain shipped an empty table, so ActivateSnapshot
         // rejected every snapshot as "height in snapshot metadata not
