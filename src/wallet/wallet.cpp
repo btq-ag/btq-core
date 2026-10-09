@@ -3006,6 +3006,18 @@ bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, co
     return true;
 }
 
+bool CWallet::EraseP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id)
+{
+    if (!batch.EraseP2MRMetadata(dest, id)) return false;
+    const auto it = m_p2mr_metadata.find(dest);
+    if (it != m_p2mr_metadata.end()) {
+        it->second.erase(id);
+        if (it->second.empty()) m_p2mr_metadata.erase(it);
+    }
+    m_ismine_cache.erase(GetScriptForDestination(dest));
+    return true;
+}
+
 bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const
 {
     const auto* entry{common::FindKey(m_p2mr_metadata, dest)};

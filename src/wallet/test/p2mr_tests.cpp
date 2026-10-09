@@ -17,6 +17,7 @@
 #include <util/strencodings.h>
 #include <util/vector.h>
 #include <validation.h>
+#include <wallet/coincontrol.h>
 #include <wallet/p2mr.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/test/util.h>
@@ -213,6 +214,167 @@ BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSet
     BOOST_CHECK_EQUAL(second->address, first->address);
     BOOST_CHECK_EQUAL(HexStr(second->script_pub_key), HexStr(first->script_pub_key));
     BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+}
+
+BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSetup)
+{
+    const auto leaves = MakeOpTrueTree();
+    CCoinControl coin_control;
+    auto builder = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(builder);
+    const CTxDestination dest = builder->GetOutput();
+
+    auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet->LoadWallet();
+
+    // Reopens the wallet from its current records, so every assertion can
+    // also be checked against what a restart would load.
+    const auto reload = [&] {
+        MockableData records = GetMockableDatabase(*wallet).m_records;
+        wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+    };
+
+    // The wallet has no coins, so CreateTransaction fails. The entry this
+    // call created must be rolled back (Quarks F2.9).
+    {
+        LOCK(wallet->cs_wallet);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "fund-fail", /*subtract_fee_from_amount=*/false, coin_control);
+        BOOST_REQUIRE(!funded);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK(ListP2MR(*wallet).empty());
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        BOOST_CHECK(!wallet->FindAddressBookEntry(dest));
+    }
+
+    // A pre-existing address-book entry (labelled, but not P2MR-tracked)
+    // must survive the rollback with its label and purpose intact, even
+    // though CreateP2MR overwrote them.
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
+        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control);
+        BOOST_REQUIRE(!funded);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        const auto* entry = wallet->FindAddressBookEntry(dest);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "pre-existing");
+        BOOST_CHECK(entry->purpose == AddressPurpose::SEND);
+        BOOST_REQUIRE(wallet->DelAddressBook(dest));
+    }
+
+    // A pre-existing change entry (no label, no database rows) must come
+    // back in memory, and the rollback must remove the name/purpose rows
+    // CreateP2MR's SetAddressBook added.
+    {
+        LOCK(wallet->cs_wallet);
+        wallet->m_address_book[dest]; // plant an in-memory change entry
+        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control);
+        BOOST_REQUIRE(!funded);
+        const auto* entry = wallet->FindAddressBookEntry(dest, /*allow_change=*/true);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK(entry->IsChange());
+        BOOST_CHECK(!entry->purpose);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        // The change entry had no rows of its own, so after a reload the
+        // destination must be absent entirely: leaked rows would make it
+        // reappear as a labelled entry.
+        BOOST_CHECK(!wallet->FindAddressBookEntry(dest, /*allow_change=*/true));
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+    }
+
+    // A pre-existing tree that the failing call reused stays.
+    {
+        LOCK(wallet->cs_wallet);
+        auto created = CreateP2MR(*wallet, leaves, "keep");
+        BOOST_REQUIRE(created);
+        BOOST_CHECK(!created->reused);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "keep", /*subtract_fee_from_amount=*/false, coin_control);
+        BOOST_REQUIRE(!funded);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+        BOOST_CHECK(wallet->FindAddressBookEntry(dest));
+        const auto metadata = wallet->ListP2MRMetadata();
+        BOOST_REQUIRE_EQUAL(metadata.size(), 1U);
+        std::string value;
+        BOOST_CHECK(wallet->GetP2MRMetadata(dest, std::get<1>(metadata.front()), value));
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(create_p2mr_rolls_back_when_flag_write_throws, BasicTestingSetup)
+{
+    // The first metadata write sets WALLET_FLAG_P2MR_METADATA, and that write
+    // throws rather than returning false. SetAddressBook has already
+    // committed. Dropping the catch in CreateP2MR leaves the new label in
+    // place and this case fails.
+    const auto leaves = MakeOpTrueTree();
+    auto builder = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(builder);
+    const CTxDestination dest = builder->GetOutput();
+
+    auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet->LoadWallet();
+
+    DataStream flags_key{};
+    flags_key << DBKeys::FLAGS;
+    const SerializeData flags_bytes{flags_key.begin(), flags_key.end()};
+    GetMockableDatabase(*wallet).m_fail_write = [flags_bytes](const SerializeData& key) {
+        return key == flags_bytes;
+    };
+
+    {
+        LOCK(wallet->cs_wallet);
+        auto created = CreateP2MR(*wallet, leaves, "new-label");
+        BOOST_REQUIRE(!created);
+        BOOST_CHECK(!wallet->FindAddressBookEntry(dest));
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        BOOST_CHECK(!wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+    }
+
+    GetMockableDatabase(*wallet).m_fail_write = nullptr;
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
+    }
+    GetMockableDatabase(*wallet).m_fail_write = [flags_bytes](const SerializeData& key) {
+        return key == flags_bytes;
+    };
+    {
+        LOCK(wallet->cs_wallet);
+        auto created = CreateP2MR(*wallet, leaves, "overwrite");
+        BOOST_REQUIRE(!created);
+        const auto* entry = wallet->FindAddressBookEntry(dest);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "pre-existing");
+        BOOST_CHECK(entry->purpose == AddressPurpose::SEND);
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        BOOST_CHECK(!wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+    }
+
+    MockableData records = GetMockableDatabase(*wallet).m_records;
+    wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+    BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+    {
+        LOCK(wallet->cs_wallet);
+        const auto* entry = wallet->FindAddressBookEntry(dest);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "pre-existing");
+        BOOST_CHECK(entry->purpose == AddressPurpose::SEND);
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+    }
 }
 
 BOOST_FIXTURE_TEST_CASE(p2mr_metadata_not_in_receive_requests, BasicTestingSetup)

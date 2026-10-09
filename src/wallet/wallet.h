@@ -812,6 +812,7 @@ public:
     bool SetAddressReceiveRequest(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool EraseAddressReceiveRequest(WalletBatch& batch, const CTxDestination& dest, const std::string& id) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    bool EraseP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     std::vector<std::tuple<CTxDestination, std::string, std::string>> ListP2MRMetadata() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 

@@ -142,6 +142,9 @@ bool MockableBatch::WriteKey(DataStream&& key, DataStream&& value, bool overwrit
         return false;
     }
     SerializeData key_data{key.begin(), key.end()};
+    if (m_fail_write && *m_fail_write && (*m_fail_write)(key_data)) {
+        return false;
+    }
     SerializeData value_data{value.begin(), value.end()};
     auto [it, inserted] = m_records.emplace(key_data, value_data);
     if (!inserted && overwrite) { // Overwrite if requested

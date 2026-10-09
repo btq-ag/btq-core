@@ -59,6 +59,10 @@ struct P2MRCreated {
     CScript script_pub_key;
     uint256 merkle_root;
     CTxDestination dest;
+    /** True when CreateP2MR returned an already-tracked tree instead of
+     *  storing a new one. Callers that roll back on failure must leave a
+     *  reused entry alone (Quarks F2.9). */
+    bool reused{false};
 };
 
 /** Result of funding a P2MR destination (createstored + send). */
