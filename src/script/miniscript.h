@@ -2252,8 +2252,11 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
                 constructed.push_back(MakeNodeRef<Key>(internal::NoDupCheck{}, ctx.MsContext(), Fragment::JUST_0));
                 break;
             }
-            // Public keys
-            if (in[0].second.size() == 33 || in[0].second.size() == 32) {
+            // Public keys. The size must match the context: tapscript keys
+            // are 32-byte x-only, everything else is a 33-byte compressed
+            // key. Accepting the wrong size here would hand a 33-byte key to
+            // TapSatisfier::FromPKBytes, whose 32-byte CHECK_NONFATAL throws.
+            if (in[0].second.size() == (IsTapscript(ctx.MsContext()) ? 32u : 33u)) {
                 auto key = ctx.FromPKBytes(in[0].second.begin(), in[0].second.end());
                 if (!key) return {};
                 ++in;
