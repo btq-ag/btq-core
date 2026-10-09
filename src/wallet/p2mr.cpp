@@ -391,6 +391,11 @@ util::Result<P2MRBuilder> BuildP2MRTreeChecked(const std::vector<P2MRTreeLeaf>& 
         if ((leaf.leaf_version & ~TAPROOT_LEAF_MASK) != 0) {
             return util::Error{Untranslated("leaf_version parity bit must be unset")};
         }
+        // Same bound the PSBT parser enforces; a larger tracked leaf would
+        // make the wallet emit PSBTs that its own decoder rejects.
+        if (leaf.script.size() > MAX_P2MR_LEAF_SCRIPT_SIZE) {
+            return util::Error{Untranslated("leaf script is too large")};
+        }
         builder.Add(leaf.depth, leaf.script, leaf.leaf_version);
     }
     if (!builder.IsValid() || !builder.IsComplete()) {

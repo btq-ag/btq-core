@@ -248,6 +248,25 @@ class WalletDilithiumSendTest(BTQTestFramework):
         quantum.setwalletflag("quantum_only", False)
         assert quantum.getnewaddress()
 
+        # F2.10: a PSBT paying a tracked P2MR destination carries the script
+        # tree and merkle root on the output, so the receiving side can store
+        # the spend metadata.
+        self.log.info("PSBT outputs carry the P2MR tree for tracked destinations")
+        p2mr_dest = self.dilithium_address(repro)
+        res = repro.walletcreatefundedpsbt([], [{p2mr_dest: Decimal("0.2")}])
+        decoded = repro.decodepsbt(res["psbt"])
+        idx = next(
+            i for i, v in enumerate(decoded["tx"]["vout"])
+            if v["scriptPubKey"].get("address") == p2mr_dest
+        )
+        out = decoded["outputs"][idx]
+        assert_equal(len(out["p2mr_tree"]), 1)
+        # The merkle root is the witness v2 program: scriptPubKey = OP_2 PUSH32 <root>.
+        spk_hex = decoded["tx"]["vout"][idx]["scriptPubKey"]["hex"]
+        assert_equal(out["p2mr_merkle_root"], spk_hex[4:])
+        # The PSBT still round-trips through a joinpsbts-style re-encode.
+        assert_equal(repro.decodepsbt(repro.walletprocesspsbt(res["psbt"], False)["psbt"])["outputs"][idx]["p2mr_tree"], out["p2mr_tree"])
+
         # After a reload every Dilithium key record lands in an arbitrary
         # manager, so generation must check the whole wallet before storing:
         # a plaintext wallet otherwise errors on every already-materialized
