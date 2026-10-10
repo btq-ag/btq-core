@@ -533,6 +533,12 @@ public:
                 .nChainTx = 111,
                 .blockhash = uint256S("0x100831e245415bda8a1b889280fd766c9a1e8a805e2c89c85ae4bc582b4f3efb"),
             },
+            { // test/functional/feature_assumeutxo.py
+                .height = 299,
+                .hash_serialized = AssumeutxoHash{uint256S("0x67d34d66e24f805fceee2fab4d9667a9efae69502a62e72ed405e1f9732475f0")},
+                .nChainTx = 300,
+                .blockhash = uint256S("0x7abfb358694c66f37e421544f2394904f7d845c450be94e37358f0a590850e20"),
+            },
         };
 
         chainTxData = ChainTxData{

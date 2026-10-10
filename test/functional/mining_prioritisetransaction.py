@@ -9,14 +9,16 @@ import time
 
 from test_framework.messages import (
     COIN,
+    CTxOut,
+    WITNESS_SCALE_FACTOR,
     MAX_BLOCK_WEIGHT,
 )
+from test_framework.script import CScript, OP_RETURN
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
     create_lots_of_big_transactions,
-    gen_return_txouts,
 )
 from test_framework.wallet import MiniWallet
 
@@ -177,7 +179,7 @@ class PrioritiseTransactionTest(BTQTestFramework):
         self.test_replacement()
         self.test_diamond()
 
-        self.txouts = gen_return_txouts()
+        self.txouts = [CTxOut(0, CScript([OP_RETURN, b'\x01' * 24000]))]
         self.relayfee = self.nodes[0].getnetworkinfo()['relayfee']
 
         utxo_count = 90
@@ -203,7 +205,7 @@ class PrioritiseTransactionTest(BTQTestFramework):
                 utxos[start_range:end_range])
 
         # Make sure that the size of each group of transactions exceeds
-        # MAX_BLOCK_WEIGHT // 4 -- otherwise the test needs to be revised to
+        # MAX_BLOCK_WEIGHT // WITNESS_SCALE_FACTOR -- otherwise the test needs to be revised to
         # create more transactions.
         mempool = self.nodes[0].getrawmempool(True)
         sizes = [0, 0, 0]
@@ -211,7 +213,7 @@ class PrioritiseTransactionTest(BTQTestFramework):
             for j in txids[i]:
                 assert j in mempool
                 sizes[i] += mempool[j]['vsize']
-            assert sizes[i] > MAX_BLOCK_WEIGHT // 4  # Fail => raise utxo_count
+            assert sizes[i] > MAX_BLOCK_WEIGHT // WITNESS_SCALE_FACTOR  # Fail => raise utxo_count
 
         assert_equal(self.nodes[0].getprioritisedtransactions(), {})
         # add a fee delta to something in the cheapest bucket and make sure it gets mined
