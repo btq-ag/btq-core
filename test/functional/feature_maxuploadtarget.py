@@ -44,8 +44,11 @@ class MaxUploadTest(BTQTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
+        # The historical-block buffer reserves one day of full blocks:
+        # 1440 blocks/day (60-second spacing) x 8 MB = ~10.7 GiB, so the
+        # target has to clear that for the old-block phase to serve anything.
         self.extra_args = [[
-            "-maxuploadtarget=800M",
+            "-maxuploadtarget=11200M",
             "-datacarriersize=100000",
         ]]
         self.supports_cli = False
@@ -93,12 +96,14 @@ class MaxUploadTest(BTQTestFramework):
         getdata_request = msg_getdata()
         getdata_request.inv.append(CInv(MSG_BLOCK, big_old_block))
 
-        max_bytes_per_day = 800*1024*1024
-        daily_buffer = 144 * 4000000
+        max_bytes_per_day = 11200*1024*1024
+        # One day of full blocks: 1440 blocks (60-second spacing) x 8 MB
+        # serialized, mirroring OutboundTargetReached in src/net.cpp.
+        daily_buffer = 1440 * 8000000
         max_bytes_available = max_bytes_per_day - daily_buffer
         success_count = max_bytes_available // old_block_size
 
-        # 576MB will be reserved for relaying new blocks, so expect this to
+        # ~10.7 GiB is reserved for relaying new blocks, so expect this to
         # succeed for ~235 tries.
         for i in range(success_count):
             p2p_conns[0].send_and_ping(getdata_request)
