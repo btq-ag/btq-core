@@ -584,6 +584,23 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         
         std::vector<unsigned char> vchDilithiumKey;
         ssValue >> vchDilithiumKey;
+
+        // WriteDilithiumKeyByID appends Hash(keyID || secret). Verify it
+        // when present, like the encrypted path does. Records written
+        // before the hash existed have nothing after the secret; keep
+        // loading those.
+        if (!ssValue.eof()) {
+            uint256 checksum;
+            ssValue >> checksum;
+            std::vector<unsigned char> vchKey;
+            vchKey.reserve(keyID.size() + vchDilithiumKey.size());
+            vchKey.insert(vchKey.end(), keyID.begin(), keyID.end());
+            vchKey.insert(vchKey.end(), vchDilithiumKey.begin(), vchDilithiumKey.end());
+            if (Hash(vchKey) != checksum) {
+                strErr = "Error reading wallet database: Dilithium key corrupt";
+                return false;
+            }
+        }
         
         // Create CDilithiumKey from the stored data
         CDilithiumKey dilithiumKey;
