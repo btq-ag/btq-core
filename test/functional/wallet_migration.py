@@ -5,12 +5,17 @@
 """Test Migrating a wallet from legacy to descriptor."""
 
 from decimal import Decimal
+import hashlib
+import hmac
 import random
+import re
 import shutil
 import struct
 import time
 
 from test_framework.address import (
+    base58_to_byte,
+    byte_to_base58,
     script_to_p2sh,
     key_to_p2pkh,
     key_to_p2wpkh,
@@ -463,6 +468,123 @@ class WalletMigrationTest(BTQTestFramework):
 
         assert_equal(bals, wallet.getbalances())
 
+    def dump_hd_indexes(self, wallet, name):
+        """Return the indexes on m/0'/0' that have a secp256k1 key and those that
+        have a Dilithium key, and the HD seed and Dilithium private keys"""
+        dump_path = self.nodes[0].datadir_path / f"{name}.dump"
+        wallet.dumpwallet(dump_path)
+        secp, dilithium, seed, dilithium_keys = set(), set(), None, []
+        with open(dump_path, encoding="utf8") as f:
+            for line in f:
+                if not line.strip() or line.startswith("#"):
+                    continue
+                key = line.split()[0]
+                # A Dilithium private key is thousands of characters long
+                is_dilithium = len(key) > 100
+                if is_dilithium:
+                    dilithium_keys.append(key)
+                # The active seed; "inactivehdseed=1" marks an old one
+                if re.search(r"\bhdseed=1", line):
+                    seed = key
+                m = re.search(r"hdkeypath=m/0'/0'/(\d+)'", line)
+                if m:
+                    (dilithium if is_dilithium else secp).add(int(m.group(1)))
+        return secp, dilithium, seed, dilithium_keys
+
+    def hd_p2pkh_address(self, seed, index):
+        """Return the P2PKH address of the secp256k1 key at m/0'/0'/<index>' of a
+        legacy wallet's HD seed (a WIF key from dumpwallet)"""
+        seed_bytes, _ = base58_to_byte(seed)
+        master = hmac.new(b"Bitcoin seed", seed_bytes[:32], hashlib.sha512).digest()
+        # tprv: version 04358394, depth 0, fingerprint 0, child 0, chain code, key
+        tprv = byte_to_base58(bytes.fromhex("358394") + bytes(9) + master[32:] + b"\x00" + master[:32], 0x04)
+        return self.nodes[0].deriveaddresses(descsum_create(f"pkh({tprv}/0h/0h/{index}h)"))[0]
+
+    def test_dilithium_hd(self):
+        self.log.info("Test migration of a wallet with HD Dilithium keys")
+        default = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
+        for name, passphrase in [("dilithium_hd", None), ("dilithium_hd_encrypted", "pass")]:
+            wallet = self.create_legacy_wallet(name)
+            if passphrase:
+                wallet.encryptwallet(passphrase)
+                wallet.walletpassphrase(passphrase, 600)
+
+            addrs = [
+                wallet.getnewaddress(),
+                wallet.getnewdilithiumaddress()["address"],
+                wallet.getnewaddress(),
+                wallet.getnewdilithiumaddress()["address"],
+                wallet.getrawchangeaddress(),
+            ]
+            unfunded = wallet.getnewdilithiumaddress()["address"]
+
+            # Dilithium keys take indexes from the same HD chain counters as the
+            # secp256k1 keys. Where the secp256k1 key at such an index was never
+            # derived, migration used to abort the node.
+            secp, dilithium, seed, _ = self.dump_hd_indexes(wallet, name)
+            gaps = dilithium - secp
+            assert gaps
+            # A watched script at such an index is the descriptor's after migration
+            watched = self.hd_p2pkh_address(seed, min(gaps))
+            wallet.importaddress(watched, "", False)
+            assert_equal(wallet.getaddressinfo(watched)["iswatchonly"], True)
+
+            for addr in addrs:
+                default.sendtoaddress(addr, Decimal("0.1"))
+            self.generate(self.nodes[0], 1)
+            assert_equal(wallet.getbalance(), Decimal("0.5"))
+            if passphrase:
+                wallet.walletlock()
+                wallet.migratewallet(passphrase=passphrase)
+                wallet.walletpassphrase(passphrase, 600)
+            else:
+                wallet.migratewallet()
+
+            info = wallet.getwalletinfo()
+            assert_equal(info["descriptors"], True)
+            assert_equal(info["format"], "sqlite")
+            assert_equal(wallet.getbalance(), Decimal("0.5"))
+            for addr in addrs + [unfunded]:
+                assert_equal(wallet.getaddressinfo(addr)["ismine"], True)
+            assert_equal(wallet.getaddressinfo(watched)["ismine"], True)
+
+            new_addr = wallet.getnewdilithiumaddress()["address"]
+            assert new_addr not in addrs + [unfunded]
+            assert_equal(wallet.getaddressinfo(new_addr)["ismine"], True)
+
+            # Every coin, the P2MR ones included, can be spent after migration
+            wallet.sendall([default.getnewaddress()])
+            self.generate(self.nodes[0], 1)
+            assert_equal(wallet.getbalance(), 0)
+            wallet.unloadwallet()
+
+        self.log.info("Test migration of a restored wallet with an imported HD Dilithium key")
+        # The restored wallet has the old wallet's seed and its Dilithium key, but no HD
+        # metadata for that key. Its next Dilithium key skips the imported key's index.
+        source = self.create_legacy_wallet("dilithium_hd_source")
+        source.getnewdilithiumaddress()
+        _, _, seed, dilithium_keys = self.dump_hd_indexes(source, "dilithium_hd_source")
+        assert_equal(len(dilithium_keys), 1)
+        source.unloadwallet()
+
+        self.nodes[0].createwallet(wallet_name="dilithium_hd_restored", descriptors=False, blank=True)
+        wallet = self.nodes[0].get_wallet_rpc("dilithium_hd_restored")
+        wallet.sethdseed(True, seed)
+        wallet.importdilithiumkey(dilithium_keys[0], "", False)
+        addr = wallet.getnewdilithiumaddress()["address"]
+        secp, dilithium, _, _ = self.dump_hd_indexes(wallet, "dilithium_hd_restored")
+        assert dilithium - secp
+        default.sendtoaddress(addr, Decimal("0.1"))
+        self.generate(self.nodes[0], 1)
+
+        wallet.migratewallet()
+        assert_equal(wallet.getwalletinfo()["descriptors"], True)
+        assert_equal(wallet.getbalance(), Decimal("0.1"))
+        wallet.sendall([default.getnewaddress()])
+        self.generate(self.nodes[0], 1)
+        assert_equal(wallet.getbalance(), 0)
+        wallet.unloadwallet()
+
     def test_unloaded(self):
         self.log.info("Test migration of a wallet that isn't loaded")
         wallet = self.create_legacy_wallet("notloaded")
@@ -893,6 +1015,7 @@ class WalletMigrationTest(BTQTestFramework):
         self.test_no_privkeys()
         self.test_pk_coinbases()
         self.test_encrypted()
+        self.test_dilithium_hd()
         self.test_unloaded()
         self.test_unloaded_by_path()
         self.test_default_wallet()
