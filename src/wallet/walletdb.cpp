@@ -594,8 +594,14 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
             return false;
         }
         
-        // Set the key data using the Set method
+        // Set clears the key when its sign/verify self-checks fail, so a
+        // corrupt record must fail the load instead of installing an
+        // invalid key under this keyID.
         dilithiumKey.Set(vchDilithiumKey.begin(), vchDilithiumKey.end());
+        if (!dilithiumKey.IsValid()) {
+            strErr = "Error reading wallet database: Dilithium key record failed key self-checks";
+            return false;
+        }
         
         // A descriptor wallet has its managers built before records load, so
         // searching them is safe. A legacy wallet creates its manager on demand, and
