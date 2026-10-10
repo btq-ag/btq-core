@@ -2692,6 +2692,31 @@ std::map<CKeyID, CKey> DescriptorScriptPubKeyMan::GetKeys() const
     return m_map_keys;
 }
 
+bool DescriptorScriptPubKeyMan::CanSignTaprootKeyPath(const CScript& script) const
+{
+    int version;
+    std::vector<unsigned char> program;
+    if (!script.IsWitnessProgram(version, program) || version != 1 || program.size() != WITNESS_V1_TAPROOT_SIZE) {
+        return false;
+    }
+    const auto provider{GetSigningProvider(script, /*include_private=*/true)};
+    if (!provider) return false;
+    const XOnlyPubKey output_key{program};
+    CKey key;
+    TaprootSpendData spenddata;
+    if (provider->GetTaprootSpendData(output_key, spenddata) && provider->GetKeyByXOnly(spenddata.internal_key, key)) {
+        return true;
+    }
+    return provider->GetKeyByXOnly(output_key, key);
+}
+
+void DescriptorScriptPubKeyMan::SignPSBTInputWithOwnKeys(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, unsigned int input_index, const CScript& script, int sighash_type, bool bip32derivs, bool finalize) const
+{
+    const auto keys{GetSigningProvider(script, /*include_private=*/true)};
+    if (!keys) return;
+    SignPSBTInput(HidingSigningProvider(keys.get(), /*hide_secret=*/false, /*hide_origin=*/!bip32derivs), psbtx, input_index, &txdata, sighash_type, nullptr, finalize);
+}
+
 bool DescriptorScriptPubKeyMan::HaveKeyByXOnly(const XOnlyPubKey& pubkey) const
 {
     AssertLockHeld(cs_desc_man);

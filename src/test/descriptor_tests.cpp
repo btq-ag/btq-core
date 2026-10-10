@@ -666,4 +666,38 @@ BOOST_AUTO_TEST_CASE(descriptor_test)
     CheckInferDescriptor("4104032540df1d3c7070a8ab3a9cdd304dfc7fd1e6541369c53c4c3310b2537d91059afc8b8e7673eb812a32978dabb78c40f2e423f7757dca61d11838c7aeeb5220ac", "pk(04032540df1d3c7070a8ab3a9cdd304dfc7fd1e6541369c53c4c3310b2537d91059afc8b8e7673eb812a32978dabb78c40f2e423f7757dca61d11838c7aeeb5220)", {}, {{"04032540df1d3c7070a8ab3a9cdd304dfc7fd1e6541369c53c4c3310b2537d91059afc8b8e7673eb812a32978dabb78c40f2e423f7757dca61d11838c7aeeb5220", ""}});
 }
 
+BOOST_AUTO_TEST_CASE(taproot_satisfaction_bounds)
+{
+    const std::string key{"a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd"};
+    auto check = [&](const std::string& expression, int64_t weight, int64_t elems) {
+        FlatSigningProvider provider;
+        std::string error;
+        const auto descriptor = Parse(expression, provider, error);
+        BOOST_REQUIRE_MESSAGE(descriptor, error);
+        BOOST_REQUIRE(descriptor->MaxSatisfactionWeight(false));
+        BOOST_CHECK_EQUAL(*descriptor->MaxSatisfactionWeight(false), weight);
+        BOOST_CHECK_EQUAL(*descriptor->MaxSatisfactionWeight(true), weight);
+        BOOST_REQUIRE(descriptor->MaxSatisfactionElems());
+        BOOST_CHECK_EQUAL(*descriptor->MaxSatisfactionElems(), elems);
+    };
+    check("tr(" + key + ")", 66, 1);
+    const std::string pk = "pk(" + key + ")";
+    check("tr(" + key + "," + pk + ")", 135, 3);
+    std::string tree = pk;
+    for (int depth = 1; depth <= 7; ++depth) {
+        tree = "{" + pk + "," + tree + "}";
+        if (depth == 6) check("tr(" + key + "," + tree + ")", 327, 3);
+        if (depth == 7) check("tr(" + key + "," + tree + ")", 361, 3);
+    }
+    // 250/251 signatures-or-empty-items cross the serialized witness count
+    // boundary once the leaf script and control block are included.
+    for (const int count : {7, 8, 250, 251}) {
+        std::string multi = "multi_a(1";
+        for (int i = 0; i < count; ++i) multi += "," + key;
+        multi += ")";
+        const int64_t expected = count == 7 ? 347 : count == 8 ? 384 : count == 250 ? 8854 : 8889;
+        check("tr(" + key + "," + multi + ")", expected, count + 2);
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()

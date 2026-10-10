@@ -182,7 +182,7 @@ def compute_taproot_address(pubkey, scripts):
     return output_key_to_p2tr(taproot_construct(pubkey, scripts).output_pubkey)
 
 def compute_raw_taproot_address(pubkey):
-    return encode_segwit_address("bcrt", 1, pubkey)
+    return encode_segwit_address("qcrt", 1, pubkey)
 
 class WalletTaprootTest(BTQTestFramework):
     """Test generation and spending of P2TR address outputs."""
@@ -299,13 +299,13 @@ class WalletTaprootTest(BTQTestFramework):
             self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
             test_balance = int(rpc_online.getbalance() * 100000000)
             ret_amnt = random.randrange(100000, test_balance)
-            # Increase fee_rate to compensate for the wallet's inability to estimate fees for script path spends.
-            res = rpc_online.sendtoaddress(address=self.boring.getnewaddress(), amount=Decimal(ret_amnt) / 100000000, subtractfeefromamount=True, fee_rate=200)
+            res = rpc_online.sendtoaddress(address=self.boring.getnewaddress(), amount=Decimal(ret_amnt) / 100000000, subtractfeefromamount=True)
             self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
             assert rpc_online.gettransaction(res)["confirmations"] > 0
 
-        # Cleanup
+        # Cleanup also exercises automatic fee selection for script-path inputs.
         txid = rpc_online.sendall(recipients=[self.boring.getnewaddress()])["txid"]
+        assert txid in self.nodes[0].getrawmempool(), self.nodes[0].testmempoolaccept([rpc_online.gettransaction(txid)["hex"]])
         self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
         assert rpc_online.gettransaction(txid)["confirmations"] > 0
         rpc_online.unloadwallet()
@@ -351,8 +351,7 @@ class WalletTaprootTest(BTQTestFramework):
             self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
             test_balance = int(psbt_online.getbalance() * 100000000)
             ret_amnt = random.randrange(100000, test_balance)
-            # Increase fee_rate to compensate for the wallet's inability to estimate fees for script path spends.
-            psbt = psbt_online.walletcreatefundedpsbt([], [{self.boring.getnewaddress(): Decimal(ret_amnt) / 100000000}], None, {"subtractFeeFromOutputs":[0], "fee_rate": 200, "change_type": address_type})['psbt']
+            psbt = psbt_online.walletcreatefundedpsbt([], [{self.boring.getnewaddress(): Decimal(ret_amnt) / 100000000}], None, {"subtractFeeFromOutputs":[0], "change_type": address_type})['psbt']
             res = psbt_offline.walletprocesspsbt(psbt=psbt, finalize=False)
             for wallet in [psbt_offline, key_only_wallet]:
                 res = wallet.walletprocesspsbt(psbt=psbt, finalize=False)
@@ -394,6 +393,179 @@ class WalletTaprootTest(BTQTestFramework):
         self.do_test_sendtoaddress(comment, pattern, privmap, treefn, keys[0:nkeys], keys[nkeys:2*nkeys])
         self.do_test_psbt(comment, pattern, privmap, treefn, keys[2*nkeys:3*nkeys], keys[3*nkeys:4*nkeys])
 
+    def test_script_path_fee_boundaries(self):
+        self.log.info("Testing deterministic large script-path sendall fee sizing")
+        node = self.nodes[0]
+        node.createwallet("taproot_fee_boundaries", descriptors=True, blank=True)
+        wallet = node.get_wallet_rpc("taproot_fee_boundaries")
+        # The internal key and all sibling leaves are unspendable. The only
+        # available path has 251 stack items, an 8,536-byte script and a depth-7
+        # control block. Both stack count and control length need CompactSize=3.
+        keys = [KEYS[0]["xprv"] + "/0"] + [H_POINT] * 250
+        tree = "multi_a(1," + ",".join(keys) + ")"
+        for _ in range(7):
+            tree = "{pk(" + H_POINT + ")," + tree + "}"
+        descriptor = descsum_create("tr(" + H_POINT + "," + tree + ")")
+        assert wallet.importdescriptors([{"desc": descriptor, "timestamp": "now"}])[0]["success"]
+        address = node.deriveaddresses(descriptor)[0]
+        self.boring.sendtoaddress(address, 1)
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        relay_rate = node.getnetworkinfo()["relayfee"]
+        wallet.settxfee(relay_rate)
+        txid = wallet.sendall(recipients=[self.boring.getnewaddress()])["txid"]
+        transaction = wallet.gettransaction(txid)
+        decoded = node.decoderawtransaction(transaction["hex"])
+        assert_equal(len(decoded["vin"]), 1)
+        witness = decoded["vin"][0]["txinwitness"]
+        assert_equal(len(witness), 253)
+        assert_equal(len(bytes.fromhex(witness[-2])), 8536)
+        assert_equal(len(bytes.fromhex(witness[-1])), 257)
+        assert -transaction["fee"] >= relay_rate * decoded["vsize"] / 1000
+        assert txid in node.getrawmempool(), node.testmempoolaccept([transaction["hex"]])
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        assert wallet.gettransaction(txid)["confirmations"] > 0
+        wallet.unloadwallet()
+
+    def test_key_path_with_large_script_tree(self):
+        self.log.info("Testing key-path fee sizing when the script-path bound exceeds the standard weight")
+        node = self.nodes[0]
+        node.createwallet("taproot_key_path_sizing", descriptors=True, blank=True)
+        wallet = node.get_wallet_rpc("taproot_key_path_sizing")
+        # The wallet holds the internal key, so it signs through the key path.
+        # The 999-key leaf alone bounds each input at about 2,200 vbytes, so
+        # twelve inputs would exceed MAX_STANDARD_TX_WEIGHT if sized by it.
+        leaf_keys = [KEYS[0]["xprv"] + "/0"] + [H_POINT] * (MAX_PUBKEYS_PER_MULTI_A - 1)
+        descriptor = descsum_create("tr(" + KEYS[1]["xprv"] + "/0,multi_a(1," + ",".join(leaf_keys) + "))")
+        assert wallet.importdescriptors([{"desc": descriptor, "timestamp": "now"}])[0]["success"]
+        address = node.deriveaddresses(descriptor)[0]
+        relay_rate = node.getnetworkinfo()["relayfee"]
+        wallet.settxfee(relay_rate)
+
+        def fund(count):
+            for _ in range(count):
+                self.boring.sendtoaddress(address, 1)
+            self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+
+        def check_key_path_spend(txid, input_count):
+            transaction = wallet.gettransaction(txid)
+            decoded = node.decoderawtransaction(transaction["hex"])
+            assert_equal(len(decoded["vin"]), input_count)
+            for vin in decoded["vin"]:
+                assert_equal(len(vin["txinwitness"]), 1)
+            fee = -transaction["fee"]
+            assert relay_rate * decoded["vsize"] / 1000 <= fee <= 2 * relay_rate * decoded["vsize"] / 1000
+            assert txid in node.getrawmempool()
+            self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+
+        # Coin selection must pick all twelve inputs. The blank wallet has no
+        # change descriptor, so change returns to the same address.
+        fund(12)
+        txid = wallet.send(outputs=[{self.boring.getnewaddress(): Decimal("11.9")}],
+                           options={"change_address": address})["txid"]
+        check_key_path_spend(txid, 12)
+
+        fund(12)
+        txid = wallet.sendall(recipients=[self.boring.getnewaddress()])["txid"]
+        check_key_path_spend(txid, 13)
+        wallet.unloadwallet()
+
+    def test_key_path_with_leaf_only_descriptor(self):
+        self.log.info("Testing that a leaf-only descriptor for the same output keeps the script-path size")
+        node = self.nodes[0]
+
+        def big_leaf(key):
+            return "multi_a(1," + ",".join([key + "/0"] + [H_POINT] * 20) + ")"
+
+        # Swapped sibling leaves give the same output under different descriptor
+        # IDs, so the wallet keeps two ScriptPubKeyMans: one holds the internal
+        # key, the other only a leaf key and would sign through the script path.
+        with_internal = descsum_create(f"tr({KEYS[1]['xprv']}/0,{{{big_leaf(KEYS[0]['xpub'])},pk({H_POINT})}})")
+        leaf_only = descsum_create(f"tr({KEYS[1]['xpub']}/0,{{pk({H_POINT}),{big_leaf(KEYS[0]['xprv'])}}})")
+        address = node.deriveaddresses(with_internal)[0]
+        assert_equal(node.deriveaddresses(leaf_only)[0], address)
+
+        wallets = {}
+        for name, descriptors in (("two_descriptors", [with_internal, leaf_only]), ("leaf_only", [leaf_only])):
+            node.createwallet(f"taproot_{name}", descriptors=True, blank=True)
+            wallets[name] = node.get_wallet_rpc(f"taproot_{name}")
+            result = wallets[name].importdescriptors([{"desc": desc, "timestamp": "now"} for desc in descriptors])
+            assert all(r["success"] for r in result)
+        assert_equal(len(wallets["two_descriptors"].listdescriptors()["descriptors"]), 2)
+
+        txid = self.boring.sendtoaddress(address, 1)
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        vout = next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)
+        fee_rate = 2 * node.getnetworkinfo()["relayfee"]
+
+        def funded_fee(wallet):
+            return wallet.walletcreatefundedpsbt(
+                inputs=[{"txid": txid, "vout": vout}], outputs=[{self.boring.getnewaddress(): Decimal("0.5")}],
+                options={"add_inputs": False, "change_address": address, "feeRate": fee_rate})["fee"]
+
+        # Signing may complete the input through either ScriptPubKeyMan, so the
+        # fee must cover the script path, as for the leaf-only wallet.
+        assert_equal(funded_fee(wallets["two_descriptors"]), funded_fee(wallets["leaf_only"]))
+        sent = wallets["two_descriptors"].send(outputs=[{self.boring.getnewaddress(): Decimal("0.5")}],
+                                              options={"change_address": address, "fee_rate": 10})
+        assert sent["txid"] in node.getrawmempool()
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        for wallet in wallets.values():
+            wallet.unloadwallet()
+
+        # A wpkh descriptor holding the leaf key does not produce the Taproot
+        # output, but it can sign the leaf from the PSBT's Taproot data. The
+        # key-path signer must run first, so each spend has a key-path witness.
+        txids = [self.boring.sendtoaddress(address, 1) for _ in range(4)]
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        for i, txid in enumerate(txids):
+            node.createwallet(f"taproot_wpkh_leaf_{i}", descriptors=True, blank=True)
+            wallet = node.get_wallet_rpc(f"taproot_wpkh_leaf_{i}")
+            leaf_key = descsum_create(f"wpkh({KEYS[0]['xprv']}/0)")
+            # ScriptPubKeyMans are visited in pointer order, which varies, so
+            # repeat the spend to make it likely the wpkh one is visited first.
+            result = wallet.importdescriptors([{"desc": desc, "timestamp": 0} for desc in (leaf_key, with_internal)])
+            assert all(r["success"] for r in result)
+            vout = next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)
+            sent = wallet.send(outputs=[{self.boring.getnewaddress(): Decimal("0.5")}],
+                               options={"inputs": [{"txid": txid, "vout": vout}], "add_inputs": False,
+                                        "change_address": address, "fee_rate": 10})
+            witness = node.getrawtransaction(sent["txid"], True)["vin"][0]["txinwitness"]
+            assert_equal(len(witness), 1)
+            wallet.unloadwallet()
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+
+    def test_key_path_with_cross_key_leaves(self):
+        self.log.info("Testing that each Taproot input is signed through its key path when the other output's leaf holds its key")
+        node = self.nodes[0]
+        # Use different master keys: a descriptor holding a master xprv can
+        # derive the private key of any other key from that master.
+        key_a = f"{KEYS[0]['xprv']}/1"
+        key_b = f"{KEYS[1]['xprv']}/1"
+        pub_a = f"{KEYS[0]['xpub']}/1"
+        pub_b = f"{KEYS[1]['xpub']}/1"
+        # Each output's leaf uses the other output's internal key, so whichever
+        # ScriptPubKeyMan signs first can complete both inputs: its own through
+        # the key path and the other through the leaf.
+        desc_a = descsum_create(f"tr({key_a},pk({pub_b}))")
+        desc_b = descsum_create(f"tr({key_b},pk({pub_a}))")
+        node.createwallet("taproot_cross_key", descriptors=True, blank=True)
+        wallet = node.get_wallet_rpc("taproot_cross_key")
+        result = wallet.importdescriptors([{"desc": desc, "timestamp": "now"} for desc in (desc_a, desc_b)])
+        assert all(r["success"] for r in result)
+
+        address_a = node.deriveaddresses(desc_a)[0]
+        address_b = node.deriveaddresses(desc_b)[0]
+        txids = [self.boring.sendtoaddress(address, 1) for address in (address_a, address_b)]
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        inputs = [{"txid": txid, "vout": next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)}
+                  for txid, address in zip(txids, (address_a, address_b))]
+        sent = wallet.send(outputs=[{self.boring.getnewaddress(): Decimal("1.5")}],
+                           options={"inputs": inputs, "add_inputs": False, "change_address": address_a, "fee_rate": 10})
+        for vin in node.getrawtransaction(sent["txid"], True)["vin"]:
+            assert_equal(len(vin["txinwitness"]), 1)
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        wallet.unloadwallet()
+
     def run_test(self):
         self.nodes[0].createwallet(wallet_name="boring")
         self.boring = self.nodes[0].get_wallet_rpc("boring")
@@ -401,6 +573,11 @@ class WalletTaprootTest(BTQTestFramework):
         self.log.info("Mining blocks...")
         gen_addr = self.boring.getnewaddress()
         self.generatetoaddress(self.nodes[0], 101, gen_addr, sync_fun=self.no_op)
+
+        self.test_script_path_fee_boundaries()
+        self.test_key_path_with_large_script_tree()
+        self.test_key_path_with_leaf_only_descriptor()
+        self.test_key_path_with_cross_key_leaves()
 
         self.do_test(
             "tr(XPRV)",
