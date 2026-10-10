@@ -230,10 +230,11 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
             SignatureWeights weights;
             TransactionSignatureChecker tx_checker(wtx.tx.get(), i, coin.out.nValue, txdata, MissingDataBehavior::FAIL);
             SignatureWeightChecker size_checker(weights, tx_checker);
-            // Dilithium is consensus-active from height 1 on all networks; include the
-            // flag so P2DWPKH external inputs get accurate max witness weight estimates.
-            const unsigned int script_verify_flags = STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DILITHIUM;
-            VerifyScript(txin.scriptSig, coin.out.scriptPubKey, &txin.scriptWitness, script_verify_flags, size_checker);
+            // SCRIPT_VERIFY_DILITHIUM is part of MANDATORY_SCRIPT_VERIFY_FLAGS, so
+            // STANDARD_SCRIPT_VERIFY_FLAGS already covers P2DWPKH external inputs.
+            static_assert((STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM) != 0,
+                          "feebumper weight estimation relies on standard flags including SCRIPT_VERIFY_DILITHIUM");
+            VerifyScript(txin.scriptSig, coin.out.scriptPubKey, &txin.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, size_checker);
             // Add the difference between max and current to input_weight so that it represents the largest the input could be
             input_weight += weights.GetWeightDiffToMax();
             new_coin_control.SetInputWeight(txin.prevout, input_weight);
