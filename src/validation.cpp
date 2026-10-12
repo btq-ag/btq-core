@@ -1033,12 +1033,10 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
     const CTransaction& tx = *ws.m_ptx;
     TxValidationState& state = ws.m_state;
 
+    // SCRIPT_VERIFY_DILITHIUM is already in MANDATORY_SCRIPT_VERIFY_FLAGS,
+    // which STANDARD_SCRIPT_VERIFY_FLAGS includes. Block consensus still
+    // gates the flag in GetBlockScriptFlags.
     unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
-    if (const CBlockIndex* tip = m_active_chainstate.m_chain.Tip()) {
-        if (DeploymentActiveAt(*tip, m_active_chainstate.m_chainman, Consensus::DEPLOYMENT_DILITHIUM)) {
-            scriptVerifyFlags |= SCRIPT_VERIFY_DILITHIUM;
-        }
-    }
 
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
@@ -2007,7 +2005,7 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
 
     // Ignore blocks that contain transactions which are 'overwritten' by later transactions,
     // unless those are already completely spent.
-    // See https://github.com/btq/btq/issues/22596 for additional information.
+    // See https://github.com/bitcoin/bitcoin/issues/22596 for additional information.
     // Note: the blocks specified here are different than the ones used in ConnectBlock because DisconnectBlock
     // unwinds the blocks in reverse. As a result, the inconsistency is not discovered until the earlier
     // blocks with the duplicate coinbase transactions are disconnected.
