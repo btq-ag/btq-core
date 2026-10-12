@@ -22,7 +22,6 @@ extern "C" {
 #include <crypto/dilithium_wrapper.h>
 }
 
-using wallet::CKeyingMaterial;
 using wallet::DeriveDilithiumKeyIV;
 using wallet::EncryptDilithiumSecret;
 using wallet::DecryptDilithiumSecret;
