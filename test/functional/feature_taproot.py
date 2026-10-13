@@ -6,6 +6,7 @@
 
 from test_framework.blocktools import (
     COINBASE_MATURITY,
+    block_subsidy_sat,
     create_coinbase,
     create_block,
     add_witness_commitment,
@@ -91,7 +92,7 @@ from test_framework.script_util import (
     script_to_p2sh_script,
     script_to_p2wsh_script,
 )
-from test_framework.test_framework import BTQTestFramework, SkipTest
+from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_raises_rpc_error,
     assert_equal,
@@ -479,10 +480,10 @@ def spend(tx, idx, utxos, **kwargs):
 # - Whether this spend cannot fail
 # - Whether this test demands being placed in a txin with no corresponding txout (for testing SIGHASH_SINGLE behavior)
 
-Spender = namedtuple("Spender", "script,comment,is_standard,sat_function,err_msg,sigops_weight,no_fail,need_vin_vout_mismatch")
+Spender = namedtuple("Spender", "script,comment,is_standard,sat_function,err_msg,sigops_weight,no_fail,need_vin_vout_mismatch,valid")
 
 
-def make_spender(comment, *, tap=None, witv0=False, script=None, pkh=None, p2sh=False, spk_mutate_pre_p2sh=None, failure=None, standard=True, err_msg=None, sigops_weight=0, need_vin_vout_mismatch=False, **kwargs):
+def make_spender(comment, *, tap=None, witv0=False, script=None, pkh=None, p2sh=False, spk_mutate_pre_p2sh=None, failure=None, standard=True, err_msg=None, sigops_weight=0, need_vin_vout_mismatch=False, valid=True, **kwargs):
     """Helper for constructing Spender objects using the context signing framework.
 
     * tap: a TaprootInfo object (see taproot_construct), for Taproot spends (cannot be combined with pkh, witv0, or script)
@@ -558,7 +559,7 @@ def make_spender(comment, *, tap=None, witv0=False, script=None, pkh=None, p2sh=
             assert failure is not None
             return spend(tx, idx, utxos, **{**conf, **failure})
 
-    return Spender(script=spk, comment=comment, is_standard=standard, sat_function=sat_fn, err_msg=err_msg, sigops_weight=sigops_weight, no_fail=failure is None, need_vin_vout_mismatch=need_vin_vout_mismatch)
+    return Spender(script=spk, comment=comment, is_standard=standard, sat_function=sat_fn, err_msg=err_msg, sigops_weight=sigops_weight, no_fail=failure is None, need_vin_vout_mismatch=need_vin_vout_mismatch, valid=valid)
 
 def add_spender(spenders, *args, **kwargs):
     """Make a spender using make_spender, and add it to spenders."""
@@ -831,8 +832,11 @@ def spenders_taproot_active():
                     add_spender(spenders, "applic/keypath", p2sh=p2sh, spk_mutate_pre_p2sh=mutate, tap=tap, key=secs[1], **SIGHASH_BITFLIP, **ERR_SIG_SCHNORR)
                     add_spender(spenders, "applic/scriptpath", p2sh=p2sh, leaf="s0", spk_mutate_pre_p2sh=mutate, tap=tap, key=secs[0], **SINGLE_SIG, failure={"leaf": "dummy"}, **ERR_OP_RETURN)
                 else:
-                    add_spender(spenders, "applic/keypath", p2sh=p2sh, spk_mutate_pre_p2sh=mutate, tap=tap, key=secs[1], standard=False)
-                    add_spender(spenders, "applic/scriptpath", p2sh=p2sh, leaf="s0", spk_mutate_pre_p2sh=mutate, tap=tap, key=secs[0], **SINGLE_SIG, standard=False)
+                    p2mr = witver == 2 and witlen == 32
+                    valid = not (p2mr and not p2sh)
+                    error = None if valid else "Witness program hash mismatch"
+                    add_spender(spenders, "applic/keypath", p2sh=p2sh, spk_mutate_pre_p2sh=mutate, tap=tap, key=secs[1], standard=False, valid=valid, err_msg=error)
+                    add_spender(spenders, "applic/scriptpath", p2sh=p2sh, leaf="s0", spk_mutate_pre_p2sh=mutate, tap=tap, key=secs[0], **SINGLE_SIG, standard=False, valid=valid, err_msg=error, sigops_weight=int(p2mr))
 
     # == Test various aspects of BIP341 spending paths ==
 
@@ -1004,10 +1008,11 @@ def spenders_taproot_active():
         "key": secs[1],
         "tap": tap,
     }
-    # Test that MAX_SCRIPT_ELEMENT_SIZE byte stack element inputs are valid, but not one more (and 80 bytes is standard but 81 is not).
-    add_spender(spenders, "tapscript/inputmaxlimit", leaf="t0", **common, standard=False, inputs=[getter("sign"), random_bytes(MAX_SCRIPT_ELEMENT_SIZE)], failure={"inputs": [getter("sign"), random_bytes(MAX_SCRIPT_ELEMENT_SIZE+1)]}, **ERR_PUSH_LIMIT)
+    # BTQ's standard Tapscript item limit equals its consensus element limit.
+    # Preserve the exact boundary and both former Core 80/81-byte cases.
+    add_spender(spenders, "tapscript/inputmaxlimit", leaf="t0", **common, inputs=[getter("sign"), random_bytes(MAX_SCRIPT_ELEMENT_SIZE)], failure={"inputs": [getter("sign"), random_bytes(MAX_SCRIPT_ELEMENT_SIZE+1)]}, **ERR_PUSH_LIMIT)
     add_spender(spenders, "tapscript/input80limit", leaf="t0", **common, inputs=[getter("sign"), random_bytes(80)])
-    add_spender(spenders, "tapscript/input81limit", leaf="t0", **common, standard=False, inputs=[getter("sign"), random_bytes(81)])
+    add_spender(spenders, "tapscript/input81limit", leaf="t0", **common, inputs=[getter("sign"), random_bytes(81)])
     # Test that OP_CHECKMULTISIG and OP_CHECKMULTISIGVERIFY cause failure, but OP_CHECKSIG and OP_CHECKSIGVERIFY work.
     add_spender(spenders, "tapscript/disabled_checkmultisig", leaf="t1", **common, **SINGLE_SIG, failure={"leaf": "t3"}, **ERR_TAPSCRIPT_CHECKMULTISIG)
     add_spender(spenders, "tapscript/disabled_checkmultisigverify", leaf="t2", **common, **SINGLE_SIG, failure={"leaf": "t4"}, **ERR_TAPSCRIPT_CHECKMULTISIG)
@@ -1108,7 +1113,7 @@ def spenders_taproot_active():
                     for _ in range(merkledepth):
                         scripts = [scripts, random.choice(PARTNER_MERKLE_FN)]
                     tap = taproot_construct(pubs[0], scripts)
-                    standard = annex is None and dummylen <= 80 and len(pubkey) == 32
+                    standard = annex is None and dummylen <= MAX_SCRIPT_ELEMENT_SIZE and len(pubkey) == 32
                     add_spender(spenders, "tapscript/sigopsratio_%i" % fn_num, tap=tap, leaf="s", annex=annex, hashtype=hashtype, key=secs[1], inputs=[getter("sign"), random_bytes(dummylen)], standard=standard, failure={"inputs": [getter("sign"), random_bytes(dummylen - 1)]}, **ERR_SIGOPS_RATIO)
 
     # Future leaf versions
@@ -1197,15 +1202,15 @@ def spenders_taproot_active():
             for witv0 in [False, True]:
                 for hashtype in VALID_SIGHASHES_ECDSA + [random.randrange(0x04, 0x80), random.randrange(0x84, 0x100)]:
                     standard = (hashtype in VALID_SIGHASHES_ECDSA) and (compressed or not witv0)
-                    add_spender(spenders, "legacy/pk-wrongkey", hashtype=hashtype, p2sh=p2sh, witv0=witv0, standard=standard, script=key_to_p2pk_script(pubkey1), **SINGLE_SIG, key=eckey1, failure={"key": eckey2}, sigops_weight=4-3*witv0, **ERR_NO_SUCCESS)
-                    add_spender(spenders, "legacy/pkh-sighashflip", hashtype=hashtype, p2sh=p2sh, witv0=witv0, standard=standard, pkh=pubkey1, key=eckey1, **SIGHASH_BITFLIP, sigops_weight=4-3*witv0, **ERR_NO_SUCCESS)
+                    add_spender(spenders, "legacy/pk-wrongkey", hashtype=hashtype, p2sh=p2sh, witv0=witv0, standard=standard, script=key_to_p2pk_script(pubkey1), **SINGLE_SIG, key=eckey1, failure={"key": eckey2}, sigops_weight=1 if witv0 else WITNESS_SCALE_FACTOR, **ERR_NO_SUCCESS)
+                    add_spender(spenders, "legacy/pkh-sighashflip", hashtype=hashtype, p2sh=p2sh, witv0=witv0, standard=standard, pkh=pubkey1, key=eckey1, **SIGHASH_BITFLIP, sigops_weight=1 if witv0 else WITNESS_SCALE_FACTOR, **ERR_NO_SUCCESS)
 
     # Verify that OP_CHECKSIGADD wasn't accidentally added to pre-taproot validation logic.
     for p2sh in [False, True]:
         for witv0 in [False, True]:
             for hashtype in VALID_SIGHASHES_ECDSA + [random.randrange(0x04, 0x80), random.randrange(0x84, 0x100)]:
                 standard = hashtype in VALID_SIGHASHES_ECDSA and (p2sh or witv0)
-                add_spender(spenders, "compat/nocsa", hashtype=hashtype, p2sh=p2sh, witv0=witv0, standard=standard, script=CScript([OP_IF, OP_11, pubkey1, OP_CHECKSIGADD, OP_12, OP_EQUAL, OP_ELSE, pubkey1, OP_CHECKSIG, OP_ENDIF]), key=eckey1, sigops_weight=4-3*witv0, inputs=[getter("sign"), b''], failure={"inputs": [getter("sign"), b'\x01']}, **ERR_UNDECODABLE)
+                add_spender(spenders, "compat/nocsa", hashtype=hashtype, p2sh=p2sh, witv0=witv0, standard=standard, script=CScript([OP_IF, OP_11, pubkey1, OP_CHECKSIGADD, OP_12, OP_EQUAL, OP_ELSE, pubkey1, OP_CHECKSIG, OP_ENDIF]), key=eckey1, sigops_weight=1 if witv0 else WITNESS_SCALE_FACTOR, inputs=[getter("sign"), b''], failure={"inputs": [getter("sign"), b'\x01']}, **ERR_UNDECODABLE)
 
     return spenders
 
@@ -1300,6 +1305,8 @@ class TaprootTest(BTQTestFramework):
         block = create_block(self.tip, coinbase_tx, self.lastblocktime + 1, txlist=txs)
         witness and add_witness_commitment(block)
         block.solve()
+        # Thousands of one-second blocks exceed BTQ's 15-minute future limit.
+        node.setmocktime(block.nTime)
         block_response = node.submitblock(block.serialize().hex())
         if err_msg is not None:
             assert block_response is not None and err_msg in block_response, "Missing error message '%s' from block response '%s': %s" % (err_msg, "(None)" if block_response is None else block_response, msg)
@@ -1320,7 +1327,7 @@ class TaprootTest(BTQTestFramework):
         self.lastblockheight = block['height']
         self.lastblocktime = block['time']
 
-    def test_spenders(self, node, spenders, input_counts):
+    def test_spenders(self, node, spenders, input_counts, *, expect_valid=True):
         """Run randomized tests with a number of "spenders".
 
         Steps:
@@ -1495,13 +1502,16 @@ class TaprootTest(BTQTestFramework):
                     continue
                 # Expected message with each input failure, may be None(which is ignored)
                 expected_fail_msg = None if fail_input is None else input_utxos[fail_input].spender.err_msg
+                if not expect_valid:
+                    assert_equal(len(input_utxos), 1)
+                    expected_fail_msg = input_utxos[0].spender.err_msg
                 # Fill inputs/witnesses
                 for i in range(len(input_utxos)):
                     tx.vin[i].scriptSig = input_data[i][i != fail_input][0]
                     tx.wit.vtxinwit[i].scriptWitness.stack = input_data[i][i != fail_input][1]
                 # Submit to mempool to check standardness
                 is_standard_tx = (
-                    fail_input is None  # Must be valid to be standard
+                    expect_valid and fail_input is None  # Must be valid to be standard
                     and (all(utxo.spender.is_standard for utxo in input_utxos))  # All inputs must be standard
                     and tx.nVersion >= 1  # The tx version must be standard
                     and tx.nVersion <= 2)
@@ -1511,9 +1521,10 @@ class TaprootTest(BTQTestFramework):
                     node.sendrawtransaction(tx.serialize().hex(), 0)
                     assert node.getmempoolentry(tx.hash) is not None, "Failed to accept into mempool: " + msg
                 else:
+                    assert not node.testmempoolaccept([tx.serialize().hex()], 0)[0]["allowed"], msg
                     assert_raises_rpc_error(-26, None, node.sendrawtransaction, tx.serialize().hex(), 0)
                 # Submit in a block
-                self.block_submit(node, [tx], msg, witness=True, accept=fail_input is None, cb_pubkey=cb_pubkey, fees=fee, sigops_weight=sigops_weight, err_msg=expected_fail_msg)
+                self.block_submit(node, [tx], msg, witness=True, accept=expect_valid and fail_input is None, cb_pubkey=cb_pubkey, fees=fee, sigops_weight=sigops_weight, err_msg=expected_fail_msg)
 
             if (len(spenders) - left) // 200 > (len(spenders) - left - len(input_utxos)) // 200:
                 self.log.info("  - %i tests done" % (len(spenders) - left))
@@ -1523,8 +1534,8 @@ class TaprootTest(BTQTestFramework):
         assert len(mismatching_utxos) == 0
         self.log.info("  - Done")
 
-    def gen_test_vectors(self):
-        """Run a scenario that corresponds (and optionally produces) to BIP341 test vectors."""
+    def gen_test_vectors(self, *, btq_chain=False):
+        """Check BIP341 vectors, or validate a subsidy-scaled version on BTQ regtest."""
 
         self.log.info("Unit test scenario...")
 
@@ -1533,17 +1544,21 @@ class TaprootTest(BTQTestFramework):
         coinbase = CTransaction()
         coinbase.nVersion = 1
         coinbase.vin = [CTxIn(COutPoint(0, 0xffffffff), CScript([OP_1, OP_1]), SEQUENCE_FINAL)]
-        coinbase.vout = [CTxOut(5000000000, CScript([OP_1]))]
+        subsidy = block_subsidy_sat(1) if btq_chain else 5000000000
+        coinbase.vout = [CTxOut(subsidy, CScript([OP_1]))]
         coinbase.nLockTime = 0
         coinbase.rehash()
-        assert coinbase.hash == "f60c73405d499a956d3162e3483c395526ef78286458a4cb17b125aa92e49b20"
-        # Mine it
-        block = create_block(hashprev=int(self.nodes[0].getbestblockhash(), 16), coinbase=coinbase)
-        block.rehash()
-        block.solve()
-        self.nodes[0].submitblock(block.serialize().hex())
-        assert_equal(self.nodes[0].getblockcount(), 1)
-        self.generate(self.nodes[0], COINBASE_MATURITY)
+        if not btq_chain:
+            assert_equal(coinbase.hash, "f60c73405d499a956d3162e3483c395526ef78286458a4cb17b125aa92e49b20")
+        else:
+            # The canonical 50-coin vectors cannot be mined on BTQ. Keep their
+            # fixed-hash checks above/below, and separately validate all signatures
+            # on chain with values scaled to BTQ's subsidy.
+            block = create_block(hashprev=int(self.nodes[0].getbestblockhash(), 16), coinbase=coinbase)
+            block.solve()
+            assert_equal(self.nodes[0].submitblock(block.serialize().hex()), None)
+            assert_equal(self.nodes[0].getblockcount(), 1)
+            self.generate(self.nodes[0], COINBASE_MATURITY)
 
         SEED = 317
         VALID_LEAF_VERS = list(range(0xc0, 0x100, 2)) + [0x66, 0x7e, 0x80, 0x84, 0x96, 0x98, 0xba, 0xbc, 0xbe]
@@ -1619,9 +1634,9 @@ class TaprootTest(BTQTestFramework):
         # come from distinct txids).
         txn = []
         lasttxid = coinbase.sha256
-        amount = 5000000000
+        amount = subsidy
         for i, spk in enumerate(old_spks + tap_spks):
-            val = 42000000 * (i + 7)
+            val = subsidy * 42 // 5000 * (i + 7)
             tx = CTransaction()
             tx.nVersion = 1
             tx.vin = [CTxIn(COutPoint(lasttxid, i & 1), CScript([]), SEQUENCE_FINAL)]
@@ -1636,8 +1651,9 @@ class TaprootTest(BTQTestFramework):
             spend_info[spk]['prevout'] = COutPoint(tx.sha256, i & 1)
             spend_info[spk]['utxo'] = CTxOut(val, spk)
         # Mine those transactions
-        self.init_blockinfo(self.nodes[0])
-        self.block_submit(self.nodes[0], txn, "Crediting txn", None, sigops_weight=10, accept=True)
+        if btq_chain:
+            self.init_blockinfo(self.nodes[0])
+            self.block_submit(self.nodes[0], txn, "Crediting txn", None, sigops_weight=10 * WITNESS_SCALE_FACTOR // 4, accept=True)
 
         # scriptPubKey computation
         tests = {"version": 1}
@@ -1689,8 +1705,8 @@ class TaprootTest(BTQTestFramework):
         for i, spk in enumerate(input_spks):
             tx.vin.append(CTxIn(spend_info[spk]['prevout'], CScript(), sequences[i]))
             inputs.append(spend_info[spk]['utxo'])
-        tx.vout.append(CTxOut(1000000000, old_spks[1]))
-        tx.vout.append(CTxOut(3410000000, pubs[98]))
+        tx.vout.append(CTxOut(subsidy // 5, old_spks[1]))
+        tx.vout.append(CTxOut(subsidy * 341 // 500, pubs[98]))
         tx.nLockTime = 500000000
         precomputed = {
             "hashAmounts": BIP341_sha_amounts(inputs),
@@ -1747,23 +1763,28 @@ class TaprootTest(BTQTestFramework):
         aux = tx_test.setdefault("auxiliary", {})
         aux['fullySignedTx'] = tx.serialize().hex()
         keypath_tests.append(tx_test)
-        assert_equal(hashlib.sha256(tx.serialize()).hexdigest(), "24bab662cb55a7f3bae29b559f651674c62bcc1cd442d44715c0133939107b38")
-        # Mine the spending transaction
-        self.block_submit(self.nodes[0], [tx], "Spending txn", None, sigops_weight=10000, accept=True, witness=True)
+        if not btq_chain:
+            assert_equal(hashlib.sha256(tx.serialize()).hexdigest(), "24bab662cb55a7f3bae29b559f651674c62bcc1cd442d44715c0133939107b38")
+        else:
+            self.block_submit(self.nodes[0], [tx], "Spending txn", None, sigops_weight=10000, accept=True, witness=True)
 
-        if GEN_TEST_VECTORS:
+        if GEN_TEST_VECTORS and not btq_chain:
             print(json.dumps(tests, indent=4, sort_keys=False))
 
     def run_test(self):
-        # BTQ: Taproot/SegWit are disabled; skip this test
-        info = self.nodes[0].getblockchaininfo()
-        softforks = info.get('softforks', {})
-        if not softforks or not softforks.get('taproot', {}).get('active', False):
-            raise SkipTest("Taproot is disabled on BTQ; skipping feature_taproot")
+        assert self.nodes[0].getdeploymentinfo()['deployments']['taproot']['active']
         self.gen_test_vectors()
+        self.gen_test_vectors(btq_chain=True)
 
         self.log.info("Post-activation tests...")
-        self.test_spenders(self.nodes[0], spenders_taproot_active(), input_counts=[1, 2, 2, 2, 2, 3])
+        spenders = spenders_taproot_active()
+        # Check item boundaries alone so another nonstandard input cannot mask
+        # an incorrect acceptance expectation in the randomized combinations.
+        item_boundaries = {"tapscript/inputmaxlimit", "tapscript/input80limit", "tapscript/input81limit"}
+        self.test_spenders(self.nodes[0], [s for s in spenders if s.valid and s.comment in item_boundaries], input_counts=[1])
+        self.test_spenders(self.nodes[0], [s for s in spenders if s.valid], input_counts=[1, 2, 2, 2, 2, 3])
+        # Native v2/32-byte programs are P2MR on BTQ: Taproot witnesses must fail.
+        self.test_spenders(self.nodes[0], [s for s in spenders if not s.valid], input_counts=[1], expect_valid=False)
         # Run each test twice; once in isolation, and once combined with others. Testing in isolation
         # means that the standardness is verified in every test (as combined transactions are only standard
         # when all their inputs are standard).

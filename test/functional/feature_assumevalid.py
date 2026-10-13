@@ -16,15 +16,15 @@ transactions:
               output can be spent
     102:      a block containing a transaction spending the coinbase
               transaction output. The transaction has an invalid signature.
-    103-2202: bury the bad block with just over two weeks' worth of blocks
-              (2100 blocks)
+    103-20263: bury the bad block with just over two weeks' worth of blocks
+              (20161 blocks)
 
 Start three nodes:
 
-    - node0 has no -assumevalid parameter. Try to sync to block 2202. It will
+    - node0 has no -assumevalid parameter. Try to sync to block 20263. It will
       reject block 102 and only sync as far as block 101
     - node1 has -assumevalid set to the hash of block 102. Try to sync to
-      block 2202. node1 will sync all the way to block 2202.
+      block 20263. node1 will sync all the way to block 20263.
     - node2 has -assumevalid set to the hash of block 102. Try to sync to
       block 200. node2 will reject block 102 since it's assumed valid, but it
       isn't buried by at least two weeks' work.
@@ -54,6 +54,11 @@ from test_framework.util import assert_equal
 from test_framework.wallet_util import generate_keypair
 
 
+# More than two weeks of proof of work at BTQ's 60-second target spacing.
+BURIAL_BLOCKS = 14 * 24 * 60 + 1
+FINAL_HEIGHT = 102 + BURIAL_BLOCKS
+
+
 class BaseNode(P2PInterface):
     def send_header_for_blocks(self, new_blocks):
         headers_message = msg_headers()
@@ -68,7 +73,9 @@ class AssumeValidTest(BTQTestFramework):
         self.rpc_timeout = 120
 
     def setup_network(self):
-        self.add_nodes(3)
+        # Rechecking the entire index after every header is quadratic for this
+        # two-week chain. Check the complete indices after the scenarios below.
+        self.add_nodes(3, extra_args=[['-checkblockindex=0']] * 3)
         # Start node0. We don't start the other nodes yet since
         # we need to pre-mine a block with an invalid transaction
         # signature so we can pass in the block hash as assumevalid.
@@ -118,7 +125,7 @@ class AssumeValidTest(BTQTestFramework):
         # Create a transaction spending the coinbase output with an invalid (null) signature
         tx = CTransaction()
         tx.vin.append(CTxIn(COutPoint(self.block1.vtx[0].sha256, 0), scriptSig=b""))
-        tx.vout.append(CTxOut(49 * 100000000, CScript([OP_TRUE])))
+        tx.vout.append(CTxOut(self.block1.vtx[0].vout[0].nValue - 1000000, CScript([OP_TRUE])))
         tx.calc_sha256()
 
         block102 = create_block(self.tip, create_coinbase(height), self.block_time, txlist=[tx])
@@ -129,8 +136,8 @@ class AssumeValidTest(BTQTestFramework):
         self.block_time += 1
         height += 1
 
-        # Bury the assumed valid block 2100 deep
-        for _ in range(2100):
+        # Bury the assumed valid block 20161 deep
+        for _ in range(BURIAL_BLOCKS):
             block = create_block(self.tip, create_coinbase(height), self.block_time)
             block.solve()
             self.blocks.append(block)
@@ -139,12 +146,12 @@ class AssumeValidTest(BTQTestFramework):
             height += 1
 
         # Start node1 and node2 with assumevalid so they accept a block with a bad signature.
-        self.start_node(1, extra_args=["-assumevalid=" + hex(block102.sha256)])
-        self.start_node(2, extra_args=["-assumevalid=" + hex(block102.sha256)])
+        self.start_node(1, extra_args=['-checkblockindex=0', "-assumevalid=" + hex(block102.sha256)])
+        self.start_node(2, extra_args=['-checkblockindex=0', "-assumevalid=" + hex(block102.sha256)])
 
         p2p0 = self.nodes[0].add_p2p_connection(BaseNode())
-        p2p0.send_header_for_blocks(self.blocks[0:2000])
-        p2p0.send_header_for_blocks(self.blocks[2000:])
+        for start in range(0, len(self.blocks), 2000):
+            p2p0.send_header_for_blocks(self.blocks[start:start + 2000])
 
         # Send blocks to node0. Block 102 will be rejected.
         self.send_blocks_until_disconnected(p2p0)
@@ -152,15 +159,15 @@ class AssumeValidTest(BTQTestFramework):
         assert_equal(self.nodes[0].getblockcount(), COINBASE_MATURITY + 1)
 
         p2p1 = self.nodes[1].add_p2p_connection(BaseNode())
-        p2p1.send_header_for_blocks(self.blocks[0:2000])
-        p2p1.send_header_for_blocks(self.blocks[2000:])
+        for start in range(0, len(self.blocks), 2000):
+            p2p1.send_header_for_blocks(self.blocks[start:start + 2000])
 
         # Send all blocks to node1. All blocks will be accepted.
-        for i in range(2202):
+        for i in range(len(self.blocks)):
             p2p1.send_message(msg_block(self.blocks[i]))
-        # Syncing 2200 blocks can take a while on slow systems. Give it plenty of time to sync.
+        # Syncing more than 20000 blocks can take a while on slow systems. Give it plenty of time to sync.
         p2p1.sync_with_ping(960)
-        assert_equal(self.nodes[1].getblock(self.nodes[1].getbestblockhash())['height'], 2202)
+        assert_equal(self.nodes[1].getblock(self.nodes[1].getbestblockhash())['height'], FINAL_HEIGHT)
 
         p2p2 = self.nodes[2].add_p2p_connection(BaseNode())
         p2p2.send_header_for_blocks(self.blocks[0:200])
@@ -169,6 +176,16 @@ class AssumeValidTest(BTQTestFramework):
         self.send_blocks_until_disconnected(p2p2)
         self.wait_until(lambda: self.nodes[2].getblockcount() >= COINBASE_MATURITY + 1)
         assert_equal(self.nodes[2].getblockcount(), COINBASE_MATURITY + 1)
+
+        # Re-enable index invariants and check each complete index, including
+        # the invalid branch and the fully downloaded assumevalid chain.
+        for i, node in enumerate(self.nodes):
+            args = ['-checkblockindex=1']
+            if i:
+                args.append('-assumevalid=' + hex(block102.sha256))
+            self.restart_node(i, extra_args=args)
+            assert_equal(node.submitheader(CBlockHeader(self.blocks[0]).serialize().hex()), None)
+
 
 
 if __name__ == '__main__':
