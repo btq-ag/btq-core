@@ -35,7 +35,7 @@ export HOST=${HOST:-$("$BASE_ROOT_DIR/depends/config.guess")}
   # The statistic bytes_written is only used for logging, which is disabled in
   # CI, so as a temporary minimal fix to work around UB and CI failures, leave
   # bytes_written unmodified.
-  # See https://github.com/btq/btq/pull/28359#issuecomment-1698694748
+  # See https://github.com/bitcoin/bitcoin/pull/28359#issuecomment-1698694748
   echo 'diff --git a/src/leveldb/db/db_impl.cc b/src/leveldb/db/db_impl.cc
 index 65e31724bc..f61b471953 100644
 --- a/src/leveldb/db/db_impl.cc

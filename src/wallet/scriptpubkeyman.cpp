@@ -19,7 +19,6 @@
 #include <util/time.h>
 #include <util/translation.h>
 #include <wallet/scriptpubkeyman.h>
-#include <wallet/key_types.h>
 #include <addresstype.h>
 
 #include <optional>

@@ -101,7 +101,7 @@ Refer to the `getdeploymentinfo` RPC help for details.
 
 The getutxos endpoint allows querying the UTXO set, given a set of outpoints.
 With the `/checkmempool/` option, the mempool is also taken into account.
-See [BIP64](https://github.com/btq/bips/blob/master/bip-0064.mediawiki) for
+See [BIP64](https://github.com/bitcoin/bips/blob/master/bip-0064.mediawiki) for
 input and output serialization (relevant for `bin` and `hex` output formats).
 
 Example:
