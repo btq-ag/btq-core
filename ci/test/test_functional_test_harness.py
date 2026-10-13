@@ -119,7 +119,7 @@ class FunctionalHarnessTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "coverage.test.txt"
-            for code in (-342, -343, -344):
+            for code in (-32700, -32600, -32601, -342, -343, -344):
                 proxy = AuthServiceProxyWrapper(ErrorProxy(code), "unused", str(log))
                 with self.assertRaises(JSONRPCException):
                     proxy()

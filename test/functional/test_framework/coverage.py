@@ -51,9 +51,9 @@ class AuthServiceProxyWrapper():
             return_val = self.auth_service_proxy_instance.__call__(*args, **kwargs)
         except JSONRPCException as error:
             # An RPC rejection exercises the command too (including commands
-            # that are deliberately disabled). Transport/protocol errors from
-            # AuthServiceProxy do not establish that the command was reached.
-            if error.error['code'] not in (-342, -343, -344):
+            # that are deliberately disabled). Transport/protocol errors and
+            # unknown methods do not establish that the command was reached.
+            if error.error['code'] not in (-32700, -32600, -32601, -342, -343, -344):
                 self._log_call()
             raise
         self._log_call()
