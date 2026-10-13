@@ -78,11 +78,13 @@ def get_filename(dirname, n_node):
         dirname, "coverage.pid%s.node%s.txt" % (pid, str(n_node)))
 
 
-def write_all_rpc_commands(dirname: str, node: AuthServiceProxy) -> bool:
+def write_all_rpc_commands(dirname: str, node: AuthServiceProxy, *, authoritative=False) -> bool:
     """
     Write out a list of all RPC functions available in `btq-cli` for
     coverage comparison. This will only happen once per coverage
-    directory.
+    directory. Before running tests, the runner initializes an authoritative
+    reference from a current node with the compiled wallet interface enabled.
+    Later wallet-disabled or historical nodes must not replace that reference.
 
     Args:
         dirname: temporary test dir
@@ -94,7 +96,7 @@ def write_all_rpc_commands(dirname: str, node: AuthServiceProxy) -> bool:
     """
     filename = os.path.join(dirname, REFERENCE_FILENAME)
 
-    if os.path.isfile(filename):
+    if os.path.isfile(filename) and not authoritative:
         return False
 
     help_output = node.help().split('\n')

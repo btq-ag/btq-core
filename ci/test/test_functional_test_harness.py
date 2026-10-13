@@ -51,6 +51,40 @@ class FunctionalHarnessTest(unittest.TestCase):
     def test_missing_rpc_coverage(self):
         self.assertEqual(self.check_log("a.py | Passed | 1 s\nb.py | Passed | 1 s\n", coverage=True), 1)
 
+    def test_authoritative_rpc_reference_includes_wallet_commands(self):
+        path = Path(__file__).resolve().parents[2] / "test/functional/test_runner.py"
+        sys.path.insert(0, str(path.parent))
+        self.addCleanup(sys.path.remove, str(path.parent))
+        from test_framework.coverage import write_all_rpc_commands
+        spec = importlib.util.spec_from_file_location("coverage_runner", path)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+
+        class Interface:
+            def __init__(self, commands):
+                self.commands = commands
+
+            def help(self):
+                return self.commands
+
+        with tempfile.TemporaryDirectory() as directory:
+            core = Interface("getblockcount\n")
+            current = Interface("getblockcount\nupgradewallet\nwalletpassphrase\n")
+            historical = Interface("getblockcount\nobsolete_rpc\n")
+            write_all_rpc_commands(directory, core)
+            write_all_rpc_commands(directory, current, authoritative=True)
+            self.assertFalse(write_all_rpc_commands(directory, core))
+            self.assertFalse(write_all_rpc_commands(directory, historical))
+            calls = Path(directory) / "coverage.test.txt"
+            calls.write_text("getblockcount\nupgradewallet\n")
+            coverage = runner.RPCCoverage.__new__(runner.RPCCoverage)
+            coverage.dir = directory
+            self.assertEqual(coverage._get_uncovered_rpc_commands(), {"walletpassphrase"})
+            with redirect_stdout(io.StringIO()):
+                self.assertFalse(coverage.report_rpc_coverage())
+                calls.write_text("getblockcount\nupgradewallet\nwalletpassphrase\n")
+                self.assertTrue(coverage.report_rpc_coverage())
+
     def test_framework_failure_exits_nonzero(self):
         path = Path(__file__).resolve().parents[2] / "test/functional/test_runner.py"
         spec = importlib.util.spec_from_file_location("functional_runner", path)

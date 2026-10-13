@@ -421,6 +421,7 @@ NON_SCRIPTS = [
     # These are python files that live in the functional tests directory, but are not test scripts.
     "combine_logs.py",
     "create_cache.py",
+    "create_rpc_coverage.py",
     "test_runner.py",
 ]
 
@@ -598,6 +599,12 @@ def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=
         logging.debug("Initializing coverage directory at %s" % coverage.dir)
     else:
         coverage = None
+
+    if coverage:
+        # Initialize before the wallet-disabled cache or any parallel test.
+        # Only the current binary supplies the complete reference; historical
+        # binaries and wallet-disabled tests cannot win a first-writer race.
+        subprocess.check_output([sys.executable, tests_dir + 'create_rpc_coverage.py'] + flags + ["--tmpdir=%s/rpc-coverage" % tmpdir])
 
     if len(test_list) > 1 and jobs > 1:
         # Populate cache
