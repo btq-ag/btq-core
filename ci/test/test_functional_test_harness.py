@@ -101,6 +101,34 @@ class FunctionalHarnessTest(unittest.TestCase):
                 runner.run_tests(test_list=[], src_dir=str(path.parents[2]), build_dir="/nonexistent", tmpdir="/nonexistent", use_term_control=False)
         self.assertEqual(exited.exception.code, 1)
 
+    def test_rpc_rejections_count_but_transport_failures_do_not(self):
+        path = Path(__file__).resolve().parents[2] / "test/functional"
+        sys.path.insert(0, str(path))
+        self.addCleanup(sys.path.remove, str(path))
+        from test_framework.authproxy import JSONRPCException
+        from test_framework.coverage import AuthServiceProxyWrapper
+
+        class ErrorProxy:
+            _service_name = "signtransactionwithdilithium"
+
+            def __init__(self, code):
+                self.code = code
+
+            def __call__(self):
+                raise JSONRPCException({"code": self.code, "message": "injected error"})
+
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "coverage.test.txt"
+            for code in (-342, -343, -344):
+                proxy = AuthServiceProxyWrapper(ErrorProxy(code), "unused", str(log))
+                with self.assertRaises(JSONRPCException):
+                    proxy()
+                self.assertFalse(log.exists())
+            proxy = AuthServiceProxyWrapper(ErrorProxy(-32), "unused", str(log))
+            with self.assertRaises(JSONRPCException):
+                proxy()
+            self.assertEqual(log.read_text(), "signtransactionwithdilithium\n")
+
 
 if __name__ == "__main__":
     unittest.main()

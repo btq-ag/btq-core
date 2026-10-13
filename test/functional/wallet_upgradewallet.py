@@ -33,6 +33,8 @@ class UpgradeWalletTest(BTQTestFramework):
             wallet = node.get_wallet_rpc(name)
             address = wallet.getnewaddress() if private_keys else None
             before = wallet.getwalletinfo()
+            # An idle wallet has no rescan to abort, in either wallet format.
+            assert_equal(wallet.abortrescan(), False)
             assert_equal(before["walletversion"], 169900)
             expected = {"wallet_name": name, "previous_version": 169900,
                         "current_version": 169900,

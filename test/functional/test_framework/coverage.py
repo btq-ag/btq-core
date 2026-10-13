@@ -10,7 +10,7 @@ testing.
 
 import os
 
-from .authproxy import AuthServiceProxy
+from .authproxy import AuthServiceProxy, JSONRPCException
 from typing import Optional
 
 REFERENCE_FILENAME = 'rpc_interface.txt'
@@ -47,7 +47,15 @@ class AuthServiceProxyWrapper():
         called to a file.
 
         """
-        return_val = self.auth_service_proxy_instance.__call__(*args, **kwargs)
+        try:
+            return_val = self.auth_service_proxy_instance.__call__(*args, **kwargs)
+        except JSONRPCException as error:
+            # An RPC rejection exercises the command too (including commands
+            # that are deliberately disabled). Transport/protocol errors from
+            # AuthServiceProxy do not establish that the command was reached.
+            if error.error['code'] not in (-342, -343, -344):
+                self._log_call()
+            raise
         self._log_call()
         return return_val
 
