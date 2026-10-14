@@ -387,6 +387,17 @@ BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
         BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
     }
 
+    // OP_CHECKSIGADD in a P2MR leaf is a signature check and costs 1.
+    {
+        CKey ecdsa_key;
+        ecdsa_key.MakeNewKey(true);
+        const CScript leaf = CScript() << OP_0 << ToByteVector(ecdsa_key.GetPubKey()) << OP_CHECKSIGADD;
+        BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true), 1U);
+        BOOST_CHECK_EQUAL(leaf.GetSigOpCount(false), 1U);
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
+    }
+
     // Mixed leaf: one Dilithium + one ECDSA.
     {
         CKey ecdsa_key;
