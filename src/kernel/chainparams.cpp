@@ -518,6 +518,10 @@ public:
             }
         };
 
+        if (opts.test_checkpoint) {
+            checkpointData.mapCheckpoints.emplace(*opts.test_checkpoint);
+        }
+
         // Scaffolding for the assumeutxo tests, which mine to this height and
         // then snapshot. Every chain shipped an empty table, so ActivateSnapshot
         // rejected every snapshot as "height in snapshot metadata not
@@ -532,6 +536,12 @@ public:
                 .hash_serialized = AssumeutxoHash{uint256S("0x5d86a7f67e8bb0e146c206164dcc984c2af8b3449845a42dd72ef76f082e690a")},
                 .nChainTx = 111,
                 .blockhash = uint256S("0x100831e245415bda8a1b889280fd766c9a1e8a805e2c89c85ae4bc582b4f3efb"),
+            },
+            { // test/functional/feature_assumeutxo.py
+                .height = 299,
+                .hash_serialized = AssumeutxoHash{uint256S("0x67d34d66e24f805fceee2fab4d9667a9efae69502a62e72ed405e1f9732475f0")},
+                .nChainTx = 300,
+                .blockhash = uint256S("0x7abfb358694c66f37e421544f2394904f7d845c450be94e37358f0a590850e20"),
             },
         };
 

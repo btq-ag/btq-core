@@ -7,10 +7,11 @@
 # Test getblockstats rpc call
 #
 
-from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.blocktools import COINBASE_MATURITY, TIME_GENESIS_BLOCK
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
+    assert_greater_than,
     assert_raises_rpc_error,
 )
 import json
@@ -36,27 +37,37 @@ class GetblockstatsTest(BTQTestFramework):
         self.num_nodes = 1
         self.setup_clean_chain = True
         self.supports_cli = False
+        # Fixture replay does not need a wallet; generation imports a fixed key.
+        # BTQ's legacy wallet defaults to P2PKH change; use P2WPKH so the
+        # fixture has SegWit spends.
+        if self.options.gen_test_data:
+            self.extra_args = [['-disablewallet=0', '-changetype=bech32']]
 
     def get_stats(self):
         return [self.nodes[0].getblockstats(hash_or_height=self.start_height + i) for i in range(self.max_stat_pos+1)]
 
     def generate_test_data(self, filename):
-        mocktime = 1525107225
+        mocktime = TIME_GENESIS_BLOCK + 1
         self.nodes[0].setmocktime(mocktime)
-        self.nodes[0].createwallet(wallet_name='test')
+        self.nodes[0].createwallet(wallet_name='test', descriptors=False)
         privkey = self.nodes[0].get_deterministic_priv_key().key
         self.nodes[0].importprivkey(privkey)
 
         self.generate(self.nodes[0], COINBASE_MATURITY + 1)
 
         address = self.nodes[0].get_deterministic_priv_key().address
-        self.nodes[0].sendtoaddress(address=address, amount=10, subtractfeefromamount=True)
+        self.nodes[0].sendtoaddress(address=address, amount=1, subtractfeefromamount=True)
         self.generate(self.nodes[0], 1)
 
-        self.nodes[0].sendtoaddress(address=address, amount=10, subtractfeefromamount=True)
-        self.nodes[0].sendtoaddress(address=address, amount=10, subtractfeefromamount=False)
-        self.nodes[0].settxfee(amount=0.003)
+        # Lock the P2PKH coins so the next block's transactions spend P2WPKH
+        # change and cover the swtxs/swtotal_* statistics.
+        legacy_coins = [{"txid": u["txid"], "vout": u["vout"]} for u in self.nodes[0].listunspent()
+                        if not u["scriptPubKey"].startswith("0014")]
+        self.nodes[0].lockunspent(False, legacy_coins)
         self.nodes[0].sendtoaddress(address=address, amount=1, subtractfeefromamount=True)
+        self.nodes[0].sendtoaddress(address=address, amount=1, subtractfeefromamount=False)
+        self.nodes[0].settxfee(amount=0.003)
+        self.nodes[0].sendtoaddress(address=address, amount=0.1, subtractfeefromamount=True)
         # Send to OP_RETURN output to test its exclusion from statistics
         self.nodes[0].send(outputs={"data": "21"})
         self.sync_all()
@@ -92,8 +103,9 @@ class GetblockstatsTest(BTQTestFramework):
         self.nodes[0].setmocktime(mocktime)
         self.sync_all()
 
-        for b in blocks:
-            self.nodes[0].submitblock(b)
+        assert_equal(self.nodes[0].getblock(self.nodes[0].getblockhash(0), 0), blocks[0])
+        for b in blocks[1:]:
+            assert_equal(self.nodes[0].submitblock(b), None)
 
 
     def run_test(self):
@@ -112,6 +124,8 @@ class GetblockstatsTest(BTQTestFramework):
 
         assert_equal(stats[0]['height'], self.start_height)
         assert_equal(stats[self.max_stat_pos]['height'], self.start_height + self.max_stat_pos)
+        # The last block must cover the SegWit statistics.
+        assert_greater_than(stats[self.max_stat_pos]['swtxs'], 0)
 
         for i in range(self.max_stat_pos+1):
             self.log.info('Checking block %d\n' % (i))
@@ -161,7 +175,7 @@ class GetblockstatsTest(BTQTestFramework):
                                 self.nodes[0].getblockstats, hash_or_height=1, stats=['minfee', f'aaa{inv_sel_stat}'])
         # Mainchain's genesis block shouldn't be found on regtest
         assert_raises_rpc_error(-5, 'Block not found', self.nodes[0].getblockstats,
-                                hash_or_height='000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f')
+                                hash_or_height='000003194a90d8d8eff8b39a7ad4e2490729b97a6772b7f4c4cb8887dffd1ae4')
 
         # Invalid number of args
         assert_raises_rpc_error(-1, 'getblockstats hash_or_height ( stats )', self.nodes[0].getblockstats, '00', 1, 2)
@@ -169,7 +183,7 @@ class GetblockstatsTest(BTQTestFramework):
 
         self.log.info('Test block height 0')
         genesis_stats = self.nodes[0].getblockstats(0)
-        assert_equal(genesis_stats["blockhash"], "0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206")
+        assert_equal(genesis_stats["blockhash"], "5a6c309a7e9bb2fa314e63630520ca3c598c86a91dd2c6737e160cfadfc50f38")
         assert_equal(genesis_stats["utxo_increase"], 1)
         assert_equal(genesis_stats["utxo_size_inc"], 117)
         assert_equal(genesis_stats["utxo_increase_actual"], 0)
@@ -178,9 +192,9 @@ class GetblockstatsTest(BTQTestFramework):
         self.log.info('Test tip including OP_RETURN')
         tip_stats = self.nodes[0].getblockstats(tip)
         assert_equal(tip_stats["utxo_increase"], 6)
-        assert_equal(tip_stats["utxo_size_inc"], 441)
+        assert_equal(tip_stats["utxo_size_inc"], 438)
         assert_equal(tip_stats["utxo_increase_actual"], 4)
-        assert_equal(tip_stats["utxo_size_inc_actual"], 300)
+        assert_equal(tip_stats["utxo_size_inc_actual"], 297)
 
 if __name__ == '__main__':
     GetblockstatsTest().main()
