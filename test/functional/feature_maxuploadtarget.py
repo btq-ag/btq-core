@@ -163,6 +163,23 @@ class MaxUploadTest(BTQTestFramework):
 
         self.nodes[0].disconnect_p2ps()
 
+        self.log.info("Test historical serving below the new-block relay reserve")
+        self.restart_node(0, ["-maxuploadtarget=5000M"])
+        peer = self.nodes[0].add_p2p_connection(TestP2PConn())
+        target = self.nodes[0].getnettotals()["uploadtarget"]
+        assert_equal(target["target_reached"], False)
+        assert_equal(target["serve_historical_blocks"], False)
+        assert target["bytes_left_in_cycle"] > 0
+        # Recent blocks remain available even though no historical budget is
+        # left after reserving one day's relay traffic.
+        getdata_request.inv = [CInv(MSG_BLOCK | MSG_WITNESS_FLAG, big_new_block)]
+        peer.send_and_ping(getdata_request)
+        assert_equal(peer.block_receive_map[big_new_block], 1)
+        getdata_request.inv = [CInv(MSG_BLOCK | MSG_WITNESS_FLAG, big_old_block)]
+        peer.send_message(getdata_request)
+        peer.wait_for_disconnect()
+        self.nodes[0].disconnect_p2ps()
+
         self.log.info("Restarting node 0 with download permission and 1MB maxuploadtarget")
         self.restart_node(0, ["-whitelist=download@127.0.0.1", "-maxuploadtarget=1"])
 
