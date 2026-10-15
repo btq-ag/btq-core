@@ -16,6 +16,9 @@ It also warns about listed tests that now pass, were skipped or did not
 run, so the list gets shorter as tests are fixed.
 """
 
+import argparse
+import ast
+from pathlib import Path
 import re
 import sys
 
@@ -34,11 +37,35 @@ def read_results(path):
     if not starts:
         return None
     results = {}
+    complete = False
     for line in lines[starts[-1] + 1:]:
         m = ROW.match(line)
-        if m and m.group("name") != "ALL":
-            results[m.group("name")] = m.group("status")
-    return results
+        if m:
+            name = m.group("name")
+            if name == "ALL":
+                complete = True
+                break
+            if name in results:
+                return None
+            results[name] = m.group("status")
+    return results if complete and lines[-1:] == ["Functional test runner completed."] else None
+
+
+def expected_base_tests(extended=False):
+    """Read the runner's inventory without importing or executing the runner."""
+    runner = Path(__file__).resolve().parents[2] / "test/functional/test_runner.py"
+    names = {"BASE_SCRIPTS", "EXTENDED_SCRIPTS"} if extended else {"BASE_SCRIPTS"}
+    expected = set()
+    for statement in ast.parse(runner.read_text(encoding="utf8")).body:
+        if isinstance(statement, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id in names
+            for target in statement.targets
+        ):
+            expected.update(ast.literal_eval(statement.value))
+            names.difference_update(target.id for target in statement.targets if isinstance(target, ast.Name))
+    if names:
+        raise ValueError("Missing runner inventory: " + ", ".join(sorted(names)))
+    return expected
 
 
 def read_known(path):
@@ -52,15 +79,28 @@ def read_known(path):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print(__doc__)
-        return 2
-    results = read_results(sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("log")
+    parser.add_argument("known_failures")
+    parser.add_argument("--extended", action="store_true")
+    parser.add_argument("--coverage", action="store_true")
+    args = parser.parse_args()
+    results = read_results(args.log)
     if not results:
-        print("::error::No results table found in the test_runner.py output. "
+        print("::error::No complete, unique results table found in the test_runner.py output. "
               "The runner did not finish; see the log above.")
         return 1
-    known = read_known(sys.argv[2])
+    missing_tests = sorted(expected_base_tests(args.extended) - results.keys())
+    if missing_tests:
+        print("::error::Incomplete suite: " + ", ".join(missing_tests))
+        return 1
+    if all(status == "Skipped" for status in results.values()):
+        print("::error::All functional tests were skipped.")
+        return 1
+    if args.coverage and "All RPC commands covered." not in Path(args.log).read_text(encoding="utf8", errors="replace").splitlines():
+        print("::error::RPC coverage did not complete successfully.")
+        return 1
+    known = read_known(args.known_failures)
     known_set = set(known)
 
     failed = sorted(name for name, status in results.items() if status == "Failed")

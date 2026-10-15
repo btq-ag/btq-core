@@ -10,11 +10,20 @@ RPCs tested are:
     - setlabel
 """
 from collections import defaultdict
+from decimal import Decimal
 
-from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.blocktools import (
+    COINBASE_MATURITY,
+    block_subsidy,
+)
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import assert_equal, assert_raises_rpc_error
 from test_framework.wallet_util import test_address
+
+# Every block this test mines is well before the first halving, so one subsidy
+# is all it ever needs. The amounts it moves around are a tenth of upstream's
+# because BTQ's subsidy is a tenth of Bitcoin's.
+SUBSIDY = block_subsidy(1)
 
 
 class WalletLabelsTest(BTQTestFramework):
@@ -76,13 +85,14 @@ class WalletLabelsTest(BTQTestFramework):
         assert_raises_rpc_error(-8, "Invalid 'purpose' argument, must be a known purpose string, typically 'send', or 'receive'.", node.listlabels, "unknown")
 
         # Note each time we call generate, all generated coins go into
-        # the same address, so we call twice to get two addresses w/50 each
+        # the same address, so we call twice to get two addresses with one
+        # mature block reward each
         self.generatetoaddress(node, nblocks=1, address=node.getnewaddress(label='coinbase'))
         self.generatetoaddress(node, nblocks=COINBASE_MATURITY + 1, address=node.getnewaddress(label='coinbase'))
-        assert_equal(node.getbalance(), 100)
+        assert_equal(node.getbalance(), 2 * SUBSIDY)
 
         # there should be 2 address groups
-        # each with 1 address with a balance of 50 BTQs
+        # each with 1 address with a balance of one block reward
         address_groups = node.listaddressgroupings()
         assert_equal(len(address_groups), 2)
         # the addresses aren't linked now, but will be after we send to the
@@ -91,14 +101,14 @@ class WalletLabelsTest(BTQTestFramework):
         for address_group in address_groups:
             assert_equal(len(address_group), 1)
             assert_equal(len(address_group[0]), 3)
-            assert_equal(address_group[0][1], 50)
+            assert_equal(address_group[0][1], SUBSIDY)
             assert_equal(address_group[0][2], 'coinbase')
             linked_addresses.add(address_group[0][0])
 
-        # send 50 from each address to a third address not in this wallet
+        # send the block reward from each address to a third address not in this wallet
         common_address = "msf4WtN1YQKXvNtvdFYt9JBnUD2FB41kjr"
         node.sendmany(
-            amounts={common_address: 100},
+            amounts={common_address: 2 * SUBSIDY},
             subtractfeefrom=[common_address],
             minconf=1,
         )
@@ -115,7 +125,7 @@ class WalletLabelsTest(BTQTestFramework):
         # we want to reset so that the "" label has what's expected.
         # otherwise we're off by exactly the fee amount as that's mined
         # and matures in the next 100 blocks
-        amount_to_send = 1.0
+        amount_to_send = Decimal('0.1')
 
         # Create labels and make sure subsequent label API calls
         # recognize the label/address associations.
@@ -154,7 +164,7 @@ class WalletLabelsTest(BTQTestFramework):
             address = node.getnewaddress(label.name)
             label.add_receive_address(address)
             label.verify(node)
-            assert_equal(node.getreceivedbylabel(label.name), 2)
+            assert_equal(node.getreceivedbylabel(label.name), 2 * amount_to_send)
             label.verify(node)
         self.generate(node, COINBASE_MATURITY + 1)
 
@@ -193,14 +203,16 @@ class WalletLabelsTest(BTQTestFramework):
             self.log.info('Check watchonly labels')
             node.createwallet(wallet_name='watch_only', disable_private_keys=True)
             wallet_watch_only = node.get_wallet_rpc('watch_only')
+            # Upstream's bcrt vectors re-encoded (bech32m) for BTQ's qcrt HRP, which
+            # the node would otherwise reject before looking at version or program.
             BECH32_VALID = {
-                '✔️_VER15_PROG40': 'bcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxkg7fn',
-                '✔️_VER16_PROG03': 'bcrt1sqqqqq8uhdgr',
-                '✔️_VER16_PROB02': 'bcrt1sqqqq4wstyw',
+                '✔️_VER15_PROG40': 'qcrt10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqql539p4',
+                '✔️_VER16_PROG03': 'qcrt1sqqqqqfzul3z',
+                '✔️_VER16_PROB02': 'qcrt1sqqqqygeuml',
             }
             BECH32_INVALID = {
-                '❌_VER15_PROG41': 'bcrt1sqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqajlxj8',
-                '❌_VER16_PROB01': 'bcrt1sqq5r4036',
+                '❌_VER15_PROG41': 'qcrt1sqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqa6ug5w',
+                '❌_VER16_PROB01': 'qcrt1sqqshtd8q',
             }
             for l in BECH32_VALID:
                 ad = BECH32_VALID[l]

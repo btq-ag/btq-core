@@ -73,7 +73,7 @@ class RejectLowDifficultyHeadersTest(BTQTestFramework):
             assert len(chaintips) == 1
             assert {
                 'height': 0,
-                'hash': '0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206',
+                'hash': self.nodes[0].getblockhash(0),
                 'branchlen': 0,
                 'status': 'active',
             } in chaintips
@@ -85,7 +85,7 @@ class RejectLowDifficultyHeadersTest(BTQTestFramework):
 
         assert {
             'height': 0,
-            'hash': '0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206',
+            'hash': self.nodes[0].getblockhash(0),
             'branchlen': 0,
             'status': 'active',
         } in self.nodes[2].getchaintips()
@@ -144,6 +144,11 @@ class RejectLowDifficultyHeadersTest(BTQTestFramework):
         # received headers during a sync are fully between locator entries.
         BLOCKS_TO_MINE = 4110
 
+        # Earlier batches already advanced MTP. Give both forks room below
+        # BTQ's 15-minute future-time limit, with the same clock on all peers.
+        mocktime = max(node.getblockheader(node.getbestblockhash())['time'] for node in self.nodes) + BLOCKS_TO_MINE
+        for node in self.nodes:
+            node.setmocktime(mocktime)
         self.generate(self.nodes[0], BLOCKS_TO_MINE, sync_fun=self.no_op)
         self.generate(self.nodes[1], BLOCKS_TO_MINE+2, sync_fun=self.no_op)
 

@@ -30,9 +30,9 @@ BTQ Core and how to run the unit tests, functional tests, and fuzz tests.
 
 There are many open issues of varying difficulty waiting to be fixed.
 If you're looking for somewhere to start contributing, check out the
-[good first issue](https://github.com/btq/btq/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
+[good first issue](https://github.com/btq-ag/btq-core/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
 list or changes that are
-[up for grabs](https://github.com/btq/btq/issues?utf8=%E2%9C%93&q=label%3A%22Up+for+grabs%22).
+[up for grabs](https://github.com/btq-ag/btq-core/issues?utf8=%E2%9C%93&q=label%3A%22Up+for+grabs%22).
 Some of them might no longer be applicable. So if you are interested, but
 unsure, you might want to leave a comment on the issue first.
 
@@ -84,8 +84,8 @@ To contribute a patch, the workflow is as follows:
   1. Create topic branch
   1. Commit patches
 
-For GUI-related issues or pull requests, the https://github.com/btq-core/gui repository should be used.
-For all other issues and pull requests, the https://github.com/btq/btq node repository should be used.
+For GUI-related issues or pull requests, the https://github.com/bitcoin-core/gui repository should be used.
+For all other issues and pull requests, the https://github.com/btq-ag/btq-core node repository should be used.
 
 The master branch for all monotree repositories is identical.
 
@@ -176,7 +176,7 @@ subsequent comment to the PR.
 ### Translation changes
 
 Note that translations should not be submitted as pull requests. Please see
-[Translation Process](https://github.com/btq/btq/blob/master/doc/translation_process.md)
+[Translation Process](https://github.com/btq-ag/btq-core/blob/master/doc/translation_process.md)
 for more information on helping with translations.
 
 ### Work in Progress Changes and Requests for Comments
@@ -232,7 +232,7 @@ pull request to pull request.
 
 When a pull request conflicts with the target branch, you may be asked to rebase it on top of the current target branch.
 
-    git fetch https://github.com/btq/btq  # Fetch the latest upstream commit
+    git fetch https://github.com/btq-ag/btq-core  # Fetch the latest upstream commit
     git rebase FETCH_HEAD  # Rebuild commits on top of the new base
 
 This project aims to have a clean git history, where code changes are only made in non-merge commits. This simplifies
@@ -432,10 +432,10 @@ Rebased-From: <commit hash of the original commit>
 ```
 
 Have a look at [an example backport PR](
-https://github.com/btq/btq/pull/16189).
+https://github.com/bitcoin/bitcoin/pull/16189).
 
 Also see the [backport.py script](
-https://github.com/btq-core/btq-maintainer-tools#backport).
+https://github.com/bitcoin-core/bitcoin-maintainer-tools#backport).
 
 Copyright
 ---------

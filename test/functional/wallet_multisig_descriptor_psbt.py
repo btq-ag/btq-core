@@ -6,6 +6,7 @@
 
 This is meant to be documentation as much as functional tests, so it is kept as simple and readable as possible.
 """
+from decimal import Decimal
 
 from test_framework.address import base58_to_byte
 from test_framework.test_framework import BTQTestFramework
@@ -109,7 +110,9 @@ class WalletMultisigDescriptorPSBTTest(BTQTestFramework):
         coordinator_wallet = participants["signers"][0]
         self.generatetoaddress(self.nodes[0], 101, coordinator_wallet.getnewaddress())
 
-        deposit_amount = 6.15
+        # The coordinator has a single mature block reward, so the amounts are a
+        # tenth of upstream's because BTQ's subsidy is a tenth of Bitcoin's.
+        deposit_amount = Decimal('0.615')
         multisig_receiving_address = participants["multisigs"][0].getnewaddress()
         self.log.info("Send funds to the resulting multisig receiving address...")
         coordinator_wallet.sendtoaddress(multisig_receiving_address, deposit_amount)
@@ -119,7 +122,7 @@ class WalletMultisigDescriptorPSBTTest(BTQTestFramework):
 
         self.log.info("Send a transaction from the multisig!")
         to = participants["signers"][self.N - 1].getnewaddress()
-        value = 1
+        value = Decimal('0.1')
         self.log.info("First, make a sending transaction, created using `walletcreatefundedpsbt` (anyone can initiate this)...")
         psbt = participants["multisigs"][0].walletcreatefundedpsbt(inputs=[], outputs={to: value}, feeRate=0.00010)
 

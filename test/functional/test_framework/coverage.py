@@ -10,7 +10,7 @@ testing.
 
 import os
 
-from .authproxy import AuthServiceProxy
+from .authproxy import AuthServiceProxy, JSONRPCException
 from typing import Optional
 
 REFERENCE_FILENAME = 'rpc_interface.txt'
@@ -47,7 +47,15 @@ class AuthServiceProxyWrapper():
         called to a file.
 
         """
-        return_val = self.auth_service_proxy_instance.__call__(*args, **kwargs)
+        try:
+            return_val = self.auth_service_proxy_instance.__call__(*args, **kwargs)
+        except JSONRPCException as error:
+            # An RPC rejection exercises the command too (including commands
+            # that are deliberately disabled). Transport/protocol errors and
+            # unknown methods do not establish that the command was reached.
+            if error.error['code'] not in (-32700, -32600, -32601, -342, -343, -344):
+                self._log_call()
+            raise
         self._log_call()
         return return_val
 
@@ -78,11 +86,13 @@ def get_filename(dirname, n_node):
         dirname, "coverage.pid%s.node%s.txt" % (pid, str(n_node)))
 
 
-def write_all_rpc_commands(dirname: str, node: AuthServiceProxy) -> bool:
+def write_all_rpc_commands(dirname: str, node: AuthServiceProxy, *, authoritative=False) -> bool:
     """
     Write out a list of all RPC functions available in `btq-cli` for
     coverage comparison. This will only happen once per coverage
-    directory.
+    directory. Before running tests, the runner initializes an authoritative
+    reference from a current node with the compiled wallet interface enabled.
+    Later wallet-disabled or historical nodes must not replace that reference.
 
     Args:
         dirname: temporary test dir
@@ -94,7 +104,7 @@ def write_all_rpc_commands(dirname: str, node: AuthServiceProxy) -> bool:
     """
     filename = os.path.join(dirname, REFERENCE_FILENAME)
 
-    if os.path.isfile(filename):
+    if os.path.isfile(filename) and not authoritative:
         return False
 
     help_output = node.help().split('\n')

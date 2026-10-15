@@ -1,0 +1,72 @@
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Round-trip the two pinned historical releases through the current
+# chainstate, txindex and wallets (feature_release_compatibility.py). It
+# builds the current btqd and both releases from source, so it runs on pushes
+# to master, nightly, on manual dispatch, and on pull requests labelled
+# ci:extended, not on every pull request.
+#
+# Adding another label to a pull request that has ci:extended posts a skipped
+# result for this check on the same commit, which hides the earlier result in
+# the pull request's checks list. Re-run the earlier run from the Actions tab
+# to show it again.
+
+name: release-compatibility
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  # Adding any other label must not cancel a running check.
+  group: release-compatibility-${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name != 'ci:extended')) && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  historical-releases:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (contains(github.event.pull_request.labels.*.name, 'ci:extended') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ci:extended'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libtool \
+            autotools-dev automake pkg-config bsdextrautils libevent-dev \
+            libboost-dev libsqlite3-dev libdb++-dev
+      - name: Build current and pinned historical releases
+        run: |
+          ./autogen.sh
+          ./configure --without-gui --disable-tests --disable-bench \
+            --disable-fuzz --disable-fuzz-binary --without-zmq --with-incompatible-bdb
+          make -j2 -C src btqd btq-cli
+          python3 test/build_previous_releases.py --jobs=2 --output="$RUNNER_TEMP/releases"
+      - name: Exercise both wallet formats through both historical releases
+        env:
+          BTQ_PREVIOUS_RELEASES: ${{ runner.temp }}/releases
+        run: |
+          set -o pipefail
+          for mode in descriptors legacy-wallet; do
+            python3 test/functional/feature_release_compatibility.py --"$mode" \
+              --tmpdir="$RUNNER_TEMP/compat-$mode" 2>&1 | tee "$RUNNER_TEMP/compat-$mode.log"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-compatibility-evidence
+          path: |
+            ${{ runner.temp }}/compat-*.log
+            ${{ runner.temp }}/releases/manifest.json

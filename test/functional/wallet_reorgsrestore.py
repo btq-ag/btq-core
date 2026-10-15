@@ -35,6 +35,15 @@ class ReorgsRestoreTest(BTQTestFramework):
         # Send a tx from which to conflict outputs later
         txid_conflict_from = self.nodes[0].sendtoaddress(self.nodes[0].getnewaddress(), Decimal("10"))
         self.generate(self.nodes[0], 1)
+        nA = next(
+            tx_out["vout"]
+            for tx_out in self.nodes[0].gettransaction(txid_conflict_from)["details"]
+            if tx_out["amount"] == Decimal("10")
+        )
+        inputs = [{"txid": txid_conflict_from, "vout": nA}]
+        # Reserve this output for the conflicting spends below. Coin selection
+        # for the intervening payment may otherwise spend it.
+        self.nodes[0].lockunspent(False, inputs)
 
         # Disconnect node1 from others to reorg its chain later
         self.disconnect_nodes(0, 1)
@@ -50,9 +59,8 @@ class ReorgsRestoreTest(BTQTestFramework):
 
         # Disconnect node0 from node2 to broadcast a conflict on their respective chains
         self.disconnect_nodes(0, 2)
-        nA = next(tx_out["vout"] for tx_out in self.nodes[0].gettransaction(txid_conflict_from)["details"] if tx_out["amount"] == Decimal("10"))
-        inputs = []
-        inputs.append({"txid": txid_conflict_from, "vout": nA})
+        assert self.nodes[0].gettxout(txid_conflict_from, nA) is not None
+        self.nodes[0].lockunspent(True, inputs)
         outputs_1 = {}
         outputs_2 = {}
 
