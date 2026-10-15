@@ -7,6 +7,7 @@ from decimal import Decimal
 from math import ceil
 
 from test_framework.messages import (
+    COIN,
     COutPoint,
     CTransaction,
     CTxIn,
@@ -80,16 +81,22 @@ class BytesPerSigOpTest(BTQTestFramework):
             [OP_CHECKSIG]*num_singlesigops +
             [OP_ENDIF, OP_TRUE]
         )
-        # use a 256-byte data-push as lower bound in the output script, in order
-        # to avoid having to compensate for tx size changes caused by varying
-        # length serialization sizes (both for scriptPubKey and data-push lengths)
-        tx = self.create_p2wsh_spending_tx(witness_script, CScript([OP_RETURN, b'X'*256]))
+        tx = self.create_p2wsh_spending_tx(witness_script, CScript([OP_RETURN]))
 
-        # bump the tx to reach the sigop-limit equivalent size by padding the datacarrier output
+        def pad_to_vsize(vsize):
+            # Account for pushdata and CompactSize boundaries as well as payload bytes.
+            padding = max(0, vsize - tx.get_vsize())
+            for _ in range(10):
+                tx.vout[0].scriptPubKey = CScript([OP_RETURN, b'X' * padding])
+                delta = vsize - tx.get_vsize()
+                if delta == 0:
+                    break
+                padding += delta
+                assert padding >= 0
+            assert_equal(tx.get_vsize(), vsize)
+
         assert_greater_than_or_equal(sigop_equivalent_vsize, tx.get_vsize())
-        vsize_to_pad = sigop_equivalent_vsize - tx.get_vsize()
-        tx.vout[0].scriptPubKey = CScript([OP_RETURN, b'X'*(256+vsize_to_pad)])
-        assert_equal(sigop_equivalent_vsize, tx.get_vsize())
+        pad_to_vsize(sigop_equivalent_vsize)
 
         res = self.nodes[0].testmempoolaccept([tx.serialize().hex()])[0]
         assert_equal(res['allowed'], True)
@@ -97,7 +104,7 @@ class BytesPerSigOpTest(BTQTestFramework):
 
         # increase the tx's vsize to be right above the sigop-limit equivalent size
         # => tx's vsize in mempool should also grow accordingly
-        tx.vout[0].scriptPubKey = CScript([OP_RETURN, b'X'*(256+vsize_to_pad+1)])
+        pad_to_vsize(sigop_equivalent_vsize + 1)
         res = self.nodes[0].testmempoolaccept([tx.serialize().hex()])[0]
         assert_equal(res['allowed'], True)
         assert_equal(res['vsize'], sigop_equivalent_vsize+1)
@@ -106,7 +113,7 @@ class BytesPerSigOpTest(BTQTestFramework):
         # => tx's vsize in mempool should stick at the sigop-limit equivalent
         # bytes level, as it is higher than the tx's serialized vsize
         # (the maximum of both is taken)
-        tx.vout[0].scriptPubKey = CScript([OP_RETURN, b'X'*(256+vsize_to_pad-1)])
+        pad_to_vsize(sigop_equivalent_vsize - 1)
         res = self.nodes[0].testmempoolaccept([tx.serialize().hex()])[0]
         assert_equal(res['allowed'], True)
         assert_equal(res['vsize'], sigop_equivalent_vsize)
@@ -140,18 +147,18 @@ class BytesPerSigOpTest(BTQTestFramework):
         self.log.info("Test a overly-large sigops-vbyte hits package limits")
         # Make a 2-transaction package which fails vbyte checks even though
         # separately they would work.
-        self.restart_node(0, extra_args=["-bytespersigop=5000"] + self.extra_args[0])
+        self.restart_node(0, extra_args=["-bytespersigop=100000"] + self.extra_args[0])
 
         def create_bare_multisig_tx(utxo_to_spend=None):
             _, pubkey = generate_keypair()
             amount_for_bare = 50000
-            tx_dict = self.wallet.create_self_transfer(fee=Decimal("3"), utxo_to_spend=utxo_to_spend)
+            tx_dict = self.wallet.create_self_transfer(fee=Decimal("0.03"), utxo_to_spend=utxo_to_spend)
             tx_utxo = tx_dict["new_utxo"]
             tx = tx_dict["tx"]
             tx.vout.append(CTxOut(amount_for_bare, keys_to_multisig_script([pubkey], k=1)))
             tx.vout[0].nValue -= amount_for_bare
             tx_utxo["txid"] = tx.rehash()
-            tx_utxo["value"] -= Decimal("0.00005000")
+            tx_utxo["value"] -= Decimal(amount_for_bare) / COIN
             return (tx_utxo, tx)
 
         tx_parent_utxo, tx_parent = create_bare_multisig_tx()
@@ -161,7 +168,7 @@ class BytesPerSigOpTest(BTQTestFramework):
         parent_individual_testres = self.nodes[0].testmempoolaccept([tx_parent.serialize().hex()])[0]
         assert parent_individual_testres["allowed"]
         # Multisig is counted as MAX_PUBKEYS_PER_MULTISIG = 20 sigops
-        assert_equal(parent_individual_testres["vsize"], 5000 * 20)
+        assert_equal(parent_individual_testres["vsize"], 100000 * 20)
 
         # But together, it's exceeding limits in the *package* context. If sigops adjusted vsize wasn't being checked
         # here, it would get further in validation and give too-long-mempool-chain error instead.
@@ -173,7 +180,7 @@ class BytesPerSigOpTest(BTQTestFramework):
         assert tx_parent.rehash() in self.nodes[0].getrawmempool()
 
         # Transactions are tiny in weight
-        assert_greater_than(2000, tx_parent.get_weight() + tx_child.get_weight())
+        assert_greater_than(500 * WITNESS_SCALE_FACTOR, tx_parent.get_weight() + tx_child.get_weight())
 
     def run_test(self):
         self.wallet = MiniWallet(self.nodes[0])

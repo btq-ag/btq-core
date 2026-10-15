@@ -64,7 +64,7 @@ The Transifex BTQ project config file is included as part of the repo. It can be
 
 ### Synchronising translations
 
-To assist in updating translations, a helper script is available in the [maintainer-tools repo](https://github.com/btq-core/btq-maintainer-tools). To use it and commit the result, simply do:
+To assist in updating translations, a helper script is available in the [maintainer-tools repo](https://github.com/bitcoin-core/bitcoin-maintainer-tools). To use it and commit the result, simply do:
 
 ```
 python3 ../btq-maintainer-tools/update-translations.py

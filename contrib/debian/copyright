@@ -2,7 +2,7 @@ Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: BTQ
 Upstream-Contact: Satoshi Nakamoto <satoshin@gmx.com>
  irc://#btq-core-dev@libera.chat
-Source: https://github.com/btq/btq
+Source: https://github.com/btq-ag/btq-core
 
 Files: *
 Copyright: 2009-2023, BTQ Core Developers
