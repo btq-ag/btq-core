@@ -312,7 +312,8 @@ void P2MRNewVaultDialog::accept()
                 .arg(m_created_address, QString::fromStdString(funded.txid.GetHex())));
     } else {
         interfaces::WalletP2MRCreated created;
-        if (!m_controller->createVault(leaves, label, created, error)) {
+        const bool allow_trivial_leaves = tpl == P2MRController::TreeTemplate::OpTrue;
+        if (!m_controller->createVault(leaves, label, allow_trivial_leaves, created, error)) {
             QMessageBox::critical(this, windowTitle(), error);
             return;
         }
