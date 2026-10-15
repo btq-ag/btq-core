@@ -26,8 +26,10 @@ historic blocks.
 BTQ reserves enough of the remaining cycle's budget to relay one full block
 per expected block interval. At the start of a 24-hour cycle, 60-second block
 spacing and the 8 MB serialized-block limit reserve 11.52 GB (about 10.7 GiB).
-Targets below that reserve can stop historical-block serving before the
-upload target itself is reached. Recent blocks remain available.
+Targets below that reserve refuse historical-block requests from the start
+of each cycle, even before the upload target itself is reached. Recent full
+blocks remain available; BIP37 filtered-block requests are also refused
+while the historical serving limit is reached.
 
 Peers with the `download` permission will never be disconnected, although their traffic counts for
 calculating the target.

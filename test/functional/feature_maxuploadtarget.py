@@ -176,8 +176,9 @@ class MaxUploadTest(BTQTestFramework):
         peer.send_and_ping(getdata_request)
         assert_equal(peer.block_receive_map[big_new_block], 1)
         getdata_request.inv = [CInv(MSG_BLOCK | MSG_WITNESS_FLAG, big_old_block)]
-        peer.send_message(getdata_request)
-        peer.wait_for_disconnect()
+        with self.nodes[0].assert_debug_log(["historical block serving limit reached"]):
+            peer.send_message(getdata_request)
+            peer.wait_for_disconnect()
         self.nodes[0].disconnect_p2ps()
 
         self.log.info("Restarting node 0 with download permission and 1MB maxuploadtarget")
