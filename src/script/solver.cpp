@@ -93,6 +93,8 @@ static bool MatchMultisig(const CScript& script, int& required_sigs, std::vector
 {
     opcodetype opcode;
     valtype data;
+    // The size check below counts only keys this call parsed.
+    pubkeys.clear();
 
     CScript::const_iterator it = script.begin();
     if (script.size() < 1 || script.back() != OP_CHECKMULTISIG) return false;
@@ -114,18 +116,14 @@ static bool MatchMultisig(const CScript& script, int& required_sigs, std::vector
 // Dilithium script matching functions
 static bool MatchPayToDilithiumPubkey(const CScript& script, valtype& pubkey)
 {
-    // Check for OP_PUSHDATA2 format (for large keys > 75 bytes)
-    if (script.size() == CDilithiumPubKey::SIZE + 4 && script[0] == OP_PUSHDATA2 && script.back() == OP_CHECKSIGDILITHIUM) {
-        // OP_PUSHDATA2 + 2 length bytes + data + opcode
-        pubkey = valtype(script.begin() + 3, script.begin() + CDilithiumPubKey::SIZE + 3);
-        return pubkey.size() == CDilithiumPubKey::SIZE;
-    }
-    // Check for direct push format (for small keys <= 75 bytes)
-    if (script.size() == CDilithiumPubKey::SIZE + 2 && script[0] == CDilithiumPubKey::SIZE && script.back() == OP_CHECKSIGDILITHIUM) {
-        pubkey = valtype(script.begin() + 1, script.begin() + CDilithiumPubKey::SIZE + 1);
-        return pubkey.size() == CDilithiumPubKey::SIZE;
-    }
-    return false;
+    // A Dilithium pubkey is 1312 bytes, so it cannot be a direct push
+    // (those stop at 75). The script is OP_PUSHDATA2 <len16> <pubkey> OP_CHECKSIGDILITHIUM.
+    if (script.size() != CDilithiumPubKey::SIZE + 4) return false;
+    if (script[0] != OP_PUSHDATA2 || script.back() != OP_CHECKSIGDILITHIUM) return false;
+    const unsigned int len = script[1] | (static_cast<unsigned int>(script[2]) << 8);
+    if (len != CDilithiumPubKey::SIZE) return false;
+    pubkey.assign(script.begin() + 3, script.begin() + 3 + CDilithiumPubKey::SIZE);
+    return true;
 }
 
 static bool MatchPayToDilithiumPubkeyHash(const CScript& script, valtype& pubkeyhash)
@@ -141,6 +139,8 @@ static bool MatchDilithiumMultisig(const CScript& script, int& required_sigs, st
 {
     opcodetype opcode;
     valtype data;
+    // Solver may call this with whatever MatchMultisig appended on failure.
+    pubkeys.clear();
 
     CScript::const_iterator it = script.begin();
     if (script.size() < 1 || script.back() != OP_CHECKMULTISIGDILITHIUM) return false;
