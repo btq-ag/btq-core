@@ -8,6 +8,7 @@ from decimal import Decimal
 from test_framework.messages import (
     COIN,
     CTxOut,
+    WITNESS_SCALE_FACTOR,
 )
 from test_framework.script import (
     CScript,
@@ -48,7 +49,7 @@ class DustRelayFeeTest(BTQTestFramework):
             dust_threshold = 0
         else:
             tx_size = len(CTxOut(nValue=0, scriptPubKey=output_script).serialize())
-            tx_size += 67 if output_script.IsWitnessProgram() else 148
+            tx_size += 41 + 107 // WITNESS_SCALE_FACTOR if output_script.IsWitnessProgram() else 148
             dust_threshold = int(get_fee(tx_size, dust_relay_fee) * COIN)
         self.log.info(f"-> Test {type_desc} output (size {len(output_script)}, limit {dust_threshold})")
 
