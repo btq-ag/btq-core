@@ -458,7 +458,9 @@ class EstimateFeeTest(BTQTestFramework):
         assert "feerate" not in self.nodes[0].estimatesmartfee(2)
         self.stop_node(0)
         assert_equal(struct.unpack("<i", cache_path.read_bytes()[:4])[0], 3)
-        with self.nodes[0].assert_debug_log(expected_msgs=[], unexpected_msgs=["incompatible fee estimation data"]):
+        with self.nodes[0].assert_debug_log(
+                expected_msgs=["counting confirms up to 10080 blocks"],
+                unexpected_msgs=["incompatible fee estimation data", "unable to read policy estimator data", "Failed to read fee estimates"]):
             self.start_node(0)
 
         self.log.info("Testing that fee estimation is disabled in blocksonly.")

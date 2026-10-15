@@ -10,11 +10,13 @@
 #include <test/util/txmempool.h>
 #include <txmempool.h>
 #include <uint256.h>
+#include <util/serfloat.h>
 #include <util/time.h>
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
+#include <utility>
 
 #include <test/util/setup_common.h>
 
@@ -276,32 +278,88 @@ BOOST_AUTO_TEST_CASE(ShortTargetSeparatesSlowConfirmations)
         BOOST_CHECK_EQUAL(restored.estimateSmartFee(2, nullptr, false).GetFeePerK(), estimate.GetFeePerK());
     }
 
-    // A format-3 file whose medium scale is not 20 must be rejected. Accepting
-    // it would treat a two-block target as a ten-block bucket again.
+    // Decode a valid format-3 file so every rejection case is otherwise
+    // well-formed and reaches the horizon compatibility checks.
     CDataStream cursor{MakeByteSpan(raw), SER_DISK, CLIENT_VERSION};
     int file_format, file_version;
     unsigned int best, hist_first, hist_best;
     cursor >> file_format >> file_version >> best >> hist_first >> hist_best;
-    const uint64_t nbuckets{ReadCompactSize(cursor)};
-    for (uint64_t i{0}; i < nbuckets; ++i) {
-        uint64_t encoded_bucket;
-        cursor >> encoded_bucket;
+    BOOST_REQUIRE_EQUAL(file_format, 3);
+    std::vector<uint64_t> buckets;
+    cursor >> buckets;
+    const size_t header_size{raw.size() - cursor.size()};
+    // Encoded doubles are serialized as little-endian uint64_t values.
+    struct FileHorizon {
+        uint64_t decay;
+        unsigned int scale;
+        std::vector<uint64_t> feerate_avg, tx_count_avg;
+        std::vector<std::vector<uint64_t>> conf_avg, fail_avg;
+    };
+    std::array<FileHorizon, 3> horizons;
+    for (auto& horizon : horizons) {
+        cursor >> horizon.decay >> horizon.scale >> horizon.feerate_avg
+               >> horizon.tx_count_avg >> horizon.conf_avg >> horizon.fail_avg;
     }
-    uint64_t encoded_decay;
-    cursor >> encoded_decay;
-    const size_t scale_offset{raw.size() - cursor.size()};
-    uint32_t med_scale;
-    cursor >> med_scale;
-    BOOST_CHECK_EQUAL(med_scale, 20U);
-    CDataStream wrong_scale_bytes(SER_DISK, CLIENT_VERSION);
-    wrong_scale_bytes << uint32_t{10};
-    std::memcpy(raw.data() + scale_offset, wrong_scale_bytes.data(), wrong_scale_bytes.size());
-    AutoFile corrupt{std::tmpfile()};
-    BOOST_REQUIRE(!corrupt.IsNull());
-    BOOST_REQUIRE_EQUAL(std::fwrite(raw.data(), 1, raw.size(), corrupt.Get()), raw.size());
-    std::rewind(corrupt.Get());
-    BOOST_CHECK(!restored.Read(corrupt));
-    BOOST_CHECK_EQUAL(restored.estimateSmartFee(2, nullptr, false).GetFeePerK(), estimate.GetFeePerK());
+    BOOST_REQUIRE(cursor.empty());
+    const std::array<std::pair<int, FeeEstimateHorizon>, 3> raw_targets{{
+        {2, FeeEstimateHorizon::SHORT_HALFLIFE},
+        {20, FeeEstimateHorizon::MED_HALFLIFE},
+        {240, FeeEstimateHorizon::LONG_HALFLIFE},
+    }};
+    std::array<CAmount, 3> raw_estimates;
+    for (size_t i = 0; i < raw_targets.size(); ++i) {
+        raw_estimates[i] = restored.estimateRawFee(raw_targets[i].first, 0.85, raw_targets[i].second).GetFeePerK();
+        BOOST_REQUIRE_GT(raw_estimates[i], 0);
+    }
+    auto check_file = [&](const auto& windows, bool accepted) {
+        CDataStream bytes{SER_DISK, CLIENT_VERSION};
+        bytes.write(MakeByteSpan(raw).first(header_size));
+        for (const auto& horizon : windows) {
+            auto fee_avg{horizon.feerate_avg};
+            if (!accepted) {
+                // If a rejected file partially replaced live state, these
+                // changed averages would alter the restored estimate.
+                for (auto& encoded : fee_avg) encoded = EncodeDouble(DecodeDouble(encoded) * 2);
+            }
+            bytes << horizon.decay << horizon.scale << fee_avg
+                  << horizon.tx_count_avg << horizon.conf_avg << horizon.fail_avg;
+        }
+        AutoFile file{std::tmpfile()};
+        BOOST_REQUIRE(!file.IsNull());
+        BOOST_REQUIRE_EQUAL(std::fwrite(bytes.data(), 1, bytes.size(), file.Get()), bytes.size());
+        std::rewind(file.Get());
+        BOOST_CHECK_EQUAL(restored.Read(file), accepted);
+        BOOST_CHECK_EQUAL(restored.estimateSmartFee(2, nullptr, false).GetFeePerK(), estimate.GetFeePerK());
+        for (size_t i = 0; i < raw_targets.size(); ++i) {
+            BOOST_CHECK_EQUAL(restored.estimateRawFee(raw_targets[i].first, 0.85, raw_targets[i].second).GetFeePerK(), raw_estimates[i]);
+        }
+    };
+    // Positive control: decoding and rebuilding must not corrupt the fixture.
+    check_file(horizons, true);
+    for (size_t i = 0; i < horizons.size(); ++i) {
+        BOOST_TEST_CONTEXT("horizon " << i) {
+            auto changed{horizons};
+            changed[i].decay = EncodeDouble(DecodeDouble(changed[i].decay) * 0.99); // Still in (0, 1).
+            check_file(changed, false);
+            changed = horizons;
+            // Stay inside the old 10080-confirm sanity limit, including long.
+            changed[i].scale = changed[i].scale == 1 ? 2 : changed[i].scale - 1;
+            check_file(changed, false);
+            changed = horizons;
+            changed[i].conf_avg.pop_back();
+            changed[i].fail_avg.pop_back();
+            check_file(changed, false);
+        }
+    }
+    // The old short geometry is internally valid and spans the same 120
+    // blocks, but ten-block buckets cannot answer a two-block target.
+    BOOST_REQUIRE_EQUAL(horizons[1].scale, 1U);
+    BOOST_REQUIRE_EQUAL(horizons[1].conf_avg.size(), 120U);
+    auto old_short{horizons};
+    old_short[1].scale = 10;
+    old_short[1].conf_avg.resize(12);
+    old_short[1].fail_avg.resize(12);
+    check_file(old_short, false);
 }
 
 namespace {
@@ -335,7 +393,6 @@ BOOST_AUTO_TEST_CASE(UnconfirmedCountsDoNotAliasBeforeTheWindowFills)
     constexpr int stuck_count{5};
     std::vector<CTransactionRef> stuck;
     for (unsigned int height = 0; height < tip; ++height) {
-        Mine(pool, {}, height == 0 ? 0 : height);
         if (height == 10) {
             for (int i = 0; i < stuck_count; ++i) {
                 AddFeeTx(pool, tx, entry, fee, height, unique, &stuck);
