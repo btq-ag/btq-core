@@ -470,6 +470,50 @@ class WalletTaprootTest(BTQTestFramework):
         check_key_path_spend(txid, 13)
         wallet.unloadwallet()
 
+    def test_encrypted_key_path_sizing(self):
+        self.log.info("Testing Taproot fee sizing across encrypted-wallet lock states")
+        node = self.nodes[0]
+        node.createwallet("taproot_encrypted_sizing", descriptors=True, blank=True)
+        wallet = node.get_wallet_rpc("taproot_encrypted_sizing")
+        descriptor = descsum_create(f"tr({KEYS[0]['xprv']}/3,pk({KEYS[1]['xprv']}/3))")
+        assert wallet.importdescriptors([{"desc": descriptor, "timestamp": "now"}])[0]["success"]
+        address = node.deriveaddresses(descriptor)[0]
+        txid = self.boring.sendtoaddress(address, 1)
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        vout = next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)
+        destination = self.boring.getnewaddress()
+        fee_rate = Decimal(10)
+
+        def fund(input_weight=None):
+            tx_input = {"txid": txid, "vout": vout}
+            if input_weight is not None:
+                tx_input["weight"] = input_weight
+            return wallet.walletcreatefundedpsbt(
+                [tx_input], [{destination: Decimal("0.5")}], 0,
+                {"add_inputs": False, "change_address": address, "fee_rate": fee_rate})
+
+        wallet.encryptwallet("taproot test passphrase")
+        assert_equal(wallet.getwalletinfo()["unlocked_until"], 0)
+        locked = fund()
+        wallet.walletpassphrase("taproot test passphrase", 600)
+        unlocked = fund()
+        # Locked wallets retain the script-path bound. Available internal
+        # private keys permit the smaller key-path bound after unlocking.
+        assert locked["fee"] > unlocked["fee"]
+        explicit = fund(input_weight=1600)
+        assert explicit["fee"] > locked["fee"]
+        for funded in (locked, unlocked, explicit):
+            signed = wallet.walletprocesspsbt(funded["psbt"])
+            assert signed["complete"]
+            decoded = node.decoderawtransaction(signed["hex"])
+            assert_equal(len(decoded["vin"][0]["txinwitness"]), 1)
+            assert_greater_than_or_equal(funded["fee"] * COIN, fee_rate * decoded["vsize"])
+            accepted = node.testmempoolaccept([signed["hex"]])[0]
+            assert accepted["allowed"], accepted
+        wallet.walletlock()
+        assert_equal(fund()["fee"], locked["fee"])
+        wallet.unloadwallet()
+
     def test_key_path_with_leaf_only_descriptor(self):
         self.log.info("Testing that a leaf-only descriptor for the same output keeps the script-path size")
         node = self.nodes[0]
@@ -662,6 +706,7 @@ class WalletTaprootTest(BTQTestFramework):
 
         self.test_script_path_fee_boundaries()
         self.test_key_path_with_large_script_tree()
+        self.test_encrypted_key_path_sizing()
         self.test_key_path_with_leaf_only_descriptor()
         self.test_key_path_with_cross_key_leaves()
         self.test_psbt_key_path_regardless_of_descriptor_order()

@@ -111,20 +111,35 @@ BOOST_AUTO_TEST_CASE(fillpsbt_sighash_mismatch_signs_nothing)
         return psbtx;
     };
 
-    {
+    for (const bool finalize : {false, true}) {
         PartiallySignedTransaction psbtx{make_psbt()};
         bool complete{false};
-        BOOST_CHECK_EQUAL(m_wallet.FillPSBT(psbtx, complete, SIGHASH_DEFAULT, true, true), TransactionError::OK);
+        size_t n_signed{99};
+        BOOST_CHECK_EQUAL(m_wallet.FillPSBT(psbtx, complete, SIGHASH_DEFAULT, true, true, &n_signed, finalize), TransactionError::OK);
+        BOOST_CHECK_EQUAL(complete, finalize);
+        BOOST_CHECK_EQUAL(n_signed, finalize ? 2U : 0U);
+        for (const auto& input : psbtx.inputs) {
+            if (finalize) {
+                BOOST_CHECK_EQUAL(input.final_script_witness.stack.size(), 1U);
+            } else {
+                BOOST_CHECK(!input.m_tap_key_sig.empty());
+                BOOST_CHECK(input.final_script_witness.IsNull());
+            }
+        }
+        // Finalizing retained signatures counts each input once. Repeating
+        // an already finalized PSBT must not count the pre-pass again.
+        BOOST_CHECK_EQUAL(m_wallet.FillPSBT(psbtx, complete, SIGHASH_DEFAULT, true, true, &n_signed), TransactionError::OK);
         BOOST_CHECK(complete);
-        BOOST_CHECK_EQUAL(psbtx.inputs[0].final_script_witness.stack.size(), 1U);
-        BOOST_CHECK_EQUAL(psbtx.inputs[1].final_script_witness.stack.size(), 1U);
+        BOOST_CHECK_EQUAL(n_signed, finalize ? 0U : 2U);
     }
 
     {
         PartiallySignedTransaction psbtx{make_psbt()};
         psbtx.inputs[1].sighash_type = SIGHASH_NONE;
         bool complete{true};
-        BOOST_CHECK_EQUAL(m_wallet.FillPSBT(psbtx, complete, SIGHASH_DEFAULT, true, true), TransactionError::SIGHASH_MISMATCH);
+        size_t n_signed{99};
+        BOOST_CHECK_EQUAL(m_wallet.FillPSBT(psbtx, complete, SIGHASH_DEFAULT, true, true, &n_signed), TransactionError::SIGHASH_MISMATCH);
+        BOOST_CHECK_EQUAL(n_signed, 0U);
         BOOST_CHECK(psbtx.inputs[0].m_tap_key_sig.empty());
         BOOST_CHECK(psbtx.inputs[0].final_script_witness.IsNull());
         BOOST_CHECK(psbtx.inputs[1].m_tap_key_sig.empty());
