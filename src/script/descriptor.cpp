@@ -1134,14 +1134,30 @@ public:
 
     std::optional<int64_t> ScriptSize() const override { return 1 + 1 + 32; }
 
-    std::optional<int64_t> MaxSatisfactionWeight(bool) const override {
-        // FIXME: We assume keypath spend, which can lead to very large underestimations.
-        return 1 + 65;
+    std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
+        int64_t max_weight = 1 + 65; // Serialized key-path signature.
+        for (size_t pos = 0; pos < m_subdescriptor_args.size(); ++pos) {
+            const auto sat_size = m_subdescriptor_args[pos]->MaxSatSize(use_max_sig);
+            const auto script_size = m_subdescriptor_args[pos]->ScriptSize();
+            if (!sat_size || !script_size) return {};
+            const int64_t control_size = TAPROOT_CONTROL_BASE_SIZE + TAPROOT_CONTROL_NODE_SIZE * m_depths[pos];
+            const int64_t weight = *sat_size + GetSizeOfCompactSize(*script_size) + *script_size
+                + GetSizeOfCompactSize(control_size) + control_size;
+            max_weight = std::max(max_weight, weight);
+        }
+        // MaxInputWeight adds the witness stack-count prefix separately.
+        // Witness bytes have unit weight, including on BTQ (WSF=16).
+        return max_weight;
     }
 
     std::optional<int64_t> MaxSatisfactionElems() const override {
-        // FIXME: See above, we assume keypath spend.
-        return 1;
+        int64_t max_elems = 1;
+        for (const auto& sub : m_subdescriptor_args) {
+            const auto elems = sub->MaxSatisfactionElems();
+            if (!elems) return {};
+            max_elems = std::max(max_elems, *elems + 2); // Script and control block.
+        }
+        return max_elems;
     }
 };
 
