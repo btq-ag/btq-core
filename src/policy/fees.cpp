@@ -168,7 +168,8 @@ public:
      * Read saved state of estimation data from a file and replace all internal data structures and
      * variables with this state.
      */
-    void Read(AutoFile& filein, int nFileVersion, size_t numBuckets);
+    void Read(AutoFile& filein, int nFileVersion, size_t numBuckets,
+              double expected_decay, unsigned int expected_scale, unsigned int expected_periods);
 };
 
 
@@ -277,8 +278,15 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
         nConf += confAvg[periodTarget - 1][bucket];
         totalNum += txCtAvg[bucket];
         failNum += failAvg[periodTarget - 1][bucket];
-        for (unsigned int confct = confTarget; confct < GetMaxConfirms(); confct++)
+        // Stop at the chain tip. (nBlockHeight - confct) is unsigned, so once
+        // confct passes the tip it wraps and % bins aliases live unconfirmed
+        // entries. The long horizon walks 10080 blocks, so that aliasing
+        // covers the whole first week, and the short horizon the first 120
+        // blocks. Txs from before the chain existed are not in the mempool.
+        for (unsigned int confct = confTarget; confct < GetMaxConfirms(); ++confct) {
+            if (confct > nBlockHeight) break;
             extraNum += unconfTxs[(nBlockHeight - confct) % bins][bucket];
+        }
         extraNum += oldUnconfTxs[bucket];
         // If we have enough transaction data points in this range of buckets,
         // we can test for success
@@ -401,7 +409,8 @@ void TxConfirmStats::Write(AutoFile& fileout) const
     fileout << Using<VectorFormatter<VectorFormatter<EncodedDoubleFormatter>>>(failAvg);
 }
 
-void TxConfirmStats::Read(AutoFile& filein, int nFileVersion, size_t numBuckets)
+void TxConfirmStats::Read(AutoFile& filein, int nFileVersion, size_t numBuckets,
+                          double expected_decay, unsigned int expected_scale, unsigned int expected_periods)
 {
     // Read data file and do some very basic sanity checking
     // buckets and bucketMap are not updated yet, so don't access them
@@ -417,6 +426,11 @@ void TxConfirmStats::Read(AutoFile& filein, int nFileVersion, size_t numBuckets)
     if (scale == 0) {
         throw std::runtime_error("Corrupt estimates file. Scale must be non-zero");
     }
+    // Format 3 means this geometry. A file that kept the marker but not the
+    // scale would silently restore ten-block short buckets.
+    if (decay != expected_decay || scale != expected_scale) {
+        throw std::runtime_error("Fee estimates file horizon does not match this build");
+    }
 
     filein >> Using<VectorFormatter<EncodedDoubleFormatter>>(m_feerate_avg);
     if (m_feerate_avg.size() != numBuckets) {
@@ -430,8 +444,11 @@ void TxConfirmStats::Read(AutoFile& filein, int nFileVersion, size_t numBuckets)
     maxPeriods = confAvg.size();
     maxConfirms = scale * maxPeriods;
 
-    if (maxConfirms <= 0 || maxConfirms > 6 * 24 * 7) { // one week
-        throw std::runtime_error("Corrupt estimates file.  Must maintain estimates for between 1 and 1008 (one week) confirms");
+    if (maxConfirms <= 0 || maxConfirms > 7 * 24 * 60) { // one week of 60s blocks
+        throw std::runtime_error("Corrupt estimates file. Must maintain estimates for between 1 and 10080 (one week) confirms");
+    }
+    if (maxPeriods != expected_periods) {
+        throw std::runtime_error("Fee estimates file horizon does not match this build");
     }
     for (unsigned int i = 0; i < maxPeriods; i++) {
         if (confAvg[i].size() != numBuckets) {
@@ -493,7 +510,11 @@ void TxConfirmStats::removeTx(unsigned int entryHeight, unsigned int nBestSeenHe
                      blockIndex, bucketindex);
         }
     }
-    if (!inBlock && (unsigned int)blocksAgo >= scale) { // Only counts as a failure if not confirmed for entire period
+    if (!inBlock && (unsigned int)blocksAgo >= scale) {
+        // A removal before one full period says nothing about whether the tx
+        // would have confirmed within that period, so it is not a failure.
+        // SHORT_SCALE is 1, so the short horizon still counts a removal after
+        // one block.
         assert(scale != 0);
         unsigned int periodsAgo = blocksAgo / scale;
         for (size_t i = 0; i < periodsAgo && i < failAvg.size(); i++) {
@@ -932,8 +953,8 @@ bool CBlockPolicyEstimator::Write(AutoFile& fileout) const
 {
     try {
         LOCK(m_cs_fee_estimator);
-        fileout << 149900; // version required to read: 0.14.99 or later
-        fileout << CLIENT_VERSION; // version that wrote the file
+        fileout << FEE_ESTIMATES_FORMAT;
+        fileout << CLIENT_VERSION;
         fileout << nBestSeenHeight;
         if (BlockSpan() > HistoricalBlockSpan()/2) {
             fileout << firstRecordedHeight << nBestSeenHeight;
@@ -959,8 +980,9 @@ bool CBlockPolicyEstimator::Read(AutoFile& filein)
         LOCK(m_cs_fee_estimator);
         int nVersionRequired, nVersionThatWrote;
         filein >> nVersionRequired >> nVersionThatWrote;
-        if (nVersionRequired > CLIENT_VERSION) {
-            throw std::runtime_error(strprintf("up-version (%d) fee estimate file", nVersionRequired));
+        if (nVersionRequired != FEE_ESTIMATES_FORMAT) {
+            LogPrintf("%s: incompatible fee estimation data (non-fatal). Format: %d\n", __func__, nVersionRequired);
+            return false;
         }
 
         // Read fee estimates file into temporary variables so existing data
@@ -968,45 +990,41 @@ bool CBlockPolicyEstimator::Read(AutoFile& filein)
         unsigned int nFileBestSeenHeight;
         filein >> nFileBestSeenHeight;
 
-        if (nVersionRequired < 149900) {
-            LogPrintf("%s: incompatible old fee estimation data (non-fatal). Version: %d\n", __func__, nVersionRequired);
-        } else { // New format introduced in 149900
-            unsigned int nFileHistoricalFirst, nFileHistoricalBest;
-            filein >> nFileHistoricalFirst >> nFileHistoricalBest;
-            if (nFileHistoricalFirst > nFileHistoricalBest || nFileHistoricalBest > nFileBestSeenHeight) {
-                throw std::runtime_error("Corrupt estimates file. Historical block range for estimates is invalid");
-            }
-            std::vector<double> fileBuckets;
-            filein >> Using<VectorFormatter<EncodedDoubleFormatter>>(fileBuckets);
-            size_t numBuckets = fileBuckets.size();
-            if (numBuckets <= 1 || numBuckets > 1000) {
-                throw std::runtime_error("Corrupt estimates file. Must have between 2 and 1000 feerate buckets");
-            }
-
-            std::unique_ptr<TxConfirmStats> fileFeeStats(new TxConfirmStats(buckets, bucketMap, MED_BLOCK_PERIODS, MED_DECAY, MED_SCALE));
-            std::unique_ptr<TxConfirmStats> fileShortStats(new TxConfirmStats(buckets, bucketMap, SHORT_BLOCK_PERIODS, SHORT_DECAY, SHORT_SCALE));
-            std::unique_ptr<TxConfirmStats> fileLongStats(new TxConfirmStats(buckets, bucketMap, LONG_BLOCK_PERIODS, LONG_DECAY, LONG_SCALE));
-            fileFeeStats->Read(filein, nVersionThatWrote, numBuckets);
-            fileShortStats->Read(filein, nVersionThatWrote, numBuckets);
-            fileLongStats->Read(filein, nVersionThatWrote, numBuckets);
-
-            // Fee estimates file parsed correctly
-            // Copy buckets from file and refresh our bucketmap
-            buckets = fileBuckets;
-            bucketMap.clear();
-            for (unsigned int i = 0; i < buckets.size(); i++) {
-                bucketMap[buckets[i]] = i;
-            }
-
-            // Destroy old TxConfirmStats and point to new ones that already reference buckets and bucketMap
-            feeStats = std::move(fileFeeStats);
-            shortStats = std::move(fileShortStats);
-            longStats = std::move(fileLongStats);
-
-            nBestSeenHeight = nFileBestSeenHeight;
-            historicalFirst = nFileHistoricalFirst;
-            historicalBest = nFileHistoricalBest;
+        unsigned int nFileHistoricalFirst, nFileHistoricalBest;
+        filein >> nFileHistoricalFirst >> nFileHistoricalBest;
+        if (nFileHistoricalFirst > nFileHistoricalBest || nFileHistoricalBest > nFileBestSeenHeight) {
+            throw std::runtime_error("Corrupt estimates file. Historical block range for estimates is invalid");
         }
+        std::vector<double> fileBuckets;
+        filein >> Using<VectorFormatter<EncodedDoubleFormatter>>(fileBuckets);
+        size_t numBuckets = fileBuckets.size();
+        if (numBuckets <= 1 || numBuckets > 1000) {
+            throw std::runtime_error("Corrupt estimates file. Must have between 2 and 1000 feerate buckets");
+        }
+
+        std::unique_ptr<TxConfirmStats> fileFeeStats(new TxConfirmStats(buckets, bucketMap, MED_BLOCK_PERIODS, MED_DECAY, MED_SCALE));
+        std::unique_ptr<TxConfirmStats> fileShortStats(new TxConfirmStats(buckets, bucketMap, SHORT_BLOCK_PERIODS, SHORT_DECAY, SHORT_SCALE));
+        std::unique_ptr<TxConfirmStats> fileLongStats(new TxConfirmStats(buckets, bucketMap, LONG_BLOCK_PERIODS, LONG_DECAY, LONG_SCALE));
+        fileFeeStats->Read(filein, nVersionThatWrote, numBuckets, MED_DECAY, MED_SCALE, MED_BLOCK_PERIODS);
+        fileShortStats->Read(filein, nVersionThatWrote, numBuckets, SHORT_DECAY, SHORT_SCALE, SHORT_BLOCK_PERIODS);
+        fileLongStats->Read(filein, nVersionThatWrote, numBuckets, LONG_DECAY, LONG_SCALE, LONG_BLOCK_PERIODS);
+
+        // Fee estimates file parsed correctly
+        // Copy buckets from file and refresh our bucketmap
+        buckets = fileBuckets;
+        bucketMap.clear();
+        for (unsigned int i = 0; i < buckets.size(); i++) {
+            bucketMap[buckets[i]] = i;
+        }
+
+        // Destroy old TxConfirmStats and point to new ones that already reference buckets and bucketMap
+        feeStats = std::move(fileFeeStats);
+        shortStats = std::move(fileShortStats);
+        longStats = std::move(fileLongStats);
+
+        nBestSeenHeight = nFileBestSeenHeight;
+        historicalFirst = nFileHistoricalFirst;
+        historicalBest = nFileHistoricalBest;
     }
     catch (const std::exception& e) {
         LogPrintf("CBlockPolicyEstimator::Read(): unable to read policy estimator data (non-fatal): %s\n",e.what());

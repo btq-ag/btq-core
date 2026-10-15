@@ -42,8 +42,9 @@
 using wallet::CCoinControl;
 using wallet::DEFAULT_PAY_TX_FEE;
 
-static constexpr std::array confTargets{2, 4, 6, 12, 24, 48, 144, 504, 1008};
-int getConfTargetForIndex(int index) {
+static constexpr std::array confTargets{20, 40, 60, 120, 240, 480, 1440, 5040, 10080};
+
+static int getConfTargetForIndex(int index) {
     if (index+1 > static_cast<int>(confTargets.size())) {
         return confTargets.back();
     }
@@ -52,7 +53,7 @@ int getConfTargetForIndex(int index) {
     }
     return confTargets[index];
 }
-int getIndexForConfTarget(int target) {
+static int getIndexForConfTarget(int target) {
     for (unsigned int i = 0; i < confTargets.size(); i++) {
         if (confTargets[i] >= target) {
             return i;
@@ -225,6 +226,8 @@ void SendCoinsDialog::setModel(WalletModel *_model)
         if (settings.value("nConfTarget").toInt() == 0)
             ui->confTargetSelector->setCurrentIndex(getIndexForConfTarget(model->wallet().getConfirmTarget()));
         else
+            // Saved values are already 60-second block counts. Snap to the
+            // new dropdown. Do not *10: that map is Core's 10-minute list.
             ui->confTargetSelector->setCurrentIndex(getIndexForConfTarget(settings.value("nConfTarget").toInt()));
     }
 }
