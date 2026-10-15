@@ -116,7 +116,7 @@ class MempoolLimitTest(BTQTestFramework):
         self.generate(node, 1)
 
         # tx_A needs to be RBF'd, set minfee at set size
-        A_weight = 1000
+        A_weight = 250 * WITNESS_SCALE_FACTOR
         mempoolmin_feerate = node.getmempoolinfo()["mempoolminfee"]
         tx_A = self.wallet.send_self_transfer(
             from_node=node,
@@ -165,7 +165,7 @@ class MempoolLimitTest(BTQTestFramework):
         # UTXOs to be spent by the ultimate child transaction
         parent_utxos = []
 
-        evicted_weight = 8000
+        evicted_weight = 2000 * WITNESS_SCALE_FACTOR
         # Mempool transaction which is evicted due to being at the "bottom" of the mempool when the
         # mempool overflows and evicts by descendant score. It's important that the eviction doesn't
         # happen in the middle of package evaluation, as it can invalidate the coins cache.
@@ -200,7 +200,7 @@ class MempoolLimitTest(BTQTestFramework):
         parent_weight = 25000 * WITNESS_SCALE_FACTOR
         num_big_parents = 3
         parent_vsize = vsize_from_weight(parent_weight)
-        assert_greater_than(parent_vsize * num_big_parents, current_info["maxmempool"] - current_info["bytes"])
+        assert_greater_than(parent_vsize * num_big_parents, current_info["maxmempool"] - current_info["usage"])
         parent_fee = (100 * mempoolmin_feerate / 1000) * parent_vsize
 
         big_parent_txids = []
@@ -383,7 +383,7 @@ class MempoolLimitTest(BTQTestFramework):
         # Core's 200000-weight / WSF=4 intent; leftover after fill is <65 kvB.
         target_weight_each = 50000 * WITNESS_SCALE_FACTOR
         target_vsize = vsize_from_weight(target_weight_each)
-        assert_greater_than(target_vsize * 2, node.getmempoolinfo()["maxmempool"] - node.getmempoolinfo()["bytes"])
+        assert_greater_than(target_vsize * 2, node.getmempoolinfo()["maxmempool"] - node.getmempoolinfo()["usage"])
         # Should be a true CPFP: parent's feerate is just below mempool min feerate
         parent_fee = (mempoolmin_feerate / 1000) * target_vsize - Decimal("0.00001")
         # Parent + child is above mempool minimum feerate
