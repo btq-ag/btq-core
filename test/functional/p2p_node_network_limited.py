@@ -35,7 +35,7 @@ class NodeNetworkLimitedTest(BTQTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 3
-        self.extra_args = [['-prune=550', '-addrmantest', '-v2transport=1'], [], []]
+        self.extra_args = [['-prune=550', '-addrmantest'], [], []]
 
     def disconnect_all(self):
         self.disconnect_nodes(0, 1)
@@ -49,7 +49,9 @@ class NodeNetworkLimitedTest(BTQTestFramework):
     def run_test(self):
         node = self.nodes[0].add_p2p_connection(P2PIgnoreInv())
 
-        expected_services = NODE_WITNESS | NODE_NETWORK_LIMITED | NODE_P2P_V2 | NODE_BTQ_DILITHIUM
+        expected_services = NODE_WITNESS | NODE_NETWORK_LIMITED | NODE_BTQ_DILITHIUM
+        if self.options.v2transport:
+            expected_services |= NODE_P2P_V2
 
         self.log.info("Check that node has signalled expected services.")
         assert_equal(node.nServices, expected_services)
