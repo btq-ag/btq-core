@@ -2,13 +2,19 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <clientversion.h>
 #include <policy/fees.h>
 #include <policy/policy.h>
+#include <serialize.h>
 #include <streams.h>
 #include <test/util/txmempool.h>
 #include <txmempool.h>
 #include <uint256.h>
 #include <util/time.h>
+
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 
 #include <test/util/setup_common.h>
 
@@ -247,6 +253,16 @@ BOOST_AUTO_TEST_CASE(ShortTargetSeparatesSlowConfirmations)
     cache >> format;
     BOOST_CHECK_EQUAL(format, 3);
     std::rewind(cache.Get());
+    // Snapshot before the format-marker loop below overwrites the first int.
+    // Patching scale in that overwritten file would reject on the marker and
+    // never reach the horizon check.
+    std::vector<unsigned char> raw;
+    unsigned char buf[4096];
+    size_t nread{0};
+    while ((nread = std::fread(buf, 1, sizeof(buf), cache.Get())) > 0) {
+        raw.insert(raw.end(), buf, buf + nread);
+    }
+    std::rewind(cache.Get());
     CBlockPolicyEstimator restored{m_args.GetDataDirNet() / "unused_fee_cache", false};
     BOOST_REQUIRE(restored.Read(cache));
     FeeCalculation restored_calculation;
@@ -259,6 +275,200 @@ BOOST_AUTO_TEST_CASE(ShortTargetSeparatesSlowConfirmations)
         BOOST_CHECK(!restored.Read(cache));
         BOOST_CHECK_EQUAL(restored.estimateSmartFee(2, nullptr, false).GetFeePerK(), estimate.GetFeePerK());
     }
+
+    // A format-3 file whose medium scale is not 20 must be rejected. Accepting
+    // it would treat a two-block target as a ten-block bucket again.
+    CDataStream cursor{MakeByteSpan(raw), SER_DISK, CLIENT_VERSION};
+    int file_format, file_version;
+    unsigned int best, hist_first, hist_best;
+    cursor >> file_format >> file_version >> best >> hist_first >> hist_best;
+    const uint64_t nbuckets{ReadCompactSize(cursor)};
+    for (uint64_t i{0}; i < nbuckets; ++i) {
+        uint64_t encoded_bucket;
+        cursor >> encoded_bucket;
+    }
+    uint64_t encoded_decay;
+    cursor >> encoded_decay;
+    const size_t scale_offset{raw.size() - cursor.size()};
+    uint32_t med_scale;
+    cursor >> med_scale;
+    BOOST_CHECK_EQUAL(med_scale, 20U);
+    CDataStream wrong_scale_bytes(SER_DISK, CLIENT_VERSION);
+    wrong_scale_bytes << uint32_t{10};
+    std::memcpy(raw.data() + scale_offset, wrong_scale_bytes.data(), wrong_scale_bytes.size());
+    AutoFile corrupt{std::tmpfile()};
+    BOOST_REQUIRE(!corrupt.IsNull());
+    BOOST_REQUIRE_EQUAL(std::fwrite(raw.data(), 1, raw.size(), corrupt.Get()), raw.size());
+    std::rewind(corrupt.Get());
+    BOOST_CHECK(!restored.Read(corrupt));
+    BOOST_CHECK_EQUAL(restored.estimateSmartFee(2, nullptr, false).GetFeePerK(), estimate.GetFeePerK());
+}
+
+namespace {
+void AddFeeTx(CTxMemPool& pool, CMutableTransaction& tx, TestMemPoolEntryHelper& entry,
+              CAmount fee, unsigned int height, uint32_t& unique, std::vector<CTransactionRef>* keep)
+{
+    tx.vin[0].prevout.n = ++unique;
+    pool.addUnchecked(entry.Fee(fee).Time(Now<NodeSeconds>()).Height(height).FromTx(tx));
+    if (keep) keep->push_back(pool.get(tx.GetHash()));
+}
+
+void Mine(CTxMemPool& pool, const std::vector<CTransactionRef>& txs, unsigned int height)
+{
+    pool.removeForBlock(txs, height);
+}
+} // namespace
+
+BOOST_AUTO_TEST_CASE(UnconfirmedCountsDoNotAliasBeforeTheWindowFills)
+{
+    CBlockPolicyEstimator& estimator = *Assert(m_node.fee_estimator);
+    CTxMemPool& pool = *Assert(m_node.mempool);
+    LOCK2(cs_main, pool.cs);
+    TestMemPoolEntryHelper entry;
+    CMutableTransaction tx;
+    tx.vin.resize(1);
+    tx.vout.resize(1);
+    tx.vin[0].scriptSig = CScript() << std::vector<unsigned char>(128, 'X');
+    const CAmount fee{5000};
+    uint32_t unique{0};
+    constexpr unsigned int tip{20};
+    constexpr int stuck_count{5};
+    std::vector<CTransactionRef> stuck;
+    for (unsigned int height = 0; height < tip; ++height) {
+        Mine(pool, {}, height == 0 ? 0 : height);
+        if (height == 10) {
+            for (int i = 0; i < stuck_count; ++i) {
+                AddFeeTx(pool, tx, entry, fee, height, unique, &stuck);
+            }
+        }
+        std::vector<CTransactionRef> block;
+        for (int i = 0; i < 30; ++i) {
+            AddFeeTx(pool, tx, entry, fee, height, unique, &block);
+        }
+        Mine(pool, block, height + 1);
+    }
+    // Height 20, five txs still unconfirmed since height 10. The short
+    // horizon's circular buffer is 120 entries. Without the tip check,
+    // confirmation distance 26 aliases distance 10 and counts them twice.
+    EstimationResult result;
+    const auto rate = estimator.estimateRawFee(2, 0.85, FeeEstimateHorizon::SHORT_HALFLIFE, &result);
+    BOOST_CHECK(rate.GetFeePerK() > 0);
+    BOOST_CHECK_EQUAL(result.pass.inMempool, stuck_count);
+}
+
+BOOST_AUTO_TEST_CASE(UnminedRemovalFollowsScale)
+{
+    CBlockPolicyEstimator& estimator = *Assert(m_node.fee_estimator);
+    CTxMemPool& pool = *Assert(m_node.mempool);
+    LOCK2(cs_main, pool.cs);
+    TestMemPoolEntryHelper entry;
+    CMutableTransaction tx;
+    tx.vin.resize(1);
+    tx.vout.resize(1);
+    tx.vin[0].scriptSig = CScript() << std::vector<unsigned char>(128, 'X');
+    uint32_t unique{0};
+    unsigned int tip{0};
+
+    auto confirm_cohort = [&](CAmount fee, int count) {
+        std::vector<CTransactionRef> block;
+        for (int i = 0; i < count; ++i) {
+            AddFeeTx(pool, tx, entry, fee, tip, unique, &block);
+        }
+        Mine(pool, block, ++tip);
+    };
+    auto remove_after = [&](CAmount fee, unsigned int blocks_later, int count) {
+        std::vector<CTransactionRef> held;
+        const unsigned int entry_height{tip};
+        for (int i = 0; i < count; ++i) {
+            AddFeeTx(pool, tx, entry, fee, entry_height, unique, &held);
+        }
+        for (unsigned int step = 0; step < blocks_later; ++step) {
+            Mine(pool, {}, ++tip);
+        }
+        for (const auto& ref : held) {
+            BOOST_REQUIRE(ref);
+            pool.removeRecursive(*ref, MemPoolRemovalReason::REPLACED);
+        }
+    };
+
+    // Short horizon scale is 1. A removal after one block fails a 1-block
+    // target and not a 2-block target. A removal after two blocks fails both.
+    const CAmount short_fee{5000};
+    confirm_cohort(short_fee, 50);
+    remove_after(short_fee, 1, 40);
+    EstimationResult one_block;
+    const auto one_rate = estimator.estimateRawFee(1, 0.85, FeeEstimateHorizon::SHORT_HALFLIFE, &one_block);
+    // 50 confirms against 40 failures is under 85%. The failure has to land on
+    // the 1-block target, which reads failAvg[0].
+    BOOST_CHECK_EQUAL(one_rate.GetFeePerK(), 0);
+    BOOST_CHECK_GT(one_block.fail.leftMempool, 20);
+    EstimationResult two_block;
+    const auto two_rate = estimator.estimateRawFee(2, 0.85, FeeEstimateHorizon::SHORT_HALFLIFE, &two_block);
+    BOOST_CHECK(two_rate.GetFeePerK() > 0);
+    BOOST_CHECK_EQUAL(two_block.pass.leftMempool, 0);
+    BOOST_CHECK_EQUAL(two_block.fail.leftMempool, 0);
+
+    remove_after(short_fee, 2, 40);
+    EstimationResult after_two;
+    const auto after_two_rate = estimator.estimateRawFee(2, 0.85, FeeEstimateHorizon::SHORT_HALFLIFE, &after_two);
+    BOOST_CHECK_EQUAL(after_two_rate.GetFeePerK(), 0);
+    BOOST_CHECK_GT(after_two.fail.leftMempool, 20);
+}
+
+BOOST_AUTO_TEST_CASE(UnminedRemovalMediumIgnoresPartialPeriod)
+{
+    // Own fixture, so a higher feerate from another case cannot answer the
+    // estimate and hide whether this cohort was counted.
+    CBlockPolicyEstimator& estimator = *Assert(m_node.fee_estimator);
+    CTxMemPool& pool = *Assert(m_node.mempool);
+    LOCK2(cs_main, pool.cs);
+    TestMemPoolEntryHelper entry;
+    CMutableTransaction tx;
+    tx.vin.resize(1);
+    tx.vout.resize(1);
+    tx.vin[0].scriptSig = CScript() << std::vector<unsigned char>(128, 'X');
+    uint32_t unique{0};
+    unsigned int tip{0};
+    const CAmount fee{5000};
+
+    auto confirm_cohort = [&](int count) {
+        std::vector<CTransactionRef> block;
+        for (int i = 0; i < count; ++i) {
+            AddFeeTx(pool, tx, entry, fee, tip, unique, &block);
+        }
+        Mine(pool, block, ++tip);
+    };
+    auto remove_after = [&](unsigned int blocks_later, int count) {
+        std::vector<CTransactionRef> held;
+        const unsigned int entry_height{tip};
+        for (int i = 0; i < count; ++i) {
+            AddFeeTx(pool, tx, entry, fee, entry_height, unique, &held);
+        }
+        for (unsigned int step = 0; step < blocks_later; ++step) {
+            Mine(pool, {}, ++tip);
+        }
+        for (const auto& ref : held) {
+            BOOST_REQUIRE(ref);
+            pool.removeRecursive(*ref, MemPoolRemovalReason::REPLACED);
+        }
+    };
+
+    // Medium scale is 20. Nineteen blocks is not a period. Twenty is.
+    // 40 confirms stay above the ~20.8 sufficiency floor after 19 decays.
+    confirm_cohort(40);
+    remove_after(19, 80);
+    EstimationResult under_scale;
+    const auto under_rate = estimator.estimateRawFee(1, 0.85, FeeEstimateHorizon::MED_HALFLIFE, &under_scale);
+    BOOST_CHECK(under_rate.GetFeePerK() > 0);
+    BOOST_CHECK_EQUAL(under_scale.pass.leftMempool, 0);
+    BOOST_CHECK_EQUAL(under_scale.fail.leftMempool, 0);
+
+    confirm_cohort(40);
+    remove_after(20, 80);
+    EstimationResult at_scale;
+    const auto at_rate = estimator.estimateRawFee(1, 0.85, FeeEstimateHorizon::MED_HALFLIFE, &at_scale);
+    BOOST_CHECK_EQUAL(at_rate.GetFeePerK(), 0);
+    BOOST_CHECK_GT(at_scale.fail.leftMempool, 20);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

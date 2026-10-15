@@ -168,7 +168,8 @@ public:
      * Read saved state of estimation data from a file and replace all internal data structures and
      * variables with this state.
      */
-    void Read(AutoFile& filein, int nFileVersion, size_t numBuckets);
+    void Read(AutoFile& filein, int nFileVersion, size_t numBuckets,
+              double expected_decay, unsigned int expected_scale, unsigned int expected_periods);
 };
 
 
@@ -277,8 +278,15 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
         nConf += confAvg[periodTarget - 1][bucket];
         totalNum += txCtAvg[bucket];
         failNum += failAvg[periodTarget - 1][bucket];
-        for (unsigned int confct = confTarget; confct < GetMaxConfirms(); confct++)
+        // Stop at the chain tip. (nBlockHeight - confct) is unsigned, so once
+        // confct passes the tip it wraps and % bins aliases live unconfirmed
+        // entries. The long horizon walks 10080 blocks, so that aliasing
+        // covers the whole first week, and the short horizon the first 120
+        // blocks. Txs from before the chain existed are not in the mempool.
+        for (unsigned int confct = confTarget; confct < GetMaxConfirms(); ++confct) {
+            if (confct > nBlockHeight) break;
             extraNum += unconfTxs[(nBlockHeight - confct) % bins][bucket];
+        }
         extraNum += oldUnconfTxs[bucket];
         // If we have enough transaction data points in this range of buckets,
         // we can test for success
@@ -401,7 +409,8 @@ void TxConfirmStats::Write(AutoFile& fileout) const
     fileout << Using<VectorFormatter<VectorFormatter<EncodedDoubleFormatter>>>(failAvg);
 }
 
-void TxConfirmStats::Read(AutoFile& filein, int nFileVersion, size_t numBuckets)
+void TxConfirmStats::Read(AutoFile& filein, int nFileVersion, size_t numBuckets,
+                          double expected_decay, unsigned int expected_scale, unsigned int expected_periods)
 {
     // Read data file and do some very basic sanity checking
     // buckets and bucketMap are not updated yet, so don't access them
@@ -416,6 +425,11 @@ void TxConfirmStats::Read(AutoFile& filein, int nFileVersion, size_t numBuckets)
     filein >> scale;
     if (scale == 0) {
         throw std::runtime_error("Corrupt estimates file. Scale must be non-zero");
+    }
+    // Format 3 means this geometry. A file that kept the marker but not the
+    // scale would silently restore ten-block short buckets.
+    if (decay != expected_decay || scale != expected_scale) {
+        throw std::runtime_error("Fee estimates file horizon does not match this build");
     }
 
     filein >> Using<VectorFormatter<EncodedDoubleFormatter>>(m_feerate_avg);
@@ -432,6 +446,9 @@ void TxConfirmStats::Read(AutoFile& filein, int nFileVersion, size_t numBuckets)
 
     if (maxConfirms <= 0 || maxConfirms > 7 * 24 * 60) { // one week of 60s blocks
         throw std::runtime_error("Corrupt estimates file. Must maintain estimates for between 1 and 10080 (one week) confirms");
+    }
+    if (maxPeriods != expected_periods) {
+        throw std::runtime_error("Fee estimates file horizon does not match this build");
     }
     for (unsigned int i = 0; i < maxPeriods; i++) {
         if (confAvg[i].size() != numBuckets) {
@@ -988,9 +1005,9 @@ bool CBlockPolicyEstimator::Read(AutoFile& filein)
         std::unique_ptr<TxConfirmStats> fileFeeStats(new TxConfirmStats(buckets, bucketMap, MED_BLOCK_PERIODS, MED_DECAY, MED_SCALE));
         std::unique_ptr<TxConfirmStats> fileShortStats(new TxConfirmStats(buckets, bucketMap, SHORT_BLOCK_PERIODS, SHORT_DECAY, SHORT_SCALE));
         std::unique_ptr<TxConfirmStats> fileLongStats(new TxConfirmStats(buckets, bucketMap, LONG_BLOCK_PERIODS, LONG_DECAY, LONG_SCALE));
-        fileFeeStats->Read(filein, nVersionThatWrote, numBuckets);
-        fileShortStats->Read(filein, nVersionThatWrote, numBuckets);
-        fileLongStats->Read(filein, nVersionThatWrote, numBuckets);
+        fileFeeStats->Read(filein, nVersionThatWrote, numBuckets, MED_DECAY, MED_SCALE, MED_BLOCK_PERIODS);
+        fileShortStats->Read(filein, nVersionThatWrote, numBuckets, SHORT_DECAY, SHORT_SCALE, SHORT_BLOCK_PERIODS);
+        fileLongStats->Read(filein, nVersionThatWrote, numBuckets, LONG_DECAY, LONG_SCALE, LONG_BLOCK_PERIODS);
 
         // Fee estimates file parsed correctly
         // Copy buckets from file and refresh our bucketmap
