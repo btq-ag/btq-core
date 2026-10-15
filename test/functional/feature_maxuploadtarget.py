@@ -16,21 +16,22 @@ import time
 from test_framework.messages import (
     CInv,
     MSG_BLOCK,
+    MSG_WITNESS_FLAG,
     msg_getdata,
 )
 from test_framework.p2p import P2PInterface
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_equal,
-    mine_large_block,
 )
-from test_framework.wallet import MiniWallet
+from test_framework.pruning import LargeBlockBuilder
 
 
 class TestP2PConn(P2PInterface):
     def __init__(self):
         super().__init__()
         self.block_receive_map = defaultdict(int)
+        self.block_sizes = {}
 
     def on_inv(self, message):
         pass
@@ -38,6 +39,7 @@ class TestP2PConn(P2PInterface):
     def on_block(self, message):
         message.block.calc_sha256()
         self.block_receive_map[message.block.sha256] += 1
+        self.block_sizes[message.block.sha256] = len(message.block.serialize())
 
 class MaxUploadTest(BTQTestFramework):
 
@@ -61,8 +63,18 @@ class MaxUploadTest(BTQTestFramework):
         self.nodes[0].setmocktime(old_time)
 
         # Generate some old blocks
-        self.wallet = MiniWallet(self.nodes[0])
-        self.generate(self.wallet, 130)
+        node = self.nodes[0]
+        self.generatetoaddress(node, 130, node.get_deterministic_priv_key().address)
+        builder = LargeBlockBuilder()
+
+        def mine_large_block(ntime):
+            tip = node.getbestblockhash()
+            ntime = max(ntime, node.getblockheader(tip)["mediantime"] + 1)
+            block = builder.build(node, height=node.getblockcount() + 1,
+                                  ntime=ntime, previousblockhash=int(tip, 16))
+            block.solve()
+            assert_equal(node.submitblock(block.serialize().hex()), None)
+            assert_equal(node.getbestblockhash(), block.hash)
 
         # p2p_conns[0] will only request old blocks
         # p2p_conns[1] will only request new blocks
@@ -73,7 +85,7 @@ class MaxUploadTest(BTQTestFramework):
             p2p_conns.append(self.nodes[0].add_p2p_connection(TestP2PConn()))
 
         # Now mine a big block
-        mine_large_block(self, self.wallet, self.nodes[0])
+        mine_large_block(old_time + 1)
 
         # Store the hash; we'll request this later
         big_old_block = self.nodes[0].getbestblockhash()
@@ -81,10 +93,11 @@ class MaxUploadTest(BTQTestFramework):
         big_old_block = int(big_old_block, 16)
 
         # Advance to two days ago
-        self.nodes[0].setmocktime(int(time.time()) - 2*60*60*24)
+        recent_time = int(time.time()) - 2*60*60*24
+        self.nodes[0].setmocktime(recent_time)
 
         # Mine one more block, so that the prior block looks old
-        mine_large_block(self, self.wallet, self.nodes[0])
+        mine_large_block(recent_time)
 
         # We'll be requesting this new block too
         big_new_block = self.nodes[0].getbestblockhash()
@@ -94,7 +107,7 @@ class MaxUploadTest(BTQTestFramework):
         # the same big old block too many times (expect: disconnect)
 
         getdata_request = msg_getdata()
-        getdata_request.inv.append(CInv(MSG_BLOCK, big_old_block))
+        getdata_request.inv.append(CInv(MSG_BLOCK | MSG_WITNESS_FLAG, big_old_block))
 
         max_bytes_per_day = 11200*1024*1024
         # One day of full blocks: 1440 blocks (60-second spacing) x 8 MB
@@ -104,11 +117,12 @@ class MaxUploadTest(BTQTestFramework):
         success_count = max_bytes_available // old_block_size
 
         # ~10.7 GiB is reserved for relaying new blocks, so expect this to
-        # succeed for ~235 tries.
+        # succeed for a few hundred witness-block responses.
         for i in range(success_count):
             p2p_conns[0].send_and_ping(getdata_request)
             assert_equal(p2p_conns[0].block_receive_map[big_old_block], i+1)
 
+        assert_equal(p2p_conns[0].block_sizes[big_old_block], old_block_size)
         assert_equal(len(self.nodes[0].getpeerinfo()), 3)
         # At most a couple more tries should succeed (depending on how long
         # the test has been running so far).
@@ -121,7 +135,7 @@ class MaxUploadTest(BTQTestFramework):
         # Requesting the current block on p2p_conns[1] should succeed indefinitely,
         # even when over the max upload target.
         # We'll try 800 times
-        getdata_request.inv = [CInv(MSG_BLOCK, big_new_block)]
+        getdata_request.inv = [CInv(MSG_BLOCK | MSG_WITNESS_FLAG, big_new_block)]
         for i in range(800):
             p2p_conns[1].send_and_ping(getdata_request)
             assert_equal(p2p_conns[1].block_receive_map[big_new_block], i+1)
@@ -129,7 +143,7 @@ class MaxUploadTest(BTQTestFramework):
         self.log.info("Peer 1 able to repeatedly download new block")
 
         # But if p2p_conns[1] tries for an old block, it gets disconnected too.
-        getdata_request.inv = [CInv(MSG_BLOCK, big_old_block)]
+        getdata_request.inv = [CInv(MSG_BLOCK | MSG_WITNESS_FLAG, big_old_block)]
         p2p_conns[1].send_message(getdata_request)
         p2p_conns[1].wait_for_disconnect()
         assert_equal(len(self.nodes[0].getpeerinfo()), 1)
@@ -156,12 +170,12 @@ class MaxUploadTest(BTQTestFramework):
         peer = self.nodes[0].add_p2p_connection(TestP2PConn())
 
         #retrieve 20 blocks which should be enough to break the 1MB limit
-        getdata_request.inv = [CInv(MSG_BLOCK, big_new_block)]
+        getdata_request.inv = [CInv(MSG_BLOCK | MSG_WITNESS_FLAG, big_new_block)]
         for i in range(20):
             peer.send_and_ping(getdata_request)
             assert_equal(peer.block_receive_map[big_new_block], i+1)
 
-        getdata_request.inv = [CInv(MSG_BLOCK, big_old_block)]
+        getdata_request.inv = [CInv(MSG_BLOCK | MSG_WITNESS_FLAG, big_old_block)]
         peer.send_and_ping(getdata_request)
 
         self.log.info("Peer still connected after trying to download old block (download permission)")
