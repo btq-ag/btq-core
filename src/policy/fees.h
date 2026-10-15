@@ -35,8 +35,10 @@ static constexpr std::chrono::hours MAX_FILE_AGE{60};
 static constexpr bool DEFAULT_ACCEPT_STALE_FEE_ESTIMATES{false};
 
 /** fee_estimates.dat format. 1 = Bitcoin 26 / 10-minute horizons (149900 marker).
- *  2 = 60-second block horizons. Old files are discarded on read. */
-static constexpr int FEE_ESTIMATES_FORMAT = 2;
+ *  2 = 60-second horizons with ten-block short buckets.
+ *  3 = 60-second horizons with one-block short buckets. Old files are
+ *  discarded on read because their aggregate timing cannot be recovered. */
+static constexpr int FEE_ESTIMATES_FORMAT = 3;
 
 class AutoFile;
 class CTxMemPoolEntry;
@@ -150,11 +152,11 @@ struct FeeCalculation
 class CBlockPolicyEstimator
 {
 private:
-    /** Track confirm delays up to 12 * 10 = 120 one-minute blocks (~2 hours).
-     *  Scale 10 matches the medium/long retune: same wall-clock bucket width
-     *  as Core's 10-minute short horizon, not 1-minute buckets. */
-    static constexpr unsigned int SHORT_BLOCK_PERIODS = 12;
-    static constexpr unsigned int SHORT_SCALE = 10;
+    /** Track confirm delays up to 120 one-minute blocks (~2 hours).
+     *  Keep one-block resolution so requested targets below ten blocks can
+     *  distinguish fast confirmations from slower transactions. */
+    static constexpr unsigned int SHORT_BLOCK_PERIODS = 120;
+    static constexpr unsigned int SHORT_SCALE = 1;
     /** Track confirm delays up to 480 one-minute blocks (~8 hours) for medium horizon */
     static constexpr unsigned int MED_BLOCK_PERIODS = 24;
     static constexpr unsigned int MED_SCALE = 20;
