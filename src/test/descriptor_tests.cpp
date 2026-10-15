@@ -2,6 +2,9 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <consensus/amount.h>
+#include <primitives/transaction.h>
+#include <script/interpreter.h>
 #include <pubkey.h>
 #include <script/descriptor.h>
 #include <script/sign.h>
@@ -697,6 +700,78 @@ BOOST_AUTO_TEST_CASE(taproot_satisfaction_bounds)
         multi += ")";
         const int64_t expected = count == 7 ? 347 : count == 8 ? 384 : count == 250 ? 8854 : 8889;
         check("tr(" + key + "," + multi + ")", expected, count + 2);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(taproot_satisfaction_matches_signed_witness)
+{
+    // NUMS x-only point. No private key, so the spend cannot take the key path.
+    const std::string nums{"50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"};
+    const std::string xprv{"xprvJK8WA4YPx1Rmnhd5aCt3J6PkYPSwnRPpuv1b2VQYb1DiVDSAu4tmgfHW32sueTc5DCGdbPhz2HEiLBZpWyoRMe4AGQWQcWUy2g3pYMXLCqJ"};
+    auto witness_body = [](const CScriptWitness& witness) {
+        const int64_t full{static_cast<int64_t>(GetSerializeSize(witness.stack, PROTOCOL_VERSION))};
+        return full - static_cast<int64_t>(GetSizeOfCompactSize(witness.stack.size()));
+    };
+    auto sign_body = [&](const std::string& expression, int sighash) {
+        FlatSigningProvider keys;
+        std::string error;
+        const auto desc{Parse(expression, keys, error)};
+        BOOST_REQUIRE_MESSAGE(desc, error);
+        FlatSigningProvider scripts;
+        std::vector<CScript> spks;
+        BOOST_REQUIRE(desc->Expand(0, keys, spks, scripts));
+        BOOST_REQUIRE_EQUAL(spks.size(), 1U);
+        CMutableTransaction spend;
+        spend.vin.resize(1);
+        spend.vout.resize(1);
+        spend.vout[0].nValue = COIN;
+        spend.vout[0].scriptPubKey = spks[0];
+        std::vector<CTxOut> utxos{CTxOut{COIN, spks[0]}};
+        PrecomputedTransactionData txdata;
+        txdata.Init(spend, std::move(utxos), /*force=*/true);
+        MutableTransactionSignatureCreator creator{spend, 0, COIN, &txdata, sighash};
+        SignatureData sigdata;
+        BOOST_REQUIRE(ProduceSignature(FlatSigningProvider{keys}.Merge(FlatSigningProvider{scripts}), creator, spks[0], sigdata));
+        BOOST_CHECK(sigdata.scriptWitness.stack.size() > 1);
+        const auto inferred{InferDescriptor(spks[0], FlatSigningProvider{keys}.Merge(FlatSigningProvider{scripts}))};
+        BOOST_REQUIRE(inferred);
+        const auto inferred_weight{inferred->MaxSatisfactionWeight(true)};
+        const auto inferred_elems{inferred->MaxSatisfactionElems()};
+        BOOST_REQUIRE(inferred_weight);
+        BOOST_REQUIRE(inferred_elems);
+        BOOST_CHECK_EQUAL(*inferred_weight, *desc->MaxSatisfactionWeight(true));
+        BOOST_CHECK_EQUAL(*inferred_elems, *desc->MaxSatisfactionElems());
+        BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack.size(), static_cast<size_t>(*desc->MaxSatisfactionElems()));
+        const int64_t body{witness_body(sigdata.scriptWitness)};
+        const int64_t bound{*desc->MaxSatisfactionWeight(true)};
+        // SIGHASH_ALL keeps the sighash byte (65). SIGHASH_DEFAULT drops it (64).
+        // The wallet signs with SIGHASH_DEFAULT, so the bound is one byte high
+        // per schnorr signature and must not be low.
+        if (sighash == SIGHASH_ALL) {
+            BOOST_CHECK_EQUAL(body, bound);
+        } else {
+            BOOST_CHECK_EQUAL(body, bound - 1);
+        }
+        return sigdata.scriptWitness.stack;
+    };
+
+    const std::string pk{"pk(" + xprv + ")"};
+    sign_body("tr(" + nums + "," + pk + ")", SIGHASH_ALL);
+    sign_body("tr(" + nums + "," + pk + ")", SIGHASH_DEFAULT);
+    std::string tree{pk};
+    for (int depth = 1; depth <= 7; ++depth) {
+        tree = "{pk(" + nums + ")," + tree + "}";
+        if (depth == 6 || depth == 7) {
+            const auto stack{sign_body("tr(" + nums + "," + tree + ")", SIGHASH_ALL)};
+            BOOST_CHECK_EQUAL(stack.back().size(), static_cast<size_t>(TAPROOT_CONTROL_BASE_SIZE + TAPROOT_CONTROL_NODE_SIZE * depth));
+        }
+    }
+    for (const int count : {7, 8, 250, 251}) {
+        std::string multi{"multi_a(1," + xprv};
+        for (int i = 1; i < count; ++i) multi += "," + nums;
+        multi += ")";
+        sign_body("tr(" + nums + "," + multi + ")", SIGHASH_ALL);
+        sign_body("tr(" + nums + "," + multi + ")", SIGHASH_DEFAULT);
     }
 }
 

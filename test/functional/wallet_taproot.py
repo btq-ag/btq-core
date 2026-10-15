@@ -11,7 +11,8 @@ from decimal import Decimal
 from test_framework.address import output_key_to_p2tr
 from test_framework.key import H_POINT
 from test_framework.test_framework import BTQTestFramework
-from test_framework.util import assert_equal
+from test_framework.messages import COIN
+from test_framework.util import assert_equal, assert_greater_than_or_equal
 from test_framework.descriptors import descsum_create
 from test_framework.script import (
     CScript,
@@ -566,6 +567,91 @@ class WalletTaprootTest(BTQTestFramework):
         self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
         wallet.unloadwallet()
 
+    def test_psbt_key_path_regardless_of_descriptor_order(self):
+        self.log.info("Testing walletprocesspsbt signs the key path for cross-key leaves and a wpkh leaf key")
+        node = self.nodes[0]
+        key_a = f"{KEYS[0]['xprv']}/2"
+        key_b = f"{KEYS[1]['xprv']}/2"
+        pub_a = f"{KEYS[0]['xpub']}/2"
+        pub_b = f"{KEYS[1]['xpub']}/2"
+        desc_a = descsum_create(f"tr({key_a},pk({pub_b}))")
+        desc_b = descsum_create(f"tr({key_b},pk({pub_a}))")
+        node.createwallet("taproot_psbt_cross", descriptors=True, blank=True)
+        wallet = node.get_wallet_rpc("taproot_psbt_cross")
+        # Import B first. Pointer order is not a contract; both orders have to
+        # come out as key-path witnesses because FillPSBT signs each input with
+        # the descriptor that produces it before any other descriptor runs.
+        result = wallet.importdescriptors([{"desc": desc, "timestamp": "now"} for desc in (desc_b, desc_a)])
+        assert all(r["success"] for r in result)
+        address_a = node.deriveaddresses(desc_a)[0]
+        address_b = node.deriveaddresses(desc_b)[0]
+        fee_rate = Decimal(10)  # sat/vB
+        utxos = []
+        for address in (address_a, address_b, address_a, address_b):
+            txid = self.boring.sendtoaddress(address, 1)
+            utxos.append((txid, address))
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+
+        def input_for(txid, address):
+            vout = next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)
+            return {"txid": txid, "vout": vout}
+
+        def spend_psbt(pair, finalize):
+            inputs = [input_for(txid, address) for txid, address in pair]
+            funded = wallet.walletcreatefundedpsbt(
+                inputs, [{self.boring.getnewaddress(): Decimal("1.5")}], 0,
+                {"add_inputs": False, "change_address": address_a, "fee_rate": fee_rate, "lock_unspents": True})
+            processed = wallet.walletprocesspsbt(funded["psbt"], True, "DEFAULT", True, finalize)
+            if finalize:
+                assert processed["complete"]
+                raw = processed["hex"]
+            else:
+                assert not processed["complete"]
+                finalized = node.finalizepsbt(processed["psbt"])
+                assert finalized["complete"]
+                raw = finalized["hex"]
+            decoded = node.decoderawtransaction(raw)
+            assert_equal(len(decoded["vin"]), 2)
+            for vin in decoded["vin"]:
+                assert_equal(len(vin["txinwitness"]), 1)
+            # 10 sat/vB. A script-path witness is larger than the funded size,
+            # so an under-estimate fails this and mempool acceptance.
+            assert_greater_than_or_equal(funded["fee"] * COIN, fee_rate * decoded["vsize"])
+            accepted = node.testmempoolaccept([raw])[0]
+            assert accepted["allowed"], accepted
+            node.sendrawtransaction(raw)
+
+        spend_psbt(utxos[:2], True)
+        spend_psbt(utxos[2:], False)
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        wallet.unloadwallet()
+
+        # wpkh(K) does not produce the taproot output, but FillPSBT will sign
+        # K's leaf from the PSBT once another descriptor has written the scripts.
+        # The producing descriptor has to win the key path first.
+        leaf = f"{KEYS[2]['xprv']}/2"
+        internal = f"{KEYS[3]['xprv']}/2"
+        tr_desc = descsum_create(f"tr({internal},pk({leaf}))")
+        wpkh_desc = descsum_create(f"wpkh({leaf})")
+        address = node.deriveaddresses(tr_desc)[0]
+        txid = self.boring.sendtoaddress(address, 1)
+        self.generatetoaddress(node, 1, self.boring.getnewaddress(), sync_fun=self.no_op)
+        node.createwallet("taproot_psbt_wpkh", descriptors=True, blank=True)
+        wallet = node.get_wallet_rpc("taproot_psbt_wpkh")
+        result = wallet.importdescriptors([{"desc": desc, "timestamp": "now"} for desc in (wpkh_desc, tr_desc)])
+        assert all(r["success"] for r in result)
+        vout = next(d["vout"] for d in self.boring.gettransaction(txid)["details"] if d["address"] == address)
+        funded = wallet.walletcreatefundedpsbt(
+            [{"txid": txid, "vout": vout}], [{self.boring.getnewaddress(): Decimal("0.5")}], 0,
+            {"add_inputs": False, "change_address": address, "fee_rate": fee_rate})
+        processed = wallet.walletprocesspsbt(funded["psbt"])
+        assert processed["complete"]
+        decoded = node.decoderawtransaction(processed["hex"])
+        assert_equal(len(decoded["vin"][0]["txinwitness"]), 1)
+        assert_greater_than_or_equal(funded["fee"] * COIN, fee_rate * decoded["vsize"])
+        assert node.testmempoolaccept([processed["hex"]])[0]["allowed"]
+        wallet.unloadwallet()
+
     def run_test(self):
         self.nodes[0].createwallet(wallet_name="boring")
         self.boring = self.nodes[0].get_wallet_rpc("boring")
@@ -578,6 +664,7 @@ class WalletTaprootTest(BTQTestFramework):
         self.test_key_path_with_large_script_tree()
         self.test_key_path_with_leaf_only_descriptor()
         self.test_key_path_with_cross_key_leaves()
+        self.test_psbt_key_path_regardless_of_descriptor_order()
 
         self.do_test(
             "tr(XPRV)",
