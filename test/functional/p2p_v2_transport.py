@@ -48,7 +48,7 @@ class V2TransportTest(BTQTestFramework):
         assert_equal(self.nodes[1].getblockcount(), 5)
         # verify there is a v2 connection between node 0 and 1
         node_0_info = self.nodes[0].getpeerinfo()
-        node_1_info = self.nodes[0].getpeerinfo()
+        node_1_info = self.nodes[1].getpeerinfo()
         assert_equal(len(node_0_info), 1)
         assert_equal(len(node_1_info), 1)
         assert_equal(node_0_info[0]["transport_protocol_type"], "v2")
@@ -160,6 +160,38 @@ class V2TransportTest(BTQTestFramework):
                 s.sendall(b'\x00')  # send out last byte
                 # should disconnect immediately
                 self.wait_until(lambda: len(self.nodes[0].getpeerinfo()) == num_peers)
+
+        self.log.info("Test the production default without a transport override")
+        # Remove the framework's optional transport pin and the explicit =1
+        # extra args on restart to exercise the node's actual default.
+        for i in (0, 1):
+            self.nodes[i].args = [arg for arg in self.nodes[i].args if not arg.startswith("-v2transport=")]
+            assert not any(arg.startswith("-v2transport") for arg in self.nodes[i].args)
+            self.restart_node(i, extra_args=["-connect=0"])
+            info = self.nodes[i].getnetworkinfo()
+            assert_equal(int(info["localservices"], 16) & NODE_P2P_V2, NODE_P2P_V2)
+            assert "P2P_V2" in info["localservicesnames"]
+
+        def connect_with_default_transport(expected):
+            # Omit the optional RPC argument as well as the startup override.
+            self.nodes[0].addnode(f"127.0.0.1:{p2p_port(1)}", "onetry")
+            for node in self.nodes[:2]:
+                self.wait_until(lambda: any(peer["version"] > 0 and peer["transport_protocol_type"] == expected
+                                           for peer in node.getpeerinfo()))
+            peers = [node.getpeerinfo() for node in self.nodes[:2]]
+            assert_equal(len(peers[0]), 1)
+            assert_equal(len(peers[1]), 1)
+            assert_equal(peers[0][0]["inbound"], False)
+            assert_equal(peers[1][0]["inbound"], True)
+            assert_equal(peers[0][0]["session_id"], peers[1][0]["session_id"])
+            assert_equal(len(peers[0][0]["session_id"]), 64 if expected == "v2" else 0)
+
+        connect_with_default_transport("v2")
+        self.log.info("Test an explicit v1 override with the omitted RPC argument")
+        self.restart_node(0, extra_args=["-connect=0", "-v2transport=0"])
+        self.wait_until(lambda: not self.nodes[1].getpeerinfo())
+        assert_equal(int(self.nodes[0].getnetworkinfo()["localservices"], 16) & NODE_P2P_V2, 0)
+        connect_with_default_transport("v1")
 
 
 if __name__ == '__main__':
