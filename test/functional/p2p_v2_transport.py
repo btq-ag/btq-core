@@ -167,7 +167,7 @@ class V2TransportTest(BTQTestFramework):
         for i in (0, 1):
             self.nodes[i].args = [arg for arg in self.nodes[i].args if not arg.startswith("-v2transport=")]
             assert not any(arg.startswith("-v2transport") for arg in self.nodes[i].args)
-            self.restart_node(i, extra_args=[])
+            self.restart_node(i, extra_args=["-connect=0"])
             info = self.nodes[i].getnetworkinfo()
             assert_equal(int(info["localservices"], 16) & NODE_P2P_V2, NODE_P2P_V2)
             assert "P2P_V2" in info["localservicesnames"]
@@ -188,7 +188,7 @@ class V2TransportTest(BTQTestFramework):
 
         connect_with_default_transport("v2")
         self.log.info("Test an explicit v1 override with the omitted RPC argument")
-        self.restart_node(0, extra_args=["-v2transport=0"])
+        self.restart_node(0, extra_args=["-connect=0", "-v2transport=0"])
         self.wait_until(lambda: not self.nodes[1].getpeerinfo())
         assert_equal(int(self.nodes[0].getnetworkinfo()["localservices"], 16) & NODE_P2P_V2, 0)
         connect_with_default_transport("v1")
