@@ -276,6 +276,206 @@ BOOST_FIXTURE_TEST_CASE(wallet_is_mine_tracks_unowned_p2mr_metadata_as_watchonly
     BOOST_CHECK(!spend);
 }
 
+// Tracked P2MR metadata is looked up by the script's destination. Scripts that
+// only resemble the tracked one must not match it.
+BOOST_FIXTURE_TEST_CASE(tracked_p2mr_lookup_matches_only_its_script, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+
+    CKey external_key;
+    external_key.MakeNewKey(/*fCompressedIn=*/true);
+    const auto leaves = MakeXOnlyChecksigTree(XOnlyPubKey{external_key.GetPubKey()});
+
+    LOCK(wallet->cs_wallet);
+    auto created = CreateP2MR(*wallet, leaves, "external");
+    BOOST_REQUIRE(created);
+    const CScript& tracked = created->script_pub_key;
+    int version;
+    std::vector<unsigned char> program;
+    BOOST_REQUIRE(tracked.IsWitnessProgram(version, program));
+    BOOST_REQUIRE_EQUAL(version, 2);
+    BOOST_REQUIRE_EQUAL(program.size(), 32U);
+
+    BOOST_CHECK(IsTrackedP2MRScript(*wallet, tracked));
+    BOOST_CHECK_EQUAL(wallet->IsMine(tracked), ISMINE_WATCH_ONLY);
+
+    std::vector<unsigned char> other{program};
+    other[0] ^= 1;
+    const CScript untracked = CScript() << OP_2 << other;
+    const CScript short_program = CScript() << OP_2 << std::vector<unsigned char>(program.begin(), program.end() - 1);
+    const CScript v1_program = CScript() << OP_1 << program;
+    for (const CScript& script : {untracked, short_program, v1_program}) {
+        BOOST_CHECK(!IsTrackedP2MRScript(*wallet, script));
+        BOOST_CHECK_EQUAL(wallet->IsMine(script), ISMINE_NO);
+    }
+}
+
+// GetSolvingProvider and FillPSBT look up the entry for one coin's script and
+// build a provider from the entries under that script's destination only.
+BOOST_FIXTURE_TEST_CASE(p2mr_script_lookup_and_provider_read_one_destination, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+
+    std::vector<P2MRCreated> created;
+    for (int i = 0; i < 3; ++i) {
+        CKey key;
+        key.MakeNewKey(/*fCompressedIn=*/true);
+        auto entry = CreateP2MR(*wallet, MakeXOnlyChecksigTree(XOnlyPubKey{key.GetPubKey()}), "external");
+        BOOST_REQUIRE(entry);
+        created.push_back(*entry);
+    }
+
+    for (const P2MRCreated& entry : created) {
+        const auto found = GetP2MRByScript(*wallet, entry.script_pub_key);
+        BOOST_REQUIRE(found);
+        BOOST_CHECK_EQUAL(found->id, entry.id);
+        BOOST_CHECK(found->dest == entry.dest);
+
+        const FlatSigningProvider provider{BuildP2MRSigningProviderForDestination(*wallet, found->dest)};
+        BOOST_CHECK_EQUAL(provider.p2mr_trees.size(), 1U);
+        BOOST_CHECK_EQUAL(provider.p2mr_trees.count(std::get<WitnessV2P2MR>(entry.dest)), 1U);
+
+        // The wallet has no ScriptPubKeyMan, so this is the P2MR fallback.
+        const auto solving = wallet->GetSolvingProvider(entry.script_pub_key);
+        BOOST_REQUIRE(solving);
+        P2MRBuilder builder;
+        BOOST_CHECK(solving->GetP2MRBuilder(std::get<WitnessV2P2MR>(entry.dest), builder));
+    }
+
+    int version;
+    std::vector<unsigned char> program;
+    BOOST_REQUIRE(created[0].script_pub_key.IsWitnessProgram(version, program));
+    program[0] ^= 1;
+    for (const CScript& script : {CScript() << OP_2 << program, CScript() << OP_1 << program, CScript{}}) {
+        BOOST_CHECK(!GetP2MRByScript(*wallet, script));
+        BOOST_CHECK(!wallet->GetSolvingProvider(script));
+    }
+
+    // CreateP2MR stores metadata only under a WitnessV2P2MR destination.
+    // Metadata under any other destination is not a P2MR entry for its script.
+    CKey other_key;
+    other_key.MakeNewKey(/*fCompressedIn=*/true);
+    const CTxDestination pkh_dest{PKHash{other_key.GetPubKey()}};
+    UniValue pkh_meta(UniValue::VOBJ);
+    pkh_meta.pushKV("id", "under-pkh");
+    pkh_meta.pushKV("tree", P2MRTreeToUniValue(MakeOpTrueTree()));
+    WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+    BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, pkh_dest, "under-pkh", pkh_meta.write()));
+    const CScript pkh_script{GetScriptForDestination(pkh_dest)};
+    BOOST_CHECK(!GetP2MRByScript(*wallet, pkh_script));
+    BOOST_CHECK(!wallet->GetSolvingProvider(pkh_script));
+}
+
+// Three records under one destination: first a tree that does not build, then
+// the owned tree, then a tree that builds to another root. The lookup returns
+// the first record, and the provider has the owned tree.
+BOOST_FIXTURE_TEST_CASE(p2mr_provider_skips_bad_records_under_the_same_destination, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    wallet->SetupLegacyScriptPubKeyMan();
+
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    auto created = ImportDilithiumKeyAsP2MR(*wallet, key, "owned");
+    BOOST_REQUIRE(created);
+
+    UniValue corrupt_meta(UniValue::VOBJ);
+    corrupt_meta.pushKV("id", "corrupt-first");
+    corrupt_meta.pushKV("address", created->address);
+    corrupt_meta.pushKV("created_at", int64_t{1});
+    corrupt_meta.pushKV("state", "created");
+    corrupt_meta.pushKV("tree", UniValue(UniValue::VARR));
+    WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+    // "!" sorts before the hex digits of a generated id, and "~" after them.
+    BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, created->dest, "!corrupt", corrupt_meta.write()));
+    UniValue other_root_meta{corrupt_meta};
+    other_root_meta.pushKV("id", "other-root-last");
+    other_root_meta.pushKV("tree", P2MRTreeToUniValue(MakeOpTrueTree()));
+    BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, created->dest, "~other-root", other_root_meta.write()));
+    BOOST_REQUIRE_EQUAL(ListP2MR(*wallet).size(), 3U);
+
+    const auto found = GetP2MRByScript(*wallet, created->script_pub_key);
+    BOOST_REQUIRE(found);
+    BOOST_CHECK_EQUAL(found->id, "corrupt-first");
+    BOOST_CHECK(found->tree.empty());
+
+    FlatSigningProvider provider{BuildP2MRSigningProviderForDestination(*wallet, found->dest)};
+    const WitnessV2P2MR& output{std::get<WitnessV2P2MR>(created->dest)};
+    BOOST_REQUIRE_EQUAL(provider.p2mr_trees.count(output), 1U);
+    BOOST_CHECK(provider.p2mr_trees.at(output).GetOutput() == output);
+    BOOST_CHECK_EQUAL(provider.dilithium_keys.size(), 1U);
+
+    // The coin selection path.
+    const auto solving = wallet->GetSolvingProvider(created->script_pub_key);
+    BOOST_REQUIRE(solving);
+    P2MRBuilder builder;
+    BOOST_REQUIRE(solving->GetP2MRBuilder(output, builder));
+    BOOST_CHECK(builder.GetOutput() == output);
+}
+
+// CWallet::SignTransaction builds its P2MR provider from the destinations of
+// the coins being spent, not from every entry.
+BOOST_FIXTURE_TEST_CASE(sign_transaction_reads_the_spent_p2mr_entry, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    wallet->SetupLegacyScriptPubKeyMan();
+
+    std::vector<P2MRCreated> created;
+    for (int i = 0; i < 3; ++i) {
+        CDilithiumKey key;
+        BOOST_REQUIRE(key.MakeNewKey());
+        auto entry = ImportDilithiumKeyAsP2MR(*wallet, key, "owned");
+        BOOST_REQUIRE(entry);
+        created.push_back(*entry);
+    }
+
+    // Two inputs at one destination and one at another; created[0] is not spent.
+    std::map<COutPoint, Coin> coins;
+    CMutableTransaction tx;
+    for (const auto& [n, index] : std::vector<std::pair<uint32_t, size_t>>{{0, 1}, {1, 1}, {2, 2}}) {
+        const COutPoint prevout{uint256::ONE, n};
+        coins[prevout] = Coin(CTxOut{COIN, created[index].script_pub_key}, /*nHeightIn=*/1, /*fCoinBaseIn=*/false);
+        tx.vin.emplace_back(prevout);
+    }
+    tx.vout.emplace_back(COIN, created[0].script_pub_key);
+
+    std::map<int, bilingual_str> input_errors;
+    BOOST_CHECK(wallet->SignTransaction(tx, coins, SIGHASH_DEFAULT, input_errors));
+    BOOST_CHECK(input_errors.empty());
+    for (const CTxIn& txin : tx.vin) BOOST_CHECK(!txin.scriptWitness.IsNull());
+}
+
+// importdilithiumkey stores the key and then CreateP2MR finds the existing
+// tree and returns before SetP2MRMetadata. A cached watch-only hit would
+// still be there, and coin selection would skip the output.
+BOOST_FIXTURE_TEST_CASE(imported_dilithium_key_upgrades_cached_watchonly_p2mr, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    wallet->SetupLegacyScriptPubKeyMan();
+
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CScript leaf_script = CScript() << ToByteVector(key.GetPubKey()) << OP_CHECKSIGDILITHIUM;
+    const std::vector<P2MRTreeLeaf> leaves{{
+        /*depth=*/0,
+        TAPROOT_LEAF_TAPSCRIPT,
+        {leaf_script.begin(), leaf_script.end()},
+    }};
+
+    auto created = CreateP2MR(*wallet, leaves, "watch");
+    BOOST_REQUIRE(created);
+    BOOST_CHECK_EQUAL(wallet->IsMine(created->script_pub_key), ISMINE_WATCH_ONLY);
+
+    auto imported = ImportDilithiumKeyAsP2MR(*wallet, key, "imported");
+    BOOST_REQUIRE(imported);
+    BOOST_CHECK_EQUAL(imported->id, created->id);
+    BOOST_CHECK_EQUAL(wallet->IsMine(created->script_pub_key), ISMINE_SPENDABLE);
+}
+
 BOOST_FIXTURE_TEST_CASE(tracked_balance_deduplicates_legacy_duplicate_metadata, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);

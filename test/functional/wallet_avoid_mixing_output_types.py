@@ -14,8 +14,8 @@ where output type is one of the following:
 This test verifies that mixing different output types is avoided unless
 absolutely necessary. Both wallets start with zero funds. Alice mines
 enough blocks to have spendable coinbase outputs. Alice sends three
-random value payments which sum to 10BTC for each output type to Bob,
-for a total of 40BTC in Bob's wallet.
+random value payments which sum to 1 BTQ for each output type to Bob,
+for a total of 4 BTQ in Bob's wallet.
 
 Bob then sends random valued payments back to Alice, some of which need
 unconfirmed change, and we verify that none of these payments contain mixed
@@ -27,9 +27,14 @@ but still know when to expect mixing due to the wallet being close to empty.
 
 """
 
+from decimal import Decimal
 import random
 from test_framework.test_framework import BTQTestFramework
 from test_framework.blocktools import COINBASE_MATURITY
+
+# Payments are made in tenths of a coin, where upstream uses whole coins,
+# because BTQ's block subsidy is a tenth of Bitcoin's.
+PAYMENT_UNIT = Decimal('0.1')
 
 ADDRESS_TYPES = [
     "bech32m",
@@ -98,11 +103,11 @@ def is_same_type(node, tx):
 
 
 def generate_payment_values(n, m):
-    """Return a randomly chosen list of n positive integers summing to m.
-    Each such list is equally likely to occur."""
+    """Return a randomly chosen list of n positive multiples of PAYMENT_UNIT
+    summing to m * PAYMENT_UNIT. Each such list is equally likely to occur."""
 
     dividers = sorted(random.sample(range(1, m), n - 1))
-    return [a - b for a, b in zip(dividers + [m], [0] + dividers)]
+    return [(a - b) * PAYMENT_UNIT for a, b in zip(dividers + [m], [0] + dividers)]
 
 
 class AddressInputTypeGrouping(BTQTestFramework):
@@ -172,7 +177,7 @@ class AddressInputTypeGrouping(BTQTestFramework):
             self.generate(A, 1)
             assert is_same_type(B, tx)
 
-        tx = self.make_payment(A, B, 30.99, random.choice(ADDRESS_TYPES))
+        tx = self.make_payment(A, B, Decimal('3.099'), random.choice(ADDRESS_TYPES))
         assert not is_same_type(B, tx)
 
 

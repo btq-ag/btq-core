@@ -250,6 +250,10 @@ class WalletHDTest(BTQTestFramework):
             assert_raises_rpc_error(-5, 'Invalid or non-wallet transaction id', restore_rpc.gettransaction, out_of_kp_txid)
             restore2_rpc.gettransaction(txid)
             assert_raises_rpc_error(-5, 'Invalid or non-wallet transaction id', restore2_rpc.gettransaction, out_of_kp_txid)
+            # Seeing last_addr extends the inactive seed's lookahead. Ownership
+            # must update even though getaddressinfo previously cached "not mine".
+            assert_equal(restore_rpc.getaddressinfo(addr)['ismine'], True)
+            assert_equal(restore2_rpc.getaddressinfo(addr)['ismine'], True)
 
             # After rescanning, restore_rpc should now see out_of_kp_txid and generate an additional key.
             # addr should now be part of restore_rpc and be ismine
