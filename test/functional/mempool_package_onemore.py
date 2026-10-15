@@ -61,7 +61,7 @@ class MempoolPackagesTest(BTQTestFramework):
         self.chain_tx([second_chain])
 
         # Make sure we can RBF the chain which used our carve-out rule
-        replacable_tx.vout[0].nValue -= 1000000
+        replacable_tx.vout[0].nValue -= 100000
         self.nodes[0].sendrawtransaction(replacable_tx.serialize().hex())
 
         # Finally, check that we added two transactions

@@ -441,10 +441,29 @@ std::optional<P2MREntry> GetP2MR(const CWallet& wallet, const std::string& id)
     return std::nullopt;
 }
 
+// Decoded P2MR entries stored under one destination, in storage order. A map
+// lookup, not an address book scan.
+static std::vector<P2MREntry> ListP2MRForDestination(const CWallet& wallet, const CTxDestination& dest)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    std::vector<P2MREntry> out;
+    for (const auto& [entry_dest, id, raw] : wallet.ListP2MRMetadata(dest)) {
+        UniValue meta;
+        if (!DecodeMetadata(raw, meta)) continue;
+        out.push_back(MetadataToEntry(entry_dest, meta, id));
+    }
+    return out;
+}
+
+// GetSolvingProvider reaches this once per coin, so read only the entries for
+// the script's destination. CreateP2MR, the only writer of P2MR metadata,
+// stores it under the WitnessV2P2MR destination of the tree it built.
 std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script)
 {
     AssertLockHeld(wallet.cs_wallet);
-    for (const auto& entry : ListP2MR(wallet)) {
+    CTxDestination dest;
+    if (!ExtractDestination(script, dest) || !std::holds_alternative<WitnessV2P2MR>(dest)) return std::nullopt;
+    for (auto& entry : ListP2MRForDestination(wallet, dest)) {
         if (entry.script_pub_key == script) return entry;
     }
     return std::nullopt;
@@ -470,17 +489,20 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
 
 // --- Signing provider ------------------------------------------------------
 
-FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::optional<std::string>& only_id)
+static FlatSigningProvider BuildSigningProviderForEntries(const CWallet& wallet, const std::vector<P2MREntry>& entries)
 {
     AssertLockHeld(wallet.cs_wallet);
     FlatSigningProvider provider;
     P2MRKeyRequirements requirements;
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (only_id && entry.id != *only_id) continue;
+    for (const auto& entry : entries) {
         if (!std::holds_alternative<WitnessV2P2MR>(entry.dest)) continue;
+        const WitnessV2P2MR& output{std::get<WitnessV2P2MR>(entry.dest)};
         auto builder_res = BuildP2MRTreeChecked(entry.tree);
         if (!builder_res) continue;
-        provider.p2mr_trees[std::get<WitnessV2P2MR>(entry.dest)] = std::move(*builder_res);
+        // A stored tree with another root cannot spend this output, and it
+        // would replace the tree of an earlier record for the same output.
+        if (!(builder_res->GetOutput() == output)) continue;
+        provider.p2mr_trees[output] = std::move(*builder_res);
         const auto entry_requirements = GetP2MRKeyRequirements(entry.tree);
         requirements.dilithium_key_ids.insert(entry_requirements.dilithium_key_ids.begin(), entry_requirements.dilithium_key_ids.end());
         requirements.xonly_pubkeys.insert(entry_requirements.xonly_pubkeys.begin(), entry_requirements.xonly_pubkeys.end());
@@ -522,27 +544,49 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::o
     return provider;
 }
 
+FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet, const std::optional<std::string>& only_id)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    std::vector<P2MREntry> entries;
+    for (auto& entry : ListP2MR(wallet)) {
+        if (!only_id || entry.id == *only_id) entries.push_back(std::move(entry));
+    }
+    return BuildSigningProviderForEntries(wallet, entries);
+}
+
+FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet, const CTxDestination& dest)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    return BuildSigningProviderForEntries(wallet, ListP2MRForDestination(wallet, dest));
+}
+
 // --- Balance helpers -------------------------------------------------------
+
+// IsMine reaches this for every output that is not ours, and misses are not
+// cached, so look up the one address book entry for the script's destination
+// instead of decoding every P2MR entry. Only a WitnessV2P2MR destination can
+// pass IsP2MREntryValid, and its script is the script it was extracted from.
+static std::optional<P2MREntry> FindTrackedP2MREntry(const CWallet& wallet, const CScript& script)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    CTxDestination dest;
+    if (!ExtractDestination(script, dest) || !std::holds_alternative<WitnessV2P2MR>(dest)) return std::nullopt;
+    for (auto& entry : ListP2MRForDestination(wallet, dest)) {
+        if (IsP2MREntryValid(entry)) return entry;
+    }
+    return std::nullopt;
+}
 
 bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script)
 {
-    AssertLockHeld(wallet.cs_wallet);
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (entry.script_pub_key != script) continue;
-        if (IsP2MREntryValid(entry)) return true;
-    }
-    return false;
+    return FindTrackedP2MREntry(wallet, script).has_value();
 }
 
 isminetype GetTrackedP2MRScriptIsMine(const CWallet& wallet, const CScript& script)
 {
-    AssertLockHeld(wallet.cs_wallet);
-    for (const auto& entry : ListP2MR(wallet)) {
-        if (entry.script_pub_key != script) continue;
-        if (!IsP2MREntryValid(entry)) continue;
-        return IsP2MREntrySpendable(wallet, entry) ? ISMINE_SPENDABLE : ISMINE_WATCH_ONLY;
-    }
-    return ISMINE_NO;
+    const auto entry = FindTrackedP2MREntry(wallet, script);
+    if (!entry) return ISMINE_NO;
+    return IsP2MREntrySpendable(wallet, *entry) ? ISMINE_SPENDABLE : ISMINE_WATCH_ONLY;
 }
 
 static CAmount SumUnspentForScript(const CWallet& wallet, const CScript& script, int min_depth)
@@ -605,16 +649,25 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
 bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
 {
     AssertLockHeld(wallet.cs_wallet);
+    bool stored = false;
     if (wallet.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
         for (auto* spk_man : wallet.GetAllScriptPubKeyMans()) {
             if (auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) return true;
+                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) {
+                    stored = true;
+                    break;
+                }
             }
         }
-        return false;
+    } else {
+        LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
+        stored = legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
     }
-    LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
-    return legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
+    // One key can make every tracked P2MR that uses it spendable. CreateP2MR
+    // only returns the script it was asked about, and a duplicate tree returns
+    // before SetP2MRMetadata erases that one entry.
+    if (stored) wallet.ClearIsMineCache();
+    return stored;
 }
 
 util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet)
@@ -694,7 +747,7 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const WitnessV2P2MR& w = std::get<WitnessV2P2MR>(out.dest);
     std::copy(w.begin(), w.end(), out.merkle_root.begin());
 
-    for (const auto& entry : ListP2MR(wallet)) {
+    for (const auto& entry : ListP2MRForDestination(wallet, out.dest)) {
         if (entry.script_pub_key == out.script_pub_key && SameP2MRTree(entry.tree, leaves)) {
             out.id = entry.id;
             out.address = entry.address;

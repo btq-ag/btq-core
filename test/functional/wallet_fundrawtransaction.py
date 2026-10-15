@@ -9,6 +9,7 @@ from decimal import Decimal
 from itertools import product
 from math import ceil
 
+from test_framework.blocktools import block_subsidy
 from test_framework.descriptors import descsum_create
 from test_framework.messages import (
     COIN,
@@ -30,6 +31,11 @@ from test_framework.wallet_util import generate_keypair, WalletUnlock
 
 ERR_NOT_ENOUGH_PRESET_INPUTS = "The preselected coins total amount does not cover the transaction target. " \
                                "Please allow other inputs to be automatically selected or include more coins manually"
+
+# Every block this test mines is well before the first halving, so one subsidy
+# is all it ever needs. Amounts that upstream sized against its larger balances
+# are a tenth of upstream's, because BTQ's subsidy is a tenth of Bitcoin's.
+SUBSIDY = block_subsidy(1)
 
 def get_unspent(listunspent, amount):
     for utx in listunspent:
@@ -413,12 +419,12 @@ class RawTransactionsTest(BTQTestFramework):
         self.log.info("Test fundrawtxn p2pkh fee")
         self.lock_outputs_type(self.nodes[0], "p2pkh")
         inputs = []
-        outputs = {self.nodes[1].getnewaddress():1.1}
+        outputs = {self.nodes[1].getnewaddress():Decimal('0.11')}
         rawtx = self.nodes[0].createrawtransaction(inputs, outputs)
         fundedTx = self.nodes[0].fundrawtransaction(rawtx)
 
         # Create same transaction over sendtoaddress.
-        txId = self.nodes[0].sendtoaddress(self.nodes[1].getnewaddress(), 1.1)
+        txId = self.nodes[0].sendtoaddress(self.nodes[1].getnewaddress(), Decimal('0.11'))
         signedFee = self.nodes[0].getmempoolentry(txId)['fees']['base']
 
         # Compare fee.
@@ -432,13 +438,16 @@ class RawTransactionsTest(BTQTestFramework):
         self.log.info("Test fundrawtxn p2pkh fee with multiple outputs")
         self.lock_outputs_type(self.nodes[0], "p2pkh")
         inputs = []
+        # A tenth of upstream's amounts. At upstream's, the outputs total 4.2 of
+        # a 5 BTQ block reward, and coin selection sometimes adds a second
+        # input, so fundrawtransaction and sendmany can pay different fees.
         outputs = {
-            self.nodes[1].getnewaddress():1.1,
-            self.nodes[1].getnewaddress():1.2,
-            self.nodes[1].getnewaddress():0.1,
-            self.nodes[1].getnewaddress():1.3,
-            self.nodes[1].getnewaddress():0.2,
-            self.nodes[1].getnewaddress():0.3,
+            self.nodes[1].getnewaddress():Decimal('0.11'),
+            self.nodes[1].getnewaddress():Decimal('0.12'),
+            self.nodes[1].getnewaddress():Decimal('0.01'),
+            self.nodes[1].getnewaddress():Decimal('0.13'),
+            self.nodes[1].getnewaddress():Decimal('0.02'),
+            self.nodes[1].getnewaddress():Decimal('0.03'),
         }
         rawtx = self.nodes[0].createrawtransaction(inputs, outputs)
         fundedTx = self.nodes[0].fundrawtransaction(rawtx)
@@ -466,12 +475,12 @@ class RawTransactionsTest(BTQTestFramework):
         mSigObj = self.nodes[3].createmultisig(2, [addr1Obj['pubkey'], addr2Obj['pubkey']])['address']
 
         inputs = []
-        outputs = {mSigObj:1.1}
+        outputs = {mSigObj:Decimal('0.11')}
         rawtx = self.nodes[0].createrawtransaction(inputs, outputs)
         fundedTx = self.nodes[0].fundrawtransaction(rawtx)
 
         # Create same transaction over sendtoaddress.
-        txId = self.nodes[0].sendtoaddress(mSigObj, 1.1)
+        txId = self.nodes[0].sendtoaddress(mSigObj, Decimal('0.11'))
         signedFee = self.nodes[0].getmempoolentry(txId)['fees']['base']
 
         # Compare fee.
@@ -510,12 +519,12 @@ class RawTransactionsTest(BTQTestFramework):
         )['address']
 
         inputs = []
-        outputs = {mSigObj:1.1}
+        outputs = {mSigObj:Decimal('0.11')}
         rawtx = self.nodes[0].createrawtransaction(inputs, outputs)
         fundedTx = self.nodes[0].fundrawtransaction(rawtx)
 
         # Create same transaction over sendtoaddress.
-        txId = self.nodes[0].sendtoaddress(mSigObj, 1.1)
+        txId = self.nodes[0].sendtoaddress(mSigObj, Decimal('0.11'))
         signedFee = self.nodes[0].getmempoolentry(txId)['fees']['base']
 
         # Compare fee.
@@ -640,7 +649,7 @@ class RawTransactionsTest(BTQTestFramework):
             self.generate(self.nodes[1], 1)
 
             # Make sure funds are received at node1.
-            assert_equal(oldBalance+Decimal('51.10000000'), self.nodes[0].getbalance())
+            assert_equal(oldBalance + Decimal('1.1') + SUBSIDY, self.nodes[0].getbalance()) #1.1+block reward
 
             # Restore pre-test wallet state
             wallet.sendall(recipients=[df_wallet.getnewaddress(), df_wallet.getnewaddress(), df_wallet.getnewaddress()])
@@ -695,7 +704,7 @@ class RawTransactionsTest(BTQTestFramework):
         fundedAndSignedTx = self.nodes[1].signrawtransactionwithwallet(fundedTx['hex'])
         self.nodes[1].sendrawtransaction(fundedAndSignedTx['hex'])
         self.generate(self.nodes[1], 1)
-        assert_equal(oldBalance+Decimal('50.19000000'), self.nodes[0].getbalance()) #0.19+block reward
+        assert_equal(oldBalance + Decimal('0.19') + SUBSIDY, self.nodes[0].getbalance()) #0.19+block reward
 
     def test_op_return(self):
         self.log.info("Test fundrawtxn with OP_RETURN and no vin")
@@ -781,7 +790,7 @@ class RawTransactionsTest(BTQTestFramework):
         # Make sure there is exactly one input so coin selection can't skew the result.
         assert_equal(len(self.nodes[3].listunspent(1)), 1)
         inputs = []
-        outputs = {node.getnewaddress() : 1}
+        outputs = {node.getnewaddress() : Decimal('0.1')}
         rawtx = node.createrawtransaction(inputs, outputs)
 
         result = node.fundrawtransaction(rawtx)  # uses self.min_relay_tx_fee (set by settxfee)
@@ -801,11 +810,14 @@ class RawTransactionsTest(BTQTestFramework):
         for param, zero_value in product(["fee_rate", "feeRate"], [0, 0.000, 0.00000000, "0", "0.000", "0.00000000"]):
             assert_equal(self.nodes[3].fundrawtransaction(rawtx, {param: zero_value})["fee"], 0)
 
-        # With no arguments passed, expect fee of 141 satoshis.
-        assert_approx(node.fundrawtransaction(rawtx)["fee"], vexp=0.00000141, vspan=0.00000001)
+        # With no arguments passed, expect a fee of 1 sat/vB on one p2wpkh input and two p2wpkh outputs:
+        # tx overhead (10) + 1 input (41) + 2 p2wpkh (31 each) + (segwit marker and flag (2) + 1 p2wpkh 72 byte sig witness (108)) / witness scaling factor
+        # Upstream's witness scaling factor of 4 makes that 141 satoshis; BTQ's is 16.
+        tx_vsize = ceil(10 + 41 + 31*2 + (2 + 108)/WITNESS_SCALE_FACTOR)
+        assert_approx(node.fundrawtransaction(rawtx)["fee"], vexp=Decimal(tx_vsize) / COIN, vspan=0.00000001)
         # Expect fee to be 10,000x higher when an explicit fee rate 10,000x greater is specified.
         result = node.fundrawtransaction(rawtx, fee_rate=10000)
-        assert_approx(result["fee"], vexp=0.0141, vspan=0.0001)
+        assert_approx(result["fee"], vexp=Decimal(tx_vsize * 10000) / COIN, vspan=0.0001)
 
         self.log.info("Test fundrawtxn with invalid estimate_mode settings")
         for k, v in {"number": 42, "object": {"foo": "bar"}}.items():
@@ -867,12 +879,12 @@ class RawTransactionsTest(BTQTestFramework):
         """Test no address reuse occurs."""
         self.log.info("Test fundrawtxn does not reuse addresses")
 
-        rawtx = self.nodes[3].createrawtransaction(inputs=[], outputs={self.nodes[3].getnewaddress(): 1})
+        rawtx = self.nodes[3].createrawtransaction(inputs=[], outputs={self.nodes[3].getnewaddress(): Decimal('0.1')})
         result3 = self.nodes[3].fundrawtransaction(rawtx)
         res_dec = self.nodes[0].decoderawtransaction(result3["hex"])
         changeaddress = ""
         for out in res_dec['vout']:
-            if out['value'] > 1.0:
+            if out['value'] > Decimal('0.1'):
                 changeaddress += out['scriptPubKey']['address']
         assert changeaddress != ""
         nextaddr = self.nodes[3].getnewaddress()
@@ -886,7 +898,7 @@ class RawTransactionsTest(BTQTestFramework):
         assert_equal(len(self.nodes[3].listunspent(1)), 1)
 
         inputs = []
-        outputs = {self.nodes[2].getnewaddress(): 1}
+        outputs = {self.nodes[2].getnewaddress(): Decimal('0.1')}
         rawtx = self.nodes[3].createrawtransaction(inputs, outputs)
 
         # Test subtract fee from outputs with feeRate (BTQ/kvB)
@@ -929,7 +941,7 @@ class RawTransactionsTest(BTQTestFramework):
         assert_equal(change[3] + result[3]['fee'], change[4])
 
         inputs = []
-        outputs = {self.nodes[2].getnewaddress(): value for value in (1.0, 1.1, 1.2, 1.3)}
+        outputs = {self.nodes[2].getnewaddress(): value for value in (Decimal('0.1'), Decimal('0.11'), Decimal('0.12'), Decimal('0.13'))}
         rawtx = self.nodes[3].createrawtransaction(inputs, outputs)
 
         result = [self.nodes[3].fundrawtransaction(rawtx),
@@ -972,10 +984,10 @@ class RawTransactionsTest(BTQTestFramework):
         self.log.info("Test fundrawtxn subtract fee from outputs with preset inputs that are sufficient")
 
         addr = self.nodes[0].getnewaddress()
-        txid = self.nodes[0].sendtoaddress(addr, 10)
+        txid = self.nodes[0].sendtoaddress(addr, 1)
         vout = find_vout_for_address(self.nodes[0], txid, addr)
 
-        rawtx = self.nodes[0].createrawtransaction([{'txid': txid, 'vout': vout}], [{self.nodes[0].getnewaddress(): 5}])
+        rawtx = self.nodes[0].createrawtransaction([{'txid': txid, 'vout': vout}], [{self.nodes[0].getnewaddress(): Decimal('0.5')}])
         fundedtx = self.nodes[0].fundrawtransaction(rawtx, subtractFeeFromOutputs=[0])
         signedtx = self.nodes[0].signrawtransactionwithwallet(fundedtx['hex'])
         self.nodes[0].sendrawtransaction(signedtx['hex'])
@@ -985,19 +997,23 @@ class RawTransactionsTest(BTQTestFramework):
         self.nodes[0].createwallet("large")
         wallet = self.nodes[0].get_wallet_rpc(self.default_wallet_name)
         recipient = self.nodes[0].get_wallet_rpc("large")
-        outputs = {}
-        rawtx = recipient.createrawtransaction([], {wallet.getnewaddress(): 147.99899260})
+        # The target is 1480 of the 0.01 BTQ outputs below, net of the 48 vbytes
+        # each costs to spend at 1 sat/vB, less 100 satoshis. (Upstream's
+        # 147.99899260 is the same sum over 0.1 BTC outputs at 68 vbytes each.)
+        rawtx = recipient.createrawtransaction([], {wallet.getnewaddress(): Decimal('14.79928860')})
 
-        # Make 1500 0.1 BTQ outputs. The amount that we target for funding is in
+        # Make 1500 0.01 BTQ outputs. The amount that we target for funding is in
         # the BnB range when these outputs are used.  However if these outputs
         # are selected, the transaction will end up being too large, so it
         # shouldn't use BnB and instead fall back to Knapsack but that behavior
         # is not implemented yet. For now we just check that we get an error.
         # First, force the wallet to bulk-generate the addresses we'll need.
         recipient.keypoolrefill(1500)
-        for _ in range(1500):
-            outputs[recipient.getnewaddress()] = 0.1
-        wallet.sendmany("", outputs)
+        # BTQ's witness scale factor of 16 makes every output weigh four times
+        # what it does upstream, so one transaction paying all 1500 would exceed
+        # MAX_STANDARD_TX_WEIGHT. Pay them in three batches.
+        for _ in range(3):
+            wallet.sendmany("", {recipient.getnewaddress(): Decimal('0.01') for _ in range(500)})
         self.generate(self.nodes[0], 10)
         assert_raises_rpc_error(-4, "The inputs size exceeds the maximum weight. "
                                     "Please try sending a smaller amount or manually consolidating your wallet's UTXOs",
@@ -1020,8 +1036,8 @@ class RawTransactionsTest(BTQTestFramework):
         addr = self.nodes[0].deriveaddresses(desc)[0]
         addr_info = self.nodes[0].getaddressinfo(addr)
 
-        self.nodes[0].sendtoaddress(addr, 10)
-        self.nodes[0].sendtoaddress(wallet.getnewaddress(), 10)
+        self.nodes[0].sendtoaddress(addr, 1)
+        self.nodes[0].sendtoaddress(wallet.getnewaddress(), 1)
         self.generate(self.nodes[0], 6)
         ext_utxo = self.nodes[0].listunspent(addresses=[addr])[0]
 
@@ -1037,8 +1053,8 @@ class RawTransactionsTest(BTQTestFramework):
         assert_raises_rpc_error(-8, "Invalid parameter, missing vout key", wallet.fundrawtransaction, raw_tx, input_weights=[{"txid": ext_utxo["txid"]}])
         assert_raises_rpc_error(-8, "Invalid parameter, vout cannot be negative", wallet.fundrawtransaction, raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": -1}])
         assert_raises_rpc_error(-8, "Invalid parameter, missing weight key", wallet.fundrawtransaction, raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": ext_utxo["vout"]}])
-        assert_raises_rpc_error(-8, "Invalid parameter, weight cannot be less than 165", wallet.fundrawtransaction, raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": ext_utxo["vout"], "weight": 164}])
-        assert_raises_rpc_error(-8, "Invalid parameter, weight cannot be less than 165", wallet.fundrawtransaction, raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": ext_utxo["vout"], "weight": -1}])
+        assert_raises_rpc_error(-8, "Invalid parameter, weight cannot be less than 657", wallet.fundrawtransaction, raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": ext_utxo["vout"], "weight": 656}])
+        assert_raises_rpc_error(-8, "Invalid parameter, weight cannot be less than 657", wallet.fundrawtransaction, raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": ext_utxo["vout"], "weight": -1}])
         assert_raises_rpc_error(-8, "Invalid parameter, weight cannot be greater than", wallet.fundrawtransaction, raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": ext_utxo["vout"], "weight": 400001}])
 
         # But funding should work when the solving data is provided
@@ -1058,7 +1074,7 @@ class RawTransactionsTest(BTQTestFramework):
         signed_weight = self.nodes[0].decoderawtransaction(signed_tx2["hex"])["weight"]
         # Input's weight is difference between weight of signed and unsigned,
         # and the weight of stuff that didn't change (prevout, sequence, 1 byte of scriptSig)
-        input_weight = signed_weight - unsigned_weight + (41 * 4)
+        input_weight = signed_weight - unsigned_weight + (41 * WITNESS_SCALE_FACTOR)
         low_input_weight = input_weight // 2
         high_input_weight = input_weight * 2
 
@@ -1079,13 +1095,15 @@ class RawTransactionsTest(BTQTestFramework):
         assert_equal(funded_tx2["fee"], funded_tx3["fee"])
         # The feerate should be met
         funded_tx4 = wallet.fundrawtransaction(raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": ext_utxo["vout"], "weight": high_input_weight}], fee_rate=10)
-        input_add_weight = high_input_weight - (41 * 4)
+        input_add_weight = high_input_weight - (41 * WITNESS_SCALE_FACTOR)
         tx4_weight = wallet.decoderawtransaction(funded_tx4["hex"])["weight"] + input_add_weight
-        tx4_vsize = int(ceil(tx4_weight / 4))
+        tx4_vsize = int(ceil(tx4_weight / WITNESS_SCALE_FACTOR))
         assert_fee_amount(funded_tx4["fee"], tx4_vsize, Decimal(0.0001))
 
-        # Funding with weight at csuint boundaries should not cause problems
-        funded_tx = wallet.fundrawtransaction(raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": ext_utxo["vout"], "weight": 255}], fee_rate=2)
+        # Funding with weight at csuint boundaries should not cause problems.
+        # Upstream also funds with weight 255, just past the one-byte csuint
+        # limit. That is below BTQ's minimum input weight of 657, which the
+        # error checks above cover, so only the larger boundary is funded here.
         funded_tx = wallet.fundrawtransaction(raw_tx, input_weights=[{"txid": ext_utxo["txid"], "vout": ext_utxo["vout"], "weight": 65539}], fee_rate=2)
 
         self.nodes[2].unloadwallet("extfund")
@@ -1346,8 +1364,11 @@ class RawTransactionsTest(BTQTestFramework):
 
         # Because this test is specifically for ApproximateBestSubset, the target value must be greater
         # than any single input available, and require more than 1 input. So we make 3 outputs
+        # Upstream uses bech32 outputs. At BTQ's witness scale factor of 16, two P2WPKH inputs
+        # cost less in fees than the minimum change plus the change and overhead costs, which
+        # leaves no target between the bounds below. P2PKH inputs get no witness discount.
         for i in range(0, 3):
-            funds.sendtoaddress(tester.getnewaddress(address_type="bech32"), 1)
+            funds.sendtoaddress(tester.getnewaddress(address_type="legacy"), 1)
         self.generate(self.nodes[0], 1, sync_fun=self.no_op)
 
         # Create transactions in order to calculate fees for the target bounds that can trigger this bug
@@ -1367,7 +1388,11 @@ class RawTransactionsTest(BTQTestFramework):
             assert signed_tx["complete"]
             decoded_tx = tester.decoderawtransaction(signed_tx["hex"])
             assert_equal(len(decoded_tx["vin"]), 3)
-            assert tester.testmempoolaccept([signed_tx["hex"]])[0]["allowed"]
+            # The wallet pays exactly feerate, which is also testmempoolaccept's
+            # default maxfeerate. A signature a byte shorter than the wallet's
+            # estimate makes a P2PKH transaction a vbyte smaller and pushes it
+            # over, so only check the minimum relay fee this test is about.
+            assert tester.testmempoolaccept([signed_tx["hex"]], maxfeerate=0)[0]["allowed"]
 
         # We want to choose more value than is available in 2 inputs when considering the fee,
         # but not enough to need 3 inputs when not considering the fee.
@@ -1395,16 +1420,16 @@ class RawTransactionsTest(BTQTestFramework):
         self.nodes[0].sendtoaddress(addr, 1)
         self.generate(self.nodes[0], 1)
 
-        # A P2WPKH input costs 68 vbytes; With a single P2WPKH output, the rest of the tx is 42 vbytes for a total of 110 vbytes.
-        # At a feerate of 1.85 sat/vb, the input will need a fee of 125.8 sats and the rest 77.7 sats
-        # The entire tx fee should be 203.5 sats.
+        # A P2WPKH input costs 48 vbytes with BTQ's witness scale factor of 16 (68 upstream, where it is 4);
+        # With a single P2WPKH output, the rest of the tx is 42 vbytes.
+        # At a feerate of 1.85 sat/vb, the input will need a fee of 88.8 sats and the rest 77.7 sats
         # Coin selection rounds the fee individually instead of at the end (due to how CFeeRate::GetFee works).
-        # If rounding down (which is the incorrect behavior), then the calculated fee will be 125 + 77 = 202.
-        # If rounding up, then the calculated fee will be 126 + 78 = 204.
+        # If rounding down (which is the incorrect behavior), then the calculated fee will be 88 + 77 = 165.
+        # If rounding up, then the calculated fee will be 89 + 78 = 167.
         # In the former case, the calculated needed fee is higher than the actual fee being paid, so an assertion is reached
-        # To test this does not happen, we subtract 202 sats from the input value. If working correctly, this should
+        # To test this does not happen, we subtract 165 sats from the input value. If working correctly, this should
         # fail with insufficient funds rather than btqd asserting.
-        rawtx = w.createrawtransaction(inputs=[], outputs=[{self.nodes[0].getnewaddress(address_type="bech32"): 1 - 0.00000202}])
+        rawtx = w.createrawtransaction(inputs=[], outputs=[{self.nodes[0].getnewaddress(address_type="bech32"): 1 - 0.00000165}])
         assert_raises_rpc_error(-4, "Insufficient funds", w.fundrawtransaction, rawtx, fee_rate=1.85)
 
     def test_input_confs_control(self):

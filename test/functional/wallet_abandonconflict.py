@@ -71,13 +71,18 @@ class AbandonConflictTest(BTQTestFramework):
         inputs.append({"txid": txB, "vout": nB})
         outputs = {}
 
-        outputs[alice.getnewaddress()] = Decimal("14.99998")
+        # The fee must be above the 0.00001 minrelaytxfee this node starts with
+        # but below the 0.0001 it is restarted with, so that the restart evicts
+        # txAB1. BTQ's WITNESS_SCALE_FACTOR is 16 rather than 4, which makes the
+        # vsize smaller, so the fee is half of upstream's 0.00002 to keep the
+        # rate in that window.
+        outputs[alice.getnewaddress()] = Decimal("14.99999")
         outputs[bob.getnewaddress()] = Decimal("5")
         signed = alice.signrawtransactionwithwallet(alice.createrawtransaction(inputs, outputs))
         txAB1 = self.nodes[0].sendrawtransaction(signed["hex"])
 
-        # Identify the 14.99998btc output
-        nAB = next(tx_out["vout"] for tx_out in alice.gettransaction(txAB1)["details"] if tx_out["amount"] == Decimal("14.99998"))
+        # Identify the 14.99999btc output
+        nAB = next(tx_out["vout"] for tx_out in alice.gettransaction(txAB1)["details"] if tx_out["amount"] == Decimal("14.99999"))
 
         #Create a child tx spending AB1 and C
         inputs = []
@@ -151,13 +156,13 @@ class AbandonConflictTest(BTQTestFramework):
         # But its child tx remains abandoned
         self.nodes[0].sendrawtransaction(signed["hex"])
         newbalance = alice.getbalance()
-        assert_equal(newbalance, balance - Decimal("20") + Decimal("14.99998"))
+        assert_equal(newbalance, balance - Decimal("20") + Decimal("14.99999"))
         balance = newbalance
 
         # Send child tx again so it is unabandoned
         self.nodes[0].sendrawtransaction(signed2["hex"])
         newbalance = alice.getbalance()
-        assert_equal(newbalance, balance - Decimal("10") - Decimal("14.99998") + Decimal("24.9996"))
+        assert_equal(newbalance, balance - Decimal("10") - Decimal("14.99999") + Decimal("24.9996"))
         balance = newbalance
 
         # Remove using high relay fee again

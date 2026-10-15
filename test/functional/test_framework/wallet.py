@@ -354,7 +354,10 @@ class MiniWallet:
         assert fee_rate >= 0
         assert fee >= 0
         # calculate fee
-        if self._mode in (MiniWalletMode.RAW_OP_TRUE, MiniWalletMode.ADDRESS_OP_TRUE):
+        if self._mode == MiniWalletMode.RAW_OP_TRUE:
+            # Non-witness OP_TRUE output, with the 43-byte scriptSig padding.
+            vsize = Decimal(104)
+        elif self._mode == MiniWalletMode.ADDRESS_OP_TRUE:
             # P2TR OP_TRUE leaf spend with SCRIPT_VERIFY_TAPROOT active (BTQ: Taproot always on).
             vsize = Decimal(97)
         elif self._mode == MiniWalletMode.RAW_P2PK:

@@ -323,18 +323,21 @@ class RESTTest (BTQTestFramework):
 
         # Make 3 chained txs and mine them on node 1
         txs = []
+        tx_vsizes = []
         input_txid = txid
         for _ in range(3):
             utxo_to_spend = self.wallet.get_utxo(txid=input_txid)
-            txs.append(self.wallet.send_self_transfer(from_node=self.nodes[0], utxo_to_spend=utxo_to_spend)['txid'])
+            transfer = self.wallet.send_self_transfer(from_node=self.nodes[0], utxo_to_spend=utxo_to_spend)
+            txs.append(transfer['txid'])
+            tx_vsizes.append(transfer['tx'].get_vsize())
             input_txid = txs[-1]
         self.sync_all()
 
         # Check that there are exactly 3 transactions in the TX memory pool before generating the block
         json_obj = self.test_rest_request("/mempool/info")
         assert_equal(json_obj['size'], 3)
-        # the size of the memory pool should be greater than 3x ~100 bytes
-        assert_greater_than(json_obj['bytes'], 300)
+        # Mempool bytes are virtual bytes, using BTQ's witness discount.
+        assert_equal(json_obj['bytes'], sum(tx_vsizes))
 
         mempool_info = self.nodes[0].getmempoolinfo()
         assert_equal(json_obj, mempool_info)

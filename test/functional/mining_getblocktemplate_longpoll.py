@@ -7,6 +7,7 @@
 import random
 import threading
 
+from test_framework.blocktools import NORMAL_GBT_REQUEST_PARAMS
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import get_rpc_proxy
 from test_framework.wallet import MiniWallet
@@ -16,14 +17,14 @@ class LongpollThread(threading.Thread):
     def __init__(self, node):
         threading.Thread.__init__(self)
         # query current longpollid
-        template = node.getblocktemplate({'rules': []})
+        template = node.getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
         self.longpollid = template['longpollid']
         # create a new connection to the node, we can't use the same
         # connection from two threads
         self.node = get_rpc_proxy(node.url, 1, timeout=600, coveragedir=node.coverage_dir)
 
     def run(self):
-        self.node.getblocktemplate({'longpollid': self.longpollid, 'rules': []})
+        self.node.getblocktemplate(dict(NORMAL_GBT_REQUEST_PARAMS, longpollid=self.longpollid))
 
 class GetBlockTemplateLPTest(BTQTestFramework):
     def set_test_params(self):
@@ -34,9 +35,9 @@ class GetBlockTemplateLPTest(BTQTestFramework):
         self.log.info("Warning: this test will take about 70 seconds in the best case. Be patient.")
         self.log.info("Test that longpollid doesn't change between successive getblocktemplate() invocations if nothing else happens")
         self.generate(self.nodes[0], 10)
-        template = self.nodes[0].getblocktemplate({'rules': []})
+        template = self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
         longpollid = template['longpollid']
-        template2 = self.nodes[0].getblocktemplate({'rules': []})
+        template2 = self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
         assert template2['longpollid'] == longpollid
 
         self.log.info("Test that longpoll waits if we do nothing")
@@ -47,8 +48,7 @@ class GetBlockTemplateLPTest(BTQTestFramework):
         thr.join(5)  # wait 5 seconds or until thread exits
         assert thr.is_alive()
 
-        from test_framework.wallet import MiniWalletMode
-        self.miniwallet = MiniWallet(self.nodes[0], mode=MiniWalletMode.RAW_P2PK)
+        self.miniwallet = MiniWallet(self.nodes[0])
         self.log.info("Test that longpoll will terminate if another node generates a block")
         self.generate(self.nodes[1], 1)  # generate a block on another node
         # check that thread will exit now that new transaction entered mempool
