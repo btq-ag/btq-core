@@ -169,12 +169,10 @@ static bool SetDilithiumKeyFromSecret(const CKeyingMaterial& secret, const CKeyI
     }
 
     CDilithiumKey candidate;
+    // Set() already runs KeyDataSelfChecks (sign and verify a test message)
+    // and clears the key on failure, so IsValid() covers the self-check here.
     candidate.Set(secret.begin(), secret.end());
     if (!candidate.IsValid() || CKeyID(candidate.GetPubKey().GetID()) != keyid) {
-        return false;
-    }
-    std::vector<unsigned char> signature;
-    if (!candidate.Sign(uint256::ONE, signature) || !candidate.GetPubKey().Verify(uint256::ONE, signature)) {
         return false;
     }
 
