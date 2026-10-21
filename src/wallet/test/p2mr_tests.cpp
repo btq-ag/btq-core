@@ -362,6 +362,80 @@ BOOST_FIXTURE_TEST_CASE(restore_rejects_negative_created_at, BasicTestingSetup)
     BOOST_CHECK(!ValidateP2MRRestore(meta));
 }
 
+BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_reordered_tree, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const P2MRTreeLeaf a{/*depth=*/1, TAPROOT_LEAF_TAPSCRIPT, {OP_1}};
+    const P2MRTreeLeaf b{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_2}};
+    const P2MRTreeLeaf c{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_3}};
+
+    auto first = CreateP2MR(*wallet, {a, b, c}, "first", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+    BOOST_REQUIRE(first);
+    for (const auto& order : std::vector<std::vector<P2MRTreeLeaf>>{{a, c, b}, {b, c, a}, {c, b, a}}) {
+        auto again = CreateP2MR(*wallet, order, "again", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(again);
+        BOOST_CHECK_EQUAL(again->id, first->id);
+        BOOST_CHECK_EQUAL(HexStr(again->script_pub_key), HexStr(first->script_pub_key));
+    }
+    BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+
+}
+
+BOOST_FIXTURE_TEST_CASE(create_does_not_reuse_same_leaves_in_another_shape, BasicTestingSetup)
+{
+    const P2MRTreeLeaf a{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_1}};
+    const P2MRTreeLeaf b{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_2}};
+    const P2MRTreeLeaf c{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_3}};
+    const P2MRTreeLeaf d{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_4}};
+    const std::vector<P2MRTreeLeaf> abcd{a, b, c, d};
+    const std::vector<P2MRTreeLeaf> acbd{a, c, b, d};
+
+    {
+        // ((A,B),(C,D)) and ((A,C),(B,D)) have the same leaf multiset and different roots
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        auto first = CreateP2MR(*wallet, abcd, "first", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(first);
+        auto swapped = CreateP2MR(*wallet, {b, a, d, c}, "swapped", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(swapped);
+        BOOST_CHECK_EQUAL(swapped->id, first->id);
+        auto other = CreateP2MR(*wallet, acbd, "other", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(other);
+        BOOST_CHECK(other->id != first->id);
+        BOOST_CHECK(other->script_pub_key != first->script_pub_key);
+        BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 2U);
+    }
+
+    {
+        // A record under the ((A,B),(C,D)) output whose stored tree is ((A,C),(B,D))
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        auto builder = BuildP2MRTreeChecked(abcd);
+        BOOST_REQUIRE(builder);
+        const CTxDestination dest = builder->GetOutput();
+        const CScript spk = GetScriptForDestination(dest);
+        const std::string bad_id{"00000000000000aa"};
+        UniValue meta(UniValue::VOBJ);
+        meta.pushKV("id", bad_id);
+        meta.pushKV("address", EncodeDestination(dest));
+        meta.pushKV("scriptPubKey", HexStr(spk));
+        const WitnessV2P2MR& root = std::get<WitnessV2P2MR>(dest);
+        meta.pushKV("merkle_root", HexStr(Span<const unsigned char>{root.begin(), root.end()}));
+        meta.pushKV("created_at", int64_t{1});
+        meta.pushKV("label", "bad");
+        meta.pushKV("state", "created");
+        meta.pushKV("tree", P2MRTreeToUniValue(acbd));
+        WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+        BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, dest, bad_id, meta.write()));
+
+        auto created = CreateP2MR(*wallet, abcd, "good", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(created);
+        BOOST_CHECK(created->id != bad_id);
+        BOOST_CHECK_EQUAL(HexStr(created->script_pub_key), HexStr(spk));
+    }
+}
+
 BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);
