@@ -69,7 +69,7 @@ bool CDilithiumKey::MakeNewKey()
     return true;
 }
 
-bool CDilithiumKey::GenerateFromEntropy(const std::vector<unsigned char>& entropy)
+bool CDilithiumKey::GenerateFromEntropy(Span<const unsigned char> entropy)
 {
     // We require exactly 32 bytes: this is the SEEDBYTES the Dilithium ref
     // impl consumes directly. Previously the code expanded entropy with
@@ -181,13 +181,13 @@ bool CDilithiumKey::Load(Span<const unsigned char> privkey)
     return true;
 }
 
-std::vector<unsigned char> CDilithiumKey::Serialize() const
+CPrivKey CDilithiumKey::Serialize() const
 {
     if (!IsValid()) {
         return {};
     }
-    
-    return std::vector<unsigned char>(keydata->begin(), keydata->end());
+
+    return CPrivKey(keydata->begin(), keydata->end());
 }
 
 // Global initialization functions
@@ -245,7 +245,7 @@ bool DilithiumSanityCheck()
 //
 // The persisted state is the 32-byte HD seed + BIP32 chaincode + position.
 // The 2560/1312-byte expanded keypair is regenerated from the seed every time
-// it is needed via `key.GenerateFromEntropy(seed_vec)`. This avoids storing
+// it is needed via `key.GenerateFromEntropy(seed)`. This avoids storing
 // 3872 redundant bytes per node and - critically - keeps the relationship
 // between seed and (sk, pk) deterministic and verifiable.
 
@@ -288,9 +288,7 @@ void CDilithiumExtKey::Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE])
     }
 
     // Regenerate the expanded keypair from the seed.
-    std::vector<unsigned char> seed_vec(seed.begin(), seed.end());
-    const bool ok = key.GenerateFromEntropy(seed_vec);
-    memory_cleanse(seed_vec.data(), seed_vec.size());
+    const bool ok = key.GenerateFromEntropy(seed);
     if (!ok) {
         key = CDilithiumKey();
     }
@@ -334,9 +332,7 @@ bool CDilithiumExtKey::Derive(CDilithiumExtKey& out, unsigned int child_index) c
     memory_cleanse(I, sizeof(I));
 
     // Expand the seed into the full keypair.
-    std::vector<unsigned char> child_seed_vec(out.seed.begin(), out.seed.end());
-    const bool ok = out.key.GenerateFromEntropy(child_seed_vec);
-    memory_cleanse(child_seed_vec.data(), child_seed_vec.size());
+    const bool ok = out.key.GenerateFromEntropy(out.seed);
     if (!ok) {
         return false;
     }
@@ -374,9 +370,7 @@ void CDilithiumExtKey::SetSeed(Span<const std::byte> hd_seed)
     memset(vchFingerprint, 0, 4);
     nChild = 0;
 
-    std::vector<unsigned char> seed_vec(seed.begin(), seed.end());
-    const bool ok = key.GenerateFromEntropy(seed_vec);
-    memory_cleanse(seed_vec.data(), seed_vec.size());
+    const bool ok = key.GenerateFromEntropy(seed);
     if (!ok) {
         key = CDilithiumKey();
     }

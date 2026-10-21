@@ -1017,7 +1017,7 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, cons
     m_storage.UnsetBlankWalletFlag(batch);
     if (!m_storage.HasEncryptionKeys()) {
         // Use the new WriteDilithiumKeyByID method that properly stores by CKeyID
-        std::vector<unsigned char> vchPrivKey(secret.begin(), secret.end());
+        const CPrivKey vchPrivKey(secret.begin(), secret.end());
         return batch.WriteDilithiumKeyByID(keyID, vchPrivKey, mapKeyMetadata[keyID]);
     }
     return true;
@@ -2530,12 +2530,10 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     hmac.Write(&type_byte, 1);
     unsigned char I[64];
     hmac.Finalize(I);
-    std::vector<unsigned char> seed(I, I + BTQ_DILITHIUM_SEED_SIZE);
-    memory_cleanse(I, sizeof(I));
 
     CDilithiumKey dilithium_key;
-    const bool ok = dilithium_key.GenerateFromEntropy(seed);
-    memory_cleanse(seed.data(), seed.size());
+    const bool ok = dilithium_key.GenerateFromEntropy(Span{I}.first(BTQ_DILITHIUM_SEED_SIZE));
+    memory_cleanse(I, sizeof(I));
     if (!ok) {
         return util::Error{_("Error: Failed to generate Dilithium key")};
     }
@@ -3001,7 +2999,7 @@ bool DescriptorScriptPubKeyMan::AddDilithiumKeyWithDB(WalletBatch& batch, const 
         return batch.WriteCryptedDilithiumKeyByID(keyid, crypted_secret, CKeyMetadata(GetTime()));
     } else {
         m_map_dilithium_keys[keyid] = key;
-        std::vector<unsigned char> dilithium_privkey(key.begin(), key.end());
+        const CPrivKey dilithium_privkey(key.begin(), key.end());
         return batch.WriteDilithiumKeyByID(keyid, dilithium_privkey, CKeyMetadata(GetTime()));
     }
 }
