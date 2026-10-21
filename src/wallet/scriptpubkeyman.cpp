@@ -2504,6 +2504,11 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     if (descriptor_private_keys.empty()) {
         return util::Error{_("Error: Descriptor private key is not available for Dilithium key generation")};
     }
+    // The derivation below commits to one key. With several, the one picked is
+    // the lowest CKeyID, and a restore that lacks it derives different keys.
+    if (descriptor_private_keys.size() != 1) {
+        return util::Error{_("Error: Dilithium key generation needs a descriptor with exactly one private key. Import an active single-key descriptor such as pkh(xprv/*), or set a change address for P2MR payments.")};
+    }
 
     const CKey& descriptor_key = descriptor_private_keys.begin()->second;
     if (!descriptor_key.IsValid()) {
