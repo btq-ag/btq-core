@@ -7,6 +7,7 @@
 
 #include <serialize.h>
 #include <support/allocators/secure.h>
+#include <support/cleanse.h>
 #include <uint256.h>
 #include <span.h>
 #include <key.h>
@@ -178,7 +179,7 @@ public:
      * @param entropy 32 bytes of entropy for key generation
      * @return true if key was generated successfully
      */
-    bool GenerateFromEntropy(const std::vector<unsigned char>& entropy);
+    bool GenerateFromEntropy(Span<const unsigned char> entropy);
 
     /**
      * Compute the public key from this private key.
@@ -216,7 +217,7 @@ public:
     bool Load(Span<const unsigned char> privkey);
 
     //! Serialize the private key (for wallet storage, etc.)
-    std::vector<unsigned char> Serialize() const;
+    CPrivKey Serialize() const;
 
     //! Get key size in bytes
     static constexpr size_t GetKeySize() { return DilithiumConstants::SECRET_KEY_SIZE + DilithiumConstants::PUBLIC_KEY_SIZE; }
@@ -387,6 +388,15 @@ public:
     std::array<unsigned char, SEED_SIZE> seed{};
     /** Expanded keypair, regenerated from `seed`. */
     CDilithiumKey key;
+
+    CDilithiumExtKey() = default;
+    CDilithiumExtKey(const CDilithiumExtKey&) = default;
+    CDilithiumExtKey& operator=(const CDilithiumExtKey&) = default;
+    ~CDilithiumExtKey()
+    {
+        memory_cleanse(seed.data(), seed.size());
+        memory_cleanse(chaincode.begin(), chaincode.size());
+    }
 
     friend bool operator==(const CDilithiumExtKey& a, const CDilithiumExtKey& b)
     {

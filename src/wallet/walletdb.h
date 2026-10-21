@@ -247,12 +247,10 @@ public:
     bool WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey);
 
     // Dilithium key storage methods
-    bool WriteDilithiumKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey, const CKeyMetadata &keyMeta);
-    bool WriteDilithiumKeyRaw(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata &keyMeta);
     bool WriteCryptedDilithiumKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
     
     // Proper Dilithium key storage methods that don't require dummy CPubKey
-    bool WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata &keyMeta);
+    bool WriteDilithiumKeyByID(const CKeyID& keyID, const CPrivKey& vchPrivKey, const CKeyMetadata &keyMeta);
     bool WriteCryptedDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
     bool WriteDilithiumKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubkey, const bool overwrite);
     bool WriteDilithiumHDChain(const CHDChain& chain);
