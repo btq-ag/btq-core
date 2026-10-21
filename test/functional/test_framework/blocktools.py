@@ -49,6 +49,8 @@ from .util import assert_equal
 WITNESS_SCALE_FACTOR = 16
 MAX_BLOCK_SIGOPS = 5000
 MAX_BLOCK_SIGOPS_WEIGHT = MAX_BLOCK_SIGOPS * WITNESS_SCALE_FACTOR
+# Block sigop cost limit once dilithium_limits is active (height 1 on regtest)
+MAX_BLOCK_SIGOPS_WEIGHT_DILITHIUM_LIMITS = 160000
 
 # Genesis block time (regtest)
 TIME_GENESIS_BLOCK = 1771804800

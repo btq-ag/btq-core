@@ -98,7 +98,7 @@ static void ECDSAVerify(benchmark::Bench& bench)
 // DILITHIUM_SIGOP_COST is applied per signature *opcode inside a script*, by
 // CScript::GetSigOpCount, reached for P2MR through WitnessSigOps ->
 // CountWitnessSigOps -> GetTransactionSigOpCost, and enforced against
-// MAX_BLOCK_SIGOPS_COST in ConnectBlock. So what a node actually pays per
+// the block sigop limit in ConnectBlock. So what a node actually pays per
 // charged sigop is a whole input verification: witness parsing, control-block
 // and Merkle-path checking, sighash computation over the transaction, script
 // execution, and only then the signature check.

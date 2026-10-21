@@ -6,6 +6,7 @@
 #ifndef BTQ_CONSENSUS_PARAMS_H
 #define BTQ_CONSENSUS_PARAMS_H
 
+#include <consensus/consensus.h>
 #include <uint256.h>
 
 #include <chrono>
@@ -29,8 +30,9 @@ enum BuriedDeployment : int16_t {
     DEPLOYMENT_LWMA,
     DEPLOYMENT_DILITHIUM,
     DEPLOYMENT_DILITHIUM_P2MR,
+    DEPLOYMENT_DILITHIUM_LIMITS,
 };
-constexpr bool ValidDeployment(BuriedDeployment dep) { return dep <= DEPLOYMENT_DILITHIUM_P2MR; }
+constexpr bool ValidDeployment(BuriedDeployment dep) { return dep <= DEPLOYMENT_DILITHIUM_LIMITS; }
 
 enum DeploymentPos : uint16_t {
     DEPLOYMENT_TESTDUMMY,
@@ -123,6 +125,9 @@ struct Params {
      *  Blocks at or above this height reject Dilithium opcodes outside P2MR
      *  tapscript and disable the legacy witness-v0 Dilithium keyhash routing. */
     int nDilithiumP2MRHeight{1};
+    /** Height from which blocks use MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS and
+     *  SCRIPT_VERIFY_DILITHIUM_LIMITS. */
+    int nDilithiumLimitsHeight{1};
     /** LWMA averaging window, in blocks. 144 blocks = 2.4 hours at 60s spacing.
      *
      *  Consensus-critical: changing it on a live chain is a hard fork.
@@ -155,6 +160,11 @@ struct Params {
         return std::chrono::seconds{nPowTargetSpacing};
     }
     int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
+    /** Block sigop cost limit enforced by ConnectBlock for a block at this height. */
+    int64_t MaxBlockSigOpsCost(int height) const
+    {
+        return height >= nDilithiumLimitsHeight ? MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS : MAX_BLOCK_SIGOPS_COST;
+    }
     /** The best chain should have at least this much work */
     uint256 nMinimumChainWork;
     /** By default assume that the signatures in ancestors of this block are valid */
@@ -186,6 +196,8 @@ struct Params {
             return nDilithiumHeight;
         case DEPLOYMENT_DILITHIUM_P2MR:
             return nDilithiumP2MRHeight;
+        case DEPLOYMENT_DILITHIUM_LIMITS:
+            return nDilithiumLimitsHeight;
         } // no default case, so the compiler can warn about missing cases
         return std::numeric_limits<int>::max();
     }

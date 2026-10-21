@@ -63,17 +63,28 @@ static constexpr unsigned int ANNEX_TAG = 0x50;
 // Validation weight per passing signature (Tapscript only, see BIP 342).
 static constexpr int64_t VALIDATION_WEIGHT_PER_SIGOP_PASSED{50};
 
-// Validation weight per passing Dilithium signature (P2MR tapscript only).
-static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED{500};
-// Dilithium is charged 50 sigops against MAX_BLOCK_SIGOPS_COST (80000).
+// Validation weight per Dilithium signature check with a non-empty signature
+// (P2MR tapscript only). It bounds re-checking one signature with OP_2DUP.
+// OP_CHECKMULTISIGDILITHIUM charges once per key tried, last key first, so
+// a 1-of-n spend signed by the first key pays n times while bringing one
+// signature (~2485 bytes of budget with the rest of the witness) and n
+// 1315-byte key pushes. Covering n = 20 needs a charge <= 1315 + 2485 / 20.
+static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED{1400};
+// Charged before SCRIPT_VERIFY_DILITHIUM_LIMITS is active.
+static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED_LEGACY{500};
+// Dilithium is charged 50 sigops against the block sigop limit
+// (MAX_BLOCK_SIGOPS_COST, MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS from
+// nDilithiumLimitsHeight).
 // 50 is provisional until the input-level ratio is recorded. Measure with
 //   ./src/bench/bench_btq -filter='(P2MRDilithium|P2WPKHECDSA)Input'
 // Compute required = ceil(ratio * 1.5). Keep 50 iff required <= 50; otherwise
 // propose `required` with a testnet reset. Do not lower 50 without a written
 // DoS argument: under-weighting packs more PQ verifies per block.
 //
-// The constant already binds: 80000/50 = 1600 Dilithium inputs per block vs
-// ~1817 by weight at ~4402 WU for a 1-in P2MR input. The bench is one-input
+// At 80000 the sigop limit bound first: 80000/50 = 1600 Dilithium inputs per
+// block vs ~1817 by weight at ~4402 WU for a 1-in P2MR input. At 160000 the
+// weight limit binds first for single-key spends, and the sigop limit caps an
+// adversarial block at 160000/50 = 3200 Dilithium verifies. The bench is one-input
 // VerifyScript (script, P2MR control, sighash, verify), not full block cost.
 static constexpr unsigned int DILITHIUM_SIGOP_COST = 50;
 
@@ -550,7 +561,8 @@ public:
      * counted more accurately, assuming they are of the form
      *  ... OP_N CHECKMULTISIG ...
      */
-    unsigned int GetSigOpCount(bool fAccurate) const;
+    /** With saturate, a count above UINT_MAX returns UINT_MAX instead of wrapping. */
+    unsigned int GetSigOpCount(bool fAccurate, bool saturate = false) const;
 
     /**
      * Accurately count sigOps, including sigOps in

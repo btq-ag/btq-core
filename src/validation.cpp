@@ -2160,6 +2160,9 @@ unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Chainstat
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DILITHIUM_P2MR)) {
         flags |= SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY;
     }
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_DILITHIUM_LIMITS)) {
+        flags |= SCRIPT_VERIFY_DILITHIUM_LIMITS;
+    }
     flags |= SCRIPT_VERIFY_P2MR;
 
     return flags;
@@ -2430,7 +2433,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         // * p2sh (when P2SH enabled in flags and excludes coinbase)
         // * witness (when witness enabled in flags and excludes coinbase)
         nSigOpsCost += GetTransactionSigOpCost(tx, view, flags);
-        if (nSigOpsCost > MAX_BLOCK_SIGOPS_COST) {
+        if (nSigOpsCost > params.GetConsensus().MaxBlockSigOpsCost(pindex->nHeight)) {
             LogPrintf("ERROR: ConnectBlock(): too many sigops\n");
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-sigops");
         }
@@ -3738,7 +3741,7 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
     {
         nSigOps += GetLegacySigOpCount(*tx);
     }
-    if (nSigOps * WITNESS_SCALE_FACTOR > MAX_BLOCK_SIGOPS_COST)
+    if (nSigOps * WITNESS_SCALE_FACTOR > MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS)
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-sigops", "out-of-bounds SigOpCount");
 
     if (fCheckPOW && fCheckMerkleRoot)

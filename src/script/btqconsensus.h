@@ -59,11 +59,13 @@ enum
     btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM          = (1U << 21), // enable Dilithium signature validation
     btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR                = (1U << 22), // enable P2MR (witness v2); needs spent outputs
     btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY = (1U << 23), // Dilithium opcodes only in P2MR tapscript
+    btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS = (1U << 24), // 1400 validation weight per P2MR Dilithium check
     btqconsensus_SCRIPT_FLAGS_VERIFY_ALL                 = btqconsensus_SCRIPT_FLAGS_VERIFY_P2SH | btqconsensus_SCRIPT_FLAGS_VERIFY_DERSIG |
                                                                btqconsensus_SCRIPT_FLAGS_VERIFY_NULLDUMMY | btqconsensus_SCRIPT_FLAGS_VERIFY_CHECKLOCKTIMEVERIFY |
                                                                btqconsensus_SCRIPT_FLAGS_VERIFY_CHECKSEQUENCEVERIFY | btqconsensus_SCRIPT_FLAGS_VERIFY_WITNESS |
                                                                btqconsensus_SCRIPT_FLAGS_VERIFY_TAPROOT | btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM |
-                                                               btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR | btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY
+                                                               btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR | btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY |
+                                                               btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS
 };
 
 typedef struct {

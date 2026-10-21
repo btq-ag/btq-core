@@ -97,6 +97,37 @@ BOOST_AUTO_TEST_CASE(testnet_dilithium_p2mr_height_is_settable)
                       std::numeric_limits<int>::max());
 }
 
+BOOST_AUTO_TEST_CASE(chainparams_dilithium_limits)
+{
+    for (const ChainType chain : {ChainType::BTQMAIN, ChainType::BTQREGTEST, ChainType::BTQSIGNET}) {
+        const auto& consensus{CreateChainParams(*m_node.args, chain)->GetConsensus()};
+        BOOST_CHECK_EQUAL(consensus.nDilithiumLimitsHeight, 1);
+        BOOST_CHECK_EQUAL(consensus.MaxBlockSigOpsCost(0), MAX_BLOCK_SIGOPS_COST);
+        BOOST_CHECK_EQUAL(consensus.MaxBlockSigOpsCost(1), MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS);
+    }
+    BOOST_CHECK_EQUAL(CreateChainParams(*m_node.args, ChainType::BTQTEST)->GetConsensus().nDilithiumLimitsHeight,
+                      std::numeric_limits<int>::max());
+
+    ArgsManager args;
+    args.ForceSetArg("-testnetdilithiumlimitsheight", "300");
+    const auto testnet{CreateChainParams(args, ChainType::BTQTEST)};
+    BOOST_CHECK_EQUAL(testnet->GetConsensus().nDilithiumLimitsHeight, 300);
+    BOOST_CHECK_EQUAL(testnet->GetConsensus().MaxBlockSigOpsCost(299), MAX_BLOCK_SIGOPS_COST);
+    BOOST_CHECK_EQUAL(testnet->GetConsensus().MaxBlockSigOpsCost(300), MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS);
+    // Independent of the P2MR-only height
+    BOOST_CHECK_EQUAL(testnet->GetConsensus().nDilithiumP2MRHeight, std::numeric_limits<int>::max());
+    BOOST_CHECK_EQUAL(CreateChainParams(args, ChainType::BTQMAIN)->GetConsensus().nDilithiumLimitsHeight, 1);
+    for (const char* rejected : {"0", "-1", "2147483648"}) {
+        args.ForceSetArg("-testnetdilithiumlimitsheight", rejected);
+        BOOST_CHECK_THROW(CreateChainParams(args, ChainType::BTQTEST), std::runtime_error);
+    }
+
+    // Policy applies the new weight everywhere; peers relaying a spend that
+    // only breaks it are not treated as sending consensus-invalid data.
+    BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM_LIMITS);
+    BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM_LIMITS));
+}
+
 BOOST_AUTO_TEST_CASE(dilithium_opcodes_rejected_outside_p2mr_when_flag_set)
 {
     CDilithiumKey key;

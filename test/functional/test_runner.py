@@ -100,6 +100,7 @@ BASE_SCRIPTS = [
     'feature_taproot.py',
     'feature_taproot_bech32m_spend.py',
     'feature_dilithium_sigops.py',
+    'feature_dilithium_limits.py',
     'wallet_dilithium_hd_restore.py --legacy-wallet',
     'wallet_dilithium_encrypted_restart.py --legacy-wallet',
     'wallet_dilithium_import_restart.py --legacy-wallet',

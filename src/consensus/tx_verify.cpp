@@ -146,13 +146,21 @@ unsigned int GetP2SHSigOpCount(const CTransaction& tx, const CCoinsViewCache& in
 
 int64_t GetTransactionSigOpCost(const CTransaction& tx, const CCoinsViewCache& inputs, uint32_t flags)
 {
-    int64_t nSigOps = GetLegacySigOpCount(tx) * WITNESS_SCALE_FACTOR;
+    // The counts fit in 32 bits, but times WITNESS_SCALE_FACTOR they can wrap,
+    // letting junk in an output script cancel sigops that do run. Blocks
+    // before dilithium_limits keep the wrapping product.
+    const bool widen{(flags & SCRIPT_VERIFY_DILITHIUM_LIMITS) != 0};
+    const auto scale = [widen](unsigned int count) -> int64_t {
+        return widen ? int64_t{count} * WITNESS_SCALE_FACTOR : int64_t{count * WITNESS_SCALE_FACTOR};
+    };
+
+    int64_t nSigOps = scale(GetLegacySigOpCount(tx));
 
     if (tx.IsCoinBase())
         return nSigOps;
 
     if (flags & SCRIPT_VERIFY_P2SH) {
-        nSigOps += GetP2SHSigOpCount(tx, inputs) * WITNESS_SCALE_FACTOR;
+        nSigOps += scale(GetP2SHSigOpCount(tx, inputs));
     }
 
     for (unsigned int i = 0; i < tx.vin.size(); i++)

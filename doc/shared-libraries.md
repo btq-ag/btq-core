@@ -61,6 +61,7 @@ The interface is defined in the C header `btqconsensus.h` located in `src/script
 - `btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM` - Enable Dilithium signature opcodes
 - `btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR` - Enable P2MR (witness v2 pay-to-merkle-root) script path spends
 - `btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY` - Allow Dilithium opcodes only in P2MR tapscript
+- `btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS` - Charge 1400 instead of 500 validation weight per P2MR Dilithium signature check
 
 ##### Errors
 - `btqconsensus_ERR_OK` - No errors with input parameters *(see the return value of `btqconsensus_verify_script` for the verification status)*
@@ -76,6 +77,7 @@ The interface is defined in the C header `btqconsensus.h` located in `src/script
 The node does not use `VERIFY_ALL`. To get the node's answer for a block at a given height, pass P2SH, DERSIG, NULLDUMMY, CHECKLOCKTIMEVERIFY, CHECKSEQUENCEVERIFY, WITNESS, TAPROOT and P2MR, plus:
 - DILITHIUM once the `dilithium` deployment is active. Without it Dilithium spends fail.
 - DILITHIUM_P2MR_ONLY once `dilithium_p2mr` is active. Without it the library still accepts Dilithium in legacy and witness v0 scripts, which the node rejects.
+- DILITHIUM_LIMITS once `dilithium_limits` is active. Without it P2MR spends get the old 500 weight per Dilithium check, so the library accepts signature re-checks the node rejects.
 
 Leaving out P2MR or WITNESS makes every witness v2 spend pass, like TAPROOT without WITNESS upstream. Callers that cleared TAPROOT to use `btqconsensus_verify_script_with_amount` must now clear P2MR too, or they get `btqconsensus_ERR_SPENT_OUTPUTS_REQUIRED`.
 

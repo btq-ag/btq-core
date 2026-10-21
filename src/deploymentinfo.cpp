@@ -39,6 +39,8 @@ std::string DeploymentName(Consensus::BuriedDeployment dep)
         return "dilithium";
     case Consensus::DEPLOYMENT_DILITHIUM_P2MR:
         return "dilithium_p2mr";
+    case Consensus::DEPLOYMENT_DILITHIUM_LIMITS:
+        return "dilithium_limits";
     } // no default case, so the compiler can warn about missing cases
     return "";
 }
@@ -61,6 +63,8 @@ std::optional<Consensus::BuriedDeployment> GetBuriedDeployment(const std::string
         return Consensus::BuriedDeployment::DEPLOYMENT_DILITHIUM;
     } else if (name == "dilithium_p2mr") {
         return Consensus::BuriedDeployment::DEPLOYMENT_DILITHIUM_P2MR;
+    } else if (name == "dilithium_limits") {
+        return Consensus::BuriedDeployment::DEPLOYMENT_DILITHIUM_LIMITS;
     }
     return std::nullopt;
 }

@@ -94,6 +94,8 @@ class FullBlockTest(BTQTestFramework):
         self.extra_args = [[
             '-acceptnonstdtxn=1',  # This is a consensus block test, we don't care about tx policy
             '-testactivationheight=bip34@2',
+            # Keep the 80000 sigop limit these blocks are built around
+            '-testactivationheight=dilithium_limits@2147483647',
         ]]
 
     def run_test(self):
