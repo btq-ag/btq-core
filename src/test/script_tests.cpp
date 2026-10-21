@@ -1477,6 +1477,10 @@ BOOST_AUTO_TEST_CASE(script_HasValidOps)
     BOOST_CHECK(!script.HasValidOps());
     script = ScriptFromHex("88acc0"); // Script with undefined opcode
     BOOST_CHECK(!script.HasValidOps());
+    script = ScriptFromHex("ba"); // OP_CHECKSIGADD is tapscript-only
+    BOOST_CHECK(!script.HasValidOps());
+    script = ScriptFromHex("bb"); // OP_CHECKSIGDILITHIUM stays a defined opcode
+    BOOST_CHECK(script.HasValidOps());
 }
 
 static CMutableTransaction TxFromHex(const std::string& str)
