@@ -326,7 +326,7 @@ static CScriptWitness MakeP2MRWitness(const CScript& leaf_script,
 
 BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
 {
-    // P2MR Dilithium leaves must count toward MAX_BLOCK_SIGOPS_COST via WitnessSigOps.
+    // P2MR Dilithium leaves must count toward the block sigop limit via WitnessSigOps.
     CMutableTransaction creationTx;
     CMutableTransaction spendingTx;
     CCoinsView coinsDummy;
@@ -436,6 +436,25 @@ BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
         spendingTx.vin[0].prevout.SetNull();
         BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
     }
+}
+
+BOOST_AUTO_TEST_CASE(legacy_sigop_cost_does_not_wrap)
+{
+    // 268436 bare OP_CHECKMULTISIGDILITHIUM count 268436000 legacy sigops;
+    // times WITNESS_SCALE_FACTOR that wraps 2^32 to 8704.
+    CMutableTransaction tx;
+    tx.vin.resize(1);
+    const std::vector<unsigned char> junk(268436, OP_CHECKMULTISIGDILITHIUM);
+    tx.vout.emplace_back(0, CScript(junk.begin(), junk.end()));
+    const CTransaction coinbase{tx};
+    BOOST_REQUIRE(coinbase.IsCoinBase());
+    BOOST_CHECK_EQUAL(GetLegacySigOpCount(coinbase), 268436000U);
+
+    CCoinsView coinsDummy;
+    CCoinsViewCache coins(&coinsDummy);
+    const uint32_t flags{SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH};
+    BOOST_CHECK_EQUAL(GetTransactionSigOpCost(coinbase, coins, flags), 8704);
+    BOOST_CHECK_EQUAL(GetTransactionSigOpCost(coinbase, coins, flags | SCRIPT_VERIFY_DILITHIUM_LIMITS), int64_t{268436000} * WITNESS_SCALE_FACTOR);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -180,6 +180,7 @@ BOOST_AUTO_TEST_CASE(script_flag_exceptions_cannot_clear_dilithium_p2mr)
         BOOST_CHECK(flags & SCRIPT_VERIFY_P2MR);
         BOOST_CHECK(!(flags & SCRIPT_VERIFY_DILITHIUM));
         BOOST_CHECK(!(flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY));
+        BOOST_CHECK(!(flags & SCRIPT_VERIFY_DILITHIUM_LIMITS));
         BOOST_CHECK(flags & SCRIPT_VERIFY_P2SH); // from exception payload
     }
 
@@ -190,6 +191,7 @@ BOOST_AUTO_TEST_CASE(script_flag_exceptions_cannot_clear_dilithium_p2mr)
         BOOST_CHECK(flags & SCRIPT_VERIFY_P2MR);
         BOOST_CHECK(flags & SCRIPT_VERIFY_DILITHIUM);
         BOOST_CHECK(flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY);
+        BOOST_CHECK(flags & SCRIPT_VERIFY_DILITHIUM_LIMITS);
     }
 
     // Cleanup so later tests see the stock empty map.

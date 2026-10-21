@@ -175,6 +175,9 @@ public:
          * each other, so it is only useful with a coordinated height, or on a
          * private chain rehearsing one. See issue #102. */
         std::optional<int> dilithium_p2mr_height{};
+        /** Height at which DEPLOYMENT_DILITHIUM_LIMITS activates. Unset means
+         *  unscheduled. Same caveats as dilithium_p2mr_height. */
+        std::optional<int> dilithium_limits_height{};
     };
 
     static std::unique_ptr<const CChainParams> RegTest(const RegTestOptions& options);

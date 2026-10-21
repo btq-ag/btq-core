@@ -18,20 +18,36 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <stdexcept>
+#include <string>
 #include <vector>
+
+static std::optional<int> ReadTestNetHeight(const ArgsManager& args, const std::string& name)
+{
+    if (!args.IsArgSet(name)) return std::nullopt;
+
+    const int64_t height{args.GetIntArg(name, 0)};
+    if (height < 1 || height > std::numeric_limits<int>::max()) {
+        throw std::runtime_error(strprintf(
+            "%s=%d is out of range, expected 1..%d.",
+            name, height, std::numeric_limits<int>::max()));
+    }
+    return static_cast<int>(height);
+}
 
 void ReadTestNetArgs(const ArgsManager& args, CChainParams::TestNetOptions& options)
 {
-    if (!args.IsArgSet("-testnetdilithiump2mrheight")) return;
-
-    const int64_t height{args.GetIntArg("-testnetdilithiump2mrheight", 0)};
-    if (height < 1 || height > std::numeric_limits<int>::max()) {
-        throw std::runtime_error(strprintf(
-            "-testnetdilithiump2mrheight=%d is out of range, expected 1..%d.",
-            height, std::numeric_limits<int>::max()));
+    if (const auto height{ReadTestNetHeight(args, "-testnetdilithiumlimitsheight")}) {
+        options.dilithium_limits_height = *height;
+        LogPrintf("Warning: -testnetdilithiumlimitsheight=%d overrides a consensus rule. "
+                  "Nodes with a different value will fork from this one.\n", *height);
     }
-    options.dilithium_p2mr_height = int{static_cast<int>(height)};
+
+    const auto p2mr_height{ReadTestNetHeight(args, "-testnetdilithiump2mrheight")};
+    if (!p2mr_height) return;
+    const int64_t height{*p2mr_height};
+    options.dilithium_p2mr_height = *p2mr_height;
 
     // Loud on purpose. This changes consensus, so a node running it will fork
     // away from one that is not, and every legacy Dilithium coin still unspent

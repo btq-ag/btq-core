@@ -17,7 +17,7 @@ upstream review intuition both assume the Core column.
 | `nMinerConfirmationWindow` | 2016 | **20,160** | `src/kernel/chainparams.cpp` |
 | `WITNESS_SCALE_FACTOR` | 4 | **16** | `src/consensus/consensus.h` |
 | `MAX_BLOCK_WEIGHT` | 4,000,000 | **8,000,000** | `src/consensus/consensus.h` |
-| `MAX_BLOCK_SIGOPS_COST` | 80,000 | 80,000 (unchanged) | `src/consensus/consensus.h` |
+| `MAX_BLOCK_SIGOPS_COST` | 80,000 | 80,000, **160,000** from `nDilithiumLimitsHeight` (`MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS`) | `src/consensus/consensus.h` |
 | `MAX_STANDARD_TX_WEIGHT` | 400,000 | 400,000 (unchanged) | `src/policy/policy.h` |
 | `MAX_PACKAGE_WEIGHT` | 404,000 | **40,000,000** | `src/policy/packages.h` |
 | `DEFAULT_MAX_MEMPOOL_SIZE_MB` | 300 | **2000** | `src/kernel/mempool_options.h` |

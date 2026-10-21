@@ -13,6 +13,7 @@
 static_assert(static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM) == static_cast<unsigned int>(SCRIPT_VERIFY_DILITHIUM));
 static_assert(static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR) == static_cast<unsigned int>(SCRIPT_VERIFY_P2MR));
 static_assert(static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY) == static_cast<unsigned int>(SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY));
+static_assert(static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS) == static_cast<unsigned int>(SCRIPT_VERIFY_DILITHIUM_LIMITS));
 
 namespace {
 
