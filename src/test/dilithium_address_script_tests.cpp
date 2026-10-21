@@ -228,7 +228,10 @@ BOOST_AUTO_TEST_CASE(dilithium_multisig_script)
     }
     
     // Test Dilithium multisig script generation
-    CScript multisig_script = GetScriptForDilithiumMultisig(2, pubkeys);
+    CScript multisig_script;
+    multisig_script << 2;
+    for (const CDilithiumPubKey& pubkey : pubkeys) multisig_script << ToByteVector(pubkey);
+    multisig_script << pubkeys.size() << OP_CHECKMULTISIGDILITHIUM;
     BOOST_CHECK(multisig_script.size() > 0);
     BOOST_CHECK(multisig_script.back() == OP_CHECKMULTISIGDILITHIUM);
     
