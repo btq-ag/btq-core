@@ -74,9 +74,6 @@ public:
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 2100000; // BTQ: 10x Bitcoin for 1-min blocks, same ~4yr halving
         
-        // BTQ: Set signature algorithm to NONE initially (stub implementation)
-        consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
-        
         // BTQ: Enable all features from height 1 for clean activation
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256{};
@@ -183,8 +180,6 @@ public:
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 2100000;
-        
-        consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
         
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256{};
@@ -339,8 +334,6 @@ public:
         consensus.signet_challenge.assign(bin.begin(), bin.end());
         consensus.nSubsidyHalvingInterval = 2100000;
         
-        consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
-        
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256{};
         consensus.BIP65Height = 1;
@@ -419,8 +412,6 @@ public:
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 1500;
-        
-        consensus.signature_algorithm = Consensus::SignatureAlgorithm::NONE;
         
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256();

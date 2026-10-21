@@ -57,8 +57,6 @@ BOOST_AUTO_TEST_CASE(p2mr_output_type_round_trips)
     BOOST_CHECK(OutputTypeFromDestination(ForeignP2MR()) == OutputType::P2MR);
     BOOST_CHECK(OutputTypeFromDestination(WitnessV1Taproot{XOnlyPubKey(uint256::ONE)}) == OutputType::BECH32M);
 
-    BOOST_CHECK(IsQuantumSafeOutputType(OutputType::P2MR));
-    BOOST_CHECK(!IsQuantumSafeOutputType(OutputType::BECH32M));
 }
 
 /**
