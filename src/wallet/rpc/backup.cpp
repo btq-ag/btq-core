@@ -77,7 +77,11 @@ static bool GetWalletAddressesForKey(const LegacyScriptPubKeyMan* spk_man, const
         }
     }
     if (!fLabelFound) {
-        strAddr = EncodeDestination(GetDestinationForKey(key.GetPubKey(), wallet.m_default_address_type));
+        // GetDestinationForKey asserts on bech32m and the Dilithium/P2MR types,
+        // all of which -addresstype accepts.
+        OutputType type = wallet.m_default_address_type;
+        if (type != OutputType::LEGACY && type != OutputType::P2SH_SEGWIT) type = OutputType::BECH32;
+        strAddr = EncodeDestination(GetDestinationForKey(key.GetPubKey(), type));
     }
     return fLabelFound;
 }
