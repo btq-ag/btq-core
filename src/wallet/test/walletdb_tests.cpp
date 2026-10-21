@@ -73,10 +73,26 @@ BOOST_AUTO_TEST_CASE(walletdb_loads_dilithium_key_metadata)
         LOCK(wallet->cs_wallet);
         wallet->SetupLegacyScriptPubKeyMan();
         WalletBatch batch{wallet->GetDatabase()};
-        const std::vector<unsigned char> secret{key.begin(), key.end()};
+        const CPrivKey secret{key.begin(), key.end()};
         BOOST_REQUIRE(batch.WriteDilithiumKeyByID(key_id, secret, metadata));
         wallet->Flush();
         records = GetMockableDatabase(*wallet).m_records;
+    }
+
+    {
+        // On-disk layout: CompactSize(len) || key bytes || Hash(key_id || key bytes)
+        DataStream record_key;
+        record_key << DBKeys::DILITHIUM_KEY << key_id;
+        const auto it = records.find(SerializeData{record_key.begin(), record_key.end()});
+        BOOST_REQUIRE(it != records.end());
+
+        std::vector<unsigned char> hashed(key_id.begin(), key_id.end());
+        hashed.insert(hashed.end(), key.begin(), key.end());
+        DataStream expected;
+        WriteCompactSize(expected, key.size());
+        expected.write(MakeByteSpan(Span{key.begin(), key.end()}));
+        expected << Hash(hashed);
+        BOOST_CHECK(it->second == SerializeData(expected.begin(), expected.end()));
     }
 
     {
