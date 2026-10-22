@@ -634,9 +634,6 @@ private:
     // Override IsMine to handle Dilithium keys
     isminetype IsMine(const CScript& script) const override;
 
-    //! Body of GenerateNewDilithiumKey(), for callers that already hold cs_desc_man.
-    util::Result<CDilithiumPubKey> GenerateNewDilithiumKeyLocked() EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
-
     /** Next index in the Dilithium-only derivation sequence. Separate from
      *  m_wallet_descriptor.next_index, which ECDSA address derivation
      *  advances; sharing that counter left unscannable gaps in the Dilithium
@@ -693,9 +690,9 @@ public:
     void LoadDilithiumNextIndex(int32_t index) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
 
     // Dilithium key management
-    bool AddDilithiumKeyPubKey(const CDilithiumKey& key);
-    bool LoadDilithiumKey(const CDilithiumKey& key);
-    bool LoadCryptedDilithiumKey(const CKeyID& keyid, const std::vector<unsigned char>& vchCryptedSecret, bool checksum_valid);
+    bool AddDilithiumKeyPubKey(const CDilithiumKey& key) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
+    bool LoadDilithiumKey(const CDilithiumKey& key) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
+    bool LoadCryptedDilithiumKey(const CKeyID& keyid, const std::vector<unsigned char>& vchCryptedSecret, bool checksum_valid) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
     bool GetDilithiumKey(const CKeyID& keyid, CDilithiumKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool HaveDilithiumKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool HaveKeyByXOnly(const XOnlyPubKey& pubkey) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
