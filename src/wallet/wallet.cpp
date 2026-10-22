@@ -2226,6 +2226,44 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
 
     const PrecomputedTransactionData txdata = PrecomputePSBTData(psbtx);
 
+    // Coin selection sizes a Taproot input at the key path when the wallet can
+    // sign it (WalletSignsTaprootKeyPath in spend.cpp). A ScriptPubKeyMan for
+    // a different output can sign the input through a larger script path, using
+    // a leaf key and the PSBT's Taproot data, and later ScriptPubKeyMans skip a
+    // finalized input. So first sign each such input with only the keys of the
+    // ScriptPubKeyMan that produces it; SignTaproot tries the key path first.
+    //
+    // Do that only after every unsigned input's sighash matches. The
+    // ScriptPubKeyMan loop returns SIGHASH_MISMATCH without a partial result;
+    // signing the other inputs first would leave a key-path witness on a PSBT
+    // the caller is about to throw away.
+    if (sign) {
+        for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
+            const PSBTInput& input = psbtx.inputs.at(i);
+            if (PSBTInputSigned(input)) continue;
+            if (input.sighash_type && *input.sighash_type != sighash_type) {
+                return TransactionError::SIGHASH_MISMATCH;
+            }
+        }
+        for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
+            PSBTInput& input = psbtx.inputs.at(i);
+            CTxOut utxo;
+            if (PSBTInputSigned(input) || !psbtx.GetInputUTXO(utxo, i)) continue;
+            int version;
+            std::vector<unsigned char> program;
+            if (!utxo.scriptPubKey.IsWitnessProgram(version, program) || version != 1) continue;
+            for (ScriptPubKeyMan* spk_man : GetScriptPubKeyMans(utxo.scriptPubKey)) {
+                const auto* desc_spk_man{dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)};
+                if (!desc_spk_man || !desc_spk_man->CanSignTaprootKeyPath(utxo.scriptPubKey)) continue;
+                desc_spk_man->SignPSBTInputWithOwnKeys(psbtx, txdata, i, utxo.scriptPubKey, sighash_type, bip32derivs, finalize);
+                if (n_signed && PSBTInputSigned(input)) {
+                    (*n_signed)++;
+                }
+                break;
+            }
+        }
+    }
+
     // Fill in information from ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         int n_signed_this_spkm = 0;
@@ -2816,7 +2854,7 @@ void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
     // map in which we'll infer heights of other keys
     std::map<CKeyID, const TxStateConfirmed*> mapKeyFirstBlock;
     TxStateConfirmed max_confirm{uint256{}, /*height=*/-1, /*index=*/-1};
-    max_confirm.confirmed_block_height = GetLastBlockHeight() > 144 ? GetLastBlockHeight() - 144 : 0; // the tip can be reorganized; use a 144-block safety margin
+    max_confirm.confirmed_block_height = GetLastBlockHeight() > 144 ? GetLastBlockHeight() - 144 : 0; // the tip can be reorganized; use a 144-block reorg-depth safety margin (a depth, not a day)
     CHECK_NONFATAL(chain().findAncestorByHeight(GetLastBlockHash(), max_confirm.confirmed_block_height, FoundBlock().hash(max_confirm.confirmed_block_hash)));
 
     {

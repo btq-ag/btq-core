@@ -63,6 +63,13 @@ BOOST_AUTO_TEST_CASE(maxmempool_is_capped_on_32bit)
     }
 }
 
+BOOST_AUTO_TEST_CASE(unconfigured_mempool_default_is_300mb)
+{
+    kernel::MemPoolOptions opts;
+    BOOST_CHECK_EQUAL(DEFAULT_MAX_MEMPOOL_SIZE_MB, 300U);
+    BOOST_CHECK_EQUAL(opts.max_size_bytes, DEFAULT_MAX_MEMPOOL_SIZE_MB * 1'000'000);
+}
+
 BOOST_AUTO_TEST_CASE(full_rbf_is_on_when_unset)
 {
     kernel::MemPoolOptions opts;
