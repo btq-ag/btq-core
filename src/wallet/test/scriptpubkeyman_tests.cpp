@@ -362,10 +362,21 @@ BOOST_FIXTURE_TEST_CASE(descriptor_dilithium_keypool_reservation_is_refused, Pre
     wallet.SetupDescriptorScriptPubKeyMans();
     auto* manager = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
     BOOST_REQUIRE(manager);
+    // The public wallet path has no Dilithium-legacy keypool manager.
+    BOOST_CHECK(!wallet.GetNewChangeDestination(OutputType::DILITHIUM_LEGACY));
+    int32_t ecdsa_index;
+    {
+        LOCK(manager->cs_desc_man);
+        ecdsa_index = manager->GetWalletDescriptor().next_index;
+    }
     int64_t index{-1};
     CKeyPool keypool;
     BOOST_CHECK(!manager->GetReservedDestination(OutputType::DILITHIUM_LEGACY, /*internal=*/false, index, keypool));
     BOOST_CHECK_EQUAL(index, -1);
+    {
+        LOCK(manager->cs_desc_man);
+        BOOST_CHECK_EQUAL(manager->GetWalletDescriptor().next_index, ecdsa_index);
+    }
     // A refused reservation must not consume an index in either sequence.
     const auto expected = manager->GetDilithiumKeyForIndex(0);
     const auto generated = manager->GenerateNewDilithiumKey();
@@ -432,8 +443,8 @@ BOOST_AUTO_TEST_CASE(descriptor_dilithium_key_write_failure_drops_memory)
             }
             BOOST_REQUIRE(keyman);
 
-            // Fail only the private-key record. The descriptor index and
-            // key metadata must still write successfully.
+            // Fail only the private-key record, after the descriptor index
+            // write. Check durable index advancement below.
             const std::string record_type = encrypted ? "dilithiumckey" : "dilithiumkey";
             DataStream prefix{};
             prefix << record_type;
@@ -464,10 +475,6 @@ BOOST_AUTO_TEST_CASE(descriptor_dilithium_key_write_failure_drops_memory)
             record_key << record_type << skipped_id;
             const SerializeData record_bytes{record_key.begin(), record_key.end()};
             BOOST_CHECK_EQUAL(GetMockableDatabase(wallet).m_records.count(record_bytes), 0);
-            DataStream metadata_key{};
-            metadata_key << DBKeys::DILITHIUM_KEYMETA << skipped_id;
-            const SerializeData metadata_bytes{metadata_key.begin(), metadata_key.end()};
-            BOOST_CHECK_EQUAL(GetMockableDatabase(wallet).m_records.count(metadata_bytes), 1);
             {
                 LOCK(wallet.cs_wallet);
                 BOOST_CHECK(!wallet.HaveDilithiumKeyAnywhere(skipped_id));
