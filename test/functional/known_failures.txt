@@ -16,4 +16,3 @@
 # the same 94 tests, so none of these are intermittent. The comment on
 # each line is the first error the test raised.
 
-feature_maxuploadtarget.py
