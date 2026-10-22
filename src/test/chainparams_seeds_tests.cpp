@@ -142,26 +142,15 @@ BOOST_AUTO_TEST_CASE(mainnet_fixed_seeds_are_not_yet_provisioned)
                             "nonzero count and resolve issue #114.");
 }
 
-//! Bootstrap needs at least one source. Mainnet currently relies entirely on
-//! DNS seeding because it has no fixed seeds, so losing the seed list would
-//! leave a fresh node with nothing at all.
-//!
-//! This cannot check that the hostnames resolve -- a unit test must not depend
-//! on DNS -- so resolution is verified out of band and tracked in #114.
+//! Mainnet still has a DNS seed name. This branch's testnet has none until
+//! its names are chosen. It must not list the seeds master is using.
 BOOST_AUTO_TEST_CASE(networks_have_a_bootstrap_source)
 {
-    for (const auto& [name, params] : [] {
-             std::vector<std::pair<std::string, std::unique_ptr<const CChainParams>>> v;
-             v.emplace_back("main", CChainParams::Main());
-             v.emplace_back("test", CChainParams::TestNet({}));
-             return v;
-         }()) {
-        const bool has_dns{!params->DNSSeeds().empty()};
-        const bool has_fixed{!params->FixedSeeds().empty()};
-        BOOST_CHECK_MESSAGE(has_dns || has_fixed,
-                            name + ": no DNS seeds and no fixed seeds, so a node with an empty "
-                                   "peers.dat cannot bootstrap");
-    }
+    const std::unique_ptr<const CChainParams> main{CChainParams::Main()};
+    BOOST_CHECK(!main->DNSSeeds().empty() || !main->FixedSeeds().empty());
+
+    const std::unique_ptr<const CChainParams> test{CChainParams::TestNet({})};
+    BOOST_CHECK(test->DNSSeeds().empty());
 }
 
 //! Regtest must never reach the network. Its seed is a deliberately

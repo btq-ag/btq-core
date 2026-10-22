@@ -58,7 +58,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    const char* pszTimestamp = "BTQ genesis remine: quantum-safe launch baseline, 26/Feb/2026";
+    const char* pszTimestamp = "BTQ mainnet genesis 22/Oct/2026";
     const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
@@ -90,11 +90,7 @@ public:
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        // BTQ-AUDIT-103: LWMA from block 1 so mainnet never has a pre-LWMA
-        // legacy-retarget window that can be manipulated. Mainnet only: the
-        // live testnet keeps its scheduled height (changing it retroactively
-        // would invalidate existing history — see the height-gate pattern in
-        // nDilithiumP2MRHeight).
+        // LWMA from block 1. The running testnet stays on master.
         consensus.nLWMAHeight = 1;
         consensus.nDilithiumHeight = 1;
         // Mainnet is pre-launch: Dilithium is P2MR-only from genesis.
@@ -119,7 +115,7 @@ public:
         // 0x49d414 is GetBlockProof(genesis) for nBits 0x1e0377ae; the previous
         // 0x10002 predated the genesis remine and was below one block's work.
         consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000000000049d414");
-        consensus.defaultAssumeValid = uint256S("0x000003194a90d8d8eff8b39a7ad4e2490729b97a6772b7f4c4cb8887dffd1ae4");
+        consensus.defaultAssumeValid = uint256S("0x000002e4f1ad9a3f2321555ef6168d48295af74ec0921b69a3a76cec17b0e4f2");
 
         pchMessageStart[0] = 0xf1;
         pchMessageStart[1] = 0xb2;
@@ -130,10 +126,10 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        genesis = CreateGenesisBlock(1771804800, 12582602, 0x1e0377ae, 1, 5 * COIN);
+        genesis = CreateGenesisBlock(1792627200, 505727, 0x1e0377ae, 1, 5 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x000003194a90d8d8eff8b39a7ad4e2490729b97a6772b7f4c4cb8887dffd1ae4"));
-        assert(genesis.hashMerkleRoot == uint256S("0xec88310bd306cf5f9554cc257db16b81147e4bd0efda75f11b38467a5d918db1"));
+        assert(consensus.hashGenesisBlock == uint256S("0x000002e4f1ad9a3f2321555ef6168d48295af74ec0921b69a3a76cec17b0e4f2"));
+        assert(genesis.hashMerkleRoot == uint256S("0x0bbd7929e39fd86a74157ebda9f3ecf8c018216951d7aacd0c0102ba061ef9d3"));
 
         vSeeds.emplace_back("seed1.btq.com");
 
@@ -166,7 +162,7 @@ public:
         };
 
         chainTxData = ChainTxData{
-            .nTime    = 1771804800,
+            .nTime    = 1792627200,
             .nTxCount = 1,
             .dTxRate  = 0.0,
         };
@@ -197,27 +193,12 @@ public:
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        consensus.nLWMAHeight = 300000;
+        consensus.nLWMAHeight = 1;
         consensus.nDilithiumHeight = 1;
-        // DEPLOYMENT_DILITHIUM_P2MR is deliberately unscheduled here, so the
-        // restriction is policy-only on testnet (non-standard to relay, refused
-        // by the wallet) rather than enforced in blocks. Mainnet ships it at 1,
-        // so testnet is not validating the rules mainnet launches with; that
-        // gap is issue #102, and it is not closed by picking a height on this
-        // chain. Scanning the running testnet (issue #111) found ~719,045 BTQ
-        // across ~141,888 legacy Dilithium outputs, about three quarters of the
-        // chain's value, spread evenly over its whole history rather than
-        // concentrated in a few sweepable addresses. Activating here would
-        // destroy all of it, so closing #102 means a chain that never had them.
-        //
-        // -testnetdilithiump2mrheight overrides this for a rehearsal or a
-        // coordinated activation. Soft-reject classification relies on
-        // SCRIPT_VERIFY_DILITHIUM being mandatory while
-        // SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY stays non-mandatory — otherwise
-        // CheckInputScripts would Misbehave peers that relay still-consensus-
-        // valid legacy Dilithium spends (see policy.h).
-        consensus.nDilithiumP2MRHeight = opts.dilithium_p2mr_height.value_or(std::numeric_limits<int>::max());
-        consensus.fPowAllowMinDifficultyBlocks = true;
+        // Same rules as mainnet. The running testnet stays on master.
+        // -testnetdilithiump2mrheight can still override the height.
+        consensus.nDilithiumP2MRHeight = opts.dilithium_p2mr_height.value_or(1);
+        consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
         consensus.nMinerConfirmationWindow = 20160;
@@ -232,29 +213,30 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
-        consensus.nMinimumChainWork = uint256{};
-        consensus.defaultAssumeValid = uint256{};
+        // One genesis proof, same bits as mainnet. 0x49d414 is GetBlockProof for 0x1e0377ae.
+        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000000000049d414");
+        consensus.defaultAssumeValid = uint256S("0x0000022f03b97f577d6dcd5b776f93bb69535c3c84f3e1d4d66c4fa81f45a133");
 
-        pchMessageStart[0] = 0x0c;
-        pchMessageStart[1] = 0x12;
-        pchMessageStart[2] = 0x0a;
-        pchMessageStart[3] = 0x08;
+        // 0c120a08 stays on master, with the testnet that is running today.
+        pchMessageStart[0] = 0x71;
+        pchMessageStart[1] = 0x74;
+        pchMessageStart[2] = 0x6e;
+        pchMessageStart[3] = 0x74;
         nDefaultPort = 19333;
         nPruneAfterHeight = 1000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        const char* pszTimestamp = "BTQ testnet genesis block 20260526";
+        const char* pszTimestamp = "BTQ testnet genesis 22/Oct/2026";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771977600, 2443007, 0x1e0377ae, 1, 5 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1792627260, 452194, 0x1e0377ae, 1, 5 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x000000ffba1eed17608850f753ca60e74456dd3fe7af86b72aadba7d6052f7dd"));
-        assert(genesis.hashMerkleRoot == uint256S("0xcd6a53f536b1f8f9442397d1d4f3db492d88bc4280f4c172eb5b1d9e1b6152e5"));
+        assert(consensus.hashGenesisBlock == uint256S("0x0000022f03b97f577d6dcd5b776f93bb69535c3c84f3e1d4d66c4fa81f45a133"));
+        assert(genesis.hashMerkleRoot == uint256S("0x190d305f7e3f0e4d3b1a5a7d8a99b57dc05b107b54feadebfeda6320f7521d6d"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
-        vSeeds.emplace_back("testnet-seed1.bitcoinquantum.com");
-        vSeeds.emplace_back("testnet-seed2.bitcoinquantum.com");
+        // DNS names are not chosen. Do not list testnet-seed1 or testnet-seed2.
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
@@ -274,6 +256,7 @@ public:
 
         checkpointData = {
             {
+                {0, genesis.GetHash()},
             }
         };
 
@@ -281,7 +264,7 @@ public:
         };
 
         chainTxData = ChainTxData{
-            .nTime    = 1771804800,
+            .nTime    = 1792627260,
             .nTxCount = 1,
             .dTxRate  = 0.0,
         };

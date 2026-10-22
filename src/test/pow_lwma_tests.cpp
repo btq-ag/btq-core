@@ -98,11 +98,10 @@ BOOST_FIXTURE_TEST_SUITE(pow_lwma_tests, BasicTestingSetup)
 BOOST_AUTO_TEST_CASE(lwma_activation_height_configured)
 {
     const auto params = CreateChainParams(*m_node.args, ChainType::BTQMAIN);
-    // Mainnet activates LWMA from block 1 (BTQ-AUDIT-103); the live testnet
-    // keeps its scheduled height so existing history stays valid.
+    // This branch starts LWMA at block 1 on mainnet and on its testnet.
     BOOST_CHECK_EQUAL(params->GetConsensus().nLWMAHeight, 1);
     const auto testnet_params = CreateChainParams(*m_node.args, ChainType::BTQTEST);
-    BOOST_CHECK_EQUAL(testnet_params->GetConsensus().nLWMAHeight, 300000);
+    BOOST_CHECK_EQUAL(testnet_params->GetConsensus().nLWMAHeight, 1);
     BOOST_CHECK(params->GetConsensus().nDilithiumHeight > 0);
     BOOST_CHECK_EQUAL(params->GetConsensus().nLWMAWindow, 144);
 }
