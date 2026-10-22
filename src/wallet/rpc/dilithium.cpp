@@ -301,6 +301,7 @@ RPCHelpMan signmessagewithdilithium()
     for (auto& spk_man : spk_mans) {
         DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
         if (desc_spk_man) {
+            LOCK(desc_spk_man->cs_desc_man);
             if (desc_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
                 key_found = true;
                 break;
@@ -431,6 +432,7 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
         // Try descriptor wallet first
         DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
         if (desc_spk_man) {
+            LOCK(desc_spk_man->cs_desc_man);
             if (desc_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
                 key_found = true;
                 break;
