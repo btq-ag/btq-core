@@ -18,4 +18,3 @@
 
 feature_fee_estimation.py
 feature_maxuploadtarget.py
-mempool_limit.py                                        # KeyError: 'fees' (testmempoolaccept rejects the fill txs: tx-size)
