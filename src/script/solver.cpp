@@ -139,7 +139,8 @@ static bool MatchDilithiumMultisig(const CScript& script, int& required_sigs, st
 {
     opcodetype opcode;
     valtype data;
-    // Solver may call this with whatever MatchMultisig appended on failure.
+    // Defensive. Solver passes a fresh vector, and a script cannot end in both
+    // OP_CHECKMULTISIG and OP_CHECKMULTISIGDILITHIUM.
     pubkeys.clear();
 
     CScript::const_iterator it = script.begin();
