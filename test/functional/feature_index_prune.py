@@ -132,7 +132,7 @@ class FeatureIndexPruneTest(BTQTestFramework):
 
         for i in range(3):
             pruneheight_3 = self.nodes[i].pruneblockchain(2000)
-            assert_greater_than(pruneheight_3, pruneheight_2)
+            assert_greater_than(pruneheight_3, pruneheights_2[i])
             self.stop_node(i)
 
         self.log.info("make sure we get an init error when starting the nodes again with the indices")

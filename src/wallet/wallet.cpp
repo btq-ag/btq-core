@@ -1162,9 +1162,9 @@ CWalletTx* CWallet::AddToWallet(CTransactionRef tx, const TxState& state, const 
 #ifndef WIN32
         // Substituting the wallet name isn't currently supported on windows
         // because windows shell escaping has not been implemented yet:
-        // https://github.com/btq/btq/pull/13339#issuecomment-537384875
+        // https://github.com/bitcoin/bitcoin/pull/13339#issuecomment-537384875
         // A few ways it could be implemented in the future are described in:
-        // https://github.com/btq/btq/pull/13339#issuecomment-461288094
+        // https://github.com/bitcoin/bitcoin/pull/13339#issuecomment-461288094
         ReplaceAll(strCmd, "%w", ShellEscape(GetName()));
 #endif
         std::thread t(runCommand, strCmd);
@@ -1450,7 +1450,7 @@ void CWallet::transactionRemovedFromMempool(const CTransactionRef& tx, MemPoolRe
         //    provide the conflicting block's hash and height, and for backwards
         //    compatibility reasons it may not be not safe to store conflicted
         //    wallet transactions with a null block hash. See
-        //    https://github.com/btq/btq/pull/18600#discussion_r420195993.
+        //    https://github.com/bitcoin/bitcoin/pull/18600#discussion_r420195993.
         // 2. For most of these transactions, the wallet's internal conflict
         //    detection in the blockConnected handler will subsequently call
         //    MarkConflicted and update them with CONFLICTED status anyway. This
@@ -1458,7 +1458,7 @@ void CWallet::transactionRemovedFromMempool(const CTransactionRef& tx, MemPoolRe
         //    block, or that has ancestors in the wallet with inputs spent by
         //    the block.
         // 3. Longstanding behavior since the sync implementation in
-        //    https://github.com/btq/btq/pull/9371 and the prior sync
+        //    https://github.com/bitcoin/bitcoin/pull/9371 and the prior sync
         //    implementation before that was to mark these transactions
         //    unconfirmed rather than conflicted.
         //
@@ -1466,7 +1466,7 @@ void CWallet::transactionRemovedFromMempool(const CTransactionRef& tx, MemPoolRe
         // when improving this code in the future. The wallet's heuristics for
         // distinguishing between conflicted and unconfirmed transactions are
         // imperfect, and could be improved in general, see
-        // https://github.com/btq-core/btq-devwiki/wiki/Wallet-Transaction-Conflict-Tracking
+        // https://github.com/bitcoin-core/bitcoin-devwiki/wiki/Wallet-Transaction-Conflict-Tracking
         SyncTransaction(tx, TxStateInactive{});
     }
 }
@@ -1600,8 +1600,23 @@ isminetype CWallet::IsMine(const CScript& script) const
         result = GetTrackedP2MRScriptIsMine(*this, script);
     }
 
-    m_ismine_cache[script] = result;
+    // Only spendable hits stay in the map. A miss goes stale when the key is
+    // derived later, and it is also almost every output in a block. A
+    // watch-only hit goes stale when the spending key is imported: coin
+    // selection then keeps skipping the output.
+    if ((result & ISMINE_SPENDABLE) != 0) {
+        if (m_ismine_cache.size() >= ISMINE_CACHE_MAX) {
+            m_ismine_cache.clear();
+        }
+        m_ismine_cache.emplace(script, result);
+    }
     return result;
+}
+
+void CWallet::ClearIsMineCache()
+{
+    AssertLockHeld(cs_wallet);
+    m_ismine_cache.clear();
 }
 
 bool CWallet::IsMine(const CTransaction& tx) const
@@ -2146,6 +2161,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
 
 bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors) const
 {
+    AssertLockHeld(cs_wallet);
     // Try to sign with all ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         // spk_man->SignTransaction will return true if the transaction is complete,
@@ -2158,7 +2174,18 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     // P2MR destinations are tracked outside ScriptPubKeyMans. Merge their
     // builders/keys and retry so ordinary send/fund paths can spend Dilithium
     // (and other) P2MR leaves without requiring signp2mrtransaction.
-    FlatSigningProvider p2mr_provider = BuildP2MRSigningProvider(*this, /*only_id=*/std::nullopt);
+    // Read only the entries for the coins being spent, once per destination.
+    std::set<WitnessV2P2MR> p2mr_outputs;
+    for (const auto& [outpoint, coin] : coins) {
+        CTxDestination dest;
+        if (ExtractDestination(coin.out.scriptPubKey, dest) && std::holds_alternative<WitnessV2P2MR>(dest)) {
+            p2mr_outputs.insert(std::get<WitnessV2P2MR>(dest));
+        }
+    }
+    FlatSigningProvider p2mr_provider;
+    for (const WitnessV2P2MR& output : p2mr_outputs) {
+        p2mr_provider.Merge(BuildP2MRSigningProviderForDestination(*this, output));
+    }
     if (!p2mr_provider.p2mr_trees.empty()) {
         if (::SignTransaction(tx, &p2mr_provider, coins, sighash, input_errors)) {
             return true;
@@ -2198,6 +2225,44 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
     }
 
     const PrecomputedTransactionData txdata = PrecomputePSBTData(psbtx);
+
+    // Coin selection sizes a Taproot input at the key path when the wallet can
+    // sign it (WalletSignsTaprootKeyPath in spend.cpp). A ScriptPubKeyMan for
+    // a different output can sign the input through a larger script path, using
+    // a leaf key and the PSBT's Taproot data, and later ScriptPubKeyMans skip a
+    // finalized input. So first sign each such input with only the keys of the
+    // ScriptPubKeyMan that produces it; SignTaproot tries the key path first.
+    //
+    // Do that only after every unsigned input's sighash matches. The
+    // ScriptPubKeyMan loop returns SIGHASH_MISMATCH without a partial result;
+    // signing the other inputs first would leave a key-path witness on a PSBT
+    // the caller is about to throw away.
+    if (sign) {
+        for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
+            const PSBTInput& input = psbtx.inputs.at(i);
+            if (PSBTInputSigned(input)) continue;
+            if (input.sighash_type && *input.sighash_type != sighash_type) {
+                return TransactionError::SIGHASH_MISMATCH;
+            }
+        }
+        for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
+            PSBTInput& input = psbtx.inputs.at(i);
+            CTxOut utxo;
+            if (PSBTInputSigned(input) || !psbtx.GetInputUTXO(utxo, i)) continue;
+            int version;
+            std::vector<unsigned char> program;
+            if (!utxo.scriptPubKey.IsWitnessProgram(version, program) || version != 1) continue;
+            for (ScriptPubKeyMan* spk_man : GetScriptPubKeyMans(utxo.scriptPubKey)) {
+                const auto* desc_spk_man{dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)};
+                if (!desc_spk_man || !desc_spk_man->CanSignTaprootKeyPath(utxo.scriptPubKey)) continue;
+                desc_spk_man->SignPSBTInputWithOwnKeys(psbtx, txdata, i, utxo.scriptPubKey, sighash_type, bip32derivs, finalize);
+                if (n_signed && PSBTInputSigned(input)) {
+                    (*n_signed)++;
+                }
+                break;
+            }
+        }
+    }
 
     // Fill in information from ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
@@ -2239,7 +2304,7 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
             return TransactionError::SIGHASH_MISMATCH;
         }
 
-        const FlatSigningProvider provider{BuildP2MRSigningProvider(*this, entry->id)};
+        const FlatSigningProvider provider{BuildP2MRSigningProviderForDestination(*this, entry->dest)};
         if (SignPSBTInput(HidingSigningProvider(&provider, /*hide_secret=*/!sign, /*hide_origin=*/!bip32derivs),
                           psbtx, i, &txdata, sighash_type, /*out_sigdata=*/nullptr, finalize) &&
             n_signed) {
@@ -2571,6 +2636,10 @@ util::Result<CTxDestination> CWallet::GetNewDestination(const OutputType type, c
 
     auto op_dest = spk_man->GetNewDestination(type);
     if (op_dest) {
+        // Top-up ran in the script pubkey manager, not CWallet::TopUpKeyPool,
+        // which is the path that clears the ownership cache. SetAddressBook
+        // below calls IsMine on the new destination.
+        m_ismine_cache.clear();
         SetAddressBook(*op_dest, label, AddressPurpose::RECEIVE);
     }
 
@@ -2657,6 +2726,9 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::optional<AddressPur
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool internal)
 {
+    // Not an EXCLUSIVE_LOCKS_REQUIRED annotation: CWallet is incomplete where
+    // ReserveDestination is declared, so pwallet->cs_wallet cannot be named there.
+    AssertLockHeld(pwallet->cs_wallet);
     if (type == OutputType::P2MR) {
         // P2MR destinations are not keypool-backed: each is a freshly derived
         // Dilithium key plus a script tree persisted as wallet metadata. There
@@ -2668,6 +2740,8 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
             if (!created) return util::Error{util::ErrorString(created)};
             address = created->dest;
             fInternal = internal;
+            // Minting the script can make a previously seen output ours.
+            pwallet->m_ismine_cache.clear();
         }
         return address;
     }
@@ -2683,6 +2757,10 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         if (!op_address) return op_address;
         address = *op_address;
         fInternal = keypool.fInternal;
+        // GetReservedDestination tops up the keypool. CWallet::TopUpKeyPool
+        // would have cleared the ownership cache; this path does not.
+        // CreateTransaction reserves change here, not via GetNewChangeDestination.
+        pwallet->m_ismine_cache.clear();
     }
     return address;
 }
@@ -2855,7 +2933,7 @@ void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
  *
  * For more information see CWalletTx::nTimeSmart,
  * https://btqtalk.org/?topic=54527, or
- * https://github.com/btq/btq/pull/1393.
+ * https://github.com/bitcoin/bitcoin/pull/1393.
  */
 unsigned int CWallet::ComputeTimeSmart(const CWalletTx& wtx, bool rescanning_old_block) const
 {
@@ -2983,6 +3061,18 @@ bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id,
     if (!request) return false;
     value = *request;
     return true;
+}
+
+std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata(const CTxDestination& dest) const
+{
+    std::vector<std::tuple<CTxDestination, std::string, std::string>> out;
+    const auto* entry{common::FindKey(m_address_book, dest)};
+    if (!entry) return out;
+    for (const auto& [id, request] : entry->receive_requests) {
+        if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) != 0) continue;
+        out.emplace_back(dest, id.substr(P2MR_RECEIVE_REQUEST_PREFIX.size()), request);
+    }
+    return out;
 }
 
 std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata() const
@@ -3631,7 +3721,7 @@ std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& scri
     {
         LOCK(cs_wallet);
         if (auto entry = GetP2MRByScript(*this, script)) {
-            return std::make_unique<FlatSigningProvider>(BuildP2MRSigningProvider(*this, entry->id));
+            return std::make_unique<FlatSigningProvider>(BuildP2MRSigningProviderForDestination(*this, entry->dest));
         }
     }
     return nullptr;
@@ -4077,6 +4167,8 @@ bool CWallet::ApplyMigrationData(MigrationData& data, bilingual_str& error)
     m_spk_managers.erase(legacy_spkm->GetID());
     m_external_spk_managers.clear();
     m_internal_spk_managers.clear();
+    // Scripts the legacy manager owned may not be owned by the descriptors.
+    m_ismine_cache.clear();
 
     // Setup new descriptors
     SetWalletFlag(WALLET_FLAG_DESCRIPTORS);

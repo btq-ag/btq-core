@@ -192,6 +192,13 @@ P2MRMempoolAccept TestP2MRTransaction(CWallet& wallet, const CMutableTransaction
 FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet,
                                              const std::optional<std::string>& only_id);
 
+/**
+ * Build a FlatSigningProvider from the entries stored under one destination,
+ * without reading the other entries. Entries whose tree does not build are
+ * skipped, as in BuildP2MRSigningProvider.
+ */
+FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet, const CTxDestination& dest);
+
 /** Return true if the script matches any wallet-tracked P2MR scriptPubKey. */
 bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script);
 
