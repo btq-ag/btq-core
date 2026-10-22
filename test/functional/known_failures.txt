@@ -16,6 +16,5 @@
 # the same 94 tests, so none of these are intermittent. The comment on
 # each line is the first error the test raised.
 
-feature_fee_estimation.py
 feature_maxuploadtarget.py
 p2p_node_network_limited.py                             # AssertionError: not(33555464 == 1032)
