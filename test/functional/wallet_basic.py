@@ -344,8 +344,8 @@ class WalletTest(BTQTestFramework):
             assert_raises_rpc_error(-3, NOT_A_NUMBER_OR_STRING, self.nodes[2].sendmany, amounts={address: 1}, fee_rate=invalid_value)
 
         self.log.info("Test sendmany raises if an invalid conf_target or estimate_mode is passed")
-        for target, mode in product([-1, 0, 1009], ["economical", "conservative"]):
-            assert_raises_rpc_error(-8, "Invalid conf_target, must be between 1 and 1008",  # max value of 1008 per src/policy/fees.h
+        for target, mode in product([-1, 0, 10081], ["economical", "conservative"]):
+            assert_raises_rpc_error(-8, "Invalid conf_target, must be between 1 and 10080",  # max value of 10080 per src/policy/fees.h
                 self.nodes[2].sendmany, amounts={address: 1}, conf_target=target, estimate_mode=mode)
         for target, mode in product([-1, 0], ["btc/kb", "sat/b"]):
             assert_raises_rpc_error(-8, 'Invalid estimate_mode parameter, must be one of: "unset", "economical", "conservative"',
@@ -536,8 +536,8 @@ class WalletTest(BTQTestFramework):
                 assert_raises_rpc_error(-3, NOT_A_NUMBER_OR_STRING, self.nodes[2].sendtoaddress, address=address, amount=1.0, fee_rate=invalid_value)
 
             self.log.info("Test sendtoaddress raises if an invalid conf_target or estimate_mode is passed")
-            for target, mode in product([-1, 0, 1009], ["economical", "conservative"]):
-                assert_raises_rpc_error(-8, "Invalid conf_target, must be between 1 and 1008",  # max value of 1008 per src/policy/fees.h
+            for target, mode in product([-1, 0, 10081], ["economical", "conservative"]):
+                assert_raises_rpc_error(-8, "Invalid conf_target, must be between 1 and 10080",  # max value of 10080 per src/policy/fees.h
                     self.nodes[2].sendtoaddress, address=address, amount=1, conf_target=target, estimate_mode=mode)
             for target, mode in product([-1, 0], ["btc/kb", "sat/b"]):
                 assert_raises_rpc_error(-8, 'Invalid estimate_mode parameter, must be one of: "unset", "economical", "conservative"',
@@ -711,10 +711,25 @@ class WalletTest(BTQTestFramework):
 
         self.log.info("Test send* RPCs with verbose=True")
         address = self.nodes[0].getnewaddress("test")
+        # Short-horizon half-life is ~180 one-minute blocks, so this test's
+        # mining can produce an estimate (Core's 18-block half-life did not).
+        estimate = self.nodes[2].estimatesmartfee(60)
+        estimate_reasons = {
+            "Half Target 60% Threshold",
+            "Target 85% Threshold",
+            "Double Target 95% Threshold",
+            "Conservative Double Target longer horizon",
+        }
         txid_feeReason_one = self.nodes[2].sendtoaddress(address=address, amount=Decimal('0.5'), verbose=True)
-        assert_equal(txid_feeReason_one["fee_reason"], "Fallback fee")
+        if "feerate" in estimate:
+            assert txid_feeReason_one["fee_reason"] in estimate_reasons, txid_feeReason_one["fee_reason"]
+        else:
+            assert_equal(txid_feeReason_one["fee_reason"], "Fallback fee")
         txid_feeReason_two = self.nodes[2].sendmany(dummy='', amounts={address: Decimal('0.5')}, verbose=True)
-        assert_equal(txid_feeReason_two["fee_reason"], "Fallback fee")
+        if "feerate" in estimate:
+            assert txid_feeReason_two["fee_reason"] in estimate_reasons, txid_feeReason_two["fee_reason"]
+        else:
+            assert_equal(txid_feeReason_two["fee_reason"], "Fallback fee")
         self.log.info("Test send* RPCs with verbose=False")
         txid_feeReason_three = self.nodes[2].sendtoaddress(address=address, amount=Decimal('0.5'), verbose=False)
         assert_equal(self.nodes[2].gettransaction(txid_feeReason_three)['txid'], txid_feeReason_three)
