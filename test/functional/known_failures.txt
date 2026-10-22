@@ -1,0 +1,21 @@
+# Functional tests that fail on master today. Tracked in #104.
+#
+# The "functional tests" CI job runs BASE_SCRIPTS and the "extended
+# functional tests" job runs BASE_SCRIPTS plus EXTENDED_SCRIPTS. Both use
+# this list and fail only when a test fails that is not on it, so a PR
+# cannot break a test that passes today.
+#
+# One test per line, written as test_runner.py prints it, with any
+# arguments (for example "wallet_basic.py --descriptors").
+# Text after "#" is a comment.
+#
+# When you fix a test, remove its line. The job warns about listed tests
+# that pass. Do not add a test to hide a failure your change caused.
+#
+# Baseline: master 1930cc209, 2026-09-14, two CI runs. Both runs failed
+# the same 94 tests, so none of these are intermittent. The comment on
+# each line is the first error the test raised.
+
+feature_fee_estimation.py
+feature_maxuploadtarget.py
+p2p_node_network_limited.py                             # AssertionError: not(33555464 == 1032)

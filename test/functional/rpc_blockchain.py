@@ -512,6 +512,14 @@ class BlockchainTest(BTQTestFramework):
         assert_waitforheight(current_height)
         assert_waitforheight(current_height + 1)
 
+        self.log.info("Test waitforblock")
+        # The active tip returns at once (no timeout, so a broken match hangs
+        # and fails); a block that is not the tip returns the active tip when
+        # the timeout (in milliseconds) expires.
+        tip = node.getbestblockhash()
+        assert_equal(node.waitforblock(blockhash=tip), {"hash": tip, "height": current_height})
+        assert_equal(node.waitforblock(blockhash=b1.hash, timeout=100), {"hash": tip, "height": current_height})
+
     def _test_getblock(self):
         node = self.nodes[0]
         fee_per_byte = Decimal('0.00000010')

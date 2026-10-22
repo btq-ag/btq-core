@@ -1,88 +1,65 @@
 #!/usr/bin/env python3
-# Copyright (c) 2019-2022 The BTQ Core developers
+# Copyright (c) 2026 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test that we reject low difficulty headers to prevent our block tree from filling up with useless bloat"""
+"""Reject forks below a reached checkpoint, using only generated regtest headers."""
 
-from test_framework.messages import (
-    CBlockHeader,
-    from_hex,
-)
-from test_framework.p2p import (
-    P2PInterface,
-    msg_headers,
-)
+from test_framework.blocktools import create_block, create_coinbase
+from test_framework.messages import CBlockHeader, msg_headers
+from test_framework.p2p import P2PInterface
 from test_framework.test_framework import BTQTestFramework
+from test_framework.util import assert_equal
 
-import os
 
-
-class RejectLowDifficultyHeadersTest(BTQTestFramework):
+class RejectCheckpointForkTest(BTQTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.chain = 'testnet3'  # Use testnet chain because it has an early checkpoint
         self.num_nodes = 2
-        self.extra_args = [["-minimumchainwork=0x0", '-prune=550']] * self.num_nodes
+        self.genesis = "5a6c309a7e9bb2fa314e63630520ca3c598c86a91dd2c6737e160cfadfc50f38"
 
-    def add_options(self, parser):
-        parser.add_argument(
-            '--datafile',
-            default='data/blockheader_testnet3.hex',
-            help='Test data file (default: %(default)s)',
-        )
+        def headers(count, offset):
+            result = []
+            previous = int(self.genesis, 16)
+            for height in range(1, count + 1):
+                block = create_block(previous, create_coinbase(height), 1771804800 + height * 60 + offset)
+                block.solve()
+                result.append(CBlockHeader(block))
+                previous = block.sha256
+            return result
+
+        self.headers = headers(10, 0)
+        self.fork = headers(2, 1)
+        self.checkpoint = self.headers[-1].hash
+        self.extra_args = [["-minimumchainwork=0", "-prune=550", f"-testcheckpoint=10:{self.checkpoint}"]] * 2
+
+    def setup_network(self):
+        self.setup_nodes()
+
+    def assert_tip(self, node, header, height):
+        assert {"height": height, "hash": header.hash, "branchlen": height,
+                "status": "headers-only"} in node.getchaintips()
 
     def run_test(self):
-        self.log.info("Read headers data")
-        self.headers_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), self.options.datafile)
-        with open(self.headers_file_path, encoding='utf-8') as headers_data:
-            h_lines = [l.strip() for l in headers_data.readlines()]
+        assert_equal(self.nodes[0].getblockhash(0), self.genesis)
+        peer = self.nodes[0].add_p2p_connection(P2PInterface())
+        peer.send_and_ping(msg_headers(self.headers))
+        self.assert_tip(self.nodes[0], self.headers[-1], 10)
+        with self.nodes[0].assert_debug_log(["bad-fork-prior-to-checkpoint"]):
+            peer.send_message(msg_headers(self.fork))
+            peer.wait_for_disconnect()
+        assert self.fork[-1].hash not in [tip["hash"] for tip in self.nodes[0].getchaintips()]
 
-        # The headers data is taken from testnet3 for early blocks from genesis until the first checkpoint. There are
-        # two headers with valid POW at height 1 and 2, forking off from genesis. They are indicated by the FORK_PREFIX.
-        FORK_PREFIX = 'fork:'
-        self.headers = [l for l in h_lines if not l.startswith(FORK_PREFIX)]
-        self.headers_fork = [l[len(FORK_PREFIX):] for l in h_lines if l.startswith(FORK_PREFIX)]
+        # Same headers become acceptable when checkpoints are explicitly disabled.
+        self.restart_node(0, extra_args=self.extra_args[0] + ["-nocheckpoints"])
+        peer = self.nodes[0].add_p2p_connection(P2PInterface())
+        peer.send_and_ping(msg_headers(self.fork))
+        self.assert_tip(self.nodes[0], self.fork[-1], 2)
 
-        self.headers = [from_hex(CBlockHeader(), h) for h in self.headers]
-        self.headers_fork = [from_hex(CBlockHeader(), h) for h in self.headers_fork]
-
-        self.log.info("Feed all non-fork headers, including and up to the first checkpoint")
-        peer_checkpoint = self.nodes[0].add_p2p_connection(P2PInterface())
-        peer_checkpoint.send_and_ping(msg_headers(self.headers))
-        assert {
-            'height': 546,
-            'hash': '000000002a936ca763904c3c35fce2f3556c559c0214345d31b1bcebf76acb70',
-            'branchlen': 546,
-            'status': 'headers-only',
-        } in self.nodes[0].getchaintips()
-
-        self.log.info("Feed all fork headers (fails due to checkpoint)")
-        with self.nodes[0].assert_debug_log(['bad-fork-prior-to-checkpoint']):
-            peer_checkpoint.send_message(msg_headers(self.headers_fork))
-            peer_checkpoint.wait_for_disconnect()
-
-        self.log.info("Feed all fork headers (succeeds without checkpoint)")
-        # On node 0 it succeeds because checkpoints are disabled
-        self.restart_node(0, extra_args=['-nocheckpoints', "-minimumchainwork=0x0", '-prune=550'])
-        peer_no_checkpoint = self.nodes[0].add_p2p_connection(P2PInterface())
-        peer_no_checkpoint.send_and_ping(msg_headers(self.headers_fork))
-        assert {
-            "height": 2,
-            "hash": "00000000b0494bd6c3d5ff79c497cfce40831871cbf39b1bc28bd1dac817dc39",
-            "branchlen": 2,
-            "status": "headers-only",
-        } in self.nodes[0].getchaintips()
-
-        # On node 1 it succeeds because no checkpoint has been reached yet by a chain tip
-        peer_before_checkpoint = self.nodes[1].add_p2p_connection(P2PInterface())
-        peer_before_checkpoint.send_and_ping(msg_headers(self.headers_fork))
-        assert {
-            "height": 2,
-            "hash": "00000000b0494bd6c3d5ff79c497cfce40831871cbf39b1bc28bd1dac817dc39",
-            "branchlen": 2,
-            "status": "headers-only",
-        } in self.nodes[1].getchaintips()
+        # Merely configuring a checkpoint must not reject forks before it is reached.
+        peer = self.nodes[1].add_p2p_connection(P2PInterface())
+        peer.send_and_ping(msg_headers(self.fork))
+        self.assert_tip(self.nodes[1], self.fork[-1], 2)
 
 
 if __name__ == '__main__':
-    RejectLowDifficultyHeadersTest().main()
+    RejectCheckpointForkTest().main()

@@ -70,4 +70,11 @@ BOOST_AUTO_TEST_CASE(unconfigured_mempool_default_is_300mb)
     BOOST_CHECK_EQUAL(opts.max_size_bytes, DEFAULT_MAX_MEMPOOL_SIZE_MB * 1'000'000);
 }
 
+BOOST_AUTO_TEST_CASE(full_rbf_is_on_when_unset)
+{
+    kernel::MemPoolOptions opts;
+    BOOST_CHECK(DEFAULT_MEMPOOL_FULL_RBF);
+    BOOST_CHECK(opts.full_rbf);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

@@ -16,6 +16,7 @@ from test_framework.blocktools import (
 )
 from test_framework.messages import (
     MAX_BIP125_RBF_SEQUENCE,
+    WITNESS_SCALE_FACTOR,
     CBlockHeader,
     CInv,
     COutPoint,
@@ -258,7 +259,7 @@ class SegWitTest(BTQTestFramework):
         self.wallet = MiniWallet(self.nodes[0])
 
         self.test_non_witness_transaction()
-        self.test_v0_outputs_arent_spendable()
+        self.test_v0_outputs_before_activation()
         self.test_block_relay()
         self.test_unnecessary_witness_before_segwit_activation()
         self.test_witness_tx_relay_before_segwit_activation()
@@ -309,7 +310,8 @@ class SegWitTest(BTQTestFramework):
         # Create a transaction that spends the coinbase
         tx = CTransaction()
         tx.vin.append(CTxIn(COutPoint(txid, 0), b""))
-        tx.vout.append(CTxOut(49 * 100000000, CScript([OP_TRUE, OP_DROP] * 15 + [OP_TRUE])))
+        value = block.vtx[0].vout[0].nValue - 1000000
+        tx.vout.append(CTxOut(value, CScript([OP_TRUE, OP_DROP] * 15 + [OP_TRUE])))
         tx.calc_sha256()
 
         # Check that serializing it with or without witness is the same
@@ -319,7 +321,7 @@ class SegWitTest(BTQTestFramework):
         self.test_node.send_and_ping(msg_tx(tx))  # make sure the block was processed
         assert tx.hash in self.nodes[0].getrawmempool()
         # Save this transaction for later
-        self.utxo.append(UTXO(tx.sha256, 0, 49 * 100000000))
+        self.utxo.append(UTXO(tx.sha256, 0, value))
         self.generate(self.nodes[0], 1)
 
     @subtest
@@ -447,16 +449,9 @@ class SegWitTest(BTQTestFramework):
             assert block4.sha256 not in self.old_node.getdataset
 
     @subtest
-    def test_v0_outputs_arent_spendable(self):
-        """Test that v0 outputs aren't spendable before segwit activation.
-
-        ~6 months after segwit activation, the SCRIPT_VERIFY_WITNESS flag was
-        backdated so that it applies to all blocks, going back to the genesis
-        block.
-
-        Consequently, version 0 witness outputs are never spendable without
-        witness, and so can't be spent before segwit activation (the point at which
-        blocks are permitted to contain witnesses)."""
+    def test_v0_outputs_before_activation(self):
+        """Before BTQ's SegWit activation, witnesses are forbidden in blocks
+        but stripped witness programs retain legacy spend semantics."""
 
         # Create two outputs, a p2wsh and p2sh-p2wsh
         witness_script = CScript([OP_TRUE])
@@ -481,7 +476,7 @@ class SegWitTest(BTQTestFramework):
         # Now send the block without witness. It should be accepted
         test_witness_block(self.nodes[0], self.test_node, block, accepted=True, with_witness=False)
 
-        # Now try to spend the outputs. This should fail since SCRIPT_VERIFY_WITNESS is always enabled.
+        # Try spending both native and P2SH-wrapped witness programs.
         p2wsh_tx = CTransaction()
         p2wsh_tx.vin = [CTxIn(COutPoint(txid, 0), b'')]
         p2wsh_tx.vout = [CTxOut(value, CScript([OP_TRUE]))]
@@ -505,15 +500,9 @@ class SegWitTest(BTQTestFramework):
             # data isn't allowed in blocks that don't commit to witness data.
             test_witness_block(self.nodes[0], self.test_node, block, accepted=False, with_witness=True, reason='unexpected-witness')
 
-            # When the block is serialized without witness, validation fails because the transaction is
-            # invalid (transactions are always validated with SCRIPT_VERIFY_WITNESS so a segwit v0 transaction
-            # without a witness is invalid).
-            # Note: The reject reason for this failure could be
-            # 'block-validation-failed' (if script check threads > 1) or
-            # 'mandatory-script-verify-flag-failed (Witness program was passed an
-            # empty witness)' (otherwise).
-            test_witness_block(self.nodes[0], self.test_node, block, accepted=False, with_witness=False,
-                               reason='mandatory-script-verify-flag-failed (Witness program was passed an empty witness)')
+            # BTQ gates SCRIPT_VERIFY_WITNESS on activation. Before activation,
+            # stripped v0 programs retain their legacy anyone-can-spend meaning.
+            test_witness_block(self.nodes[0], self.test_node, block, accepted=True, with_witness=False)
 
         self.utxo.pop(0)
         self.utxo.append(UTXO(txid, 2, value))
@@ -850,7 +839,7 @@ class SegWitTest(BTQTestFramework):
         add_witness_commitment(block)
         block.solve()
 
-        block.vtx[0].wit.vtxinwit[0].scriptWitness.stack.append(b'a' * 5000000)
+        block.vtx[0].wit.vtxinwit[0].scriptWitness.stack.append(b'a' * (MAX_BLOCK_WEIGHT + 1))
         assert block.get_weight() > MAX_BLOCK_WEIGHT
 
         # We can't send over the p2p network, because this is too big to relay
@@ -885,7 +874,7 @@ class SegWitTest(BTQTestFramework):
         # TODO: Test that non-witness carrying blocks can't exceed 1MB
         # Skipping this test for now; this is covered in feature_block.py
 
-        # Test that witness-bearing blocks are limited at ceil(base + wit/4) <= 1MB.
+        # Test the exact BTQ block-weight boundary, including witness discount.
         block = self.build_next_block()
 
         assert len(self.utxo) > 0
@@ -895,7 +884,7 @@ class SegWitTest(BTQTestFramework):
         # This should give us plenty of room to tweak the spending tx's
         # virtual size.
         NUM_DROPS = 200  # 201 max ops per script!
-        NUM_OUTPUTS = 50
+        NUM_OUTPUTS = 100
 
         witness_script = CScript([OP_2DROP] * NUM_DROPS + [OP_TRUE])
         script_pubkey = script_to_p2wsh_script(witness_script)
@@ -1068,7 +1057,7 @@ class SegWitTest(BTQTestFramework):
 
     @subtest
     def test_max_witness_push_length(self):
-        """Test that witness stack can only allow up to 520 byte pushes."""
+        """Test that witness stack can only allow up to MAX_SCRIPT_ELEMENT_SIZE byte pushes."""
 
         block = self.build_next_block()
 
@@ -1084,7 +1073,7 @@ class SegWitTest(BTQTestFramework):
         tx2.vin.append(CTxIn(COutPoint(tx.sha256, 0), b""))
         tx2.vout.append(CTxOut(tx.vout[0].nValue - 1000, CScript([OP_TRUE])))
         tx2.wit.vtxinwit.append(CTxInWitness())
-        # First try a 521-byte stack element
+        # First try an element one byte over the limit
         tx2.wit.vtxinwit[0].scriptWitness.stack = [b'a' * (MAX_SCRIPT_ELEMENT_SIZE + 1), witness_script]
         tx2.rehash()
 
@@ -1105,12 +1094,12 @@ class SegWitTest(BTQTestFramework):
 
     @subtest
     def test_max_witness_script_length(self):
-        """Test that witness outputs greater than 10kB can't be spent."""
+        """Test the 100kB BTQ witness script limit."""
 
-        MAX_WITNESS_SCRIPT_LENGTH = 10000
+        MAX_WITNESS_SCRIPT_LENGTH = 100000
 
-        # This script is 19 max pushes (9937 bytes), then 64 more opcode-bytes.
-        long_witness_script = CScript([b'a' * MAX_SCRIPT_ELEMENT_SIZE] * 19 + [OP_DROP] * 63 + [OP_TRUE])
+        # Seven data pushes plus drops straddle the script-size limit.
+        long_witness_script = CScript([b'a' * MAX_SCRIPT_ELEMENT_SIZE] * 6 + [b'a' * 9964] + [OP_DROP] * 15 + [OP_TRUE])
         assert len(long_witness_script) == MAX_WITNESS_SCRIPT_LENGTH + 1
         long_script_pubkey = script_to_p2wsh_script(long_witness_script)
 
@@ -1125,7 +1114,7 @@ class SegWitTest(BTQTestFramework):
         tx2.vin.append(CTxIn(COutPoint(tx.sha256, 0), b""))
         tx2.vout.append(CTxOut(tx.vout[0].nValue - 1000, CScript([OP_TRUE])))
         tx2.wit.vtxinwit.append(CTxInWitness())
-        tx2.wit.vtxinwit[0].scriptWitness.stack = [b'a'] * 44 + [long_witness_script]
+        tx2.wit.vtxinwit[0].scriptWitness.stack = [b'a'] * 8 + [long_witness_script]
         tx2.rehash()
 
         self.update_witness_block_with_transactions(block, [tx, tx2])
@@ -1134,14 +1123,14 @@ class SegWitTest(BTQTestFramework):
                            reason='mandatory-script-verify-flag-failed (Script is too big)')
 
         # Try again with one less byte in the witness script
-        witness_script = CScript([b'a' * MAX_SCRIPT_ELEMENT_SIZE] * 19 + [OP_DROP] * 62 + [OP_TRUE])
+        witness_script = CScript([b'a' * MAX_SCRIPT_ELEMENT_SIZE] * 6 + [b'a' * 9964] + [OP_DROP] * 14 + [OP_TRUE])
         assert len(witness_script) == MAX_WITNESS_SCRIPT_LENGTH
         script_pubkey = script_to_p2wsh_script(witness_script)
 
         tx.vout[0] = CTxOut(tx.vout[0].nValue, script_pubkey)
         tx.rehash()
         tx2.vin[0].prevout.hash = tx.sha256
-        tx2.wit.vtxinwit[0].scriptWitness.stack = [b'a'] * 43 + [witness_script]
+        tx2.wit.vtxinwit[0].scriptWitness.stack = [b'a'] * 7 + [witness_script]
         tx2.rehash()
         block.vtx = [block.vtx[0]]
         self.update_witness_block_with_transactions(block, [tx, tx2])
@@ -1357,8 +1346,8 @@ class SegWitTest(BTQTestFramework):
         assert_equal(len(self.nodes[1].getrawmempool()), 0)
         for version in list(range(OP_1, OP_16 + 1)) + [OP_0]:
             # First try to spend to a future version segwit script_pubkey.
-            if version == OP_1:
-                # Don't use 32-byte v1 witness (used by Taproot; see BIP 341)
+            if version in (OP_1, OP_2):
+                # Use an unassigned program length: v1/32 is Taproot, v2/32 is P2MR.
                 script_pubkey = CScript([CScriptOp(version), witness_hash + b'\x00'])
             else:
                 script_pubkey = CScript([CScriptOp(version), witness_hash])
@@ -1375,7 +1364,7 @@ class SegWitTest(BTQTestFramework):
 
         # Finally, verify that version 0 -> version 2 transactions
         # are standard
-        script_pubkey = CScript([CScriptOp(OP_2), witness_hash])
+        script_pubkey = CScript([CScriptOp(OP_2), witness_hash + b'\x00'])
         tx2 = CTransaction()
         tx2.vin = [CTxIn(COutPoint(tx.sha256, 0), b"")]
         tx2.vout = [CTxOut(tx.vout[0].nValue - 1000, script_pubkey)]
@@ -1793,8 +1782,8 @@ class SegWitTest(BTQTestFramework):
         scripts = []
         scripts.append(CScript([OP_DROP] * 100))
         scripts.append(CScript([OP_DROP] * 99))
-        scripts.append(CScript([pad * 59] * 59 + [OP_DROP] * 60))
-        scripts.append(CScript([pad * 59] * 59 + [OP_DROP] * 61))
+        scripts.append(CScript([pad * 6500] * 9 + [pad * 6995] + [OP_DROP] * 11))
+        scripts.append(CScript([pad * 6500] * 9 + [pad * 6995] + [OP_DROP] * 12))
 
         p2wsh_scripts = []
 
@@ -1838,21 +1827,22 @@ class SegWitTest(BTQTestFramework):
         # Non-standard nodes should accept
         test_transaction_acceptance(self.nodes[0], self.test_node, p2wsh_txs[0], True, True)
 
-        # Stack element size over 80 bytes is non-standard
-        p2wsh_txs[1].wit.vtxinwit[0].scriptWitness.stack = [pad * 81] * 100 + [scripts[1]]
+        # The policy and consensus stack-element limits coincide on BTQ.
+        p2wsh_txs[1].wit.vtxinwit[0].scriptWitness.stack = [pad * (MAX_SCRIPT_ELEMENT_SIZE + 1)] + [pad] * 99 + [scripts[1]]
         test_transaction_acceptance(self.nodes[1], self.std_node, p2wsh_txs[1], True, False, 'bad-witness-nonstandard')
-        # Non-standard nodes should accept
-        test_transaction_acceptance(self.nodes[0], self.test_node, p2wsh_txs[1], True, True)
-        # Standard nodes should accept if element size is not over 80 bytes
-        p2wsh_txs[1].wit.vtxinwit[0].scriptWitness.stack = [pad * 80] * 100 + [scripts[1]]
+        # Even non-standard nodes must enforce the consensus element limit.
+        test_transaction_acceptance(self.nodes[0], self.test_node, p2wsh_txs[1], True, False, 'Push value size limit exceeded')
+        # Standard nodes accept an element exactly at the limit.
+        p2wsh_txs[1].wit.vtxinwit[0].scriptWitness.stack = [pad * MAX_SCRIPT_ELEMENT_SIZE] + [pad] * 99 + [scripts[1]]
         test_transaction_acceptance(self.nodes[1], self.std_node, p2wsh_txs[1], True, True)
+        test_transaction_acceptance(self.nodes[0], self.test_node, p2wsh_txs[1], True, True)
 
-        # witnessScript size at 3600 bytes is standard
+        # witnessScript size at 65536 bytes is standard
         p2wsh_txs[2].wit.vtxinwit[0].scriptWitness.stack = [pad, pad, scripts[2]]
         test_transaction_acceptance(self.nodes[0], self.test_node, p2wsh_txs[2], True, True)
         test_transaction_acceptance(self.nodes[1], self.std_node, p2wsh_txs[2], True, True)
 
-        # witnessScript size at 3601 bytes is non-standard
+        # witnessScript size at 65537 bytes is non-standard
         p2wsh_txs[3].wit.vtxinwit[0].scriptWitness.stack = [pad, pad, pad, scripts[3]]
         test_transaction_acceptance(self.nodes[1], self.std_node, p2wsh_txs[3], True, False, 'bad-witness-nonstandard')
         # Non-standard nodes should accept
@@ -1862,11 +1852,12 @@ class SegWitTest(BTQTestFramework):
         p2sh_txs[0].wit.vtxinwit[0].scriptWitness.stack = [pad] * 101 + [scripts[0]]
         test_transaction_acceptance(self.nodes[1], self.std_node, p2sh_txs[0], True, False, 'bad-witness-nonstandard')
         test_transaction_acceptance(self.nodes[0], self.test_node, p2sh_txs[0], True, True)
-        p2sh_txs[1].wit.vtxinwit[0].scriptWitness.stack = [pad * 81] * 100 + [scripts[1]]
+        p2sh_txs[1].wit.vtxinwit[0].scriptWitness.stack = [pad * (MAX_SCRIPT_ELEMENT_SIZE + 1)] + [pad] * 99 + [scripts[1]]
         test_transaction_acceptance(self.nodes[1], self.std_node, p2sh_txs[1], True, False, 'bad-witness-nonstandard')
-        test_transaction_acceptance(self.nodes[0], self.test_node, p2sh_txs[1], True, True)
-        p2sh_txs[1].wit.vtxinwit[0].scriptWitness.stack = [pad * 80] * 100 + [scripts[1]]
+        test_transaction_acceptance(self.nodes[0], self.test_node, p2sh_txs[1], True, False, 'Push value size limit exceeded')
+        p2sh_txs[1].wit.vtxinwit[0].scriptWitness.stack = [pad * MAX_SCRIPT_ELEMENT_SIZE] + [pad] * 99 + [scripts[1]]
         test_transaction_acceptance(self.nodes[1], self.std_node, p2sh_txs[1], True, True)
+        test_transaction_acceptance(self.nodes[0], self.test_node, p2sh_txs[1], True, True)
         p2sh_txs[2].wit.vtxinwit[0].scriptWitness.stack = [pad, pad, scripts[2]]
         test_transaction_acceptance(self.nodes[0], self.test_node, p2sh_txs[2], True, True)
         test_transaction_acceptance(self.nodes[1], self.std_node, p2sh_txs[2], True, True)
@@ -1944,7 +1935,7 @@ class SegWitTest(BTQTestFramework):
 
         # Try dropping the last input in tx2, and add an output that has
         # too many sigops (contributing to legacy sigop count).
-        checksig_count = (extra_sigops_available // 4) + 1
+        checksig_count = (extra_sigops_available // WITNESS_SCALE_FACTOR) + 1
         script_pubkey_checksigs = CScript([OP_CHECKSIG] * checksig_count)
         tx2.vout.append(CTxOut(0, script_pubkey_checksigs))
         tx2.vin.pop()

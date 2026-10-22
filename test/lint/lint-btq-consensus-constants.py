@@ -268,7 +268,7 @@ def main():
         consensus["DILITHIUM_SIGOP_COST"],
     )
     check_equal(errors, "p2p.MAGIC_BYTES mainnet", magic_bytes.get("mainnet", MISSING), cpp_message_start("CMainParams"))
-    check_equal(errors, "p2p.MAGIC_BYTES testnet3", magic_bytes.get("testnet3", MISSING), cpp_message_start("CTestNetParams"))
+    check_equal(errors, "p2p.MAGIC_BYTES test", magic_bytes.get("test", MISSING), cpp_message_start("CTestNetParams"))
     check_equal(errors, "p2p.MAGIC_BYTES regtest", magic_bytes.get("regtest", MISSING), cpp_message_start("CRegTestParams"))
     check_equal(errors, "p2p.MAGIC_BYTES signet", magic_bytes.get("signet", MISSING), cpp_default_signet_message_start())
 

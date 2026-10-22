@@ -568,6 +568,12 @@ public:
      */
     std::unordered_set<CScript, SaltedSipHasher> GetNotMineScriptPubKeys() const;
 
+    /** Get the secp256k1 scriptPubKeys at the indexes below chain_counter on HD chain
+     * chain_index whose secp256k1 key this wallet does not have because its Dilithium
+     * key took the index. Each such index is checked by deriving the Dilithium key from
+     * the seed. */
+    std::unordered_set<CScript, SaltedSipHasher> GetDilithiumIndexScriptPubKeys(const CKey& seed_key, int chain_index, uint32_t chain_counter) const EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
+
     /** Get the DescriptorScriptPubKeyMans (with private keys) that have the same scriptPubKeys as this LegacyScriptPubKeyMan.
      * Does not modify this ScriptPubKeyMan. */
     std::optional<MigrationData> MigrateToDescriptor();
@@ -683,6 +689,10 @@ public:
     bool HaveDilithiumKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool HaveKeyByXOnly(const XOnlyPubKey& pubkey) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool GetKeyByXOnly(const XOnlyPubKey& pubkey, CKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    /** Whether the private key for this Taproot output's key path is available (false when locked). */
+    bool CanSignTaprootKeyPath(const CScript& script) const;
+    /** Sign PSBT input input_index with only this descriptor's keys for script. */
+    void SignPSBTInputWithOwnKeys(PartiallySignedTransaction& psbtx, const PrecomputedTransactionData& txdata, unsigned int input_index, const CScript& script, int sighash_type, bool bip32derivs, bool finalize) const;
 
     bool CheckDecryptionKey(const CKeyingMaterial& master_key, bool accept_no_keys = false) override;
     bool Encrypt(const CKeyingMaterial& master_key, WalletBatch* batch) override;

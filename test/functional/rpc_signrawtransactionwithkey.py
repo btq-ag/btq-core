@@ -6,6 +6,7 @@
 
 from test_framework.blocktools import (
     COINBASE_MATURITY,
+    block_subsidy,
 )
 from test_framework.address import (
     address_to_scriptpubkey,
@@ -42,6 +43,12 @@ INPUTS = [
      'scriptPubKey': '76a914669b857c03a5ed269d5d85a1ffac9ed5d663072788ac'},
 ]
 OUTPUTS = {'mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB': 0.1}
+
+# Every block this test mines is well before the first halving, so one subsidy
+# is all it ever needs. Spends of a whole coinbase output are SUBSIDY less the
+# fee, and the other amounts are a tenth of upstream's because BTQ's subsidy is
+# a tenth of Bitcoin's.
+SUBSIDY = block_subsidy(1)
 
 class SignRawTransactionWithKeyTest(BTQTestFramework):
     def set_test_params(self):
@@ -83,7 +90,7 @@ class SignRawTransactionWithKeyTest(BTQTestFramework):
         # send transaction to P2SH-P2WSH 1-of-1 multisig address
         self.block_hash = self.generate(self.nodes[0], COINBASE_MATURITY + 1)
         self.blk_idx = 0
-        self.send_to_address(p2sh_p2wsh_address["address"], 49.999)
+        self.send_to_address(p2sh_p2wsh_address["address"], SUBSIDY - Decimal("0.001"))
         self.generate(self.nodes[0], 1)
         # Get the UTXO info from scantxoutset
         unspent_output = self.nodes[1].scantxoutset('start', [p2sh_p2wsh_address['descriptor']])['unspents'][0]
@@ -92,7 +99,7 @@ class SignRawTransactionWithKeyTest(BTQTestFramework):
         unspent_output['redeemScript'] = script_to_p2wsh_script(unspent_output['witnessScript']).hex()
         assert_equal(spk, unspent_output['scriptPubKey'])
         # Now create and sign a transaction spending that output on node[0], which doesn't know the scripts or keys
-        spending_tx = self.nodes[0].createrawtransaction([unspent_output], {getnewdestination()[2]: Decimal("49.998")})
+        spending_tx = self.nodes[0].createrawtransaction([unspent_output], {getnewdestination()[2]: SUBSIDY - Decimal("0.002")})
         spending_tx_signed = self.nodes[0].signrawtransactionwithkey(spending_tx, [embedded_privkey], [unspent_output])
         self.assert_signing_completed_successfully(spending_tx_signed)
 
@@ -111,12 +118,12 @@ class SignRawTransactionWithKeyTest(BTQTestFramework):
         addr = script_to_p2sh(redeem_script)
         script_pub_key = address_to_scriptpubkey(addr).hex()
         # Fund that address
-        txid = self.send_to_address(addr, 10)
+        txid = self.send_to_address(addr, 1)
         vout = find_vout_for_address(self.nodes[0], txid, addr)
         self.generate(self.nodes[0], 1)
         # Now create and sign a transaction spending that output on node[0], which doesn't know the scripts or keys
-        spending_tx = self.nodes[0].createrawtransaction([{'txid': txid, 'vout': vout}], {getnewdestination()[2]: Decimal("9.999")})
-        spending_tx_signed = self.nodes[0].signrawtransactionwithkey(spending_tx, [embedded_privkey], [{'txid': txid, 'vout': vout, 'scriptPubKey': script_pub_key, 'redeemScript': redeem_script, 'witnessScript': witness_script, 'amount': 10}])
+        spending_tx = self.nodes[0].createrawtransaction([{'txid': txid, 'vout': vout}], {getnewdestination()[2]: Decimal("0.999")})
+        spending_tx_signed = self.nodes[0].signrawtransactionwithkey(spending_tx, [embedded_privkey], [{'txid': txid, 'vout': vout, 'scriptPubKey': script_pub_key, 'redeemScript': redeem_script, 'witnessScript': witness_script, 'amount': 1}])
         self.assert_signing_completed_successfully(spending_tx_signed)
         self.nodes[0].sendrawtransaction(spending_tx_signed['hex'])
 

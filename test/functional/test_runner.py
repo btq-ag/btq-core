@@ -188,6 +188,11 @@ BASE_SCRIPTS = [
     'wallet_abandonconflict.py --legacy-wallet',
     'wallet_abandonconflict.py --descriptors',
     'feature_reindex.py',
+    'feature_unsupported_utxo_db.py',
+    'p2p_dos_header_tree.py',
+    'feature_release_compatibility.py --descriptors',
+    'feature_release_compatibility.py --legacy-wallet',
+    'rpc_psbt_nowallet.py',
     'feature_reindex_readonly.py',
     'wallet_labels.py --legacy-wallet',
     'wallet_labels.py --descriptors',
@@ -226,6 +231,8 @@ BASE_SCRIPTS = [
     'wallet_createwallet.py --usecli',
     'wallet_createwallet.py --descriptors',
     'wallet_watchonly.py --legacy-wallet',
+    'wallet_upgradewallet.py --legacy-wallet',
+    'wallet_upgradewallet.py --descriptors',
     'wallet_watchonly.py --usecli --legacy-wallet',
     'wallet_reorgsrestore.py',
     'wallet_conflicts.py --legacy-wallet',
@@ -360,7 +367,6 @@ BASE_SCRIPTS = [
     'feature_filelock.py',
     'feature_loadblock.py',
     'feature_assumeutxo.py',
-    'p2p_dos_header_tree.py',
     'p2p_add_connections.py',
     'feature_bind_port_discover.py',
     'p2p_unrequested_blocks.py',
@@ -415,6 +421,7 @@ NON_SCRIPTS = [
     # These are python files that live in the functional tests directory, but are not test scripts.
     "combine_logs.py",
     "create_cache.py",
+    "create_rpc_coverage.py",
     "test_runner.py",
 ]
 
@@ -573,7 +580,7 @@ def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=
 
     tests_dir = src_dir + '/test/functional/'
     # This allows `test_runner.py` to work from an out-of-source build directory using a symlink,
-    # a hard link or a copy on any platform. See https://github.com/btq/btq/pull/27561.
+    # a hard link or a copy on any platform. See https://github.com/bitcoin/bitcoin/pull/27561.
     sys.path.append(tests_dir)
 
     test_framework_tests = unittest.TestSuite()
@@ -582,7 +589,7 @@ def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=
     result = unittest.TextTestRunner(verbosity=1, failfast=True).run(test_framework_tests)
     if not result.wasSuccessful():
         logging.debug("Early exiting after failure in TestFramework unit tests")
-        sys.exit(False)
+        sys.exit(1)
 
     flags = ['--cachedir={}'.format(cache_dir)] + args
 
@@ -592,6 +599,12 @@ def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=
         logging.debug("Initializing coverage directory at %s" % coverage.dir)
     else:
         coverage = None
+
+    if coverage:
+        # Initialize before the wallet-disabled cache or any parallel test.
+        # Only the current binary supplies the complete reference; historical
+        # binaries and wallet-disabled tests cannot win a first-writer race.
+        subprocess.check_output([sys.executable, tests_dir + 'create_rpc_coverage.py'] + flags + ["--tmpdir=%s/rpc-coverage" % tmpdir])
 
     if len(test_list) > 1 and jobs > 1:
         # Populate cache
@@ -671,6 +684,7 @@ def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=
     if not os.getenv("CI_FAILFAST_TEST_LEAVE_DANGLING") and len(job_queue.jobs):
         os.killpg(os.getpgid(0), signal.SIGKILL)
 
+    print("Functional test runner completed.")
     sys.exit(not all_passed)
 
 

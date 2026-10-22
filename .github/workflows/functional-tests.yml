@@ -1,0 +1,98 @@
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Run the base functional suite (BASE_SCRIPTS) and independently validate
+# completion, test inventory and RPC coverage. Existing production
+# dependencies retain their explicit failure allowances.
+#
+# The slow tests in EXTENDED_SCRIPTS run in extended-functional-tests.yml,
+# on pushes to master, nightly, on manual dispatch, and on pull requests
+# labelled ci:extended.
+
+name: functional-tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: functional-${{ github.workflow }}-${{ github.event_name != 'pull_request' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functional-tests:
+    name: functional tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPRESS: "1"
+      MAKEJOBS: "-j4"
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libtool autotools-dev automake pkg-config \
+            bsdmainutils ccache python3-zmq \
+            libevent-dev libboost-dev libsqlite3-dev libdb++-dev libzmq3-dev
+
+      # Same configure flags as build-and-address-tests.yml, so this job
+      # can start from that job's ccache.
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-functional-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-functional-${{ runner.os }}-
+            ccache-${{ runner.os }}-
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          ./configure \
+            --disable-bench \
+            --disable-fuzz \
+            --disable-fuzz-binary \
+            --without-gui \
+            --with-incompatible-bdb \
+            --with-zmq \
+            CC="ccache gcc" \
+            CXX="ccache g++"
+
+      - name: Build
+        run: make $MAKEJOBS
+
+      - name: Run functional tests
+        # Preserve the log even on failure. The next step rejects unexpected
+        # failures, incomplete runs, missing variants and missing RPC coverage.
+        run: |
+          python3 ci/test/test_functional_test_harness.py
+          test/functional/test_runner.py --ci --quiet --coverage --jobs 8 \
+            --tmpdirprefix "$RUNNER_TEMP" --timeout-factor=4 \
+            2>&1 | tee "$RUNNER_TEMP/functional.log" || true
+
+      - name: Compare with known failures
+        run: python3 ci/test/check_known_failures.py --coverage "$RUNNER_TEMP/functional.log" test/functional/known_failures.txt
+
+      - name: Upload test_runner output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: functional-log
+          path: ${{ runner.temp }}/functional.log
+          if-no-files-found: ignore
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s || true

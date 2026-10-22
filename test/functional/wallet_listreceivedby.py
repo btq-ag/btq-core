@@ -5,7 +5,10 @@
 """Test the listreceivedbyaddress, listreceivedbylabel, getreceivedybaddress, and getreceivedbylabel RPCs."""
 from decimal import Decimal
 
-from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.blocktools import (
+    COINBASE_MATURITY,
+    block_subsidy,
+)
 from test_framework.test_framework import BTQTestFramework
 from test_framework.util import (
     assert_array_result,
@@ -179,7 +182,7 @@ class ReceivedByTest(BTQTestFramework):
         label = "label"
         address = self.nodes[0].getnewaddress(label)
 
-        reward = Decimal("25")
+        reward = block_subsidy(self.nodes[0].getblockcount() + 1)
         self.generatetoaddress(self.nodes[0], 1, address)
         hash = self.nodes[0].getbestblockhash()
 

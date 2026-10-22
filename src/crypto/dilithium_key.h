@@ -150,6 +150,8 @@ public:
     template <typename T>
     void Set(const T pbegin, const T pend)
     {
+        // pend - pbegin counts elements. A wider element would copy a prefix.
+        static_assert(sizeof(*pbegin) == 1, "Set() requires a byte iterator");
         if (size_t(pend - pbegin) != KeyType{}.size()) {
             ClearKeyData();
         } else {
@@ -264,6 +266,8 @@ public:
     template <typename T>
     void Set(const T pbegin, const T pend)
     {
+        // pend - pbegin counts elements. A wider element would copy a prefix.
+        static_assert(sizeof(*pbegin) == 1, "Set() requires a byte iterator");
         if (size_t(pend - pbegin) == SIZE) {
             memcpy(vch.data(), (unsigned char*)&pbegin[0], SIZE);
         } else {
