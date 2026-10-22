@@ -19,4 +19,3 @@
 feature_fee_estimation.py
 feature_maxuploadtarget.py
 mempool_limit.py                                        # KeyError: 'fees' (testmempoolaccept rejects the fill txs: tx-size)
-wallet_taproot.py --descriptors                         # AssertionError: not(qcrt1pwccu4nkrxsc99kr77ngqvhmpmh5z6lfdkrqucqh0v8hnexpw5a3...

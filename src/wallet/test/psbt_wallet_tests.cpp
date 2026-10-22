@@ -2,7 +2,10 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <consensus/amount.h>
 #include <key_io.h>
+#include <primitives/transaction.h>
+#include <script/descriptor.h>
 #include <util/bip32.h>
 #include <util/strencodings.h>
 #include <wallet/wallet.h>
@@ -70,6 +73,78 @@ BOOST_AUTO_TEST_CASE(psbt_updater_test)
     // Try to sign the mutated input
     SignatureData sigdata;
     BOOST_CHECK(m_wallet.FillPSBT(psbtx, complete, SIGHASH_ALL, true, true) != TransactionError::OK);
+}
+
+BOOST_AUTO_TEST_CASE(fillpsbt_sighash_mismatch_signs_nothing)
+{
+    // walletprocesspsbt throws away the PSBT on SIGHASH_MISMATCH, so this is
+    // the check that a mismatch on a later input did not already key-sign an
+    // earlier one.
+    LOCK(m_wallet.cs_wallet);
+    m_wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+    const std::string desc_str{"tr(xprvJK8WA4YPx1Rmnhd5aCt3J6PkYPSwnRPpuv1b2VQYb1DiVDSAu4tmgfHW32sueTc5DCGdbPhz2HEiLBZpWyoRMe4AGQWQcWUy2g3pYMXLCqJ)"};
+    import_descriptor(m_wallet, desc_str);
+
+    FlatSigningProvider keys;
+    std::string error;
+    const auto desc{Parse(desc_str, keys, error, /*require_checksum=*/false)};
+    BOOST_REQUIRE_MESSAGE(desc, error);
+    FlatSigningProvider scripts;
+    std::vector<CScript> spks;
+    BOOST_REQUIRE(desc->Expand(0, keys, spks, scripts));
+    BOOST_REQUIRE_EQUAL(spks.size(), 1U);
+
+    CMutableTransaction prev;
+    prev.vout.assign(2, CTxOut{COIN, spks[0]});
+    const CTransactionRef prev_tx{MakeTransactionRef(prev)};
+    m_wallet.mapWallet.emplace(std::piecewise_construct, std::forward_as_tuple(prev_tx->GetHash()), std::forward_as_tuple(prev_tx, TxStateInactive{}));
+
+    CMutableTransaction spend;
+    spend.vin.resize(2);
+    spend.vin[0].prevout = COutPoint{prev_tx->GetHash(), 0};
+    spend.vin[1].prevout = COutPoint{prev_tx->GetHash(), 1};
+    spend.vout.assign(1, CTxOut{COIN / 2, spks[0]});
+
+    auto make_psbt = [&] {
+        PartiallySignedTransaction psbtx{spend};
+        BOOST_REQUIRE_EQUAL(psbtx.inputs.size(), 2U);
+        return psbtx;
+    };
+
+    for (const bool finalize : {false, true}) {
+        PartiallySignedTransaction psbtx{make_psbt()};
+        bool complete{false};
+        size_t n_signed{99};
+        BOOST_CHECK_EQUAL(m_wallet.FillPSBT(psbtx, complete, SIGHASH_DEFAULT, true, true, &n_signed, finalize), TransactionError::OK);
+        BOOST_CHECK_EQUAL(complete, finalize);
+        BOOST_CHECK_EQUAL(n_signed, finalize ? 2U : 0U);
+        for (const auto& input : psbtx.inputs) {
+            if (finalize) {
+                BOOST_CHECK_EQUAL(input.final_script_witness.stack.size(), 1U);
+            } else {
+                BOOST_CHECK(!input.m_tap_key_sig.empty());
+                BOOST_CHECK(input.final_script_witness.IsNull());
+            }
+        }
+        // Finalizing retained signatures counts each input once. Repeating
+        // an already finalized PSBT must not count the pre-pass again.
+        BOOST_CHECK_EQUAL(m_wallet.FillPSBT(psbtx, complete, SIGHASH_DEFAULT, true, true, &n_signed), TransactionError::OK);
+        BOOST_CHECK(complete);
+        BOOST_CHECK_EQUAL(n_signed, finalize ? 0U : 2U);
+    }
+
+    {
+        PartiallySignedTransaction psbtx{make_psbt()};
+        psbtx.inputs[1].sighash_type = SIGHASH_NONE;
+        bool complete{true};
+        size_t n_signed{99};
+        BOOST_CHECK_EQUAL(m_wallet.FillPSBT(psbtx, complete, SIGHASH_DEFAULT, true, true, &n_signed), TransactionError::SIGHASH_MISMATCH);
+        BOOST_CHECK_EQUAL(n_signed, 0U);
+        BOOST_CHECK(psbtx.inputs[0].m_tap_key_sig.empty());
+        BOOST_CHECK(psbtx.inputs[0].final_script_witness.IsNull());
+        BOOST_CHECK(psbtx.inputs[1].m_tap_key_sig.empty());
+        BOOST_CHECK(psbtx.inputs[1].final_script_witness.IsNull());
+    }
 }
 
 BOOST_AUTO_TEST_CASE(parse_hd_keypath)
