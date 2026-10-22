@@ -3862,10 +3862,9 @@ const CKeyingMaterial& CWallet::GetEncryptionKey() const
 
 bool CWallet::HaveDilithiumKeyAnywhere(const CKeyID& keyid) const NO_THREAD_SAFETY_ANALYSIS
 {
-    // GenerateNewDilithiumKey takes cs_wallet before cs_desc_man, then this
-    // skip-check re-locks cs_desc_man (recursive). The assert is the runtime
-    // half of that. The analysis attribute is required because the virtual
-    // WalletStorage declaration has no mutex to name, so clang cannot see
+    // GenerateNewDilithiumKey holds cs_wallet, but no manager lock, while
+    // this lookup checks managers one at a time. The analysis attribute is
+    // required because WalletStorage has no mutex to name, so clang cannot see
     // the cs_wallet requirement on this override.
     AssertLockHeld(cs_wallet);
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
