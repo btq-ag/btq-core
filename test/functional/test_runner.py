@@ -176,6 +176,7 @@ BASE_SCRIPTS = [
     # vv Tests less than 30s vv
     'p2p_invalid_messages.py',
     'rpc_createmultisig.py',
+    'rpc_createmultisig.py --legacy-wallet',
     'p2p_timeouts.py',
     'wallet_dump.py --legacy-wallet',
     'rpc_signer.py',

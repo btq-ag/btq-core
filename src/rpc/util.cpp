@@ -230,6 +230,12 @@ CPubKey AddrToPubKey(const FillableSigningProvider& keystore, const std::string&
 // Creates a multisig address from a given list of public keys, number of signatures required, and the address type
 CTxDestination AddAndGetMultisigDestination(const int required, const std::vector<CPubKey>& pubkeys, OutputType type, FillableSigningProvider& keystore, CScript& script_out)
 {
+    // AddAndGetDestinationForScript asserts on any other type, and both
+    // callers can reach here with a type taken from -addresstype.
+    if (type != OutputType::LEGACY && type != OutputType::P2SH_SEGWIT && type != OutputType::BECH32) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Multisig addresses cannot be created with address type '%s'. Use legacy, p2sh-segwit or bech32", FormatOutputType(type)));
+    }
+
     // Gather public keys
     if (required < 1) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "a multisignature address must require at least one key to redeem");

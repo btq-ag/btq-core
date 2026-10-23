@@ -118,6 +118,12 @@ class RpcCreateMultiSigTest(BTQTestFramework):
         # Check that bech32m is currently not allowed
         assert_raises_rpc_error(-5, "createmultisig cannot create bech32m multisig addresses", self.nodes[0].createmultisig, 2, self.pub, "bech32m")
 
+        self.log.info('Quantum output types are refused, not asserted on')
+        for addr_type in ["p2mr", "dilithium-legacy", "dilithium-bech32"]:
+            assert_raises_rpc_error(-5, f"Multisig addresses cannot be created with address type '{addr_type}'", self.nodes[0].createmultisig, 2, self.pub, addr_type)
+            # Uncompressed keys force legacy for the segwit types; they must not mask this
+            assert_raises_rpc_error(-5, f"Multisig addresses cannot be created with address type '{addr_type}'", self.nodes[0].createmultisig, 2, [pk0, pk1, pk2], addr_type)
+
     def check_addmultisigaddress_errors(self):
         if self.options.descriptors:
             return
@@ -132,6 +138,21 @@ class RpcCreateMultiSigTest(BTQTestFramework):
         # Bech32m address type is disallowed for legacy wallets
         pubs = [self.nodes[1].getaddressinfo(addr)["pubkey"] for addr in addresses]
         assert_raises_rpc_error(-5, "Bech32m multisig addresses cannot be created with legacy wallets", self.nodes[0].addmultisigaddress, 2, pubs, "", "bech32m")
+
+        for addr_type in ["p2mr", "dilithium-legacy", "dilithium-bech32"]:
+            assert_raises_rpc_error(-5, f"Multisig addresses cannot be created with address type '{addr_type}'", self.nodes[0].addmultisigaddress, 2, pubs, "", addr_type)
+
+        for addr_type in ["p2mr", "bech32m", "dilithium-legacy", "dilithium-bech32"]:
+            self.log.info(f'-addresstype={addr_type}: addmultisigaddress refuses it, dumpwallet falls back to bech32')
+            self.restart_node(0, extra_args=[f"-addresstype={addr_type}"])
+            assert_raises_rpc_error(-5, f"Multisig addresses cannot be created with address type '{addr_type}'", self.nodes[0].addmultisigaddress, 2, pubs)
+            dump_path = os.path.join(self.nodes[0].datadir_path, f"{addr_type}_addresstype.dump")
+            self.nodes[0].dumpwallet(dump_path)
+            with open(dump_path, encoding="utf8") as f:
+                reserve_addrs = [line.split("addr=")[1].split()[0] for line in f if "reserve=1" in line and "addr=" in line]
+            assert any(addr.startswith("qcrt1q") for addr in reserve_addrs)
+        self.restart_node(0)
+        self.connect_nodes(0, 1)
 
     def checkbalances(self):
         node0, node1, node2 = self.nodes
