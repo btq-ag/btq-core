@@ -281,7 +281,7 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
             // WITNESS_SCALE_FACTOR, so the entry has to declare the same product or the
             // assembler packs to a budget consensus does not agree with and the template
             // is rejected. Upstream writes the product out as 80 because its factor is 4;
-            // BTQ's is 16, which leaves a block room for 250 of these rather than 1000.
+            // BTQ's is 16, which leaves a block room for 500 of these at the 160000 limit.
             tx_mempool.addUnchecked(entry.Fee(LOWFEE).Time(Now<NodeSeconds>()).SpendsCoinbase(spendsCoinbase).SigOpsCost(20 * WITNESS_SCALE_FACTOR).FromTx(tx));
             tx.vin[0].prevout.hash = hash;
         }

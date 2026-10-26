@@ -91,6 +91,25 @@ BOOST_AUTO_TEST_CASE(testnet_dilithium_p2mr_height_is_settable)
     BOOST_CHECK_EQUAL(CreateChainParams(*m_node.args, ChainType::BTQTEST)->GetConsensus().nDilithiumP2MRHeight, 1);
 }
 
+BOOST_AUTO_TEST_CASE(chainparams_dilithium_limits)
+{
+    // This branch's testnet is the new chain, so it activates at height 1
+    // with mainnet, signet, and regtest. The published #297 default left
+    // testnet unscheduled; that is the legacy testnet, not this one.
+    for (const ChainType chain : {ChainType::BTQMAIN, ChainType::BTQTEST, ChainType::BTQREGTEST, ChainType::BTQSIGNET}) {
+        const auto& consensus{CreateChainParams(*m_node.args, chain)->GetConsensus()};
+        BOOST_CHECK_EQUAL(consensus.nDilithiumLimitsHeight, 1);
+        BOOST_CHECK_EQUAL(consensus.MaxBlockSigOpsCost(0), MAX_BLOCK_SIGOPS_COST);
+        BOOST_CHECK_EQUAL(consensus.MaxBlockSigOpsCost(1), MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS);
+    }
+
+    BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM_LIMITS);
+    BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM_LIMITS));
+    BOOST_CHECK_EQUAL(VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED, 1400);
+    BOOST_CHECK_EQUAL(VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED_LEGACY, 500);
+    BOOST_CHECK_EQUAL(MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS, 160000);
+}
+
 BOOST_AUTO_TEST_CASE(dilithium_opcodes_rejected_outside_p2mr_when_flag_set)
 {
     CDilithiumKey key;

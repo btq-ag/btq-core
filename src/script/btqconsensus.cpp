@@ -10,6 +10,8 @@
 #include <script/interpreter.h>
 #include <version.h>
 
+static_assert(static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS) == static_cast<unsigned int>(SCRIPT_VERIFY_DILITHIUM_LIMITS));
+
 namespace {
 
 /** A class that deserializes a single CTransaction one time. */

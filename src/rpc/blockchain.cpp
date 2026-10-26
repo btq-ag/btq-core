@@ -1319,6 +1319,7 @@ UniValue DeploymentInfo(const CBlockIndex* blockindex, const ChainstateManager& 
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_LWMA);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_DILITHIUM);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_DILITHIUM_P2MR);
+    SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_DILITHIUM_LIMITS);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_TESTDUMMY);
     SoftForkDescPushBack(blockindex, softforks, chainman, Consensus::DEPLOYMENT_TAPROOT);
     return softforks;

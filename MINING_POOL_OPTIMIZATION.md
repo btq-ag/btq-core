@@ -196,7 +196,7 @@ All BTQ networks now use optimized parameters:
 |-----------|-------|--------|
 | `COINBASE_MATURITY` | 100 blocks | Security: prevents spending reorganized coinbase outputs |
 | `MAX_BLOCK_WEIGHT` | 64 MB | Hard cap provides safety margin |
-| `MAX_BLOCK_SIGOPS_COST` | 80,000 | Prevents signature operation abuse |
+| `MAX_BLOCK_SIGOPS_COST` | 80,000, 160,000 from the `dilithium_limits` height | Prevents signature operation abuse |
 | Dilithium key/signature sizes | 1,312/2,420 bytes | Cryptographic constants (cannot change) |
 
 **Note on Coinbase Maturity:** With 1-minute blocks, the 100-block maturity period now represents ~100 minutes (~1.67 hours) instead of ~16.7 hours. This is a natural consequence of faster blocks and provides a good balance between security and usability.

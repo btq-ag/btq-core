@@ -9,6 +9,7 @@ import struct
 import time
 
 from test_framework.blocktools import (
+    MAX_BLOCK_SIGOPS_WEIGHT_DILITHIUM_LIMITS,
     WITNESS_COMMITMENT_HEADER,
     add_witness_commitment,
     create_block,
@@ -92,7 +93,7 @@ from test_framework.wallet import MiniWallet
 from test_framework.wallet_util import generate_keypair
 
 
-MAX_SIGOP_COST = 80000
+MAX_SIGOP_COST = MAX_BLOCK_SIGOPS_WEIGHT_DILITHIUM_LIMITS
 
 SEGWIT_HEIGHT = 120
 

@@ -204,7 +204,7 @@ bool BlockAssembler::TestPackage(uint64_t packageSize, int64_t packageSigOpsCost
     if (nBlockWeight + WITNESS_SCALE_FACTOR * packageSize >= m_options.nBlockMaxWeight) {
         return false;
     }
-    if (nBlockSigOpsCost + packageSigOpsCost >= MAX_BLOCK_SIGOPS_COST) {
+    if (nBlockSigOpsCost + packageSigOpsCost >= static_cast<uint64_t>(chainparams.GetConsensus().MaxBlockSigOpsCost(nHeight))) {
         return false;
     }
     return true;

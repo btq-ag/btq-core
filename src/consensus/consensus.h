@@ -15,6 +15,10 @@ static const unsigned int MAX_BLOCK_SERIALIZED_SIZE = 8000000; // 8 MB
 static const unsigned int MAX_BLOCK_WEIGHT = 8000000; // 8 MW
 /** The maximum allowed number of signature check operations in a block (network rule) */
 static const int64_t MAX_BLOCK_SIGOPS_COST = 80000;
+/** Block sigop cost limit from nDilithiumLimitsHeight (Consensus::Params::MaxBlockSigOpsCost).
+ *  Also the bound for CheckBlock's legacy-only count, which has no height;
+ *  ConnectBlock counts legacy sigops in the total and applies the real limit. */
+static const int64_t MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS = 160000;
 /** Coinbase transaction outputs can only be spent after this number of new blocks (network rule) */
 static const int COINBASE_MATURITY = 100;
 

@@ -172,6 +172,7 @@ def main():
         "MAX_BLOCK_SERIALIZED_SIZE": max_block_serialized_size,
         "MAX_BLOCK_WEIGHT": cpp_constant("src/consensus/consensus.h", "MAX_BLOCK_WEIGHT"),
         "MAX_BLOCK_SIGOPS_COST": cpp_constant("src/consensus/consensus.h", "MAX_BLOCK_SIGOPS_COST"),
+        "MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS": cpp_constant("src/consensus/consensus.h", "MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS"),
         "WITNESS_SCALE_FACTOR": cpp_constant("src/consensus/consensus.h", "WITNESS_SCALE_FACTOR"),
         "COINBASE_MATURITY": cpp_constant("src/consensus/consensus.h", "COINBASE_MATURITY"),
         "MAX_SCRIPT_ELEMENT_SIZE": cpp_constant("src/script/script.h", "MAX_SCRIPT_ELEMENT_SIZE"),
@@ -218,6 +219,12 @@ def main():
         "blocktools.MAX_BLOCK_SIGOPS_WEIGHT",
         blocktools.get("MAX_BLOCK_SIGOPS_WEIGHT", MISSING),
         consensus["MAX_BLOCK_SIGOPS_COST"],
+    )
+    check_equal(
+        errors,
+        "blocktools.MAX_BLOCK_SIGOPS_WEIGHT_DILITHIUM_LIMITS",
+        blocktools.get("MAX_BLOCK_SIGOPS_WEIGHT_DILITHIUM_LIMITS", MISSING),
+        consensus["MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS"],
     )
     check_equal(
         errors,

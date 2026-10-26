@@ -95,6 +95,9 @@ public:
         consensus.nDilithiumHeight = 1;
         // Mainnet is pre-launch: Dilithium is P2MR-only from genesis.
         consensus.nDilithiumP2MRHeight = 1;
+        // Also pre-launch: the raised sigop limit and Dilithium validation
+        // weight apply from the first block that can carry a spend.
+        consensus.nDilithiumLimitsHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 18144; // 90% of 20160
@@ -198,6 +201,9 @@ public:
         // Same rules as mainnet. The running testnet stays on master.
         // -testnetdilithiump2mrheight can still override the height.
         consensus.nDilithiumP2MRHeight = opts.dilithium_p2mr_height.value_or(1);
+        // Same rules as mainnet. This testnet is the new chain, so the raised
+        // sigop limit and Dilithium validation weight start at height 1.
+        consensus.nDilithiumLimitsHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
@@ -342,6 +348,7 @@ public:
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nDilithiumHeight = 1;
         consensus.nDilithiumP2MRHeight = 1;
+        consensus.nDilithiumLimitsHeight = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -419,6 +426,7 @@ public:
         consensus.nLWMAHeight = 300000;
         consensus.nDilithiumHeight = 1;
         consensus.nDilithiumP2MRHeight = 1;
+        consensus.nDilithiumLimitsHeight = 1;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
@@ -471,6 +479,9 @@ public:
                 break;
             case Consensus::BuriedDeployment::DEPLOYMENT_DILITHIUM_P2MR:
                 consensus.nDilithiumP2MRHeight = int{height};
+                break;
+            case Consensus::BuriedDeployment::DEPLOYMENT_DILITHIUM_LIMITS:
+                consensus.nDilithiumLimitsHeight = int{height};
                 break;
             }
         }
