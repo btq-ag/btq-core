@@ -3,8 +3,10 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <addresstype.h>
+#include <chain.h>
 #include <consensus/amount.h>
 #include <core_io.h>
+#include <interfaces/chain.h>
 #include <key_io.h>
 #include <primitives/transaction.h>
 #include <rpc/server.h>
@@ -19,9 +21,22 @@
 #include <wallet/rpc/util.h>
 #include <wallet/wallet.h>
 
+using interfaces::FoundBlock;
+
 namespace wallet {
 
 namespace {
+void RescanWallet(CWallet& wallet, const WalletRescanReserver& reserver, int64_t time_begin)
+{
+    const int64_t scanned_time = wallet.RescanFromTime(time_begin, reserver, /*update=*/true);
+    if (wallet.IsAbortingRescan()) {
+        throw JSONRPCError(RPC_MISC_ERROR, "Rescan aborted by user.");
+    }
+    if (scanned_time > time_begin) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Rescan was unable to fully rescan the blockchain. Some transactions may be missing.");
+    }
+}
+
 UniValue EntryToJSON(const P2MREntry& entry)
 {
     UniValue meta(UniValue::VOBJ);
@@ -42,10 +57,15 @@ RPCHelpMan getnewp2mraddress()
 {
     return RPCHelpMan{
         "getnewp2mraddress",
-        "\nCreate and store a new wallet-managed P2MR destination.\n",
+        "\nCreate and store a new wallet-managed P2MR destination.\n"
+        "The normal Dilithium receive path is getnewdilithiumaddress. This RPC is for custom trees.\n"
+        "Leaves are rejected unless the wallet holds at least one key in a recognised Dilithium\n"
+        "template (including createdilithiummultisig's accumulator leaf) or allow_trivial_leaves is\n"
+        "true (regtest and tests only).\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
+            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow leaves outside known wallet-spendable Dilithium templates. Tests only."},
         },
         RPCResult{
             RPCResult::Type::OBJ, "", "",
@@ -55,7 +75,9 @@ RPCHelpMan getnewp2mraddress()
                 {RPCResult::Type::STR_HEX, "scriptPubKey", "P2MR scriptPubKey"},
                 {RPCResult::Type::STR_HEX, "merkle_root", "P2MR merkle root"},
             }},
-        RPCExamples{HelpExampleCli("getnewp2mraddress", "'[{\"depth\":0,\"leaf_version\":192,\"script\":\"51\"}]'")},
+        RPCExamples{
+            HelpExampleCli("getnewdilithiumaddress", "")
+        },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
             std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
@@ -63,9 +85,10 @@ RPCHelpMan getnewp2mraddress()
 
             const auto leaves = ParseP2MRTreeFromUniValue(request.params[0]);
             const std::string label = request.params[1].isNull() ? "" : LabelFromValue(request.params[1]);
+            const bool allow_trivial = !request.params[2].isNull() && request.params[2].get_bool();
 
             LOCK(pwallet->cs_wallet);
-            auto created = CreateP2MR(*pwallet, leaves, label);
+            auto created = CreateP2MR(*pwallet, leaves, label, /*add_to_address_book=*/true, allow_trivial);
             if (!created) {
                 throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
             }
@@ -84,7 +107,9 @@ RPCHelpMan sendtop2mr()
 {
     return RPCHelpMan{
         "sendtop2mr",
-        "\nCreate a wallet-tracked P2MR destination and send funds to it.\n",
+        "\nCreate a wallet-tracked P2MR destination and send funds to it.\n"
+        "Leaves outside known wallet-spendable Dilithium templates are rejected unless\n"
+        "allow_trivial_leaves is true. Prefer getnewdilithiumaddress for ordinary receive.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "Amount to send"},
@@ -92,13 +117,14 @@ RPCHelpMan sendtop2mr()
             {"comment", RPCArg::Type::STR, RPCArg::Default{""}, "Wallet comment"},
             {"comment_to", RPCArg::Type::STR, RPCArg::Default{""}, "Wallet comment-to"},
             {"subtractfeefromamount", RPCArg::Type::BOOL, RPCArg::Default{false}, "Subtract fee from amount"},
+            {"allow_trivial_leaves", RPCArg::Type::BOOL, RPCArg::Default{false}, "Allow leaves outside known wallet-spendable Dilithium templates. Tests only."},
         },
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "txid", "Funding transaction id"},
             {RPCResult::Type::STR, "address", "P2MR destination"},
             {RPCResult::Type::STR, "p2mr_id", "Stored metadata id"},
         }},
-        RPCExamples{HelpExampleCli("sendtop2mr", "'[{\"depth\":0,\"leaf_version\":192,\"script\":\"51\"}]' 1.0")},
+        RPCExamples{HelpExampleCli("getnewdilithiumaddress", "")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
             std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
@@ -108,14 +134,20 @@ RPCHelpMan sendtop2mr()
             const CAmount amount = AmountFromValue(request.params[1]);
             const std::string label = request.params[2].isNull() ? "" : LabelFromValue(request.params[2]);
             const bool subtract_fee = request.params[5].isNull() ? false : request.params[5].get_bool();
+            const bool allow_trivial = !request.params[6].isNull() && request.params[6].get_bool();
 
             LOCK(pwallet->cs_wallet);
             EnsureWalletIsUnlocked(*pwallet);
 
             CCoinControl coin_control;
-            auto funded = FundP2MR(*pwallet, leaves, amount, label, subtract_fee, coin_control);
+            auto funded = FundP2MR(*pwallet, leaves, amount, label, subtract_fee, coin_control, allow_trivial);
             if (!funded) {
-                throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, util::ErrorString(funded).original);
+                const std::string msg = util::ErrorString(funded).original;
+                const std::string lower = ToLower(msg);
+                if (lower.find("insufficient") != std::string::npos || lower.find("no spendable") != std::string::npos) {
+                    throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, msg);
+                }
+                throw JSONRPCError(RPC_WALLET_ERROR, msg);
             }
 
             UniValue out(UniValue::VOBJ);
@@ -327,6 +359,112 @@ RPCHelpMan signp2mrtransaction()
             UniValue out(UniValue::VOBJ);
             out.pushKV("hex", EncodeHexTx(CTransaction(signed_res->tx)));
             out.pushKV("complete", signed_res->complete);
+            return out;
+        },
+    };
+}
+
+RPCHelpMan importp2mr()
+{
+    return RPCHelpMan{
+        "importp2mr",
+        "\nImport P2MR metadata from listp2mr-shaped JSON so custom trees can be restored\n"
+        "on descriptor wallets (dumpwallet is legacy-only). Keys must already be in the wallet\n"
+        "if the tree needs them. Trivial anyone-can-spend leaves are allowed here because this\n"
+        "is a restore, not a new destination.\n",
+        {
+            {"entries", RPCArg::Type::ARR, RPCArg::Optional::NO, "Array of P2MR entries (listp2mr output or objects with a tree field)",
+                {
+                    {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
+                        {
+                            {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order",
+                                {
+                                    {"leaf", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
+                                        {
+                                            {"depth", RPCArg::Type::NUM, RPCArg::Optional::NO, "Leaf depth"},
+                                            {"leaf_version", RPCArg::Type::NUM, RPCArg::Optional::NO, "Leaf version"},
+                                            {"script", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "Leaf script hex"},
+                                        }},
+                                }},
+                            {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
+                            {"address", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Expected address; import fails if the tree does not match"},
+                            {"merkle_root", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "Expected merkle root"},
+                            {"scriptPubKey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "Expected scriptPubKey"},
+                            {"created_at", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "Original creation time used as the rescan start"},
+                        }},
+                }},
+        },
+        RPCResult{
+            RPCResult::Type::ARR, "", "",
+            {{
+                RPCResult::Type::OBJ, "", "",
+                {
+                    {RPCResult::Type::STR, "address", "Restored P2MR address"},
+                    {RPCResult::Type::STR, "p2mr_id", "Wallet-local metadata id"},
+                }
+            }}
+        },
+        RPCExamples{HelpExampleCli("importp2mr", "'[{\"tree\":[{\"depth\":0,\"leaf_version\":192,\"script\":\"7551\"}]}]'")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+            if (!pwallet) return UniValue::VNULL;
+
+            if (!request.params[0].isArray()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "entries must be an array");
+            }
+
+            WalletRescanReserver reserver(*pwallet);
+            if (!reserver.reserve()) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "Wallet is currently rescanning. Abort existing rescan or wait.");
+            }
+
+            UniValue out(UniValue::VARR);
+            std::optional<int64_t> time_begin;
+            std::vector<UniValue> metas;
+            for (const UniValue& entry : request.params[0].getValues()) {
+                if (!entry.isObject() || !entry.exists("tree")) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "each entry must be an object with a tree field");
+                }
+                auto valid = ValidateP2MRRestore(entry);
+                if (!valid) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, util::ErrorString(valid).original);
+                }
+                metas.push_back(entry);
+                if (!entry.exists("created_at")) {
+                    time_begin = 0;
+                } else if (!time_begin || *time_begin != 0) {
+                    const int64_t ts = entry["created_at"].getInt<int64_t>();
+                    if (!time_begin || ts < *time_begin) time_begin = ts;
+                }
+            }
+            const int64_t rescan_from = time_begin.value_or(0);
+            {
+                auto& chain = pwallet->chain();
+                if (chain.havePruned()) {
+                    int height{0};
+                    const bool found{chain.findFirstBlockWithTimeAndHeight(rescan_from - TIMESTAMP_WINDOW, 0, FoundBlock().height(height))};
+                    const uint256 tip_hash{WITH_LOCK(pwallet->cs_wallet, return pwallet->GetLastBlockHash())};
+                    if (found && !chain.hasBlocks(tip_hash, height)) {
+                        throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Pruned blocks from height %d required to import keys. Use RPC call getblockchaininfo to determine your pruned height.", height));
+                    }
+                }
+            }
+            {
+                LOCK(pwallet->cs_wallet);
+                for (const UniValue& meta : metas) {
+                    auto created = RestoreP2MR(*pwallet, meta);
+                    if (!created) {
+                        throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+                    }
+                    UniValue row(UniValue::VOBJ);
+                    row.pushKV("address", created->address);
+                    row.pushKV("p2mr_id", created->id);
+                    out.push_back(std::move(row));
+                }
+            }
+            RescanWallet(*pwallet, reserver, rescan_from);
+            pwallet->MarkDirty();
             return out;
         },
     };

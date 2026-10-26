@@ -114,6 +114,7 @@ BASE_SCRIPTS = [
     'feature_p2mr.py',
     'feature_p2mr_dilithium_multisig.py',
     'feature_p2mr_rpc.py --descriptors',
+    'wallet_p2mr_backup.py --descriptors',
     'feature_block.py',
     'feature_cve_2024_52911.py',
     'btq_regtest_mining.py',
@@ -177,6 +178,7 @@ BASE_SCRIPTS = [
     # vv Tests less than 30s vv
     'p2p_invalid_messages.py',
     'rpc_createmultisig.py',
+    'rpc_createmultisig.py --legacy-wallet',
     'p2p_timeouts.py',
     'wallet_dump.py --legacy-wallet',
     'rpc_signer.py',
