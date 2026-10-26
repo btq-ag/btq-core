@@ -352,6 +352,9 @@ std::string EncodeSecret(const CKey& key)
 {
     assert(key.IsValid());
     std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    // Reserve before the secret is copied. insert then push_back(1) would
+    // otherwise reallocate and free the first buffer unwiped.
+    data.reserve(data.size() + key.size() + 1);
     data.insert(data.end(), key.begin(), key.end());
     if (key.IsCompressed()) {
         data.push_back(1);
