@@ -138,11 +138,15 @@ bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid);
 
 /** Create and persist a new P2MR destination.
  *  Pass add_to_address_book=false for change destinations: an address book
- *  entry is what makes CWallet::IsChange treat an output as a receive. */
+ *  entry is what makes CWallet::IsChange treat an output as a receive.
+ *  Leaves are rejected unless the wallet holds at least one key in a
+ *  recognised Dilithium template (including the threshold-accumulator form
+ *  used by createdilithiummultisig). allow_trivial_leaves opts out. */
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
-                                     bool add_to_address_book = true);
+                                     bool add_to_address_book = true,
+                                     bool allow_trivial_leaves = false);
 
 /**
  * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR
@@ -167,7 +171,8 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
                                   CAmount amount,
                                   const std::string& label,
                                   bool subtract_fee_from_amount,
-                                  const CCoinControl& coin_control);
+                                  const CCoinControl& coin_control,
+                                  bool allow_trivial_leaves = false);
 
 /** Build an unsigned spend of a tracked P2MR UTXO to a destination.
  *  Non-const because change address generation may extend the keypool. */

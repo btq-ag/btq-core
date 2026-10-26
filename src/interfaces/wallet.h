@@ -340,7 +340,8 @@ public:
 
     //! Create and persist a new P2MR destination.
     virtual util::Result<WalletP2MRCreated> createP2MR(const std::vector<WalletP2MRTreeLeaf>& leaves,
-                                                      const std::string& label) = 0;
+                                                      const std::string& label,
+                                                      bool allow_trivial_leaves = false) = 0;
 
     //! Create + persist + fund a P2MR destination atomically.
     virtual util::Result<WalletP2MRFunded> fundP2MR(const std::vector<WalletP2MRTreeLeaf>& leaves,

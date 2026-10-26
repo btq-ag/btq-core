@@ -80,6 +80,7 @@ CAmount P2MRController::totalBalance(int min_depth)
 
 bool P2MRController::createVault(const std::vector<interfaces::WalletP2MRTreeLeaf>& leaves,
                                  const QString& label,
+                                 bool allow_trivial_leaves,
                                  interfaces::WalletP2MRCreated& out,
                                  QString& error)
 {
@@ -87,7 +88,7 @@ bool P2MRController::createVault(const std::vector<interfaces::WalletP2MRTreeLea
         error = tr("Wallet model unavailable");
         return false;
     }
-    auto res = m_wallet_model->wallet().createP2MR(leaves, label.toStdString());
+    auto res = m_wallet_model->wallet().createP2MR(leaves, label.toStdString(), allow_trivial_leaves);
     if (!res) {
         error = FromBilingual(util::ErrorString(res));
         return false;
