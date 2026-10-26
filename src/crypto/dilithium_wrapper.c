@@ -3,7 +3,6 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "dilithium_wrapper.h"
-#include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -11,12 +10,6 @@
 #include "dilithium/ref/api.h"
 
 // Real Dilithium implementation using the reference library
-
-int btq_dilithium_keypair(uint8_t *pk, uint8_t *sk)
-{
-    // Use the actual Dilithium2 keypair generation
-    return pqcrystals_dilithium2_ref_keypair(pk, sk);
-}
 
 int btq_dilithium_keypair_from_seed(uint8_t *pk, uint8_t *sk, const uint8_t *seed)
 {
@@ -53,20 +46,4 @@ int btq_dilithium_verify(const uint8_t *sig, size_t siglen,
     size_t ctx_len = (ctxlen > 0) ? ctxlen : 0;
     
     return pqcrystals_dilithium2_ref_verify(sig, siglen, m, mlen, ctx_ptr, ctx_len, pk);
-}
-
-int btq_dilithium_sk_to_pk(uint8_t *pk, const uint8_t *sk)
-{
-    (void)sk;
-
-    if (pk != NULL) {
-        memset(pk, 0, pqcrystals_dilithium2_ref_PUBLICKEYBYTES);
-    }
-
-    // The packed Dilithium2 secret key does not contain the packed public key.
-    // It stores rho, key, tr, s1, s2, and t0; the public key stores rho and
-    // t1. Returning success here would hand callers bytes that cannot verify
-    // signatures. BTQ key storage keeps sk || pk, so callers should use the
-    // stored public key or the public key returned by key generation.
-    return -1;
 }

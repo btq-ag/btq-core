@@ -107,9 +107,6 @@ bool EncryptSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vch
 bool DecryptSecret(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCiphertext, const uint256& nIV, CKeyingMaterial& vchPlaintext);
 bool DecryptKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CPubKey& vchPubKey, CKey& key);
 
-/** Zero-pad a 160-bit key id into a uint256 IV (wallet crypto uses first 16 bytes). */
-uint256 KeyIDToIV(const CKeyID& id);
-
 // Dilithium key encryption/decryption functions
 /** Historical hash-based Dilithium IV retained for encrypted-wallet compatibility. */
 uint256 DeriveDilithiumKeyIV(const CKeyID& keyid);

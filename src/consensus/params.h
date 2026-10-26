@@ -16,18 +16,6 @@
 namespace Consensus {
 
 /**
- * Enum defining which signature algorithm system is used for transactions.
- * Initially set to NONE to maintain backward compatibility while we prepare
- * for post-quantum signature integration.
- */
-enum class SignatureAlgorithm {
-    NONE,      // No specific algorithm enforced (legacy mode)
-    DILITHIUM, // CRYSTALS-Dilithium post-quantum signature scheme
-    FALCON,    // Falcon post-quantum signature scheme (reserved, not implemented)
-    SPHINCS    // SPHINCS+ post-quantum signature scheme (reserved, not implemented)
-};
-
-/**
  * A buried deployment is one where the height of the activation has been hardcoded into
  * the client implementation long after the consensus change has activated. See BIP 90.
  */
@@ -89,18 +77,6 @@ struct BIP9Deployment {
 struct Params {
     uint256 hashGenesisBlock;
     int nSubsidyHalvingInterval;
-    /**
-     * Reserved. Never read.
-     *
-     * Every network sets this to NONE (kernel/chainparams.cpp) and nothing
-     * consumes it, so changing it has no effect on validation. No Falcon or
-     * SPHINCS+ implementation exists in the tree either -- the enum values are
-     * the only occurrences outside vendored directories.
-     *
-     * Dilithium is selected by script opcode and activation height
-     * (nDilithiumHeight / nDilithiumP2MRHeight), not by this field. See #116.
-     */
-    SignatureAlgorithm signature_algorithm{SignatureAlgorithm::NONE};
     /**
      * Hashes of blocks that
      * - are known to be consensus valid, and

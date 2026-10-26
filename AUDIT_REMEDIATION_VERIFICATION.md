@@ -93,11 +93,10 @@ For each `BTQ-AUDIT-2026-NNN`, produce a row:
 #### BTQ-AUDIT-2026-008 — CDilithiumExtKey encode/decode/SetSeed broken
 
 **Verify:**
-- `DILITHIUM_EXTKEY_SIZE = 73`
 - `Derive()` I_L/I_R matches BIP32 (bytes 0–31 → seed, 32–63 → chaincode)
-- Encode/decode round-trip tests pass
+- Encode/decode and `DILITHIUM_EXTKEY_SIZE` were later removed as unused (Quarkslab INFO-35)
 
-**Run:** `dilithium_wallet_tests` (especially `dilithium_extkey_bip32_il_ir_split`, `dilithium_extkey_encode_decode_roundtrip`).
+**Run:** `dilithium_wallet_tests` (especially `dilithium_extkey_bip32_il_ir_split`).
 
 ---
 

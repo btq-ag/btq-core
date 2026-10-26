@@ -40,12 +40,6 @@ static constexpr auto OUTPUT_TYPES = std::array{
     OutputType::P2MR,
 };
 
-/** Output types whose spends are authorised by a Dilithium key rather than ECDSA/Schnorr. */
-constexpr bool IsQuantumSafeOutputType(OutputType type)
-{
-    return type == OutputType::P2MR || type == OutputType::DILITHIUM_LEGACY || type == OutputType::DILITHIUM_BECH32;
-}
-
 std::optional<OutputType> ParseOutputType(const std::string& str);
 const std::string& FormatOutputType(OutputType type);
 

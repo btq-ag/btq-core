@@ -300,21 +300,3 @@ CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys)
 
     return script;
 }
-
-// Dilithium script generation functions
-CScript GetScriptForRawDilithiumPubKey(const CDilithiumPubKey& pubKey)
-{
-    return CScript() << std::vector<unsigned char>(pubKey.begin(), pubKey.end()) << OP_CHECKSIGDILITHIUM;
-}
-
-CScript GetScriptForDilithiumMultisig(int nRequired, const std::vector<CDilithiumPubKey>& keys)
-{
-    CScript script;
-
-    script << nRequired;
-    for (const CDilithiumPubKey& key : keys)
-        script << ToByteVector(key);
-    script << keys.size() << OP_CHECKMULTISIGDILITHIUM;
-
-    return script;
-}
