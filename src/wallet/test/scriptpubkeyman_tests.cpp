@@ -3,12 +3,14 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <key.h>
+#include <key_io.h>
 #include <addresstype.h>
 #include <consensus/amount.h>
 #include <crypto/dilithium_key.h>
 #include <outputtype.h>
 #include <primitives/transaction.h>
 #include <test/util/setup_common.h>
+#include <script/descriptor.h>
 #include <script/solver.h>
 #include <script/sign.h>
 #include <wallet/scriptpubkeyman.h>
@@ -345,6 +347,49 @@ BOOST_AUTO_TEST_CASE(legacy_dilithium_signing_provider_produces_signature)
     SignatureData sigdata;
     BOOST_CHECK(!ProduceSignature(keyman, creator, script_pubkey, sigdata));
     BOOST_CHECK(!sigdata.complete);
+}
+
+BOOST_AUTO_TEST_CASE(descriptor_dilithium_needs_one_private_key)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    LOCK(wallet.cs_wallet);
+    wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+
+    const auto ext_key = [](uint8_t fill) {
+        CExtKey ext;
+        const std::vector<std::byte> seed(32, std::byte{fill});
+        ext.SetSeed(seed);
+        return ext;
+    };
+    const auto xprv = [&](uint8_t fill) { return EncodeExtKey(ext_key(fill)); };
+    const auto xpub = [&](uint8_t fill) { return EncodeExtPubKey(ext_key(fill).Neuter()); };
+    const auto add = [&](const std::string& desc_str, size_t expected_keys) {
+        FlatSigningProvider keys;
+        std::string error;
+        auto parsed = Parse(desc_str, keys, error, /*require_checksum=*/false);
+        BOOST_REQUIRE_MESSAGE(parsed, error);
+        BOOST_REQUIRE_EQUAL(keys.keys.size(), expected_keys);
+        WalletDescriptor w_desc(std::move(parsed), /*creation_time=*/1, /*range_start=*/0, /*range_end=*/1000, /*next_index=*/0);
+        auto* spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.AddWalletDescriptor(w_desc, keys, /*label=*/"", /*internal=*/false));
+        BOOST_REQUIRE(spk_man);
+        return spk_man;
+    };
+
+    auto* multi = add("sh(multi(1," + xprv(1) + "/*," + xprv(2) + "/*))", 2);
+    const auto multi_res = multi->GenerateNewDilithiumKey();
+    BOOST_CHECK(!multi_res);
+    BOOST_CHECK(util::ErrorString(multi_res).original.find("exactly one private key") != std::string::npos);
+
+    auto* single = add("pkh(" + xprv(3) + "/*)", 1);
+    BOOST_CHECK(single->GenerateNewDilithiumKey());
+
+    // A descriptor that starts with one private key and gains a second on re-import
+    auto* grows = add("sh(multi(1," + xprv(4) + "/*," + xpub(5) + "/*))", 1);
+    BOOST_CHECK(grows->GenerateNewDilithiumKey());
+    BOOST_CHECK_EQUAL(add("sh(multi(1," + xprv(4) + "/*," + xprv(5) + "/*))", 2), grows);
+    const auto grown_res = grows->GenerateNewDilithiumKey();
+    BOOST_CHECK(!grown_res);
+    BOOST_CHECK(util::ErrorString(grown_res).original.find("exactly one private key") != std::string::npos);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
