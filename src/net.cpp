@@ -1833,7 +1833,7 @@ void CConnman::CreateNodeFromAcceptedSocket(std::unique_ptr<Sock>&& sock,
     RandAddEvent((uint32_t)id);
 }
 
-bool CConnman::AddConnection(const std::string& address, ConnectionType conn_type)
+bool CConnman::AddConnection(const std::string& address, ConnectionType conn_type, bool use_v2transport)
 {
     AssertLockNotHeld(m_unused_i2p_sessions_mutex);
     std::optional<int> max_connections;
@@ -1866,7 +1866,7 @@ bool CConnman::AddConnection(const std::string& address, ConnectionType conn_typ
     CSemaphoreGrant grant(*semOutbound, true);
     if (!grant) return false;
 
-    OpenNetworkConnection(CAddress(), false, std::move(grant), address.c_str(), conn_type, /*use_v2transport=*/false);
+    OpenNetworkConnection(CAddress(), false, std::move(grant), address.c_str(), conn_type, use_v2transport);
     return true;
 }
 
@@ -2325,7 +2325,7 @@ void CConnman::ProcessAddrFetch()
     CAddress addr;
     CSemaphoreGrant grant(*semOutbound, /*fTry=*/true);
     if (grant) {
-        OpenNetworkConnection(addr, false, std::move(grant), strDest.c_str(), ConnectionType::ADDR_FETCH, /*use_v2transport=*/false);
+        OpenNetworkConnection(addr, false, std::move(grant), strDest.c_str(), ConnectionType::ADDR_FETCH, /*use_v2transport=*/bool(GetLocalServices() & NODE_P2P_V2));
     }
 }
 
@@ -2428,7 +2428,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             for (const std::string& strAddr : connect)
             {
                 CAddress addr(CService(), NODE_NONE);
-                OpenNetworkConnection(addr, false, {}, strAddr.c_str(), ConnectionType::MANUAL, /*use_v2transport=*/false);
+                OpenNetworkConnection(addr, false, {}, strAddr.c_str(), ConnectionType::MANUAL, /*use_v2transport=*/bool(GetLocalServices() & NODE_P2P_V2));
                 for (int i = 0; i < 10 && i < nLoop; i++)
                 {
                     if (!interruptNet.sleep_for(std::chrono::milliseconds(500)))
@@ -3623,9 +3623,13 @@ bool CConnman::OutboundTargetReached(bool historicalBlockServingLimit) const
 
     if (historicalBlockServingLimit)
     {
-        // keep a large enough buffer to at least relay each block once
+        // keep a large enough buffer to at least relay each block once.
+        // Derive the expected block count from the chain's target spacing:
+        // the old 10-minute literal made the buffer 10x too small for BTQ's
+        // 60-second blocks (Quarks F2.18).
         const std::chrono::seconds timeLeftInCycle = GetMaxOutboundTimeLeftInCycle_();
-        const uint64_t buffer = timeLeftInCycle / std::chrono::minutes{10} * MAX_BLOCK_SERIALIZED_SIZE;
+        const std::chrono::seconds spacing{m_params.GetConsensus().nPowTargetSpacing};
+        const uint64_t buffer = timeLeftInCycle / spacing * MAX_BLOCK_SERIALIZED_SIZE;
         if (buffer >= nMaxOutboundLimit || nMaxOutboundTotalBytesSentInCycle >= nMaxOutboundLimit - buffer)
             return true;
     }
