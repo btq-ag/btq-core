@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <cassert>
 #include <iterator>
-#include <limits>
 #include <utility>
 #include <vector>
 
@@ -252,25 +251,9 @@ void TxOrphanage::LimitOrphans(FastRandomContext& rng)
     while (NeedsTrim() && !m_orphan_list.empty()) {
         const bool trim_latency = m_total_latency_score > m_max_latency_score;
 
-        if (trim_latency) {
-            // Latency pressure: throw away the cheapest unique orphans first
-            // (inv-flood junk). Never erase a shared orphan.
-            const uint256* smallest_unique = nullptr;
-            unsigned int smallest_usage = std::numeric_limits<unsigned int>::max();
-            for (const auto& [wtxid, orphan] : m_orphans) {
-                if (orphan.announcers.size() != 1) continue;
-                if (orphan.GetUsage() < smallest_usage) {
-                    smallest_usage = orphan.GetUsage();
-                    smallest_unique = &wtxid;
-                }
-            }
-            if (smallest_unique) {
-                EraseTxNoLock(*smallest_unique);
-                ++nEvicted;
-                continue;
-            }
-        }
-
+        // Highest latency or weight peer, then one of that peer's orphans.
+        // A global "smallest unique" scan erases a just-arrived honest orphan:
+        // it is the only unique tx while the attacker's orphans are shared.
         NodeId worst = -1;
         unsigned int worst_metric = 0;
         std::vector<NodeId> worst_peers;

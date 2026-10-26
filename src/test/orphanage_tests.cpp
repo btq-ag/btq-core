@@ -165,7 +165,10 @@ BOOST_AUTO_TEST_CASE(announcer_and_weight_trim)
 
 BOOST_AUTO_TEST_CASE(inv_announcer_does_not_erase_shared_orphan)
 {
-    TxOrphanageTest orphanage(/*max_global_usage=*/200000, /*max_latency_score=*/5, /*reserved_usage_per_peer=*/200000);
+    // Cap 8. Four shared honest orphans give the inv peer latency 4. Six
+    // unique orphans on one junk peer give it latency 6, so trim evicts the
+    // junk peer and stops at global latency 8, before the inv peer is chosen.
+    TxOrphanageTest orphanage(/*max_global_usage=*/200000, /*max_latency_score=*/8, /*reserved_usage_per_peer=*/200000);
     CKey key;
     MakeNewKeyWithFastRandomContext(key);
     FastRandomContext rng{uint256{1}};
@@ -177,16 +180,54 @@ BOOST_AUTO_TEST_CASE(inv_announcer_does_not_erase_shared_orphan)
         BOOST_CHECK(orphanage.AddAnnouncer(tx->GetWitnessHash(), /*attacker=*/10));
         honest.push_back(tx);
     }
-    for (NodeId peer = 20; peer < 28; ++peer) {
-        BOOST_CHECK(orphanage.AddTx(MakeOrphanTx(key, InsecureRand256()), peer));
+    for (int i = 0; i < 6; ++i) {
+        BOOST_CHECK(orphanage.AddTx(MakeOrphanTx(key, InsecureRand256()), /*peer=*/20));
     }
 
     orphanage.LimitOrphans(rng);
+    BOOST_CHECK_EQUAL(orphanage.CountOrphans(), 8U);
     for (NodeId peer = 0; peer < 4; ++peer) {
         BOOST_CHECK_MESSAGE(orphanage.HaveTx(GenTxid::Wtxid(honest[peer]->GetWitnessHash())),
                             "honest orphan " << peer << " was erased");
         BOOST_CHECK(orphanage.HaveTxFromPeer(honest[peer]->GetWitnessHash(), peer));
+        BOOST_CHECK(orphanage.HaveTxFromPeer(honest[peer]->GetWitnessHash(), /*attacker=*/10));
     }
+    orphanage.SanityCheck();
+}
+
+BOOST_AUTO_TEST_CASE(honest_arrival_not_erased_during_latency_trim)
+{
+    // Latency is at the cap and every stored orphan is shared. The arrival
+    // is the only unique orphan. net_processing calls LimitOrphans immediately
+    // from the TX path, before a second announcer can show up.
+    TxOrphanageTest orphanage(/*max_global_usage=*/200000, /*max_latency_score=*/4, /*reserved_usage_per_peer=*/200000);
+    CKey key;
+    MakeNewKeyWithFastRandomContext(key);
+    FastRandomContext rng{uint256{1}};
+
+    std::vector<CTransactionRef> attacker;
+    for (int i = 0; i < 4; ++i) {
+        auto tx = MakeOrphanTx(key, uint256{static_cast<uint64_t>(i + 1)});
+        BOOST_CHECK(orphanage.AddTx(tx, /*peer=*/1));
+        BOOST_CHECK(orphanage.AddAnnouncer(tx->GetWitnessHash(), /*peer=*/2));
+        attacker.push_back(tx);
+    }
+
+    auto honest = MakeOrphanTx(key, uint256{100});
+    BOOST_CHECK(orphanage.AddTx(honest, /*peer=*/0));
+    BOOST_CHECK_EQUAL(orphanage.CountOrphans(), 5U);
+
+    orphanage.LimitOrphans(rng);
+
+    BOOST_CHECK(orphanage.HaveTx(GenTxid::Wtxid(honest->GetWitnessHash())));
+    BOOST_CHECK(orphanage.HaveTxFromPeer(honest->GetWitnessHash(), /*peer=*/0));
+    BOOST_CHECK_EQUAL(orphanage.CountAnnouncers(honest->GetWitnessHash()), 1U);
+    int attacker_left = 0;
+    for (const auto& tx : attacker) {
+        if (orphanage.HaveTx(GenTxid::Wtxid(tx->GetWitnessHash()))) ++attacker_left;
+    }
+    BOOST_CHECK_EQUAL(attacker_left, 3);
+    BOOST_CHECK_EQUAL(orphanage.CountOrphans(), 4U);
     orphanage.SanityCheck();
 }
 
