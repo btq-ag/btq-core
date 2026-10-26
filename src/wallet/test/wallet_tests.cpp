@@ -648,9 +648,13 @@ BOOST_FIXTURE_TEST_CASE(importwallet_tolerates_empty_tokens, WalletTestingSetup)
 
     {
         std::ofstream dump_file{dump_path};
-        // Doubled space before label=, trailing spaces after the comment token.
-        dump_file << EncodeSecret(key) << " 2026-01-01T00:00:00Z  label=spaced  # addr=x  \n";
-        dump_file << EncodeDilithiumSecret(dilithium_key) << " 2026-01-01T00:00:00Z  label=dspaced  # addr=y  \n";
+        // No '#' before the empty tokens. SplitString keeps a token for the
+        // doubled space and for the trailing space, and the label loop must
+        // skip those instead of calling front(). A '#' earlier in the line
+        // would stop the scan before the trailing token.
+        dump_file << EncodeSecret(key) << " 2026-01-01T00:00:00Z  label=spaced \n";
+        dump_file << EncodeDilithiumSecret(dilithium_key) << " 2026-01-01T00:00:00Z  label=dspaced \n";
+        dump_file << "# End of dump\n";
     }
 
     WalletContext context;
@@ -684,6 +688,12 @@ BOOST_FIXTURE_TEST_CASE(importwallet_tolerates_empty_tokens, WalletTestingSetup)
     const auto* entry = wallet->FindAddressBookEntry(PKHash(keyid));
     BOOST_REQUIRE(entry);
     BOOST_CHECK_EQUAL(entry->GetLabel(), "spaced");
+    {
+        LOCK(wallet->cs_wallet);
+        const auto p2mr_entries = ListP2MR(*wallet);
+        BOOST_REQUIRE_EQUAL(p2mr_entries.size(), 1U);
+        BOOST_CHECK_EQUAL(p2mr_entries[0].label, "dspaced");
+    }
 }
 
 BOOST_FIXTURE_TEST_CASE(importprivkey_stores_dilithium_key_by_dilithium_id, WalletTestingSetup)
