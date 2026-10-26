@@ -348,7 +348,7 @@ BOOST_FIXTURE_TEST_CASE(tracked_p2mr_lookup_matches_only_its_script, BasicTestin
     const auto leaves = MakeXOnlyChecksigTree(XOnlyPubKey{external_key.GetPubKey()});
 
     LOCK(wallet->cs_wallet);
-    auto created = CreateP2MR(*wallet, leaves, "external");
+    auto created = CreateP2MR(*wallet, leaves, "external", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
     BOOST_REQUIRE(created);
     const CScript& tracked = created->script_pub_key;
     int version;
@@ -382,7 +382,7 @@ BOOST_FIXTURE_TEST_CASE(p2mr_script_lookup_and_provider_read_one_destination, Ba
     for (int i = 0; i < 3; ++i) {
         CKey key;
         key.MakeNewKey(/*fCompressedIn=*/true);
-        auto entry = CreateP2MR(*wallet, MakeXOnlyChecksigTree(XOnlyPubKey{key.GetPubKey()}), "external");
+        auto entry = CreateP2MR(*wallet, MakeXOnlyChecksigTree(XOnlyPubKey{key.GetPubKey()}), "external", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(entry);
         created.push_back(*entry);
     }
@@ -527,7 +527,7 @@ BOOST_FIXTURE_TEST_CASE(imported_dilithium_key_upgrades_cached_watchonly_p2mr, B
         {leaf_script.begin(), leaf_script.end()},
     }};
 
-    auto created = CreateP2MR(*wallet, leaves, "watch");
+    auto created = CreateP2MR(*wallet, leaves, "watch", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
     BOOST_REQUIRE(created);
     BOOST_CHECK_EQUAL(wallet->IsMine(created->script_pub_key), ISMINE_WATCH_ONLY);
 
