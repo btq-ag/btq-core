@@ -208,6 +208,7 @@ class BlockchainTest(BTQTestFramework):
             'lwma': {'type': 'buried', 'active': False, 'height': 300000},
             'dilithium': {'type': 'buried', 'active': True, 'height': 1},
             'dilithium_p2mr': {'type': 'buried', 'active': True, 'height': 1},
+            'dilithium_limits': {'type': 'buried', 'active': True, 'height': 1},
             'testdummy': {
                 'type': 'bip9',
                 'bip9': {

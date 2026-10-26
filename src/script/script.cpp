@@ -8,6 +8,9 @@
 #include <hash.h>
 #include <util/strencodings.h>
 
+#include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <string>
 
 CScriptID::CScriptID(const CScript& in) : BaseHash(Hash160(in)) {}
@@ -160,9 +163,9 @@ std::string GetOpName(opcodetype opcode)
     }
 }
 
-unsigned int CScript::GetSigOpCount(bool fAccurate) const
+unsigned int CScript::GetSigOpCount(bool fAccurate, bool saturate) const
 {
-    unsigned int n = 0;
+    uint64_t n = 0;
     const_iterator pc = begin();
     opcodetype lastOpcode = OP_INVALIDOPCODE;
     while (pc < end())
@@ -189,7 +192,8 @@ unsigned int CScript::GetSigOpCount(bool fAccurate) const
         }
         lastOpcode = opcode;
     }
-    return n;
+    if (saturate) return std::min<uint64_t>(n, std::numeric_limits<unsigned int>::max());
+    return static_cast<unsigned int>(n);
 }
 
 unsigned int CScript::GetSigOpCount(const CScript& scriptSig) const

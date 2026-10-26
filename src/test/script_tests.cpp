@@ -29,6 +29,8 @@
 
 #include <cstdint>
 #include <fstream>
+#include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -1681,6 +1683,108 @@ BOOST_AUTO_TEST_CASE(btqconsensus_verify_script_spent_outputs_required_err)
 }
 
 #endif // defined(HAVE_CONSENSUS_LIB)
+
+//! Spend a depth-0 P2MR leaf. make_stack gets the signature by `key` and
+//! returns the witness items that go below the leaf and control block.
+static bool VerifyP2MRLeafSpend(const CScript& leaf, const CDilithiumKey& key,
+                                const std::function<std::vector<std::vector<unsigned char>>(const std::vector<unsigned char>&)>& make_stack,
+                                unsigned int flags, ScriptError& err)
+{
+    const uint256 leaf_hash{ComputeTapleafHash(TAPROOT_LEAF_TAPSCRIPT, leaf)};
+    const CScript script_pubkey{CScript() << OP_2 << ToByteVector(leaf_hash)};
+    const CTransaction credit_tx{BuildCreditingTransaction(script_pubkey, 1)};
+    CMutableTransaction spend{BuildSpendingTransaction(CScript(), CScriptWitness(), credit_tx)};
+
+    PrecomputedTransactionData txdata;
+    txdata.Init(spend, std::vector<CTxOut>{credit_tx.vout[0]}, /*force=*/true);
+    ScriptExecutionData execdata;
+    execdata.m_annex_init = true;
+    execdata.m_annex_present = false;
+    execdata.m_codeseparator_pos_init = true;
+    execdata.m_codeseparator_pos = 0xFFFFFFFF;
+    execdata.m_tapleaf_hash_init = true;
+    execdata.m_tapleaf_hash = leaf_hash;
+    uint256 sighash;
+    BOOST_REQUIRE(SignatureHashSchnorr(sighash, execdata, spend, 0, SIGHASH_ALL, SigVersion::P2MR_TAPSCRIPT, txdata, MissingDataBehavior::FAIL));
+    std::vector<unsigned char> sig;
+    BOOST_REQUIRE(key.Sign(sighash, sig));
+    sig.push_back(SIGHASH_ALL);
+
+    const std::vector<unsigned char> control{static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 1)};
+    spend.vin[0].scriptWitness.stack = make_stack(sig);
+    spend.vin[0].scriptWitness.stack.push_back(ToByteVector(leaf));
+    spend.vin[0].scriptWitness.stack.push_back(control);
+    return VerifyScript(spend.vin[0].scriptSig, script_pubkey, &spend.vin[0].scriptWitness, flags,
+                        MutableTransactionSignatureChecker(&spend, 0, credit_tx.vout[0].nValue, txdata, MissingDataBehavior::ASSERT_FAIL), &err);
+}
+
+static constexpr unsigned int P2MR_BASE_FLAGS{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DILITHIUM |
+                                              SCRIPT_VERIFY_P2MR | SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY | SCRIPT_VERIFY_NULLDUMMY};
+
+BOOST_AUTO_TEST_CASE(p2mr_dilithium_validation_weight)
+{
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const std::vector<unsigned char> pubkey{ToByteVector(key.GetPubKey())};
+
+    // Leaf that checks the same witness signature `checks` times.
+    const auto run = [&](int checks, unsigned int flags, ScriptError& err) {
+        CScript leaf;
+        for (int i = 1; i < checks; ++i) leaf << OP_2DUP << OP_CHECKSIGDILITHIUMVERIFY;
+        leaf << OP_CHECKSIGDILITHIUM;
+        return VerifyP2MRLeafSpend(leaf, key, [&](const auto& sig) { return std::vector<std::vector<unsigned char>>{sig, pubkey}; }, flags, err);
+    };
+
+    const unsigned int new_flags{P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS};
+    ScriptError err;
+
+    // The witness (~3.75k bytes) buys ~3.8k of budget: two checks at 1400, seven at 500.
+    BOOST_CHECK(run(2, new_flags, err));
+    BOOST_CHECK(!run(3, new_flags, err));
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT);
+    BOOST_CHECK(run(3, P2MR_BASE_FLAGS, err));
+    BOOST_CHECK(run(7, P2MR_BASE_FLAGS, err));
+    BOOST_CHECK(!run(8, P2MR_BASE_FLAGS, err));
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT);
+}
+
+BOOST_AUTO_TEST_CASE(p2mr_dilithium_multisig_validation_weight)
+{
+    // OP_CHECKMULTISIGDILITHIUM charges once per key tried, last key first.
+    // The cheapest honest spend per charge is 1-of-20 signed by the first
+    // key: 20 charges against one signature and twenty key pushes (28785
+    // budget). Signed by the last key it pays one charge.
+    std::vector<CDilithiumKey> keys(MAX_PUBKEYS_PER_MULTISIG);
+    CScript leaf;
+    leaf << OP_1;
+    for (auto& k : keys) {
+        BOOST_REQUIRE(k.MakeNewKey());
+        leaf << ToByteVector(k.GetPubKey());
+    }
+    leaf << MAX_PUBKEYS_PER_MULTISIG << OP_CHECKMULTISIGDILITHIUM;
+    const auto stack = [](const auto& sig) { return std::vector<std::vector<unsigned char>>{{}, sig}; };
+
+    ScriptError err;
+    BOOST_CHECK(VerifyP2MRLeafSpend(leaf, keys.back(), stack, P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS, err));
+    BOOST_CHECK(VerifyP2MRLeafSpend(leaf, keys.front(), stack, P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS, err));
+    static_assert(MAX_PUBKEYS_PER_MULTISIG * VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED <= 28785);
+}
+
+BOOST_AUTO_TEST_CASE(p2mr_sigop_count_saturates)
+{
+    // 1000 sigops per bare OP_CHECKMULTISIGDILITHIUM; this many wraps to 704.
+    const std::vector<unsigned char> bytes(4294968, OP_CHECKMULTISIGDILITHIUM);
+    const CScript leaf(bytes.begin(), bytes.end());
+    BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true), 704U);
+    BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true, /*saturate=*/true), std::numeric_limits<unsigned int>::max());
+
+    CScriptWitness witness;
+    witness.stack = {ToByteVector(leaf), {static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 1)}};
+    const CScript script_pubkey{CScript() << OP_2 << ToByteVector(uint256::ONE)};
+    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS), 704U);
+    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS),
+                      std::numeric_limits<unsigned int>::max());
+}
 
 static std::vector<unsigned int> AllConsensusFlags()
 {

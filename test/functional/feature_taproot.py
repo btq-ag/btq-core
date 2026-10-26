@@ -10,7 +10,7 @@ from test_framework.blocktools import (
     create_coinbase,
     create_block,
     add_witness_commitment,
-    MAX_BLOCK_SIGOPS_WEIGHT,
+    MAX_BLOCK_SIGOPS_WEIGHT_DILITHIUM_LIMITS,
     WITNESS_SCALE_FACTOR,
 )
 from test_framework.messages import (
@@ -1296,10 +1296,10 @@ class TaprootTest(BTQTestFramework):
     def block_submit(self, node, txs, msg, err_msg, cb_pubkey=None, fees=0, sigops_weight=0, witness=False, accept=False):
 
         # Deplete block of any non-tapscript sigops using a single additional 0-value coinbase output.
-        # It is not impossible to fit enough tapscript sigops to hit the old 80k limit without
+        # It is not impossible to fit enough tapscript sigops to hit the 160k limit without
         # busting txin-level limits. We simply have to account for the p2pk outputs in all
         # transactions.
-        extra_output_script = CScript(bytes([OP_CHECKSIG]*((MAX_BLOCK_SIGOPS_WEIGHT - sigops_weight) // WITNESS_SCALE_FACTOR)))
+        extra_output_script = CScript(bytes([OP_CHECKSIG]*((MAX_BLOCK_SIGOPS_WEIGHT_DILITHIUM_LIMITS - sigops_weight) // WITNESS_SCALE_FACTOR)))
 
         coinbase_tx = create_coinbase(self.lastblockheight + 1, pubkey=cb_pubkey, extra_output_script=extra_output_script, fees=fees)
         block = create_block(self.tip, coinbase_tx, self.lastblocktime + 1, txlist=txs)
@@ -1406,7 +1406,7 @@ class TaprootTest(BTQTestFramework):
                     normal_utxos.append(utxodata)
                 done += 1
             # Mine into a block
-            self.block_submit(node, [fund_tx], "Funding tx", None, random.choice(host_pubkeys), 10000, MAX_BLOCK_SIGOPS_WEIGHT, True, True)
+            self.block_submit(node, [fund_tx], "Funding tx", None, random.choice(host_pubkeys), 10000, MAX_BLOCK_SIGOPS_WEIGHT_DILITHIUM_LIMITS, True, True)
 
         # Consume groups of choice(input_coins) from utxos in a tx, testing the spenders.
         self.log.info("- Running %i spending tests" % done)

@@ -221,7 +221,7 @@ class InvalidOPIFConstruction(BadTxTemplate):
 
 class TooManySigops(BadTxTemplate):
     reject_reason = "bad-txns-too-many-sigops"
-    block_reject_reason = "bad-blk-sigops, out-of-bounds SigOpCount"
+    block_reject_reason = "bad-blk-sigops"
 
     def get_tx(self):
         lotsa_checksigs = CScript([OP_CHECKSIG] * (MAX_BLOCK_SIGOPS))

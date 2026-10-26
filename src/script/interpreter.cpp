@@ -125,7 +125,8 @@ static bool EvalChecksigDilithium(const valtype& sig, const valtype& pubkey, CSc
     // In P2MR tapscript, enforce validation weight for Dilithium sig checks
     if (sigversion == SigVersion::P2MR_TAPSCRIPT && !sig.empty()) {
         assert(execdata.m_validation_weight_left_init);
-        execdata.m_validation_weight_left -= VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED;
+        execdata.m_validation_weight_left -= (flags & SCRIPT_VERIFY_DILITHIUM_LIMITS) ?
+            VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED : VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED_LEGACY;
         if (execdata.m_validation_weight_left < 0) {
             return set_error(serror, SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT);
         }
@@ -2486,7 +2487,9 @@ size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& wi
         const size_t script_idx = control_idx - 1;
 
         CScript subscript(witness.stack[script_idx].begin(), witness.stack[script_idx].end());
-        return subscript.GetSigOpCount(true);
+        // A P2MR leaf has no size limit, so ~4.3 MB of bare
+        // OP_CHECKMULTISIGDILITHIUM (1000 each) wraps an unsigned int count.
+        return subscript.GetSigOpCount(true, /*saturate=*/(flags & SCRIPT_VERIFY_DILITHIUM_LIMITS) != 0);
     }
 
     // Future flags may be implemented here.
