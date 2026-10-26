@@ -549,8 +549,13 @@ public:
      * CHECKMULTISIGs serialized in scriptSigs are
      * counted more accurately, assuming they are of the form
      *  ... OP_N CHECKMULTISIG ...
+     *
+     * count_checksigadd charges OP_CHECKSIGADD as one sigop. Only the P2MR
+     * branch of WitnessSigOps sets it. The default leaves 0xba uncharged:
+     * that byte is inside MAX_OPCODE because the Dilithium opcodes follow
+     * it, and it is not a sigop in legacy, P2SH, or P2WSH scripts.
      */
-    unsigned int GetSigOpCount(bool fAccurate) const;
+    unsigned int GetSigOpCount(bool fAccurate, bool count_checksigadd = false) const;
 
     /**
      * Accurately count sigOps, including sigOps in

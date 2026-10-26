@@ -1478,6 +1478,8 @@ BOOST_AUTO_TEST_CASE(script_HasValidOps)
     BOOST_CHECK(!script.HasValidOps());
     script = ScriptFromHex("88acc0"); // Script with undefined opcode
     BOOST_CHECK(!script.HasValidOps());
+    script = ScriptFromHex("ba"); // OP_CHECKSIGADD stays valid in a generic script
+    BOOST_CHECK(script.HasValidOps());
 }
 
 static CMutableTransaction TxFromHex(const std::string& str)

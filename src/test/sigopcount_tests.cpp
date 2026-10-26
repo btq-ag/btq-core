@@ -387,6 +387,46 @@ BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
         BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
     }
 
+    // OP_CHECKSIGADD costs 1 in a P2MR leaf, and 0 everywhere else.
+    {
+        CKey ecdsa_key;
+        ecdsa_key.MakeNewKey(true);
+        const CScript leaf = CScript() << OP_0 << ToByteVector(ecdsa_key.GetPubKey()) << OP_CHECKSIGADD;
+        BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true), 0U);
+        BOOST_CHECK_EQUAL(leaf.GetSigOpCount(false), 0U);
+        BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true, /*count_checksigadd=*/true), 1U);
+
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags & ~SCRIPT_VERIFY_WITNESS), 0);
+
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{},
+                 MakeP2MRWitness(leaf, {/*args=*/{std::vector<unsigned char>{0x01}}}, /*with_annex=*/true));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
+
+        // 0xba inside a push is data, not an opcode.
+        const CScript pushed = CScript() << std::vector<unsigned char>{static_cast<unsigned char>(OP_CHECKSIGADD)};
+        BOOST_CHECK_EQUAL(pushed.GetSigOpCount(true, /*count_checksigadd=*/true), 0U);
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(pushed));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
+
+        // Legacy output, P2SH redeem, and P2WSH witness keep the old count.
+        CMutableTransaction legacyTx;
+        legacyTx.vout.emplace_back(0, leaf);
+        BOOST_CHECK_EQUAL(GetLegacySigOpCount(CTransaction(legacyTx)), 0U);
+
+        const CScript p2sh = GetScriptForDestination(ScriptHash(leaf));
+        CScript p2shSig;
+        p2shSig << Serialize(leaf);
+        BOOST_CHECK_EQUAL(p2sh.GetSigOpCount(p2shSig), 0U);
+
+        const CScript p2wsh = GetScriptForDestination(WitnessV0ScriptHash(leaf));
+        CScriptWitness wshWitness;
+        wshWitness.stack.emplace_back(leaf.begin(), leaf.end());
+        BuildTxs(spendingTx, coins, creationTx, p2wsh, CScript{}, wshWitness);
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
+    }
+
     // Mixed leaf: one Dilithium + one ECDSA.
     {
         CKey ecdsa_key;

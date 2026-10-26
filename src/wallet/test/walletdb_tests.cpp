@@ -124,7 +124,7 @@ BOOST_AUTO_TEST_CASE(walletdb_rejects_invalid_dilithium_key_record)
     // must report corruption instead of installing an invalid key.
     const CKeyID key_id{uint160(std::vector<unsigned char>(20, 0x11))};
     CKeyMetadata metadata{123456789};
-    const std::vector<unsigned char> garbage(DilithiumConstants::SECRET_KEY_SIZE + DilithiumConstants::PUBLIC_KEY_SIZE, 0x5a);
+    const CPrivKey garbage(DilithiumConstants::SECRET_KEY_SIZE + DilithiumConstants::PUBLIC_KEY_SIZE, 0x5a);
 
     MockableData records;
     {
