@@ -62,7 +62,6 @@ RPCHelpMan getnewp2mraddress()
             }},
         RPCExamples{
             HelpExampleCli("getnewdilithiumaddress", "")
-            + HelpExampleCli("getnewp2mraddress", "'[{\"depth\":0,\"leaf_version\":192,\"script\":\"51\"}]' \"\" true")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
@@ -110,7 +109,7 @@ RPCHelpMan sendtop2mr()
             {RPCResult::Type::STR, "address", "P2MR destination"},
             {RPCResult::Type::STR, "p2mr_id", "Stored metadata id"},
         }},
-        RPCExamples{HelpExampleCli("sendtop2mr", "'[{\"depth\":0,\"leaf_version\":192,\"script\":\"51\"}]' 1.0 \"\" \"\" \"\" false true")},
+        RPCExamples{HelpExampleCli("getnewdilithiumaddress", "")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
             std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
