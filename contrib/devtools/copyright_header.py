@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2016-2022 The BTQ Core developers
+# Copyright (c) 2016-2022 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -93,6 +93,7 @@ def compile_copyright_regex(copyright_style, year_style, name):
 
 EXPECTED_HOLDER_NAMES = [
     r"Satoshi Nakamoto",
+    r"The Bitcoin Core developers",
     r"The BTQ Core developers",
     r"BitPay Inc\.",
     r"University of Illinois at Urbana-Champaign\.",
