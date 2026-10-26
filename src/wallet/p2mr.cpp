@@ -674,6 +674,10 @@ bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
         for (auto* spk_man : wallet.GetAllScriptPubKeyMans()) {
             if (auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
                 if (desc->AddDilithiumKeyPubKey(key, CPubKey())) {
+                    // Unknown birthday. Stops blockConnected from skipping
+                    // pre-wallet blocks. Does not rewind a stored locator.
+                    desc->UpdateTimeFirstKey(1);
+                    wallet.FirstKeyTimeChanged(desc, 1);
                     stored = true;
                     break;
                 }
@@ -681,7 +685,11 @@ bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
         }
     } else {
         LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
-        stored = legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey());
+        if (legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey())) {
+            LOCK(legacy->cs_KeyStore);
+            legacy->UpdateTimeFirstKey(1);
+            stored = true;
+        }
     }
     // One key can make every tracked P2MR that uses it spendable. CreateP2MR
     // only returns the script it was asked about, and a duplicate tree returns
@@ -742,9 +750,13 @@ util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
                                                    std::optional<int64_t> created_at)
 {
     AssertLockHeld(wallet.cs_wallet);
+    if (wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+        return util::Error{Untranslated("Cannot import private keys to a wallet with private keys disabled")};
+    }
     if (!key.IsValid()) {
         return util::Error{Untranslated("Invalid Dilithium private key")};
     }
+    wallet.MarkDirty();
     if (!StoreDilithiumKeyInWallet(wallet, key)) {
         return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
     }
