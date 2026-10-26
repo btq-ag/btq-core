@@ -2477,8 +2477,10 @@ size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& wi
     if (witversion == 2 && witprogram.size() == WITNESS_V2_P2MR_SIZE && witness.stack.size() >= 2) {
         // P2MR witness: [args...] [script] [control_block] [optional annex]
         // Mirror VerifyWitnessProgram's annex / control / script indexing, then
-        // reuse GetSigOpCount(true) so Dilithium (and any ECDSA) opcodes get the
-        // same weighting as legacy / P2WSH — including accurate multisig key counts.
+        // reuse GetSigOpCount(true) so Dilithium and ECDSA opcodes get the
+        // same weighting as legacy / P2WSH, including accurate multisig key counts.
+        // OP_CHECKSIGADD is a tapscript sigop in this leaf. The flag is set
+        // only here, so legacy, P2SH, and P2WSH counts stay unchanged.
         const size_t last = witness.stack.size() - 1;
         const bool has_annex = !witness.stack[last].empty() && witness.stack[last][0] == ANNEX_TAG;
         const size_t control_idx = has_annex ? last - 1 : last;
@@ -2486,7 +2488,7 @@ size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& wi
         const size_t script_idx = control_idx - 1;
 
         CScript subscript(witness.stack[script_idx].begin(), witness.stack[script_idx].end());
-        return subscript.GetSigOpCount(true);
+        return subscript.GetSigOpCount(true, /*count_checksigadd=*/true);
     }
 
     // Future flags may be implemented here.
