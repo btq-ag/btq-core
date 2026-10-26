@@ -38,13 +38,14 @@ class WalletP2MRBackupTest(BTQTestFramework):
         funded = source.sendtop2mr(tree, Decimal("1.0"), "custom-vault", allow_trivial_leaves=True)
         self.generate(node, 1)
         exported = source.listp2mr()
-        assert any(e["id"] == funded["p2mr_id"] for e in exported)
+        funded_entry = next(e for e in exported if e["id"] == funded["p2mr_id"])
 
         self.log.info("Restore the custom tree on a fresh descriptor wallet")
         node.createwallet(wallet_name="restored", descriptors=True)
         restored = node.get_wallet_rpc("restored")
-        restore_entries = copy.deepcopy(exported)
-        del restore_entries[0]["created_at"]
+        # Change for a P2MR send is another P2MR, so listp2mr is not just the funded tree.
+        restore_entry = copy.deepcopy(funded_entry)
+        del restore_entry["created_at"]
         later_entry = {
             "tree": [{
                 "depth": 0,
@@ -54,7 +55,7 @@ class WalletP2MRBackupTest(BTQTestFramework):
             "label": "later-entry",
             "created_at": node.getblockheader(node.getbestblockhash())["time"] + 1000,
         }
-        imported = restored.importp2mr([restore_entries[0], later_entry])
+        imported = restored.importp2mr([restore_entry, later_entry])
         assert_equal(len(imported), 2)
         restored_funded = next(row for row in imported if row["address"] == funded["address"])
 
