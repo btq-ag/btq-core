@@ -889,6 +889,7 @@ RPCHelpMan getp2mrinfo();
 RPCHelpMan createp2mrspend();
 RPCHelpMan signp2mrtransaction();
 RPCHelpMan testp2mrtransaction();
+RPCHelpMan importp2mr();
 
 // transactions
 RPCHelpMan listreceivedbyaddress();
@@ -974,6 +975,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &createp2mrspend},
         {"wallet", &signp2mrtransaction},
         {"wallet", &testp2mrtransaction},
+        {"wallet", &importp2mr},
         {"wallet", &signrawtransactionwithwallet},
         {"wallet", &simulaterawtransaction},
         {"wallet", &sendall},
