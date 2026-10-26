@@ -160,36 +160,6 @@ bool WalletBatch::WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey)
 }
 
 // Dilithium key storage methods
-bool WalletBatch::WriteDilithiumKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey, const CKeyMetadata& keyMeta)
-{
-    if (!WriteDilithiumKeyMetadata(keyMeta, vchPubKey, false)) {
-        return false;
-    }
-
-    // hash pubkey/privkey to accelerate wallet load
-    std::vector<unsigned char> vchKey;
-    vchKey.reserve(vchPubKey.size() + vchPrivKey.size());
-    vchKey.insert(vchKey.end(), vchPubKey.begin(), vchPubKey.end());
-    vchKey.insert(vchKey.end(), vchPrivKey.begin(), vchPrivKey.end());
-
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_KEY, vchPubKey), std::make_pair(vchPrivKey, Hash(vchKey)), false);
-}
-
-bool WalletBatch::WriteDilithiumKeyRaw(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata& keyMeta)
-{
-    if (!WriteDilithiumKeyMetadata(keyMeta, vchPubKey, false)) {
-        return false;
-    }
-
-    // hash pubkey/privkey to accelerate wallet load
-    std::vector<unsigned char> vchKey;
-    vchKey.reserve(vchPubKey.size() + vchPrivKey.size());
-    vchKey.insert(vchKey.end(), vchPubKey.begin(), vchPubKey.end());
-    vchKey.insert(vchKey.end(), vchPrivKey.begin(), vchPrivKey.end());
-
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_KEY, vchPubKey), std::make_pair(vchPrivKey, Hash(vchKey)), false);
-}
-
 bool WalletBatch::WriteCryptedDilithiumKey(const CPubKey& vchPubKey,
                                           const std::vector<unsigned char>& vchCryptedSecret,
                                           const CKeyMetadata& keyMeta)
@@ -217,7 +187,7 @@ bool WalletBatch::WriteCryptedDilithiumKey(const CPubKey& vchPubKey,
 }
 
 // Proper Dilithium key storage methods that use CKeyID instead of dummy CPubKey
-bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata& keyMeta)
+bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const CPrivKey& vchPrivKey, const CKeyMetadata& keyMeta)
 {
     // Create a unique key for this Dilithium key using the key ID
     const auto key = std::make_pair(DBKeys::DILITHIUM_KEY, keyID);
@@ -228,7 +198,7 @@ bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<u
     }
 
     // hash key data to accelerate wallet load
-    std::vector<unsigned char> vchKey;
+    CPrivKey vchKey;
     vchKey.reserve(keyID.size() + vchPrivKey.size());
     vchKey.insert(vchKey.end(), keyID.begin(), keyID.end());
     vchKey.insert(vchKey.end(), vchPrivKey.begin(), vchPrivKey.end());
@@ -582,7 +552,7 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         CKeyID keyID;
         ssKey >> keyID;
         
-        std::vector<unsigned char> vchDilithiumKey;
+        CPrivKey vchDilithiumKey;
         ssValue >> vchDilithiumKey;
         
         // Create CDilithiumKey from the stored data
