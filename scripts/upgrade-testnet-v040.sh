@@ -7,9 +7,9 @@ KEEP_REINDEX="${KEEP_REINDEX:-0}"    # 1 = start with -reindex (slow; avoid if s
 BTQ_ROOT="${BTQ_ROOT:-/root/BTQ-Core}"
 DATA_DIR="${DATA_DIR:-/root/.btq/test}"
 
+# London 45.63.97.41 is the private team pool. Do not pin it as a public peer.
 INFRA_PEERS=(
   "45.76.141.238:19333"
-  "45.63.97.41:19333"
   "65.20.111.197:19333"
   "208.85.16.175:19333"
 )
