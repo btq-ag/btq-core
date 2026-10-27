@@ -1,0 +1,104 @@
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Build with --enable-debug and run the unit tests and the Dilithium/P2MR
+# wallet functional tests. --enable-debug defines DEBUG_LOCKORDER and
+# ABORT_ON_FAILED_ASSUME, so a lock taken in the wrong order or an
+# AssertLockHeld that does not hold aborts the test instead of passing
+# silently. The other workflows build without these checks.
+#
+# -O2 -g0 as in ci/test/00_setup_env_native_qt5.sh: --enable-debug keeps
+# its checks, but the build and tests run at release speed.
+
+name: debug-lockorder
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: debug-${{ github.workflow }}-${{ github.event_name != 'pull_request' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  debug-lockorder:
+    name: debug build, lock-order checks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPRESS: "1"
+      MAKEJOBS: "-j4"
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libtool autotools-dev automake pkg-config \
+            bsdmainutils ccache python3-zmq \
+            libevent-dev libboost-dev libsqlite3-dev libdb++-dev libzmq3-dev
+
+      # Debug objects differ from the release jobs', so this job keeps its
+      # own ccache key.
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-debug-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-debug-${{ runner.os }}-
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          ./configure \
+            --enable-debug \
+            --disable-bench \
+            --disable-fuzz \
+            --disable-fuzz-binary \
+            --without-gui \
+            --with-incompatible-bdb \
+            --with-zmq \
+            CC="ccache gcc" \
+            CXX="ccache g++" \
+            CFLAGS="-g0 -O2" \
+            CXXFLAGS="-g0 -O2"
+
+      - name: Check that lock-order checks are compiled in
+        run: grep -q -- '-DDEBUG_LOCKORDER' src/Makefile
+
+      - name: Build
+        run: make $MAKEJOBS
+
+      - name: Unit tests (make check)
+        run: make check
+
+      - name: Dilithium and P2MR wallet functional tests
+        run: |
+          test/functional/test_runner.py --ci --quiet --jobs 4 \
+            --tmpdirprefix "$RUNNER_TEMP" --timeout-factor=4 \
+            wallet_dilithium_change.py \
+            wallet_dilithium_encrypted_restart.py \
+            wallet_dilithium_encrypted_restart_descriptors.py \
+            wallet_dilithium_hd_restore.py \
+            wallet_dilithium_import_restart.py \
+            wallet_dilithium_legacy_spend.py \
+            wallet_dilithium_psbt.py \
+            wallet_dilithium_psbt_multisig.py \
+            wallet_dilithium_send.py \
+            wallet_dilithium_signmessage.py \
+            wallet_p2mr_backup.py \
+            feature_p2mr_rpc.py
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s || true
