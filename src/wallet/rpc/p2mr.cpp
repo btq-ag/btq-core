@@ -62,8 +62,11 @@ RPCHelpMan getnewp2mraddress()
         "Leaves are rejected unless the wallet holds at least one key in a recognised Dilithium\n"
         "template (including createdilithiummultisig's accumulator leaf) or allow_trivial_leaves is\n"
         "true (regtest and tests only).\n"
-        "The tree is stored only in this wallet's database: restoring from the seed or\n"
-        "an importwallet dump does not recreate it, so keep a backupwallet copy.\n",
+        "The tree is stored only in this wallet's database. Restoring from the seed does\n"
+        "not recreate it, and recoverdilithiumkeys rebuilds a single-leaf program, which\n"
+        "is a different address. A legacy dumpwallet file writes the tree as a p2mr\n"
+        "record and importwallet restores that address. Descriptor wallets cannot use\n"
+        "dumpwallet; use backupwallet, or listp2mr and importp2mr.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
@@ -114,10 +117,12 @@ RPCHelpMan getnewhybridp2mraddress()
         "The wallet generates a fresh Dilithium key; the x-only key is supplied by the\n"
         "caller and may belong to this wallet or an external cosigner.\n"
         "Although the Dilithium key is seed-derived, the leaf pairing it with the\n"
-        "x-only key lives only in this wallet's database. Restoring from the seed or\n"
-        "an importwallet dump does not recreate the address (recoverdilithiumkeys\n"
-        "rebuilds the single-leaf address for that index, which is a different\n"
-        "program), so keep a backupwallet copy.\n",
+        "x-only key lives only in this wallet's database. Restoring from the seed\n"
+        "does not recreate the address. recoverdilithiumkeys rebuilds the single-leaf\n"
+        "program for that index, which is a different address. A legacy dumpwallet\n"
+        "file includes the tree as a p2mr record, and importwallet restores that\n"
+        "same address. Descriptor wallets cannot use dumpwallet; use backupwallet,\n"
+        "or listp2mr and importp2mr.\n",
         {
             {"xonly_pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "32-byte BIP340 x-only public key, hex encoded"},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
@@ -173,8 +178,11 @@ RPCHelpMan sendtop2mr()
         "\nCreate a wallet-tracked P2MR destination and send funds to it.\n"
         "Leaves outside known wallet-spendable Dilithium templates are rejected unless\n"
         "allow_trivial_leaves is true. Prefer getnewdilithiumaddress for ordinary receive.\n"
-        "The tree is stored only in this wallet's database: restoring from the seed or\n"
-        "an importwallet dump does not recreate it, so keep a backupwallet copy.\n",
+        "The tree is stored only in this wallet's database. Restoring from the seed does\n"
+        "not recreate it, and recoverdilithiumkeys rebuilds a single-leaf program, which\n"
+        "is a different address. A legacy dumpwallet file writes the tree as a p2mr\n"
+        "record and importwallet restores that address. Descriptor wallets cannot use\n"
+        "dumpwallet; use backupwallet, or listp2mr and importp2mr.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "Amount to send"},

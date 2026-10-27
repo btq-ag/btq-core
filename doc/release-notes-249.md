@@ -14,12 +14,15 @@ Wallet
   signing order.
 
 - Backup caveat: P2MR trees, including the hybrid leaf's key pairing, exist
-  only in the wallet database. Restoring from the seed or from an
-  `importwallet` dump does not recreate P2MR addresses; `recoverdilithiumkeys`
-  rebuilds the plain single-leaf address for an index, which is a different
-  program from any hybrid or multi-leaf address using that key. Keep a
-  `backupwallet` copy of any wallet holding P2MR funds.
+  only in the wallet database. Restoring from the seed does not recreate
+  them. `recoverdilithiumkeys` rebuilds the plain single-leaf address for an
+  index, which is a different program from any hybrid or multi-leaf address
+  using that key. A legacy `dumpwallet` file writes each tree as a `p2mr`
+  record and `importwallet` restores that address. Descriptor wallets cannot
+  use `dumpwallet`; use `backupwallet`, or `listp2mr` and `importp2mr`.
 
-- `signmessagewithdilithium` now refuses addresses whose tree contains a
-  hybrid leaf. Spending such an address needs the schnorr key too, so a
-  Dilithium-only message signature would prove less than the address implies.
+- `signmessagewithdilithium` refuses a hybrid-only tree, because a Dilithium
+  message signature would prove less than that address implies. It still
+  signs when some other leaf can be spent with the Dilithium key alone
+  (a single-key leaf, a 1-of-1 threshold or checkmultisig, or a pubkey-hash
+  leaf) and that key is the tree's only Dilithium key.

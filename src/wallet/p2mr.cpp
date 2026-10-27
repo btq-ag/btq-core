@@ -507,21 +507,41 @@ std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& s
     return GetP2MRByDestination(wallet, dest);
 }
 
+//! True when one Dilithium signature spends the leaf. Hybrid leaves set m
+//! to 1 and are excluded: they still need the schnorr key.
+static bool DilithiumLeafSpendsWithoutSchnorr(const CScript& script)
+{
+    const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
+    switch (policy.type) {
+    case P2MRLeafTemplate::SINGLE_CHECKSIGDILITHIUM:
+        return true;
+    case P2MRLeafTemplate::CHECKMULTISIGDILITHIUM:
+    case P2MRLeafTemplate::THRESHOLD_ACCUMULATOR:
+        return policy.m == 1;
+    case P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR:
+    case P2MRLeafTemplate::UNKNOWN:
+        break;
+    }
+    std::vector<std::vector<unsigned char>> solutions;
+    const TxoutType which_type = Solver(script, solutions);
+    return which_type == TxoutType::DILITHIUM_PUBKEYHASH ||
+           which_type == TxoutType::DILITHIUM_WITNESS_V0_KEYHASH;
+}
+
 std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest)
 {
     AssertLockHeld(wallet.cs_wallet);
     auto entry = GetP2MRByDestination(wallet, dest);
     if (!entry) return std::nullopt;
     // A message signature only proves the Dilithium key. That matches the
-    // address when some leaf can be spent with that key alone. A hybrid-only
-    // tree also needs its schnorr key, so signing would claim more than the
-    // signature proves. An OR of a single-key leaf and a hybrid leaf stays
-    // signable: the single-key leaf spends without the schnorr key.
+    // address when some leaf can be spent with that key alone: a single-key
+    // leaf, a 1-of-1 threshold or checkmultisig, or a pubkey-hash leaf.
+    // A hybrid leaf also needs its schnorr key, so it does not count. An OR
+    // that still has a dilithium-only leaf stays signable.
     bool spendable_alone = false;
     for (const P2MRTreeLeaf& leaf : entry->tree) {
         if (leaf.leaf_version != TAPROOT_LEAF_TAPSCRIPT) continue;
-        const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(CScript{leaf.script.begin(), leaf.script.end()});
-        if (policy.type == P2MRLeafTemplate::SINGLE_CHECKSIGDILITHIUM) {
+        if (DilithiumLeafSpendsWithoutSchnorr(CScript{leaf.script.begin(), leaf.script.end()})) {
             spendable_alone = true;
             break;
         }
