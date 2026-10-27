@@ -515,17 +515,15 @@ std::vector<P2MRTreeLeaf> SingleKeyDilithiumLeaves(const CDilithiumPubKey& pubke
 bool DilithiumPubKeyMatchesDestination(const CDilithiumPubKey& pubkey, const CTxDestination& dest)
 {
     if (!pubkey.IsFullyValid()) return false;
-    // Outside P2MR a Dilithium key hash can be spent only while this network
-    // still allows those payments. Elsewhere nobody can spend coins sent there.
-    if ((std::holds_alternative<DilithiumPKHash>(dest) || std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) &&
-        !LegacyDilithiumBase58PaymentsAllowed()) {
+    // A Dilithium P2PKH can be spent only while this network still allows
+    // those payments. A Dilithium witness-v0 key hash is OP_0 <20-byte hash>,
+    // the same program as P2WPKH, and IsValidDestination rejects it on every
+    // chain. The Dilithium key cannot spend it, so it never matches.
+    if (std::holds_alternative<DilithiumPKHash>(dest) && !LegacyDilithiumBase58PaymentsAllowed()) {
         return false;
     }
     if (const auto* hash = std::get_if<DilithiumPKHash>(&dest)) {
         return *hash == DilithiumPKHash{pubkey};
-    }
-    if (const auto* hash = std::get_if<DilithiumWitnessV0KeyHash>(&dest)) {
-        return *hash == DilithiumWitnessV0KeyHash{pubkey};
     }
     if (const auto* output = std::get_if<WitnessV2P2MR>(&dest)) {
         // Any other tree may hold a spend path this key does not sign.

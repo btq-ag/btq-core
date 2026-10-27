@@ -789,8 +789,9 @@ struct TestnetSetup : public BasicTestingSetup {
 
 BOOST_FIXTURE_TEST_CASE(dilithium_key_hash_matches_where_still_spendable, TestnetSetup)
 {
-    // Testnet has not scheduled P2MR-only, so its Dilithium key hashes still
-    // hold spendable coins and a key controls its own.
+    // Testnet has not scheduled P2MR-only, so its Dilithium P2PKH addresses
+    // still hold spendable coins and a key controls its own. The witness-v0
+    // form is a P2WPKH program, which this key does not spend.
     BOOST_REQUIRE(LegacyDilithiumBase58PaymentsAllowed());
     CDilithiumKey key;
     BOOST_REQUIRE(key.MakeNewKey());
@@ -799,7 +800,7 @@ BOOST_FIXTURE_TEST_CASE(dilithium_key_hash_matches_where_still_spendable, Testne
     BOOST_REQUIRE(other.MakeNewKey());
 
     BOOST_CHECK(DilithiumPubKeyMatchesDestination(pubkey, DilithiumPKHash{pubkey}));
-    BOOST_CHECK(DilithiumPubKeyMatchesDestination(pubkey, DilithiumWitnessV0KeyHash{pubkey}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, DilithiumWitnessV0KeyHash{pubkey}));
     BOOST_CHECK(!DilithiumPubKeyMatchesDestination(other.GetPubKey(), DilithiumPKHash{pubkey}));
     BOOST_CHECK(!DilithiumPubKeyMatchesDestination(other.GetPubKey(), DilithiumWitnessV0KeyHash{pubkey}));
     BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, PKHash{uint160{pubkey.GetID()}}));
