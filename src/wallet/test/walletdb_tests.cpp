@@ -124,7 +124,7 @@ BOOST_AUTO_TEST_CASE(walletdb_checks_dilithium_key_checksum)
     BOOST_REQUIRE(key.IsValid());
     const CKeyID key_id{key.GetPubKey().GetID()};
     CKeyMetadata metadata{123456789};
-    const std::vector<unsigned char> secret{key.begin(), key.end()};
+    const CPrivKey secret{key.begin(), key.end()};
 
     MockableData records;
     {
