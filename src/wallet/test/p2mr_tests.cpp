@@ -460,7 +460,7 @@ BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSet
     // call created must be rolled back (Quarks F2.9).
     {
         LOCK(wallet->cs_wallet);
-        auto funded = FundP2MR(*wallet, leaves, CENT, "fund-fail", /*subtract_fee_from_amount=*/false, coin_control);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "fund-fail", /*subtract_fee_from_amount=*/false, coin_control, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(!funded);
     }
     reload();
@@ -477,7 +477,7 @@ BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSet
     {
         LOCK(wallet->cs_wallet);
         BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
-        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(!funded);
     }
     reload();
@@ -497,7 +497,7 @@ BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSet
     {
         LOCK(wallet->cs_wallet);
         wallet->m_address_book[dest]; // plant an in-memory change entry
-        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(!funded);
         const auto* entry = wallet->FindAddressBookEntry(dest, /*allow_change=*/true);
         BOOST_REQUIRE(entry);
@@ -517,10 +517,10 @@ BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSet
     // A pre-existing tree that the failing call reused stays.
     {
         LOCK(wallet->cs_wallet);
-        auto created = CreateP2MR(*wallet, leaves, "keep");
+        auto created = CreateP2MR(*wallet, leaves, "keep", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(created);
         BOOST_CHECK(!created->reused);
-        auto funded = FundP2MR(*wallet, leaves, CENT, "keep", /*subtract_fee_from_amount=*/false, coin_control);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "keep", /*subtract_fee_from_amount=*/false, coin_control, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(!funded);
     }
     reload();
@@ -558,7 +558,7 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_rolls_back_when_flag_write_throws, BasicTest
 
     {
         LOCK(wallet->cs_wallet);
-        auto created = CreateP2MR(*wallet, leaves, "new-label");
+        auto created = CreateP2MR(*wallet, leaves, "new-label", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(!created);
         BOOST_CHECK(!wallet->FindAddressBookEntry(dest));
         BOOST_CHECK(wallet->ListP2MRMetadata().empty());
@@ -575,7 +575,7 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_rolls_back_when_flag_write_throws, BasicTest
     };
     {
         LOCK(wallet->cs_wallet);
-        auto created = CreateP2MR(*wallet, leaves, "overwrite");
+        auto created = CreateP2MR(*wallet, leaves, "overwrite", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(!created);
         const auto* entry = wallet->FindAddressBookEntry(dest);
         BOOST_REQUIRE(entry);
