@@ -74,7 +74,39 @@ class WalletDilithiumSendTest(BTQTestFramework):
             msg,
             other_pubkey,
         )
+        # repro tracks created, so this is the key-id compare. funding above
+        # does not, and rebuilds the canonical single-leaf script instead.
+        assert_raises_rpc_error(
+            -5,
+            "Dilithium public key does not match the address",
+            repro.verifymessagewithdilithium,
+            created["address"],
+            pk_sig,
+            msg,
+            other_pubkey,
+        )
+        assert repro.verifymessagewithdilithium(created["address"], pk_sig, msg, pubkey_hex)
+        assert_raises_rpc_error(
+            -5,
+            "Dilithium pubkey must be a hex string",
+            funding.verifymessagewithdilithium,
+            created["address"],
+            pk_sig,
+            msg,
+            "zz",
+        )
+        assert_raises_rpc_error(
+            -5,
+            "Invalid Dilithium public key",
+            funding.verifymessagewithdilithium,
+            created["address"],
+            pk_sig,
+            msg,
+            "aa",
+        )
 
+        # pubkey_hex and pk_sig were taken before encryption so the locked
+        # wallet can verify without unlocking.
         repro.encryptwallet("pass")
         assert_raises_rpc_error(
             -13,
@@ -83,6 +115,8 @@ class WalletDilithiumSendTest(BTQTestFramework):
             dilithium_address,
             msg,
         )
+        assert repro.verifymessagewithdilithium(created["address"], pk_sig, msg, pubkey_hex)
+        assert not repro.verifymessagewithdilithium(created["address"], pk_sig, msg + "!", pubkey_hex)
         repro.walletpassphrase("pass", 100000)
         sig = repro.signmessagewithdilithium(dilithium_address, msg)
         assert repro.verifydilithiumsignature(msg, dilithium_address, sig)
