@@ -523,6 +523,14 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         
         std::vector<unsigned char> vchDilithiumKey;
         ssValue >> vchDilithiumKey;
+
+        // WriteDilithiumKeyByID appends Hash(keyID || key). A record without
+        // that trailer still loads on the key checks below; a trailer that
+        // does not match is corruption.
+        uint256 checksum;
+        try {
+            ssValue >> checksum;
+        } catch (const std::ios_base::failure&) {}
         
         // Create CDilithiumKey from the stored data
         CDilithiumKey dilithiumKey;
@@ -532,6 +540,11 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
             strErr = strprintf("Error reading wallet database: Invalid Dilithium key size, expected %zu, got %zu", expected_size, vchDilithiumKey.size());
             return false;
         }
+
+        if (!checksum.IsNull() && Hash(keyID, vchDilithiumKey) != checksum) {
+            strErr = strprintf("Error reading wallet database: Dilithium key %s checksum mismatch", keyID.GetHex());
+            return false;
+        }
         
         // Set clears the key when its sign/verify self-checks fail, so a
         // corrupt record must fail the load instead of installing an
@@ -539,6 +552,14 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         dilithiumKey.Set(vchDilithiumKey.begin(), vchDilithiumKey.end());
         if (!dilithiumKey.IsValid()) {
             strErr = "Error reading wallet database: Dilithium key record failed key self-checks";
+            return false;
+        }
+
+        // Every writer files a key under exactly its own id, and encrypting the
+        // wallet erases the plaintext record by that key. A key filed under
+        // anything else would survive encryption on disk in the clear.
+        if (!ssKey.empty() || CKeyID{dilithiumKey.GetPubKey().GetID()} != keyID) {
+            strErr = strprintf("Error reading wallet database: Dilithium key %s stored under another record key", keyID.GetHex());
             return false;
         }
         
