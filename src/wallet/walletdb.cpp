@@ -550,7 +550,7 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         if (!ssValue.eof()) {
             uint256 checksum;
             ssValue >> checksum;
-            std::vector<unsigned char> vchKey;
+            CPrivKey vchKey;
             vchKey.reserve(keyID.size() + vchDilithiumKey.size());
             vchKey.insert(vchKey.end(), keyID.begin(), keyID.end());
             vchKey.insert(vchKey.end(), vchDilithiumKey.begin(), vchDilithiumKey.end());
