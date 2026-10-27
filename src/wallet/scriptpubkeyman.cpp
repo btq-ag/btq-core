@@ -315,6 +315,8 @@ bool LegacyScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master_key
             }
             batch.WriteCryptedDilithiumKeyByID(keyID, vchCryptedSecret, mapKeyMetadata[keyID]);
         }
+        // False is a bad passphrase. A mix is a corrupt file, so unlock throws
+        // instead of leaving some keys usable. Both loops share this check.
         if (keyPass && keyFail)
         {
             LogPrintf("The wallet is probably corrupted: Some keys decrypt but not all.\n");
