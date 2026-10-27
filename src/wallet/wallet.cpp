@@ -2836,9 +2836,10 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::optional<AddressPur
 }
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool internal)
+    EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)
 {
-    // Not an EXCLUSIVE_LOCKS_REQUIRED annotation: CWallet is incomplete where
-    // ReserveDestination is declared, so pwallet->cs_wallet cannot be named there.
+    // CWallet is incomplete where ReserveDestination is declared, so the
+    // requirement is on this definition. Callers already hold cs_wallet.
     AssertLockHeld(pwallet->cs_wallet);
     if (type == OutputType::P2MR) {
         // P2MR destinations are not keypool-backed: each is a freshly derived
@@ -2846,10 +2847,9 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         // is nothing to hand back, so nIndex stays -1 and KeepDestination() /
         // ReturnDestination() are no-ops for this type.
         if (!IsValidDestination(address)) {
-            auto created = WITH_LOCK(pwallet->cs_wallet,
-                                     return CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
-                                                                       /*add_to_address_book=*/!internal,
-                                                                       internal));
+            auto created = CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
+                                                      /*add_to_address_book=*/!internal,
+                                                      internal);
             if (!created) return util::Error{util::ErrorString(created)};
             address = created->dest;
             fInternal = internal;

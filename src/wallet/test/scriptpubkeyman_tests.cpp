@@ -238,12 +238,8 @@ BOOST_AUTO_TEST_CASE(legacy_encrypt_migrates_dilithium_keys)
 
     BOOST_REQUIRE(wallet.Unlock("encrypt"));
     CDilithiumKey after_encrypt;
-    {
-        // GetDilithiumKey takes cs_KeyStore, then IsLocked takes cs_wallet.
-        // Hold cs_wallet first so that matches the order used above.
-        LOCK(wallet.cs_wallet);
-        BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, after_encrypt));
-    }
+    // cs_wallet is already held above. GetDilithiumKey then takes cs_KeyStore.
+    BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, after_encrypt));
     BOOST_CHECK(after_encrypt == before_encrypt);
 }
 

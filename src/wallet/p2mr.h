@@ -161,7 +161,7 @@ util::Result<void> ValidateP2MRRestore(const UniValue& meta);
 /** Restore a dumped P2MR entry. Rebuilds the tree and requires any supplied
  *  address / scriptPubKey / merkle_root to match before writing. Trivial
  *  leaves are allowed because this is a restore. */
-util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta);
+util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR
@@ -246,7 +246,7 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet,
  * without reading the other entries. Entries whose tree does not build are
  * skipped, as in BuildP2MRSigningProvider.
  */
-FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet, const CTxDestination& dest);
+FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet, const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Build a FlatSigningProvider holding only the wallet keys that the given
