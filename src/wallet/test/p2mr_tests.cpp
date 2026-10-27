@@ -453,7 +453,7 @@ BOOST_FIXTURE_TEST_CASE(p2mr_metadata_not_in_receive_requests, BasicTestingSetup
         wallet->LoadWallet();
         LOCK(wallet->cs_wallet);
         BOOST_CHECK(!wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
-        auto created = CreateP2MR(*wallet, leaves, "meta");
+        auto created = CreateP2MR(*wallet, leaves, "meta", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(created);
         address = created->address;
 
