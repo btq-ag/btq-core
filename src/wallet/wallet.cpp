@@ -3720,6 +3720,11 @@ std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& scri
 
 std::unique_ptr<SigningProvider> CWallet::GetSolvingProvider(const CScript& script, SignatureData& sigdata) const
 {
+    // Take cs_wallet before any ScriptPubKeyMan lock. For an encrypted wallet,
+    // DescriptorScriptPubKeyMan reads Dilithium keys under cs_desc_man and calls
+    // IsLocked(), which takes cs_wallet; callers such as WalletImpl::getPubKey
+    // do not hold it, which would reverse the cs_wallet -> cs_desc_man order.
+    LOCK(cs_wallet);
     for (const auto& spk_man_pair : m_spk_managers) {
         if (spk_man_pair.second->CanProvide(script, sigdata)) {
             if (auto provider = spk_man_pair.second->GetSolvingProvider(script)) {
