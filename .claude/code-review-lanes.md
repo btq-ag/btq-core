@@ -111,13 +111,14 @@ Bitcoin Core's bounds were chosen for its own parameter set. BTQ raised several.
 
 ## Repo facts worth knowing while reviewing
 
-- **CI proves very little.** In `.github/workflows/ci.yml` the macOS and Win64 jobs are
-  disabled with `if: false`. The only job that runs on a PR is
-  `Build btqd and run address tests` — a Linux build plus unit tests. **No functional
-  tests run in CI.** Do not treat a green check as evidence that behaviour is correct,
-  and weight missing-test findings accordingly.
-- The `test each commit` job currently fails on every multi-commit PR for reasons
-  unrelated to the PR (a rebase conflict against a historical merge commit). Its red
-  status is not a finding.
-- `test/functional/` tests exist but are run by hand. A change to behaviour that has no
-  functional test is a real gap even though nothing will go red.
+- **What CI covers.** On every PR: a GCC build with unit tests and the base
+  functional suite (`Build btqd and run address tests`, `functional tests`), a clang
+  build with unit tests (`clang build`), and a debug build with lock-order checks
+  (`debug build, lock-order checks`). The macOS and Win64 jobs in `ci.yml` are disabled
+  with `if: false`. Extended functional tests run only nightly or with the
+  `ci:extended` label. Tests listed in `test/functional/known_failures.txt` are allowed
+  to fail, so a green check doesn't cover them.
+- `test each commit` runs only nightly and on PRs labelled `ci:each-commit`. It isn't
+  required. If it's missing from a PR, that isn't a finding.
+- A change to behaviour that has no functional test is a real gap even though nothing
+  will go red.

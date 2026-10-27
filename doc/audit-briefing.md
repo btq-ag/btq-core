@@ -231,7 +231,12 @@ Two further notes on the tests:
   on the issue tracker. The `dilithium-legacy` case in
   `wallet/test/spend_tests.cpp` is the notable one; it is labelled as such in
   the source and will fail, by design, once the defect is fixed.
-- Of the CI workflows, only `build-and-address-tests` guards `master`. The
-  `test each commit` job runs solely on pull requests carrying more than one
-  commit, and the macOS and Win64 jobs are disabled outright. A green tick on
-  `master` is a narrower claim than it looks.
+- The checks required on `master` build with GCC and run the unit tests and
+  the base functional suite (`build-and-address-tests`, `functional-tests`).
+  `clang-build` builds the same code with clang, and `debug-lockorder`
+  builds with `--enable-debug`, so lock-order and `AssertLockHeld` failures
+  abort the unit tests and the Dilithium/P2MR wallet functional tests.
+  `test each commit` builds every commit with clang, but only nightly and on
+  pull requests labelled `ci:each-commit`, and it is not required. The
+  extended functional suite runs nightly and on pull requests labelled
+  `ci:extended`. The macOS and Win64 jobs are disabled outright.
