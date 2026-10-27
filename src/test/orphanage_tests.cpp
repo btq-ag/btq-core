@@ -207,7 +207,7 @@ BOOST_AUTO_TEST_CASE(honest_arrival_not_erased_during_latency_trim)
 
     std::vector<CTransactionRef> attacker;
     for (int i = 0; i < 4; ++i) {
-        auto tx = MakeOrphanTx(key, uint256{static_cast<uint64_t>(i + 1)});
+        auto tx = MakeOrphanTx(key, uint256{static_cast<uint8_t>(i + 1)});
         BOOST_CHECK(orphanage.AddTx(tx, /*peer=*/1));
         BOOST_CHECK(orphanage.AddAnnouncer(tx->GetWitnessHash(), /*peer=*/2));
         attacker.push_back(tx);
@@ -266,7 +266,7 @@ BOOST_AUTO_TEST_CASE(limit_orphans_randomizes_equal_usage_peers)
         TxOrphanageTest orphanage(/*max_global_usage=*/one + 1, /*max_latency_score=*/3000, /*reserved_usage_per_peer=*/one + 1);
         BOOST_CHECK(orphanage.AddTx(a, /*peer=*/0));
         BOOST_CHECK(orphanage.AddTx(b, /*peer=*/1));
-        FastRandomContext rng{uint256{static_cast<uint64_t>(seed)}};
+        FastRandomContext rng{uint256{static_cast<uint8_t>(seed)}};
         orphanage.LimitOrphans(rng);
         BOOST_CHECK_EQUAL(orphanage.CountOrphans(), 1U);
         if (orphanage.HaveTx(GenTxid::Wtxid(a->GetWitnessHash()))) survivors.insert(a->GetWitnessHash());
