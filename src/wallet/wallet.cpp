@@ -3028,11 +3028,18 @@ bool CWallet::IsAddressPreviouslySpent(const CTxDestination& dest) const
     return false;
 }
 
+namespace {
+constexpr std::string_view P2MR_RECEIVE_REQUEST_PREFIX{"rrp2mr:"};
+} // namespace
+
 std::vector<std::string> CWallet::GetAddressReceiveRequests() const
 {
+    // P2MR trees are stored in this map under "rrp2mr:" ids. They are JSON,
+    // not payment-request blobs, and must not be handed to that parser.
     std::vector<std::string> values;
     for (const auto& [dest, entry] : m_address_book) {
         for (const auto& [id, request] : entry.receive_requests) {
+            if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) == 0) continue;
             values.emplace_back(request);
         }
     }
@@ -3051,10 +3058,6 @@ bool CWallet::EraseAddressReceiveRequest(WalletBatch& batch, const CTxDestinatio
     if (!batch.EraseAddressReceiveRequest(dest, id)) return false;
     m_address_book[dest].receive_requests.erase(id);
     return true;
-}
-
-namespace {
-static constexpr std::string_view P2MR_RECEIVE_REQUEST_PREFIX{"rrp2mr:"};
 }
 
 bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value)
