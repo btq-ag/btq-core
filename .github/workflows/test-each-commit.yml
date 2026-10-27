@@ -1,0 +1,184 @@
+# Copyright (c) 2023 The Bitcoin Core developers
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Build each commit with clang and run make check, so that every commit on
+# master builds and git bisect can use it. Merges keep a branch's commits,
+# so an intermediate commit that does not build ends up on master.
+#
+# This takes about 12 minutes per commit, so it is not a required check:
+#
+# - Nightly (and on manual dispatch), it tests the commits merged into
+#   master in the last 25 hours (the `hours` input on dispatch). A failure
+#   cannot be undone on master; it says which commits git bisect will have
+#   to skip.
+# - On pull requests labelled ci:each-commit, it tests the PR's commits
+#   before the head, as Bitcoin Core's job does. Use it before merging a
+#   stack whose commits are meant to build on their own. The PR head is
+#   built by clang-build.yml and the other jobs.
+#
+# Adding another label to a pull request that has ci:each-commit posts a
+# skipped result for this check on the same commit, which hides the earlier
+# result in the pull request's checks list. Re-run the earlier run from the
+# Actions tab to show it again.
+
+name: test-each-commit
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: 'Test the commits merged into master in the last N hours'
+        default: '25'
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  # Adding any other label must not cancel a running check.
+  group: test-each-commit-${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name != 'ci:each-commit')) && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-each-commit:
+    name: 'test each commit'
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.commits != 1 &&
+       contains(github.event.pull_request.labels.*.name, 'ci:each-commit') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ci:each-commit'))
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360  # Use maximum time, see https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idtimeout-minutes.
+    env:
+      # About 12 minutes per commit without a warm ccache, so 6 fits a pull
+      # request in well under the limit, and 25 fits a nightly run.
+      MAX_COUNT: ${{ github.event_name == 'pull_request' && 6 || 25 }}
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 1G
+      CCACHE_COMPRESS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          # Full history. In a shallow clone, a commit on the shallow boundary
+          # loses its parents, so the commits that are not in the base branch
+          # cannot be worked out. On #188, far behind its base, this made the
+          # job replay base-branch commits. With fetch-depth 0, checkout also
+          # fetches every branch, including the base branch as
+          # origin/$BASE_REF.
+          fetch-depth: 0
+
+      - name: Determine commits to test (pull request)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if ! git merge-base HEAD "origin/$BASE_REF" > /dev/null; then
+            echo "::error::could not locate the merge base of the pull request branch and $BASE_REF"
+            exit 1
+          fi
+          # Test the PR's non-merge commits: those reachable from the parents
+          # of the PR head (the head itself is already tested by other jobs)
+          # and not from the base branch or the default branch. Commits
+          # brought in by a merge of either are excluded, so a stacked PR that
+          # merged master does not test master's commits. Commits from any
+          # other merged branch are included. The next step checks out each
+          # commit in place, so no commit is rewritten. Rebasing across a
+          # merge flattened every commit the merge brought in (#265).
+          #
+          # If there are more than MAX_COUNT such commits, only the last
+          # MAX_COUNT in topological order are tested, parents before
+          # children. A merged branch's commits can come after the PR's own
+          # commits from before the merge in that order, so a large merged
+          # branch can push those earlier commits out; the notice below says
+          # how many were skipped.
+          #
+          # Assign first so that bash -e stops the step if rev-list fails.
+          RANGE=("HEAD^@" "^origin/$BASE_REF" "^origin/$DEFAULT_BRANCH")
+          TEST_COMMITS=$(git rev-list --no-merges --topo-order -n"$MAX_COUNT" --reverse "${RANGE[@]}")
+          TOTAL=$(git rev-list --no-merges --count "${RANGE[@]}")
+          if [ "$TOTAL" -gt "$MAX_COUNT" ]; then
+            echo "::notice::testing $MAX_COUNT of $TOTAL commits before the PR head; skipped $((TOTAL - MAX_COUNT)) earlier in topological order"
+          fi
+          echo "TEST_COMMITS=$(echo $TEST_COMMITS)" >> "$GITHUB_ENV"
+
+      - name: Determine commits to test (merged into master)
+        if: github.event_name != 'pull_request'
+        env:
+          HOURS: ${{ github.event.inputs.hours || '25' }}
+        run: |
+          # The merge commits GitHub made on master's first-parent line in the
+          # last HOURS hours (their committer date is the merge time), oldest
+          # first. For each, test the commits it brought in: reachable from
+          # its second parent and not its first. Also test commits pushed to
+          # master directly. Commit dates of the merged commits themselves
+          # are not used, since a branch can be merged long after it was
+          # written.
+          SINCE="$HOURS hours ago"
+          ALL=$(
+            for c in $(git rev-list --first-parent --reverse --since="$SINCE" HEAD); do
+              if git rev-parse -q --verify "$c^2" > /dev/null; then
+                git rev-list --no-merges --topo-order --reverse "$c^2" "^$c^1"
+              else
+                echo "$c"
+              fi
+            done | awk '!seen[$0]++'
+          )
+          TOTAL=$(echo "$ALL" | grep -c . || true)
+          if [ "$TOTAL" -gt "$MAX_COUNT" ]; then
+            echo "::notice::testing the first $MAX_COUNT of $TOTAL commits merged in the last $HOURS hours; skipped the last $((TOTAL - MAX_COUNT))"
+          fi
+          TEST_COMMITS=$(echo "$ALL" | head -n "$MAX_COUNT")
+          echo "TEST_COMMITS=$(echo $TEST_COMMITS)" >> "$GITHUB_ENV"
+
+      - run: |
+          sudo apt-get update
+          sudo apt-get install clang ccache build-essential libtool autotools-dev automake pkg-config bsdmainutils python3-zmq libevent-dev libboost-dev libsqlite3-dev libdb++-dev systemtap-sdt-dev libminiupnpc-dev libnatpmp-dev libqt5gui5 libqt5core5a libqt5dbus5 qttools5-dev qttools5-dev-tools qtwayland5 libqrencode-dev -y
+
+      # Consecutive commits share most of their objects.
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-each-commit-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-each-commit-${{ runner.os }}-
+
+      - name: Compile and run tests
+        run: |
+          # Run tests on the commits selected above.
+          # Use clang++, because it is a bit faster and uses less memory than g++
+          # Functional tests are not run here yet: many still fail on master
+          # (#104), so they would make this job fail on every PR. Add
+          # `&& ./test/functional/test_runner.py -j $(( $(nproc) * 2 ))` back
+          # after `make check`, inside the braces, when #104 is fixed.
+          if [ -z "$TEST_COMMITS" ]; then
+            echo "::notice::no commits to test"
+            exit 0
+          fi
+          FAILED=()
+          for commit in $TEST_COMMITS; do
+            # Start each commit from a clean tree, so files changed or left
+            # by the previous build cannot affect this one.
+            git reset -q --hard
+            git clean -qffdx -e .ccache
+            git checkout -q "$commit"
+            echo "::group::$(git log -1 --format='%h %s')"
+            if ! { ./autogen.sh && CC="ccache clang" CXX="ccache clang++" ./configure && make clean && make -j "$(nproc)" check; }; then
+              FAILED+=("$commit")
+            fi
+            echo "::endgroup::"
+          done
+          # Test every commit rather than stopping at the first failure, so a
+          # nightly run lists all the commits git bisect will have to skip.
+          for commit in "${FAILED[@]}"; do
+            echo "::error::$(git log -1 --format='%h %s' "$commit") does not build or fails make check"
+          done
+          [ "${#FAILED[@]}" -eq 0 ]
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s || true
