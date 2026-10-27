@@ -79,6 +79,7 @@ struct P2MRSpendUnsigned {
     CAmount effective_fee{0};
     CAmount change_amount{0};
     bool has_change{false};
+    CTxDestination change_dest;
 };
 
 /** Result of signing a P2MR transaction. */
@@ -201,12 +202,15 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
                                   bool allow_trivial_leaves = false) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Build an unsigned spend of a tracked P2MR UTXO to a destination.
- *  Non-const because change address generation may extend the keypool. */
+ *  Change goes to `change_dest` if given, which must be P2MR, and otherwise to
+ *  a new P2MR address of the wallet. Non-const because deriving that address
+ *  stores a new key. */
 util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
                                                 const std::string& p2mr_id,
                                                 const CTxDestination& to_dest,
                                                 CAmount send_amount,
-                                                CAmount fee) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+                                                CAmount fee,
+                                                const std::optional<CTxDestination>& change_dest = std::nullopt) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Sign P2MR inputs using stored metadata. Leaves unrelated inputs untouched. */
 util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,

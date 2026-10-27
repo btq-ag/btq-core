@@ -991,11 +991,15 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
                                                 const std::string& p2mr_id,
                                                 const CTxDestination& to_dest,
                                                 CAmount send_amount,
-                                                CAmount fee)
+                                                CAmount fee,
+                                                const std::optional<CTxDestination>& change_dest)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!IsValidDestination(to_dest)) {
         return util::Error{Untranslated("invalid destination address")};
+    }
+    if (change_dest && !std::holds_alternative<WitnessV2P2MR>(*change_dest)) {
+        return util::Error{Untranslated("change_address must be a P2MR address")};
     }
     if (send_amount <= 0) {
         return util::Error{Untranslated("send amount must be positive")};
@@ -1044,12 +1048,25 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     out.tx.vout.emplace_back(send_amount, GetScriptForDestination(to_dest));
 
     if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
-        auto change_dest = wallet.GetNewChangeDestination(OutputType::BECH32);
-        if (!change_dest) return util::Error{util::ErrorString(change_dest)};
-        out.tx.vout.emplace_back(change, GetScriptForDestination(*change_dest));
+        if (change_dest) {
+            out.change_dest = *change_dest;
+        } else {
+            // P2MR change is a new Dilithium key, derived from private key material.
+            if (wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) || wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
+                return util::Error{Untranslated("This wallet cannot derive a P2MR change address. Pass change_address.")};
+            }
+            if (wallet.IsLocked()) {
+                return util::Error{Untranslated("Error: Please enter the wallet passphrase with walletpassphrase first.")};
+            }
+            auto derived = wallet.GetNewChangeDestination(OutputType::P2MR);
+            if (!derived) return util::Error{util::ErrorString(derived)};
+            out.change_dest = *derived;
+        }
+        out.tx.vout.emplace_back(change, GetScriptForDestination(out.change_dest));
         out.has_change = true;
         out.change_amount = change;
     }
+
 
     out.p2mr_id = p2mr_id;
     out.input_amount = input_amount;

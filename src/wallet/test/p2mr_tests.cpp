@@ -14,12 +14,14 @@
 #include <script/script.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
+#include <script/solver.h>
 #include <univalue.h>
 #include <util/result.h>
 #include <util/strencodings.h>
 #include <util/vector.h>
 #include <validation.h>
 #include <wallet/p2mr.h>
+#include <wallet/receive.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/test/util.h>
 #include <wallet/wallet.h>
@@ -783,6 +785,163 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_aggregates_inputs_and_reports_effectiv
     BOOST_CHECK_EQUAL(spend->effective_fee, 1100);
     BOOST_CHECK(!spend->has_change);
     BOOST_REQUIRE_EQUAL(spend->tx.vout.size(), 1U);
+}
+
+BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_change_stays_p2mr, TestChain100Setup)
+{
+    const CBlockIndex* tip = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip());
+    BOOST_REQUIRE(tip);
+
+    CKey recipient_key;
+    recipient_key.MakeNewKey(/*fCompressedIn=*/true);
+    const CTxDestination recipient{PKHash(recipient_key.GetPubKey())};
+    const CAmount send{CENT};
+    const CAmount fee{1000};
+    const CAmount dust_gate{546};
+
+    // One confirmed output on a fresh OP_TRUE P2MR entry.
+    const auto fund = [&](CWallet& wallet, CAmount amount) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet) {
+        wallet.SetLastBlockProcessed(tip->nHeight, tip->GetBlockHash());
+        auto created = CreateP2MR(wallet, MakeOpTrueTree(), "change-source", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(created);
+        CMutableTransaction funding;
+        funding.nVersion = 2;
+        funding.nLockTime = 1;
+        funding.vout.emplace_back(amount, created->script_pub_key);
+        BOOST_REQUIRE(wallet.AddToWallet(MakeTransactionRef(std::move(funding)), TxStateConfirmed{tip->GetBlockHash(), tip->nHeight, /*index=*/0}));
+        return *created;
+    };
+
+    // Every case gets its own wallet: the OP_TRUE entries share one script, so
+    // a second funding in the same wallet would change which coin is picked.
+    const auto make_wallet = [&](bool descriptors) {
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        if (descriptors) {
+            wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+            wallet->SetupDescriptorScriptPubKeyMans();
+        } else {
+            wallet->SetupLegacyScriptPubKeyMan();
+            LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+            BOOST_REQUIRE(spk_man);
+            BOOST_REQUIRE(WITH_LOCK(spk_man->cs_KeyStore, return spk_man->SetupGeneration(true)));
+        }
+        return wallet;
+    };
+
+    for (const bool descriptors : {true, false}) {
+        BOOST_TEST_MESSAGE(strprintf("descriptors=%d", descriptors));
+        {
+            auto wallet = make_wallet(descriptors);
+            LOCK(wallet->cs_wallet);
+            const auto at_gate = fund(*wallet, send + fee + dust_gate);
+            auto no_change = CreateP2MRSpend(*wallet, at_gate.id, recipient, send, fee);
+            BOOST_REQUIRE_MESSAGE(no_change, util::ErrorString(no_change).original);
+            BOOST_CHECK(!no_change->has_change);
+            BOOST_CHECK_EQUAL(no_change->tx.vout.size(), 1U);
+            BOOST_CHECK_EQUAL(no_change->effective_fee, fee + dust_gate);
+        }
+
+        auto wallet = make_wallet(descriptors);
+        LOCK(wallet->cs_wallet);
+        const auto over_gate = fund(*wallet, send + fee + dust_gate + 1);
+        std::vector<CScript> change_scripts;
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            auto spend = CreateP2MRSpend(*wallet, over_gate.id, recipient, send, fee);
+            BOOST_REQUIRE_MESSAGE(spend, util::ErrorString(spend).original);
+            BOOST_REQUIRE(spend->has_change);
+            BOOST_CHECK_EQUAL(spend->change_amount, dust_gate + 1);
+            BOOST_REQUIRE_EQUAL(spend->tx.vout.size(), 2U);
+            const CTxOut& change_out = spend->tx.vout[1];
+            BOOST_CHECK_EQUAL(change_out.nValue, dust_gate + 1);
+
+            std::vector<std::vector<unsigned char>> solutions;
+            const TxoutType change_type{Solver(change_out.scriptPubKey, solutions)};
+            BOOST_CHECK_MESSAGE(change_type == TxoutType::WITNESS_V2_P2MR,
+                                strprintf("change output is %s", GetTxnOutputType(change_type)));
+            BOOST_CHECK(change_out.scriptPubKey != over_gate.script_pub_key);
+            BOOST_CHECK(wallet->IsMine(change_out.scriptPubKey) == ISMINE_SPENDABLE);
+            BOOST_CHECK(OutputIsChange(*wallet, change_out));
+            change_scripts.push_back(change_out.scriptPubKey);
+        }
+        // Each spend gets a fresh change key.
+        BOOST_CHECK(change_scripts[0] != change_scripts[1]);
+    }
+
+    for (const bool descriptors : {true, false}) {
+        BOOST_TEST_MESSAGE(strprintf("locked, descriptors=%d", descriptors));
+        // A locked wallet cannot derive the change key, and says so instead of
+        // failing inside key derivation.
+        auto wallet = make_wallet(descriptors);
+        const auto over_gate = WITH_LOCK(wallet->cs_wallet, return fund(*wallet, send + fee + dust_gate + 1));
+        BOOST_REQUIRE(wallet->EncryptWallet("pass"));
+        BOOST_REQUIRE(wallet->IsLocked());
+        {
+            LOCK(wallet->cs_wallet);
+            auto refused = CreateP2MRSpend(*wallet, over_gate.id, recipient, send, fee);
+            BOOST_REQUIRE(!refused);
+            BOOST_CHECK(util::ErrorString(refused).original.find("walletpassphrase") != std::string::npos);
+        }
+        BOOST_REQUIRE(wallet->Unlock("pass"));
+        LOCK(wallet->cs_wallet);
+        auto spend = CreateP2MRSpend(*wallet, over_gate.id, recipient, send, fee);
+        BOOST_REQUIRE_MESSAGE(spend, util::ErrorString(spend).original);
+        BOOST_REQUIRE_EQUAL(spend->tx.vout.size(), 2U);
+        std::vector<std::vector<unsigned char>> solutions;
+        BOOST_CHECK(Solver(spend->tx.vout[1].scriptPubKey, solutions) == TxoutType::WITNESS_V2_P2MR);
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_pays_given_change_address, TestChain100Setup)
+{
+    const CBlockIndex* tip = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip());
+    BOOST_REQUIRE(tip);
+    CKey recipient_key;
+    recipient_key.MakeNewKey(/*fCompressedIn=*/true);
+    const CTxDestination recipient{PKHash(recipient_key.GetPubKey())};
+    const CAmount send{CENT};
+    const CAmount fee{1000};
+    const CTxDestination change_to{WitnessV2P2MR{std::vector<unsigned char>(WitnessV2P2MR::SIZE, 0x42)}};
+
+    for (const bool watch_only : {true, false}) {
+        BOOST_TEST_MESSAGE(strprintf("watch_only=%d", watch_only));
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+        if (watch_only) {
+            wallet->SetWalletFlag(WALLET_FLAG_DISABLE_PRIVATE_KEYS);
+        } else {
+            wallet->SetupDescriptorScriptPubKeyMans();
+        }
+        wallet->SetLastBlockProcessed(tip->nHeight, tip->GetBlockHash());
+        auto created = CreateP2MR(*wallet, MakeOpTrueTree(), "source", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(created);
+        CMutableTransaction funding;
+        funding.nVersion = 2;
+        funding.nLockTime = 1;
+        funding.vout.emplace_back(20 * CENT, created->script_pub_key);
+        BOOST_REQUIRE(wallet->AddToWallet(MakeTransactionRef(std::move(funding)), TxStateConfirmed{tip->GetBlockHash(), tip->nHeight, /*index=*/0}));
+
+        if (watch_only) {
+            // Without private keys there is no Dilithium key to derive change
+            // from, and the change is not quietly moved to witness v0.
+            auto refused = CreateP2MRSpend(*wallet, created->id, recipient, send, fee);
+            BOOST_REQUIRE(!refused);
+            BOOST_CHECK(util::ErrorString(refused).original.find("Pass change_address") != std::string::npos);
+        }
+
+        auto spend = CreateP2MRSpend(*wallet, created->id, recipient, send, fee, change_to);
+        BOOST_REQUIRE_MESSAGE(spend, util::ErrorString(spend).original);
+        BOOST_REQUIRE(spend->has_change);
+        BOOST_CHECK(spend->change_dest == change_to);
+        BOOST_REQUIRE_EQUAL(spend->tx.vout.size(), 2U);
+        BOOST_CHECK(spend->tx.vout[1].scriptPubKey == GetScriptForDestination(change_to));
+        BOOST_CHECK_EQUAL(spend->tx.vout[1].nValue, 20 * CENT - send - fee);
+
+        auto wrong = CreateP2MRSpend(*wallet, created->id, recipient, send, fee, recipient);
+        BOOST_REQUIRE(!wrong);
+        BOOST_CHECK(util::ErrorString(wrong).original.find("change_address must be a P2MR address") != std::string::npos);
+    }
 }
 
 BOOST_FIXTURE_TEST_CASE(produce_signature_preserves_p2mr_witness_stack, BasicTestingSetup)
