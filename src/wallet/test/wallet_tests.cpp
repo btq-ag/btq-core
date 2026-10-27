@@ -400,8 +400,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, Walle
         request.params.push_back(backup_file);
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
+            LOCK(Assert(m_node.chainman)->GetMutex());
             wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
         }
 
@@ -435,8 +435,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_p2mr_metadata, Wallet
         wallet->GetOrCreateLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
+            LOCK(Assert(m_node.chainman)->GetMutex());
             wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
             SetMockTime(1'600'000'000);
             P2MRTreeLeaf leaf;
@@ -472,8 +472,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_p2mr_metadata, Wallet
         wallet->SetupLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
+            LOCK(Assert(m_node.chainman)->GetMutex());
             wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
         }
 
@@ -505,8 +505,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_truncated_p2mr_dump, Wal
         wallet->GetOrCreateLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
+            LOCK(Assert(m_node.chainman)->GetMutex());
             wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
             P2MRTreeLeaf leaf;
             leaf.depth = 0;
@@ -540,8 +540,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_truncated_p2mr_dump, Wal
         wallet->SetupLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
+            LOCK(Assert(m_node.chainman)->GetMutex());
             wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
         }
         JSONRPCRequest request;
@@ -565,8 +565,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_p2mr_commitment_mismatch
         wallet->GetOrCreateLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
+            LOCK(Assert(m_node.chainman)->GetMutex());
             wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
             P2MRTreeLeaf leaf;
             leaf.depth = 0;
@@ -617,8 +617,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_p2mr_commitment_mismatch
         wallet->SetupLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
+            LOCK(Assert(m_node.chainman)->GetMutex());
             wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
         }
         JSONRPCRequest request;
@@ -668,8 +668,8 @@ BOOST_FIXTURE_TEST_CASE(importwallet_tolerates_empty_tokens, WalletTestingSetup)
     request.params.push_back(fs::PathToString(dump_path));
     AddWallet(context, wallet);
     {
-        LOCK(Assert(m_node.chainman)->GetMutex());
         LOCK(wallet->cs_wallet);
+        LOCK(Assert(m_node.chainman)->GetMutex());
         wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
     }
 

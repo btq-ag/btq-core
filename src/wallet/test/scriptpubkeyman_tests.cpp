@@ -57,7 +57,7 @@ BOOST_AUTO_TEST_CASE(dilithium_hd_wallet_derivation_deterministic)
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
     LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
 
-    LOCK(keyman.cs_KeyStore);
+    LOCK2(wallet.cs_wallet, keyman.cs_KeyStore);
     BOOST_REQUIRE(keyman.SetupGeneration(true));
     BOOST_REQUIRE(keyman.IsHDEnabled());
 
@@ -101,7 +101,7 @@ BOOST_AUTO_TEST_CASE(dilithium_getnewdestination_uses_hd_seed)
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
     LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
 
-    LOCK(keyman.cs_KeyStore);
+    LOCK2(wallet.cs_wallet, keyman.cs_KeyStore);
     BOOST_REQUIRE(keyman.SetupGeneration(true));
     BOOST_REQUIRE(keyman.IsHDEnabled());
 
@@ -150,7 +150,7 @@ BOOST_AUTO_TEST_CASE(dilithium_legacy_generation_disabled_on_p2mr_only_chain)
     CWallet legacy_wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
     LegacyScriptPubKeyMan& legacy_keyman = *legacy_wallet.GetOrCreateLegacyScriptPubKeyMan();
     {
-        LOCK(legacy_keyman.cs_KeyStore);
+        LOCK2(legacy_wallet.cs_wallet, legacy_keyman.cs_KeyStore);
         BOOST_REQUIRE(legacy_keyman.SetupGeneration(true));
     }
     BOOST_CHECK(!legacy_keyman.GetNewDestination(OutputType::DILITHIUM_LEGACY));
@@ -204,7 +204,7 @@ BOOST_AUTO_TEST_CASE(legacy_encrypt_migrates_dilithium_keys)
     CKeyID key_id;
     CDilithiumKey before_encrypt;
     {
-        LOCK(keyman.cs_KeyStore);
+        LOCK2(wallet.cs_wallet, keyman.cs_KeyStore);
         BOOST_REQUIRE(keyman.SetupGeneration(true));
 
         WalletBatch batch(wallet.GetDatabase());
@@ -214,6 +214,9 @@ BOOST_AUTO_TEST_CASE(legacy_encrypt_migrates_dilithium_keys)
         BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, before_encrypt));
     }
 
+    // GetDilithiumKey checks IsLocked() under cs_KeyStore, so take
+    // cs_wallet first, as the wallet does.
+    LOCK(wallet.cs_wallet);
     BOOST_REQUIRE(wallet.EncryptWallet("encrypt"));
     BOOST_CHECK(wallet.IsCrypted());
     BOOST_CHECK(wallet.IsLocked());
@@ -243,7 +246,7 @@ BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
 
     CDilithiumKey before_encrypt;
     {
-        LOCK(keyman->cs_desc_man);
+        LOCK2(wallet.cs_wallet, keyman->cs_desc_man);
         BOOST_REQUIRE(keyman->GetDilithiumKey(key_id, before_encrypt));
     }
 
@@ -251,7 +254,7 @@ BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
     BOOST_CHECK(wallet.IsCrypted());
     BOOST_CHECK(wallet.IsLocked());
     {
-        LOCK(keyman->cs_desc_man);
+        LOCK2(wallet.cs_wallet, keyman->cs_desc_man);
         CDilithiumKey locked_key;
         BOOST_CHECK(keyman->HaveDilithiumKey(key_id));
         BOOST_CHECK(!keyman->GetDilithiumKey(key_id, locked_key));
@@ -260,7 +263,7 @@ BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
     BOOST_REQUIRE(wallet.Unlock("encrypt"));
     CDilithiumKey after_encrypt;
     {
-        LOCK(keyman->cs_desc_man);
+        LOCK2(wallet.cs_wallet, keyman->cs_desc_man);
         BOOST_REQUIRE(keyman->GetDilithiumKey(key_id, after_encrypt));
     }
     BOOST_CHECK(after_encrypt == before_encrypt);
@@ -308,7 +311,7 @@ BOOST_AUTO_TEST_CASE(legacy_dilithium_signing_provider_produces_signature)
     CDilithiumPubKey dilithium_pubkey;
     DilithiumPKHash key_hash;
     {
-        LOCK(keyman.cs_KeyStore);
+        LOCK2(wallet.cs_wallet, keyman.cs_KeyStore);
         BOOST_REQUIRE(keyman.SetupGeneration(true));
 
         WalletBatch batch(wallet.GetDatabase());
