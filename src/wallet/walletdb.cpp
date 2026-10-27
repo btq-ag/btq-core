@@ -577,7 +577,17 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
             strErr = "Error reading wallet database: Dilithium key record failed key self-checks";
             return false;
         }
-        
+
+        // Set only checks that the secret is a real key. With no checksum,
+        // the legacy manager would then store it under the derived id and
+        // ignore the id in the record. A valid secret filed under a
+        // different key id must not load. Records whose secret really
+        // belongs to the stored id still do.
+        if (CKeyID(dilithiumKey.GetPubKey().GetID()) != keyID) {
+            strErr = "Error reading wallet database: Dilithium key does not match key id";
+            return false;
+        }
+
         // A descriptor wallet has its managers built before records load, so
         // searching them is safe. A legacy wallet creates its manager on demand, and
         // an imported Dilithium key can be the first record to need one, so ask for
