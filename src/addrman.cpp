@@ -750,8 +750,10 @@ std::pair<CAddress, NodeSeconds> AddrManImpl::Select_(bool new_only, std::option
 
         // Iterate over the positions of that bucket, starting at the initial one,
         // and looping around.
+        // node_id is initialized only to satisfy -Wconditional-uninitialized;
+        // it is read after the loop solely when a break assigned it.
         int i, position;
-        nid_type node_id;
+        nid_type node_id{-1};
         for (i = 0; i < ADDRMAN_BUCKET_SIZE; ++i) {
             position = (initial_position + i) % ADDRMAN_BUCKET_SIZE;
             node_id = GetEntry(search_tried, bucket, position);
