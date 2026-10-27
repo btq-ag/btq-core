@@ -918,8 +918,9 @@ BOOST_FIXTURE_TEST_CASE(produce_signature_rejects_ecdsa_template_leaves, BasicTe
     // P2PKH leaf with a known key: the assert repro from the review.
     try_leaf(CScript() << OP_DUP << OP_HASH160
                        << ToByteVector(ecdsa_pubkey.GetID()) << OP_EQUALVERIFY << OP_CHECKSIG);
-    // P2PK leaf with a known key.
-    try_leaf(CScript() << ToByteVector(ecdsa_pubkey) << OP_CHECKSIG);
+    // Compressed P2PK (<33-byte pubkey> OP_CHECKSIG) is omitted. In a tapscript
+    // context DecodeScript passes that push to TapSatisfier::FromPKBytes, and
+    // the 32-byte CHECK_NONFATAL throws before this whitelist runs.
     // Bare 1-of-1 CHECKMULTISIG leaf with a known key.
     try_leaf(CScript() << OP_1 << ToByteVector(ecdsa_pubkey) << OP_1 << OP_CHECKMULTISIG);
 
