@@ -2488,6 +2488,25 @@ std::optional<MigrationData> LegacyScriptPubKeyMan::MigrateToDescriptor()
 
     // Make sure that we have accounted for all scriptPubKeys
     assert(spks.size() == 0);
+
+    // dilithiumkey records are not legacy types: a descriptor wallet stores
+    // Dilithium keys under the same records. Carry the secrets out so migration
+    // can attach them without rewriting an encrypted key. The wallet is unlocked
+    // here; a key that will not decrypt fails the migration instead of being dropped.
+    for (const CKeyID& id : GetDilithiumKeyIDs()) {
+        MigrationDilithiumKey mig;
+        if (!GetDilithiumKey(id, mig.key)) {
+            return std::nullopt;
+        }
+        if (m_storage.HasEncryptionKeys()) {
+            const auto it = mapCryptedDilithiumKeys.find(id);
+            if (it == mapCryptedDilithiumKeys.end() || it->second.second.empty()) {
+                return std::nullopt;
+            }
+            mig.crypted_secret = it->second.second;
+        }
+        out.dilithium_keys.push_back(std::move(mig));
+    }
     return out;
 }
 

@@ -4135,6 +4135,46 @@ bool CWallet::MigrateToSQLite(bilingual_str& error)
     return true;
 }
 
+static bool MigrateLegacyDilithiumKeys(CWallet& wallet, const std::vector<MigrationDilithiumKey>& keys, bilingual_str& error)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    for (const MigrationDilithiumKey& mig : keys) {
+        // Same manager importdilithiumkey writes to: the first descriptor manager.
+        DescriptorScriptPubKeyMan* desc = nullptr;
+        for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
+            desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+            if (desc) break;
+        }
+        if (!desc) {
+            error = _("Error: Could not migrate Dilithium key");
+            return false;
+        }
+
+        const CKeyID keyid{mig.key.GetPubKey().GetID()};
+        // The key record is already in the database. Loading it makes
+        // HaveDilithiumKey true, so ImportDilithiumKeyAsP2MR does not insert
+        // a second copy or replace the ciphertext.
+        bool loaded = false;
+        if (wallet.HasEncryptionKeys()) {
+            loaded = !mig.crypted_secret.empty() &&
+                     desc->LoadCryptedDilithiumKey(keyid, mig.crypted_secret, /*checksum_valid=*/true);
+        } else {
+            loaded = desc->LoadDilithiumKey(mig.key, CPubKey());
+        }
+        if (!loaded) {
+            error = _("Error: Could not migrate Dilithium key");
+            return false;
+        }
+
+        const auto created = ImportDilithiumKeyAsP2MR(wallet, mig.key, /*label=*/"");
+        if (!created) {
+            error = util::ErrorString(created);
+            return false;
+        }
+    }
+    return true;
+}
+
 std::optional<MigrationData> CWallet::GetDescriptorsForLegacy(bilingual_str& error) const
 {
     AssertLockHeld(cs_wallet);
@@ -4198,6 +4238,14 @@ bool CWallet::ApplyMigrationData(MigrationData& data, bilingual_str& error)
             // Setup with a new seed if we don't.
             SetupDescriptorScriptPubKeyMans();
         }
+    }
+
+    // Single-leaf P2MR, the same destination getnewdilithiumaddress created.
+    // An existing tree is reused. A locked wallet never reaches this: migration
+    // already requires the passphrase, and MigrateToDescriptor returns nullopt
+    // while locked.
+    if (!MigrateLegacyDilithiumKeys(*this, data.dilithium_keys, error)) {
+        return false;
     }
 
     // Check if the transactions in the wallet are still ours. Either they belong here, or they belong in the watchonly wallet.
