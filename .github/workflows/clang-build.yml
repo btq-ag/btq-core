@@ -1,0 +1,80 @@
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Build the pull request head with clang and run the unit tests. The other
+# required jobs build with GCC, which accepts some code that clang rejects
+# (#194 merged a narrowing conversion in a braced initializer that only
+# test each commit, the one other clang build, reported; fixed in #304).
+# Same configure flags as build-and-address-tests.yml.
+
+name: clang-build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: clang-${{ github.workflow }}-${{ github.event_name != 'pull_request' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-build:
+    name: clang build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPRESS: "1"
+      MAKEJOBS: "-j4"
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang build-essential libtool autotools-dev automake pkg-config \
+            bsdmainutils ccache python3-zmq \
+            libevent-dev libboost-dev libsqlite3-dev libdb++-dev
+
+      - name: Clang version
+        run: clang++ --version
+
+      # Clang objects differ from the GCC jobs', so this job keeps its own
+      # ccache key.
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-clang-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-clang-${{ runner.os }}-
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          ./configure \
+            --disable-bench \
+            --disable-fuzz \
+            --disable-fuzz-binary \
+            --without-gui \
+            --with-incompatible-bdb \
+            CC="ccache clang" \
+            CXX="ccache clang++"
+
+      - name: Build
+        run: make $MAKEJOBS
+
+      - name: Unit tests (make check)
+        run: make check
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s || true
