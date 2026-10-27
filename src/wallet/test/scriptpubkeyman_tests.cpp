@@ -13,6 +13,7 @@
 #include <script/descriptor.h>
 #include <script/solver.h>
 #include <script/sign.h>
+#include <sync.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/wallet.h>
 #include <wallet/test/util.h>
@@ -267,6 +268,44 @@ BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
         BOOST_REQUIRE(keyman->GetDilithiumKey(key_id, after_encrypt));
     }
     BOOST_CHECK(after_encrypt == before_encrypt);
+}
+
+// CWallet::GetSolvingProvider is called without cs_wallet held (WalletImpl::getPubKey,
+// used by GUI coin control). The descriptor manager takes cs_desc_man and then, for an
+// encrypted wallet, IsLocked() takes cs_wallet: the reverse of the cs_wallet ->
+// cs_desc_man order used everywhere else. A DEBUG_LOCKORDER build detects it.
+BOOST_AUTO_TEST_CASE(solving_provider_takes_cs_wallet_first)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    DescriptorScriptPubKeyMan* keyman{nullptr};
+    {
+        LOCK(wallet.cs_wallet);
+        wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+        wallet.SetupDescriptorScriptPubKeyMans();
+        keyman = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+    }
+    BOOST_REQUIRE(keyman);
+    BOOST_REQUIRE(keyman->GenerateNewDilithiumKey());
+    BOOST_REQUIRE(wallet.EncryptWallet("encrypt"));
+    BOOST_REQUIRE(wallet.Unlock("encrypt"));
+
+    CScript script;
+    {
+        // Record the usual order.
+        LOCK2(wallet.cs_wallet, keyman->cs_desc_man);
+        const auto scripts{keyman->GetScriptPubKeys()};
+        BOOST_REQUIRE(!scripts.empty());
+        script = *scripts.begin();
+    }
+
+#ifdef DEBUG_LOCKORDER
+    const bool prev{g_debug_lockorder_abort};
+    g_debug_lockorder_abort = false;
+#endif
+    BOOST_CHECK_NO_THROW(BOOST_CHECK(wallet.GetSolvingProvider(script)));
+#ifdef DEBUG_LOCKORDER
+    g_debug_lockorder_abort = prev;
+#endif
 }
 
 // BTQ-AUDIT-001/009: encryptwallet must migrate plaintext Dilithium keys to crypted map.
