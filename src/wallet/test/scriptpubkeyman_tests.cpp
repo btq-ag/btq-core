@@ -5,19 +5,25 @@
 #include <key.h>
 #include <key_io.h>
 #include <addresstype.h>
+#include <clientversion.h>
 #include <consensus/amount.h>
 #include <crypto/dilithium_key.h>
+#include <hash.h>
 #include <outputtype.h>
 #include <primitives/transaction.h>
+#include <streams.h>
 #include <test/util/setup_common.h>
 #include <script/descriptor.h>
 #include <script/solver.h>
 #include <script/sign.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/wallet.h>
+#include <wallet/walletdb.h>
 #include <wallet/test/util.h>
 
 #include <boost/test/unit_test.hpp>
+
+#include <stdexcept>
 
 namespace wallet {
 BOOST_FIXTURE_TEST_SUITE(scriptpubkeyman_tests, BasicTestingSetup)
@@ -226,6 +232,96 @@ BOOST_AUTO_TEST_CASE(legacy_encrypt_migrates_dilithium_keys)
     CDilithiumKey after_encrypt;
     BOOST_REQUIRE(keyman.GetDilithiumKey(key_id, after_encrypt));
     BOOST_CHECK(after_encrypt == before_encrypt);
+}
+
+// Two Dilithium keys so the merged CheckDecryptionKey loop is what runs.
+// A bad passphrase returns false. One damaged ciphertext next to a real one
+// throws, and the wallet stays locked.
+BOOST_AUTO_TEST_CASE(legacy_unlock_mixed_dilithium_ciphertexts)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
+
+    CKeyID key_id0;
+    CKeyID key_id1;
+    CDilithiumKey before0;
+    CDilithiumKey before1;
+    {
+        LOCK2(wallet.cs_wallet, keyman.cs_KeyStore);
+        BOOST_REQUIRE(keyman.SetupGeneration(true));
+
+        WalletBatch batch(wallet.GetDatabase());
+        CHDChain hd_chain = keyman.GetHDChain();
+        const CDilithiumPubKey pubkey0 = keyman.GenerateNewDilithiumKey(batch, hd_chain, /*internal=*/false);
+        const CDilithiumPubKey pubkey1 = keyman.GenerateNewDilithiumKey(batch, hd_chain, /*internal=*/false);
+        key_id0 = CKeyID(pubkey0.GetID());
+        key_id1 = CKeyID(pubkey1.GetID());
+        BOOST_REQUIRE(key_id0 != key_id1);
+        BOOST_REQUIRE(keyman.GetDilithiumKey(key_id0, before0));
+        BOOST_REQUIRE(keyman.GetDilithiumKey(key_id1, before1));
+    }
+
+    LOCK(wallet.cs_wallet);
+    BOOST_REQUIRE(wallet.EncryptWallet("encrypt"));
+    BOOST_CHECK(wallet.IsLocked());
+
+    bool wrong_passphrase_unlocked = true;
+    BOOST_CHECK_NO_THROW(wrong_passphrase_unlocked = wallet.Unlock("wrong"));
+    BOOST_CHECK(!wrong_passphrase_unlocked);
+    BOOST_CHECK(wallet.IsLocked());
+
+    BOOST_REQUIRE(wallet.Unlock("encrypt"));
+    CDilithiumKey after0;
+    CDilithiumKey after1;
+    BOOST_REQUIRE(keyman.GetDilithiumKey(key_id0, after0));
+    BOOST_REQUIRE(keyman.GetDilithiumKey(key_id1, after1));
+    BOOST_CHECK(after0 == before0);
+    BOOST_CHECK(after1 == before1);
+    wallet.Lock();
+
+    // The thoroughly-checked path decrypts the first Dilithium key and stops,
+    // so damage that record. Refresh its checksum or load rejects it.
+    const CKeyID damaged_id = key_id0 < key_id1 ? key_id0 : key_id1;
+    const CKeyID intact_id = key_id0 < key_id1 ? key_id1 : key_id0;
+    MockableData records = GetMockableDatabase(wallet).m_records;
+    DataStream damaged_key;
+    DataStream intact_key;
+    damaged_key << DBKeys::DILITHIUM_CRYPTED_KEY << damaged_id;
+    intact_key << DBKeys::DILITHIUM_CRYPTED_KEY << intact_id;
+    const SerializeData damaged_key_bytes{damaged_key.begin(), damaged_key.end()};
+    const SerializeData intact_key_bytes{intact_key.begin(), intact_key.end()};
+    BOOST_REQUIRE(records.count(damaged_key_bytes) == 1);
+    BOOST_REQUIRE(records.count(intact_key_bytes) == 1);
+    const SerializeData intact_value = records.at(intact_key_bytes);
+
+    {
+        DataStream in(records.at(damaged_key_bytes));
+        std::vector<unsigned char> secret;
+        uint256 checksum;
+        in >> secret >> checksum;
+        BOOST_REQUIRE(in.eof());
+        BOOST_REQUIRE(!secret.empty());
+        secret.front() ^= 0x01;
+        CDataStream out(SER_DISK, CLIENT_VERSION);
+        out << std::make_pair(secret, Hash(secret));
+        records[damaged_key_bytes] = SerializeData{out.begin(), out.end()};
+    }
+    BOOST_CHECK(records.at(intact_key_bytes) == intact_value);
+
+    auto reloaded = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+    {
+        LOCK(reloaded->cs_wallet);
+        BOOST_REQUIRE_EQUAL(reloaded->LoadWallet(), DBErrors::LOAD_OK);
+        LegacyScriptPubKeyMan* reloaded_keyman = reloaded->GetLegacyScriptPubKeyMan();
+        BOOST_REQUIRE(reloaded_keyman);
+        BOOST_CHECK(reloaded_keyman->HaveDilithiumKey(key_id0));
+        BOOST_CHECK(reloaded_keyman->HaveDilithiumKey(key_id1));
+        BOOST_CHECK_THROW(reloaded->Unlock("encrypt"), std::runtime_error);
+        BOOST_CHECK(reloaded->IsLocked());
+        CDilithiumKey locked_key;
+        BOOST_CHECK(!reloaded_keyman->GetDilithiumKey(key_id0, locked_key));
+        BOOST_CHECK(!reloaded_keyman->GetDilithiumKey(key_id1, locked_key));
+    }
 }
 
 BOOST_AUTO_TEST_CASE(descriptor_encrypt_migrates_dilithium_keys)
