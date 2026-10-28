@@ -317,6 +317,13 @@ void PSBTOutput::Merge(const PSBTOutput& output)
     if (witness_script.empty() && !output.witness_script.empty()) witness_script = output.witness_script;
     if (m_tap_internal_key.IsNull() && !output.m_tap_internal_key.IsNull()) m_tap_internal_key = output.m_tap_internal_key;
     if (m_tap_tree.empty() && !output.m_tap_tree.empty()) m_tap_tree = output.m_tap_tree;
+    // Merge the P2MR fields independently, like the taproot fields above:
+    // any present field was already bound to this output's witness program
+    // when its PSBT was parsed, so a root from one combiner and a tree from
+    // another cannot describe different trees. Pair-wise merging dropped the
+    // tree whenever the local side carried only the root.
+    if (m_p2mr_tree.empty() && !output.m_p2mr_tree.empty()) m_p2mr_tree = output.m_p2mr_tree;
+    if (m_p2mr_merkle_root.IsNull() && !output.m_p2mr_merkle_root.IsNull()) m_p2mr_merkle_root = output.m_p2mr_merkle_root;
 }
 
 bool PSBTInputSigned(const PSBTInput& input)
@@ -382,6 +389,22 @@ void UpdatePSBTOutput(const SigningProvider& provider, PartiallySignedTransactio
 
     // Put redeem_script, witness_script, key paths, into PSBTOutput.
     psbt_out.FromSignatureData(sigdata);
+
+    // P2MR outputs: record the script tree and merkle root when the provider
+    // knows them, so a receiving wallet can store the spend metadata it needs
+    // (Quarks F2.10).
+    if (psbt_out.m_p2mr_tree.empty()) {
+        CTxDestination dest;
+        if (ExtractDestination(out.scriptPubKey, dest)) {
+            if (const auto* p2mr = std::get_if<WitnessV2P2MR>(&dest)) {
+                P2MRBuilder builder;
+                if (provider.GetP2MRBuilder(*p2mr, builder) && builder.HasScripts()) {
+                    psbt_out.m_p2mr_tree = builder.GetTreeTuples();
+                    psbt_out.m_p2mr_merkle_root = uint256{std::vector<unsigned char>(p2mr->begin(), p2mr->end())};
+                }
+            }
+        }
+    }
 }
 
 PrecomputedTransactionData PrecomputePSBTData(const PartiallySignedTransaction& psbt)

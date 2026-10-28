@@ -62,6 +62,11 @@ static constexpr uint8_t PSBT_OUT_BIP32_DERIVATION = 0x02;
 static constexpr uint8_t PSBT_OUT_TAP_INTERNAL_KEY = 0x05;
 static constexpr uint8_t PSBT_OUT_TAP_TREE = 0x06;
 static constexpr uint8_t PSBT_OUT_TAP_BIP32_DERIVATION = 0x07;
+// BTQ: P2MR (BIP360 witness v2) output metadata. Numbered 0x19/0x1A to match
+// the input-side P2MR fields and stay clear of output types upstream has
+// assigned or reserved (0x08 is musig2 participant pubkeys in BIP 373).
+static constexpr uint8_t PSBT_OUT_P2MR_TREE = 0x19;
+static constexpr uint8_t PSBT_OUT_P2MR_MERKLE_ROOT = 0x1A;
 static constexpr uint8_t PSBT_OUT_PROPRIETARY = 0xFC;
 
 // The separator is 0x00. Reading this in means that the unserializer can interpret it
@@ -81,7 +86,8 @@ static constexpr uint32_t PSBT_HIGHEST_VERSION = 0;
 // would accept.
 static constexpr size_t MAX_DILITHIUM_PARTIAL_SIG_VALUE_SIZE = CDilithiumPubKey::SIGNATURE_SIZE + 1;
 static constexpr size_t MAX_DILITHIUM_PARTIAL_SIGS_PER_INPUT = MAX_PUBKEYS_PER_MULTISIG;
-static constexpr size_t MAX_P2MR_LEAF_SCRIPT_SIZE = MAX_SCRIPT_SIZE;
+// MAX_P2MR_LEAF_SCRIPT_SIZE lives in script/interpreter.h so the wallet-side
+// tree builder enforces the same bound this parser does.
 
 /** A structure for PSBT proprietary types */
 struct PSBTProprietary
@@ -825,6 +831,11 @@ struct PSBTOutput
     XOnlyPubKey m_tap_internal_key;
     std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> m_tap_tree;
     std::map<XOnlyPubKey, std::pair<std::set<uint256>, KeyOriginInfo>> m_tap_bip32_paths;
+    // BTQ: P2MR output metadata (Quarks F2.10), laid out like m_tap_tree.
+    // Carries the leaf scripts and merkle root of a P2MR output so a
+    // receiving wallet can persist what it needs to later spend the output.
+    std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> m_p2mr_tree;
+    uint256 m_p2mr_merkle_root;
     std::map<std::vector<unsigned char>, std::vector<unsigned char>> unknown;
     std::set<PSBTProprietary> m_proprietary;
 
@@ -885,6 +896,25 @@ struct PSBTOutput
             s_value << leaf_hashes;
             SerializeKeyOrigin(s_value, origin);
             s << value;
+        }
+
+        // Write P2MR tree
+        if (!m_p2mr_tree.empty()) {
+            SerializeToVector(s, PSBT_OUT_P2MR_TREE);
+            std::vector<unsigned char> value;
+            CVectorWriter s_value{s.GetVersion(), value, 0};
+            for (const auto& [depth, leaf_ver, script] : m_p2mr_tree) {
+                s_value << depth;
+                s_value << leaf_ver;
+                s_value << script;
+            }
+            s << value;
+        }
+
+        // Write P2MR merkle root
+        if (!m_p2mr_merkle_root.IsNull()) {
+            SerializeToVector(s, PSBT_OUT_P2MR_MERKLE_ROOT);
+            SerializeToVector(s, m_p2mr_merkle_root);
         }
 
         // Write unknown things
@@ -985,7 +1015,10 @@ struct PSBTOutput
                             throw std::ios_base::failure("Output Taproot tree has a leaf with an invalid leaf version");
                         }
                         m_tap_tree.emplace_back(depth, leaf_ver, script);
-                        builder.Add((int)depth, script, (int)leaf_ver, /*track=*/true);
+                        // track=false: only completeness is checked here, and
+                        // tracking stores a merkle branch per leaf, letting a
+                        // ~3 MiB hostile PSBT allocate hundreds of MiB.
+                        builder.Add((int)depth, script, (int)leaf_ver, /*track=*/false);
                     }
                     if (!builder.IsComplete()) {
                         throw std::ios_base::failure("Output Taproot tree is malformed");
@@ -1011,6 +1044,57 @@ struct PSBTOutput
                     }
                     size_t origin_len = value_len - hashes_len;
                     m_tap_bip32_paths.emplace(xonly, std::make_pair(leaf_hashes, DeserializeKeyOrigin(s, origin_len)));
+                    break;
+                }
+                case PSBT_OUT_P2MR_TREE:
+                {
+                    if (!key_lookup.emplace(key).second) {
+                        throw std::ios_base::failure("Duplicate Key, output P2MR tree already provided");
+                    } else if (key.size() != 1) {
+                        throw std::ios_base::failure("Output P2MR tree key is more than one byte type");
+                    }
+                    std::vector<unsigned char> tree_v;
+                    s >> tree_v;
+                    SpanReader s_tree{s.GetVersion(), tree_v};
+                    if (s_tree.empty()) {
+                        throw std::ios_base::failure("Output P2MR tree must not be empty");
+                    }
+                    P2MRBuilder builder;
+                    while (!s_tree.empty()) {
+                        uint8_t depth;
+                        uint8_t leaf_ver;
+                        std::vector<unsigned char> script;
+                        s_tree >> depth;
+                        s_tree >> leaf_ver;
+                        s_tree >> script;
+                        if (depth > P2MR_CONTROL_MAX_NODE_COUNT) {
+                            throw std::ios_base::failure("Output P2MR tree has a leaf greater than P2MR maximum depth");
+                        }
+                        if ((leaf_ver & ~TAPROOT_LEAF_MASK) != 0) {
+                            throw std::ios_base::failure("Output P2MR tree has a leaf with an invalid leaf version");
+                        }
+                        if (script.size() > MAX_P2MR_LEAF_SCRIPT_SIZE) {
+                            throw std::ios_base::failure("Output P2MR tree has a leaf script that is too large");
+                        }
+                        m_p2mr_tree.emplace_back(depth, leaf_ver, script);
+                        // track=false: only completeness is checked here, and
+                        // tracking stores a merkle branch per leaf, letting a
+                        // ~3 MiB hostile PSBT allocate hundreds of MiB.
+                        builder.Add((int)depth, script, (int)leaf_ver, /*track=*/false);
+                    }
+                    if (!builder.IsComplete()) {
+                        throw std::ios_base::failure("Output P2MR tree is malformed");
+                    }
+                    break;
+                }
+                case PSBT_OUT_P2MR_MERKLE_ROOT:
+                {
+                    if (!key_lookup.emplace(key).second) {
+                        throw std::ios_base::failure("Duplicate Key, output P2MR merkle root already provided");
+                    } else if (key.size() != 1) {
+                        throw std::ios_base::failure("Output P2MR merkle root key is more than one byte type");
+                    }
+                    UnserializeFromVector(s, m_p2mr_merkle_root);
                     break;
                 }
                 case PSBT_OUT_PROPRIETARY:
@@ -1043,6 +1127,21 @@ struct PSBTOutput
 
         if (!found_sep) {
             throw std::ios_base::failure("Separator is missing at the end of an output map");
+        }
+
+        // When both P2MR fields are present they must agree: the merkle root
+        // is the P2MR witness program, so a mismatched pair would let one
+        // reader store metadata for a tree that does not produce this output.
+        if (!m_p2mr_tree.empty() && !m_p2mr_merkle_root.IsNull()) {
+            P2MRBuilder check_builder;
+            for (const auto& [depth, leaf_ver, script] : m_p2mr_tree) {
+                check_builder.Add((int)depth, script, (int)leaf_ver, /*track=*/false);
+            }
+            check_builder.Finalize();
+            const WitnessV2P2MR tree_output = check_builder.GetOutput();
+            if (uint256{std::vector<unsigned char>(tree_output.begin(), tree_output.end())} != m_p2mr_merkle_root) {
+                throw std::ios_base::failure("Output P2MR tree does not match the output P2MR merkle root");
+            }
         }
     }
 
@@ -1306,6 +1405,36 @@ struct PartiallySignedTransaction
         // Make sure that the number of outputs matches the number of outputs in the transaction
         if (outputs.size() != tx->vout.size()) {
             throw std::ios_base::failure("Outputs provided does not match the number of outputs in transaction.");
+        }
+
+        // Bind P2MR output metadata to the transaction. A tree or merkle root
+        // that does not reproduce the output's witness program would let a
+        // hostile PSBT poison the spend metadata a receiving wallet stores.
+        for (size_t out_idx = 0; out_idx < outputs.size(); ++out_idx) {
+            const PSBTOutput& output = outputs[out_idx];
+            if (output.m_p2mr_tree.empty() && output.m_p2mr_merkle_root.IsNull()) continue;
+
+            int wit_version{0};
+            std::vector<unsigned char> wit_program;
+            if (!tx->vout[out_idx].scriptPubKey.IsWitnessProgram(wit_version, wit_program) ||
+                wit_version != 2 || wit_program.size() != WitnessV2P2MR::SIZE) {
+                throw std::ios_base::failure("P2MR output metadata attached to a non-P2MR output");
+            }
+            const uint256 program{wit_program};
+            if (!output.m_p2mr_merkle_root.IsNull() && output.m_p2mr_merkle_root != program) {
+                throw std::ios_base::failure("Output P2MR merkle root does not match the output's witness program");
+            }
+            if (!output.m_p2mr_tree.empty()) {
+                P2MRBuilder tree_builder;
+                for (const auto& [depth, leaf_ver, script] : output.m_p2mr_tree) {
+                    tree_builder.Add((int)depth, script, (int)leaf_ver, /*track=*/false);
+                }
+                tree_builder.Finalize();
+                const WitnessV2P2MR tree_output = tree_builder.GetOutput();
+                if (uint256{std::vector<unsigned char>(tree_output.begin(), tree_output.end())} != program) {
+                    throw std::ios_base::failure("Output P2MR tree does not match the output's witness program");
+                }
+            }
         }
     }
 

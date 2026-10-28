@@ -253,6 +253,11 @@ static constexpr size_t P2MR_CONTROL_BASE_SIZE = 1;
 static constexpr size_t P2MR_CONTROL_NODE_SIZE = 32;
 static constexpr size_t P2MR_CONTROL_MAX_NODE_COUNT = 128;
 static constexpr size_t P2MR_CONTROL_MAX_SIZE = P2MR_CONTROL_BASE_SIZE + P2MR_CONTROL_NODE_SIZE * P2MR_CONTROL_MAX_NODE_COUNT;
+/** Upper bound for a single P2MR leaf script, shared by every producer and
+ *  parser (wallet tree storage, PSBT fields). Consensus does not bound P2MR
+ *  leaf scripts directly, so one side accepting more than the other would
+ *  make the wallet emit PSBTs its own parser rejects. */
+static constexpr size_t MAX_P2MR_LEAF_SCRIPT_SIZE = 100000;
 
 extern const HashWriter HASHER_TAPSIGHASH; //!< Hasher with tag "TapSighash" pre-fed to it.
 extern const HashWriter HASHER_TAPLEAF;    //!< Hasher with tag "TapLeaf" pre-fed to it.

@@ -461,4 +461,198 @@ BOOST_AUTO_TEST_CASE(merging_does_not_let_an_empty_set_discard_a_control_block)
     BOOST_CHECK(from_sig.m_p2mr_scripts[leaf_key] == real_controls);
 }
 
+// Quarks F2.10: outputs carry the P2MR tree and merkle root so a receiving
+// wallet can store the metadata it needs to later spend the output.
+BOOST_AUTO_TEST_CASE(output_p2mr_tree_is_filled_and_roundtrips)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    // Pay the P2MR output itself, so UpdatePSBTOutput sees a P2MR destination.
+    CMutableTransaction tx;
+    tx.nVersion = 2;
+    tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+    tx.vout.emplace_back(90000, f.prevout.scriptPubKey);
+    PartiallySignedTransaction psbt{tx};
+
+    UpdatePSBTOutput(f.full_provider, psbt, 0);
+    BOOST_REQUIRE_EQUAL(psbt.outputs[0].m_p2mr_tree.size(), 1U);
+    BOOST_CHECK(psbt.outputs[0].m_p2mr_tree == f.builder.GetTreeTuples());
+    BOOST_CHECK(psbt.outputs[0].m_p2mr_merkle_root ==
+                uint256{std::vector<unsigned char>(f.output.begin(), f.output.end())});
+
+    // An unknown output field must survive alongside the new ones.
+    const std::vector<unsigned char> unknown_key{0x20, 0xab};
+    const std::vector<unsigned char> unknown_val{0x01, 0x02, 0x03};
+    psbt.outputs[0].unknown[unknown_key] = unknown_val;
+
+    PartiallySignedTransaction before = psbt;
+    Roundtrip(psbt);
+    BOOST_CHECK(psbt.outputs[0].m_p2mr_tree == before.outputs[0].m_p2mr_tree);
+    BOOST_CHECK(psbt.outputs[0].m_p2mr_merkle_root == before.outputs[0].m_p2mr_merkle_root);
+    BOOST_CHECK(psbt.outputs[0].unknown.at(unknown_key) == unknown_val);
+
+    // A provider that does not know the tree leaves the output untouched.
+    PartiallySignedTransaction bare{tx};
+    FlatSigningProvider empty_provider;
+    UpdatePSBTOutput(empty_provider, bare, 0);
+    BOOST_CHECK(bare.outputs[0].m_p2mr_tree.empty());
+    BOOST_CHECK(bare.outputs[0].m_p2mr_merkle_root.IsNull());
+}
+
+BOOST_AUTO_TEST_CASE(output_p2mr_merge_fills_missing_fields_in_both_orders)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    CMutableTransaction tx;
+    tx.nVersion = 2;
+    tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+    tx.vout.emplace_back(90000, f.prevout.scriptPubKey);
+
+    const uint256 root{std::vector<unsigned char>(f.output.begin(), f.output.end())};
+
+    PartiallySignedTransaction root_only{tx};
+    root_only.outputs[0].m_p2mr_merkle_root = root;
+    PartiallySignedTransaction tree_and_root{tx};
+    tree_and_root.outputs[0].m_p2mr_tree = f.builder.GetTreeTuples();
+    tree_and_root.outputs[0].m_p2mr_merkle_root = root;
+
+    // combinepsbt([root_only, tree_and_root]) must not drop the tree.
+    PartiallySignedTransaction merged = root_only;
+    BOOST_REQUIRE(merged.Merge(tree_and_root));
+    BOOST_CHECK(merged.outputs[0].m_p2mr_tree == f.builder.GetTreeTuples());
+    BOOST_CHECK(merged.outputs[0].m_p2mr_merkle_root == root);
+
+    // The reverse order keeps both fields too.
+    PartiallySignedTransaction merged_rev = tree_and_root;
+    BOOST_REQUIRE(merged_rev.Merge(root_only));
+    BOOST_CHECK(merged_rev.outputs[0].m_p2mr_tree == f.builder.GetTreeTuples());
+    BOOST_CHECK(merged_rev.outputs[0].m_p2mr_merkle_root == root);
+
+    // The fields merge independently: a tree-only side completes a
+    // root-only side.
+    PartiallySignedTransaction tree_only{tx};
+    tree_only.outputs[0].m_p2mr_tree = f.builder.GetTreeTuples();
+    PartiallySignedTransaction cross = root_only;
+    BOOST_REQUIRE(cross.Merge(tree_only));
+    BOOST_CHECK(cross.outputs[0].m_p2mr_tree == f.builder.GetTreeTuples());
+    BOOST_CHECK(cross.outputs[0].m_p2mr_merkle_root == root);
+}
+
+BOOST_AUTO_TEST_CASE(output_p2mr_tree_disagreeing_with_the_root_is_rejected)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    CMutableTransaction tx;
+    tx.nVersion = 2;
+    tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+    tx.vout.emplace_back(90000, f.prevout.scriptPubKey);
+    PartiallySignedTransaction psbt{tx};
+    psbt.outputs[0].m_p2mr_tree = f.builder.GetTreeTuples();
+    psbt.outputs[0].m_p2mr_merkle_root = uint256::ONE; // not the tree's root
+
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    ss << psbt;
+    const std::string encoded = EncodeBase64(MakeUCharSpan(ss));
+    PartiallySignedTransaction decoded;
+    std::string error;
+    BOOST_CHECK(!DecodeBase64PSBT(decoded, encoded, error));
+}
+
+BOOST_AUTO_TEST_CASE(output_p2mr_metadata_must_match_the_outputs_program)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    // A self-consistent tree+root pair whose root is NOT this output's witness
+    // program must be rejected: it would poison the receiver's spend metadata.
+    const Signer other = MakeSigner();
+    CScript other_leaf;
+    other_leaf << ToByteVector(other.pubkey) << OP_CHECKSIGDILITHIUM;
+    P2MRBuilder other_builder;
+    other_builder.Add(0, other_leaf, TAPROOT_LEAF_TAPSCRIPT);
+    other_builder.Finalize();
+    const WitnessV2P2MR other_output = other_builder.GetOutput();
+
+    CMutableTransaction tx;
+    tx.nVersion = 2;
+    tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+    tx.vout.emplace_back(90000, f.prevout.scriptPubKey); // pays f.output, not other_output
+    PartiallySignedTransaction psbt{tx};
+    psbt.outputs[0].m_p2mr_tree = other_builder.GetTreeTuples();
+    psbt.outputs[0].m_p2mr_merkle_root =
+        uint256{std::vector<unsigned char>(other_output.begin(), other_output.end())};
+
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    ss << psbt;
+    std::string error;
+    {
+        PartiallySignedTransaction decoded;
+        BOOST_CHECK(!DecodeBase64PSBT(decoded, EncodeBase64(MakeUCharSpan(ss)), error));
+    }
+
+    // P2MR metadata on a non-P2MR output is rejected as well.
+    CMutableTransaction classical_tx;
+    classical_tx.nVersion = 2;
+    classical_tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+    classical_tx.vout.emplace_back(90000, CScript() << OP_TRUE);
+    PartiallySignedTransaction classical{classical_tx};
+    classical.outputs[0].m_p2mr_tree = f.builder.GetTreeTuples();
+
+    CDataStream ss2(SER_NETWORK, PROTOCOL_VERSION);
+    ss2 << classical;
+    {
+        PartiallySignedTransaction decoded;
+        BOOST_CHECK(!DecodeBase64PSBT(decoded, EncodeBase64(MakeUCharSpan(ss2)), error));
+    }
+
+    // And the honest case still parses: metadata matching the paid program.
+    PartiallySignedTransaction honest{tx};
+    honest.outputs[0].m_p2mr_tree = f.builder.GetTreeTuples();
+    honest.outputs[0].m_p2mr_merkle_root =
+        uint256{std::vector<unsigned char>(f.output.begin(), f.output.end())};
+    CDataStream ss3(SER_NETWORK, PROTOCOL_VERSION);
+    ss3 << honest;
+    {
+        PartiallySignedTransaction decoded;
+        BOOST_CHECK_MESSAGE(DecodeBase64PSBT(decoded, EncodeBase64(MakeUCharSpan(ss3)), error), error);
+        BOOST_CHECK(decoded.outputs[0].m_p2mr_tree == f.builder.GetTreeTuples());
+    }
+}
+
+BOOST_AUTO_TEST_CASE(output_p2mr_malformed_tree_is_rejected)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    CMutableTransaction tx;
+    tx.nVersion = 2;
+    tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+    tx.vout.emplace_back(90000, f.prevout.scriptPubKey);
+    PartiallySignedTransaction psbt{tx};
+    // Two leaves both at depth 0 cannot complete a tree.
+    const std::vector<unsigned char> script_v{leaf.begin(), leaf.end()};
+    psbt.outputs[0].m_p2mr_tree.emplace_back(0, TAPROOT_LEAF_TAPSCRIPT, script_v);
+    psbt.outputs[0].m_p2mr_tree.emplace_back(0, TAPROOT_LEAF_TAPSCRIPT, script_v);
+
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    ss << psbt;
+    const std::string encoded = EncodeBase64(MakeUCharSpan(ss));
+    PartiallySignedTransaction decoded;
+    std::string error;
+    BOOST_CHECK(!DecodeBase64PSBT(decoded, encoded, error));
+}
+
 BOOST_AUTO_TEST_SUITE_END()
