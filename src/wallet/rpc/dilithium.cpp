@@ -316,19 +316,16 @@ RPCHelpMan signmessagewithdilithium()
             std::string strMessage = request.params[1].get_str();
 
             CTxDestination dest = DecodeDestination(strAddress);
-            // Prefer P2MR Dilithium receive addresses; historical DilithiumPKHash
-            // destinations remain decodable for message signing even though they
-            // are no longer valid payment destinations.
+            // Prefer P2MR Dilithium receive addresses. A historical DilithiumPKHash
+            // is still this key only while the network allows those payments.
+            // A Dilithium witness-v0 key hash is OP_0 and a 20-byte hash, the same
+            // program as P2WPKH. The Dilithium key cannot spend it, so it never matches.
             CKeyID keyID;
             if (auto p2mr_key = GetSingleDilithiumKeyIDForP2MR(*wallet, dest)) {
                 keyID = *p2mr_key;
-            } else if (std::holds_alternative<DilithiumPKHash>(dest)) {
+            } else if (std::holds_alternative<DilithiumPKHash>(dest) && LegacyDilithiumBase58PaymentsAllowed()) {
                 DilithiumPKHash dilithium_dest = std::get<DilithiumPKHash>(dest);
                 keyID = CKeyID(static_cast<uint160>(dilithium_dest));
-            } else if (std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) {
-                // For witness addresses, we need to get the underlying key hash
-                DilithiumWitnessV0KeyHash witness_dest = std::get<DilithiumWitnessV0KeyHash>(dest);
-                keyID = CKeyID(static_cast<uint160>(witness_dest));
             } else {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address is not a Dilithium key address (use a Dilithium P2MR receive address, or a historical DilithiumPKHash)");
             }
@@ -396,19 +393,17 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
 
     // Decode the address to get the key ID
     CTxDestination dest = DecodeDestination(strAddress);
-    // Prefer P2MR Dilithium receive addresses; historical DilithiumPKHash
-    // destinations remain decodable for message verification even though
-    // they are no longer valid payment destinations.
+    // Prefer P2MR Dilithium receive addresses. A historical DilithiumPKHash
+    // is still this key only while the network allows those payments.
+    // A Dilithium witness-v0 key hash is OP_0 and a 20-byte hash, the same
+    // program as P2WPKH. The Dilithium key cannot spend it, so it never matches.
     CKeyID keyID;
     bool have_keyid = true;
     if (auto p2mr_key = GetSingleDilithiumKeyIDForP2MR(*pwallet, dest)) {
         keyID = *p2mr_key;
-    } else if (std::holds_alternative<DilithiumPKHash>(dest)) {
+    } else if (std::holds_alternative<DilithiumPKHash>(dest) && LegacyDilithiumBase58PaymentsAllowed()) {
         DilithiumPKHash dilithium_dest = std::get<DilithiumPKHash>(dest);
         keyID = CKeyID(static_cast<uint160>(dilithium_dest));
-    } else if (std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) {
-        DilithiumWitnessV0KeyHash witness_dest = std::get<DilithiumWitnessV0KeyHash>(dest);
-        keyID = CKeyID(static_cast<uint160>(witness_dest));
     } else if (!pubkey_param.isNull() && std::holds_alternative<WitnessV2P2MR>(dest)) {
         // A P2MR address this wallet does not track. With an explicit pubkey
         // the binding is checked below by rebuilding the canonical
