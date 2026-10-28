@@ -7,6 +7,7 @@
 
 #include <common/system.h>
 #include <core_io.h>
+#include <crypto/dilithium_key.h>
 #include <key.h>
 #include <rpc/util.h>
 #include <script/script.h>
@@ -1685,6 +1686,69 @@ BOOST_AUTO_TEST_CASE(btqconsensus_verify_script_spent_outputs_required_err)
 
     result = btqconsensus_verify_script(scriptPubKey.data(), scriptPubKey.size(), UCharCast(stream.data()), stream.size(), nIn, libconsensus_flags, &err);
     BOOST_CHECK_EQUAL(result, 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_SPENT_OUTPUTS_REQUIRED);
+}
+
+BOOST_AUTO_TEST_CASE(btqconsensus_verify_script_p2mr_dilithium)
+{
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CScript leaf_script{CScript() << ToByteVector(key.GetPubKey()) << OP_CHECKSIGDILITHIUM};
+    const uint256 leaf_hash{ComputeTapleafHash(TAPROOT_LEAF_TAPSCRIPT, leaf_script)};
+    const CScript script_pubkey{CScript() << OP_2 << ToByteVector(leaf_hash)};
+    const std::vector<unsigned char> control{static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 1)};
+
+    const CTransaction credit_tx{BuildCreditingTransaction(script_pubkey, 1)};
+    CMutableTransaction spend{BuildSpendingTransaction(CScript(), CScriptWitness(), credit_tx)};
+
+    PrecomputedTransactionData txdata;
+    txdata.Init(spend, std::vector<CTxOut>{credit_tx.vout[0]}, /*force=*/true);
+    ScriptExecutionData execdata;
+    execdata.m_annex_init = true;
+    execdata.m_annex_present = false;
+    execdata.m_codeseparator_pos_init = true;
+    execdata.m_codeseparator_pos = 0xFFFFFFFF;
+    execdata.m_tapleaf_hash_init = true;
+    execdata.m_tapleaf_hash = leaf_hash;
+    uint256 sighash;
+    BOOST_REQUIRE(SignatureHashSchnorr(sighash, execdata, spend, 0, SIGHASH_ALL, SigVersion::P2MR_TAPSCRIPT, txdata, MissingDataBehavior::FAIL));
+    std::vector<unsigned char> sig;
+    BOOST_REQUIRE(key.Sign(sighash, sig));
+    sig.push_back(SIGHASH_ALL);
+
+    const auto verify = [&](const CMutableTransaction& tx, unsigned int flags, btqconsensus_error& err, CAmount utxo_value = 1, CAmount amount = 1, unsigned int spent_outputs_len = 1) {
+        CDataStream stream(SER_NETWORK, PROTOCOL_VERSION);
+        stream << tx;
+        const UTXO utxo{script_pubkey.data(), static_cast<unsigned int>(script_pubkey.size()), utxo_value};
+        return btqconsensus_verify_script_with_spent_outputs(script_pubkey.data(), script_pubkey.size(), amount, UCharCast(stream.data()), stream.size(), &utxo, spent_outputs_len, 0, flags, &err);
+    };
+    const unsigned int flags{btqconsensus_SCRIPT_FLAGS_VERIFY_P2SH | btqconsensus_SCRIPT_FLAGS_VERIFY_WITNESS |
+                             btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM | btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR |
+                             btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY};
+    btqconsensus_error err;
+
+    spend.vin[0].scriptWitness.stack = {sig, ToByteVector(leaf_script), control};
+    BOOST_CHECK_EQUAL(verify(spend, flags, err), 1);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_OK);
+
+    // A bad signature fails with P2MR, and passes without it (witness v2 is unencumbered then)
+    CMutableTransaction bad{spend};
+    bad.vin[0].scriptWitness.stack[0][0] ^= 1;
+    BOOST_CHECK_EQUAL(verify(bad, flags, err), 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_OK);
+    BOOST_CHECK_EQUAL(verify(bad, flags & ~btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR, err), 1);
+
+    // The sighash commits to the spent output's value
+    BOOST_CHECK_EQUAL(verify(spend, flags, err, /*utxo_value=*/2, /*amount=*/2), 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_OK);
+    BOOST_CHECK_EQUAL(verify(spend, flags, err, /*utxo_value=*/2, /*amount=*/1), 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_SPENT_OUTPUTS_MISMATCH);
+    BOOST_CHECK_EQUAL(verify(spend, flags, err, /*utxo_value=*/1, /*amount=*/1, /*spent_outputs_len=*/0), 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_SPENT_OUTPUTS_MISMATCH);
+
+    CDataStream stream(SER_NETWORK, PROTOCOL_VERSION);
+    stream << spend;
+    BOOST_CHECK_EQUAL(btqconsensus_verify_script_with_amount(script_pubkey.data(), script_pubkey.size(), credit_tx.vout[0].nValue, UCharCast(stream.data()), stream.size(), 0, flags, &err), 0);
     BOOST_CHECK_EQUAL(err, btqconsensus_ERR_SPENT_OUTPUTS_REQUIRED);
 }
 
