@@ -72,7 +72,10 @@ class WalletDilithiumChangeTest(BTQTestFramework):
 
         self.log.info("Paying a Dilithium destination returns the change to P2MR, not Taproot")
         recipient = sender.getnewdilithiumaddress()["address"]
+        # P2MR change is not drawn from the ECDSA keypool.
+        internal_before = sender.getwalletinfo()["keypoolsize_hd_internal"]
         txid = sender.sendtoaddress(recipient, Decimal("1"))
+        assert_equal(sender.getwalletinfo()["keypoolsize_hd_internal"], internal_before)
         change = self.change_output(node, sender, txid)
         assert_equal(change["scriptPubKey"]["type"], "witness_v2_p2mr")
         # The point of the change being P2MR rather than merely witness v2: the
@@ -93,11 +96,34 @@ class WalletDilithiumChangeTest(BTQTestFramework):
         assert_equal(sender.gettransaction(spend_txid)["confirmations"], 1)
         sender.lockunspent(True)
 
-        self.log.info("A classical send is unaffected")
-        classical_txid = sender.sendtoaddress(funding.getnewaddress(address_type="bech32m"), Decimal("1"))
-        classical_change = self.change_output(node, sender, classical_txid)
-        assert classical_change["scriptPubKey"]["type"] != "witness_v2_p2mr"
+        self.log.info("An auto-selected P2MR input forces P2MR change too")
+        # By now the sender owns only P2MR coins, so sendtoaddress has to
+        # pick one. The change must not fall back to a classical script.
+        internal_before = sender.getwalletinfo()["keypoolsize_hd_internal"]
+        auto_txid = sender.sendtoaddress(funding.getnewaddress(address_type="bech32m"), Decimal("1"))
+        auto_change = self.change_output(node, sender, auto_txid)
+        assert_equal(auto_change["scriptPubKey"]["type"], "witness_v2_p2mr")
+        # The swap reserves a classical change key, then replaces the script.
+        # That reservation goes back to the pool.
+        assert_equal(sender.getwalletinfo()["keypoolsize_hd_internal"], internal_before)
         self.generate(node, 1, sync_fun=self.no_op)
+
+        self.log.info("A classical send is unaffected")
+        # The sender holds only P2MR coins, so give it a fresh classical one
+        # and preselect it. Only then does the input-following rule stay out.
+        classical_addr = sender.getnewaddress(address_type="bech32m")
+        funding.sendtoaddress(classical_addr, Decimal("3"))
+        self.generate(node, 1, sync_fun=self.no_op)
+        classical_utxo = next(u for u in sender.listunspent() if u["address"] == classical_addr)
+        internal_before = sender.getwalletinfo()["keypoolsize_hd_internal"]
+        raw = sender.createrawtransaction(
+            [{"txid": classical_utxo["txid"], "vout": classical_utxo["vout"]}],
+            [{funding.getnewaddress(address_type="bech32m"): Decimal("1")}],
+        )
+        funded = sender.fundrawtransaction(raw, {"add_inputs": False})
+        classical_change = sender.decoderawtransaction(funded["hex"])["vout"][funded["changepos"]]
+        assert classical_change["scriptPubKey"]["type"] != "witness_v2_p2mr"
+        assert_equal(sender.getwalletinfo()["keypoolsize_hd_internal"], internal_before - 1)
 
         self.log.info("An explicit change_type still wins over the Dilithium rule")
         outputs = [{sender.getnewdilithiumaddress()["address"]: Decimal("1")}]

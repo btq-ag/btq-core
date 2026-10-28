@@ -119,6 +119,22 @@ BOOST_AUTO_TEST_CASE(watch_only_wallet_keeps_classical_change)
     wallet->SetWalletFlag(WALLET_FLAG_DISABLE_PRIVATE_KEYS);
 
     BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, {Pay(ForeignP2MR())}) == OutputType::BECH32M);
+
+    CCoinControl with_p2mr_input;
+    with_p2mr_input.SelectExternal(COutPoint{uint256::ONE, 0}, CTxOut{COIN, GetScriptForDestination(ForeignP2MR())});
+    BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, {Pay(WitnessV1Taproot{XOnlyPubKey(uint256::ONE)})}, &with_p2mr_input) == OutputType::BECH32M);
+}
+
+/** A blank wallet has the same limit as a watch-only one: no Dilithium key. */
+BOOST_AUTO_TEST_CASE(blank_wallet_keeps_classical_change)
+{
+    auto wallet = CreateDescriptorWallet(m_node.chain.get());
+    LOCK(wallet->cs_wallet);
+    wallet->SetWalletFlag(WALLET_FLAG_BLANK_WALLET);
+
+    CCoinControl with_p2mr_input;
+    with_p2mr_input.SelectExternal(COutPoint{uint256::ONE, 0}, CTxOut{COIN, GetScriptForDestination(ForeignP2MR())});
+    BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, {Pay(WitnessV1Taproot{XOnlyPubKey(uint256::ONE)})}, &with_p2mr_input) == OutputType::BECH32M);
 }
 
 /**
@@ -184,6 +200,112 @@ BOOST_FIXTURE_TEST_CASE(dilithium_send_returns_change_to_p2mr, TestChain100Setup
     // change quantum-safe rather than merely quantum-shaped.
     BOOST_CHECK(WITH_LOCK(wallet->cs_wallet, return IsTrackedP2MRScript(*wallet, change_out.scriptPubKey)));
     BOOST_CHECK(WITH_LOCK(wallet->cs_wallet, return wallet->IsMine(change_out.scriptPubKey)) == ISMINE_SPENDABLE);
+}
+
+/**
+ * Change follows the inputs. Spending a P2MR UTXO to a classical recipient
+ * must not move the remainder onto an ECDSA script. An explicit change type
+ * still wins, and a classical input is left alone.
+ */
+BOOST_AUTO_TEST_CASE(p2mr_inputs_force_quantum_safe_change)
+{
+    auto wallet = CreateDescriptorWallet(m_node.chain.get());
+    LOCK(wallet->cs_wallet);
+
+    CKey key;
+    key.MakeNewKey(/*fCompressed=*/true);
+    const std::vector<CRecipient> classical{Pay(WitnessV1Taproot{XOnlyPubKey(uint256::ONE)})};
+
+    const COutPoint outpoint{uint256::ONE, 0};
+    CCoinControl with_p2mr_input;
+    with_p2mr_input.SelectExternal(outpoint, CTxOut{COIN, GetScriptForDestination(ForeignP2MR())});
+    BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, classical, &with_p2mr_input) == OutputType::P2MR);
+
+    CCoinControl with_classical_input;
+    with_classical_input.SelectExternal(outpoint, CTxOut{COIN, GetScriptForDestination(WitnessV0KeyHash(key.GetPubKey()))});
+    BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, classical, &with_classical_input) == OutputType::BECH32M);
+
+    BOOST_CHECK(wallet->TransactionChangeType(OutputType::BECH32M, classical, &with_p2mr_input) == OutputType::BECH32M);
+
+    CDilithiumKey dilithium_key;
+    BOOST_REQUIRE(dilithium_key.MakeNewKey());
+    CCoinControl with_dilithium_pkh_input;
+    with_dilithium_pkh_input.SelectExternal(outpoint, CTxOut{COIN, GetScriptForDestination(DilithiumPKHash(dilithium_key.GetPubKey()))});
+    BOOST_CHECK(wallet->TransactionChangeType(std::nullopt, classical, &with_dilithium_pkh_input) == OutputType::P2MR);
+}
+
+/** End to end: a P2MR input paid to a classical address returns a P2MR change script. */
+BOOST_FIXTURE_TEST_CASE(p2mr_input_to_classical_recipient_returns_p2mr_change, TestChain100Setup)
+{
+    CreateAndProcessBlock({}, GetScriptForRawPubKey(coinbaseKey.GetPubKey()));
+    auto wallet = CreateSyncedWallet(*m_node.chain, WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain()), coinbaseKey);
+
+    CKey key;
+    key.MakeNewKey(/*fCompressed=*/true);
+    const CTxDestination classical{WitnessV0KeyHash(key.GetPubKey())};
+
+    const auto script_type = [](const CScript& script) {
+        std::vector<std::vector<unsigned char>> solutions;
+        return Solver(script, solutions);
+    };
+
+    LOCK(wallet->cs_wallet);
+    const auto coins = AvailableCoins(*wallet).All();
+    BOOST_REQUIRE(!coins.empty());
+
+    CCoinControl only_classical;
+    only_classical.m_allow_other_inputs = false;
+    only_classical.Select(coins[0].outpoint);
+    auto classical_res = CreateTransaction(*wallet, {CRecipient{classical, coins[0].txout.nValue / 2, false}},
+                                           /*change_pos=*/-1, only_classical, /*sign=*/true);
+    BOOST_REQUIRE_MESSAGE(classical_res, util::ErrorString(classical_res).original);
+    BOOST_REQUIRE(classical_res->change_pos >= 0);
+    BOOST_CHECK(script_type(classical_res->tx->vout.at(classical_res->change_pos).scriptPubKey) != TxoutType::WITNESS_V2_P2MR);
+
+    for (const auto& coin : coins) {
+        wallet->LockCoin(coin.outpoint);
+    }
+
+    const auto receive = wallet->GetNewDestination(OutputType::P2MR, "p2mr-in");
+    BOOST_REQUIRE_MESSAGE(receive, util::ErrorString(receive).original);
+    CMutableTransaction funding;
+    funding.nVersion = 2;
+    funding.vout.emplace_back(5 * COIN, GetScriptForDestination(*receive));
+    const uint256 block_hash = wallet->GetLastBlockHash();
+    const int height = wallet->GetLastBlockHeight();
+    BOOST_REQUIRE(wallet->AddToWallet(MakeTransactionRef(std::move(funding)), TxStateConfirmed{block_hash, height, /*index=*/0}));
+
+    const unsigned int keypool_before = wallet->GetKeyPoolSize();
+    CCoinControl auto_select;
+    auto res = CreateTransaction(*wallet, {CRecipient{classical, COIN, false}},
+                                 /*change_pos=*/-1, auto_select, /*sign=*/false);
+    BOOST_REQUIRE_MESSAGE(res, util::ErrorString(res).original);
+    BOOST_REQUIRE(res->change_pos >= 0);
+    const CTxOut& change_out = res->tx->vout.at(res->change_pos);
+    BOOST_CHECK(script_type(change_out.scriptPubKey) == TxoutType::WITNESS_V2_P2MR);
+    BOOST_CHECK(change_out.scriptPubKey != GetScriptForDestination(classical));
+    BOOST_REQUIRE_EQUAL(res->tx->vin.size(), 1U);
+    const CWalletTx* spent = wallet->GetWalletTx(res->tx->vin[0].prevout.hash);
+    BOOST_REQUIRE(spent);
+    BOOST_CHECK(script_type(spent->tx->vout.at(res->tx->vin[0].prevout.n).scriptPubKey) == TxoutType::WITNESS_V2_P2MR);
+    // The classical change key reserved before selection is returned, not kept.
+    BOOST_CHECK_EQUAL(wallet->GetKeyPoolSize(), keypool_before);
+
+    CCoinControl explicit_type;
+    explicit_type.m_change_type = OutputType::BECH32;
+    auto explicit_res = CreateTransaction(*wallet, {CRecipient{classical, COIN, false}},
+                                          /*change_pos=*/-1, explicit_type, /*sign=*/false);
+    BOOST_REQUIRE_MESSAGE(explicit_res, util::ErrorString(explicit_res).original);
+    BOOST_REQUIRE(explicit_res->change_pos >= 0);
+    BOOST_CHECK(script_type(explicit_res->tx->vout.at(explicit_res->change_pos).scriptPubKey) == TxoutType::WITNESS_V0_KEYHASH);
+
+    wallet->SetWalletFlag(WALLET_FLAG_DISABLE_PRIVATE_KEYS);
+    CCoinControl watch_only;
+    auto watch_res = CreateTransaction(*wallet, {CRecipient{classical, COIN, false}},
+                                       /*change_pos=*/-1, watch_only, /*sign=*/false);
+    BOOST_REQUIRE_MESSAGE(watch_res, util::ErrorString(watch_res).original);
+    BOOST_REQUIRE(watch_res->change_pos >= 0);
+    BOOST_CHECK(script_type(watch_res->tx->vout.at(watch_res->change_pos).scriptPubKey) != TxoutType::WITNESS_V2_P2MR);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

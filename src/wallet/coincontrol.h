@@ -59,6 +59,10 @@ public:
     int m_max_depth = DEFAULT_MAX_DEPTH;
     //! SigningProvider that has pubkeys and scripts to do spend size estimation for external inputs
     FlatSigningProvider m_external_provider;
+    //! Set when destChange is the first attempt's change address, reused on the
+    //! avoid-partial-spends retry, rather than a user choice. Input-following
+    //! P2MR change may still replace that script.
+    bool m_change_reused_from_first_attempt = false;
 
     CCoinControl();
 

@@ -2450,8 +2450,10 @@ SigningResult CWallet::SignMessage(const std::string& message, const PKHash& pkh
     return SigningResult::PRIVATE_KEY_NOT_AVAILABLE;
 }
 
-OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& change_type, const std::vector<CRecipient>& vecSend) const
+OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& change_type, const std::vector<CRecipient>& vecSend, const CCoinControl* coin_control) const
 {
+    AssertLockHeld(cs_wallet);
+
     // If -changetype is specified, always use that change type.
     if (change_type) {
         return *change_type;
@@ -2475,6 +2477,30 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
         } else if (std::get_if<WitnessV2P2MR>(&recipient.dest) ||
                    std::get_if<DilithiumPKHash>(&recipient.dest)) {
             any_quantum_safe = true;
+        }
+    }
+
+    // Change follows the inputs too. Spending a P2MR UTXO to a classical
+    // recipient must not move the remainder onto an ECDSA script. Only
+    // preselected inputs are visible here; automatic selection has not run.
+    // CreateTransactionInternal swaps the change script after selection.
+    if (coin_control && !any_quantum_safe) {
+        for (const COutPoint& outpoint : coin_control->ListSelected()) {
+            CTxOut prevout;
+            if (const CWalletTx* wtx = GetWalletTx(outpoint.hash); wtx && outpoint.n < wtx->tx->vout.size()) {
+                prevout = wtx->tx->vout[outpoint.n];
+            } else if (auto ext = coin_control->GetExternalOutput(outpoint)) {
+                prevout = *ext;
+            } else {
+                continue;
+            }
+            CTxDestination input_dest;
+            if (ExtractDestination(prevout.scriptPubKey, input_dest) &&
+                (std::holds_alternative<WitnessV2P2MR>(input_dest) ||
+                 std::holds_alternative<DilithiumPKHash>(input_dest))) {
+                any_quantum_safe = true;
+                break;
+            }
         }
     }
 

@@ -759,3 +759,20 @@ P2MRSpendData P2MRBuilder::GetSpendData() const
     }
     return spd;
 }
+
+std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> P2MRBuilder::GetTreeTuples() const
+{
+    assert(IsComplete());
+    std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> tuples;
+    if (m_branch.size()) {
+        const auto& leaves = m_branch[0]->leaves;
+        for (const auto& leaf : leaves) {
+            assert(leaf.merkle_branch.size() <= P2MR_CONTROL_MAX_NODE_COUNT);
+            uint8_t depth = (uint8_t)leaf.merkle_branch.size();
+            uint8_t leaf_ver = (uint8_t)leaf.leaf_version;
+            tuples.emplace_back(depth, leaf_ver, leaf.script);
+        }
+    }
+    return tuples;
+}
+
