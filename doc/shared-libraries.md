@@ -58,7 +58,7 @@ The interface is defined in the C header `btqconsensus.h` located in `src/script
 - `btqconsensus_SCRIPT_FLAGS_VERIFY_CHECKSEQUENCEVERIFY` - Enable CHECKSEQUENCEVERIFY ([BIP112](https://github.com/bitcoin/bips/blob/master/bip-0112.mediawiki))
 - `btqconsensus_SCRIPT_FLAGS_VERIFY_WITNESS` - Enable WITNESS ([BIP141](https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki))
 - `btqconsensus_SCRIPT_FLAGS_VERIFY_TAPROOT` - Enable TAPROOT ([BIP340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki), [BIP341](https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki), [BIP342](https://github.com/bitcoin/bips/blob/master/bip-0342.mediawiki))
-- `btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS` - Charge 1400 instead of 500 validation weight per P2MR Dilithium signature check, once `dilithium_limits` is active
+- `btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS` - Charge 1439 instead of 500 validation weight per P2MR Dilithium signature check, once `dilithium_limits` is active
 
 ##### Errors
 - `btqconsensus_ERR_OK` - No errors with input parameters *(see the return value of `btqconsensus_verify_script` for the verification status)*

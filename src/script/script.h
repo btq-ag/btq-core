@@ -67,9 +67,10 @@ static constexpr int64_t VALIDATION_WEIGHT_PER_SIGOP_PASSED{50};
 // (P2MR tapscript only). It bounds re-checking one signature with OP_2DUP.
 // OP_CHECKMULTISIGDILITHIUM charges once per key tried, last key first, so
 // a 1-of-n spend signed by the first key pays n times while bringing one
-// signature (~2485 bytes of budget with the rest of the witness) and n
-// 1315-byte key pushes. Covering n = 20 needs a charge <= 1315 + 2485 / 20.
-static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED{1400};
+// signature (2485 bytes of budget with the rest of the witness) and n
+// 1315-byte key pushes. A depth-0 1-of-20 is 28785 weight. 1500 * 20
+// exceeds that, so the charge is 1439 (20 * 1439 = 28780).
+static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED{1439};
 // Charged before SCRIPT_VERIFY_DILITHIUM_LIMITS is active.
 static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED_LEGACY{500};
 // Dilithium is charged 50 sigops against the block sigop limit

@@ -1738,7 +1738,7 @@ BOOST_AUTO_TEST_CASE(p2mr_dilithium_validation_weight)
     const unsigned int new_flags{P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS};
     ScriptError err;
 
-    // The witness (~3.75k bytes) buys ~3.8k of budget: two checks at 1400, seven at 500.
+    // The witness (~3.75k bytes) buys ~3.8k of budget: two checks at 1439, seven at 500.
     BOOST_CHECK(run(2, new_flags, err));
     BOOST_CHECK(!run(3, new_flags, err));
     BOOST_CHECK_EQUAL(err, SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT);
