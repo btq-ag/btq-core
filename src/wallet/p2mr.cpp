@@ -446,6 +446,7 @@ std::optional<P2MREntry> GetP2MR(const CWallet& wallet, const std::string& id)
 // Decoded P2MR entries stored under one destination, in storage order. A map
 // lookup, not an address book scan.
 static std::vector<P2MREntry> ListP2MRForDestination(const CWallet& wallet, const CTxDestination& dest)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
     std::vector<P2MREntry> out;
@@ -491,6 +492,7 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
 // --- Signing provider ------------------------------------------------------
 
 static FlatSigningProvider BuildSigningProviderForEntries(const CWallet& wallet, const std::vector<P2MREntry>& entries)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
     FlatSigningProvider provider;
@@ -568,6 +570,7 @@ FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet
 // instead of decoding every P2MR entry. Only a WitnessV2P2MR destination can
 // pass IsP2MREntryValid, and its script is the script it was extracted from.
 static std::optional<P2MREntry> FindTrackedP2MREntry(const CWallet& wallet, const CScript& script)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
     CTxDestination dest;
@@ -591,7 +594,9 @@ isminetype GetTrackedP2MRScriptIsMine(const CWallet& wallet, const CScript& scri
 }
 
 static CAmount SumUnspentForScript(const CWallet& wallet, const CScript& script, int min_depth)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
+    AssertLockHeld(wallet.cs_wallet);
     CAmount total{0};
     for (const auto& [txid, wtx] : wallet.mapWallet) {
         if (!wtx.tx) continue;
@@ -642,6 +647,7 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
                                                         const std::string& label,
                                                         bool add_to_address_book = true,
                                                         std::optional<int64_t> created_at = std::nullopt)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!pubkey.IsValid()) {
@@ -658,6 +664,7 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
 }
 
 bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
     bool stored = false;
@@ -690,6 +697,7 @@ bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
 }
 
 util::Result<CDilithiumPubKey> GenerateWalletDilithiumPubKey(CWallet& wallet, bool internal)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
 
