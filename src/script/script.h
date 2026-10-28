@@ -243,6 +243,7 @@ enum opcodetype
     OP_CHECKSIGDILITHIUMVERIFY = 0xbc,
     OP_CHECKMULTISIGDILITHIUM = 0xbd,
     OP_CHECKMULTISIGDILITHIUMVERIFY = 0xbe,
+    // Reserved. No implementation: execution fails. Do not reuse 0xbf.
     OP_DILITHIUM_PUBKEY = 0xbf,
 
     OP_INVALIDOPCODE = 0xff,
@@ -251,7 +252,7 @@ enum opcodetype
 // Pre-Taproot ceiling for HasValidOps and the asm parser.
 // OP_CHECKSIGADD and the Dilithium opcodes sit above this. EvalScript
 // still accepts them in a P2MR tapscript leaf. The tx decoder does not
-// run witness bytes through HasValidOps.
+// run witness bytes through HasValidOps. 0xbf stays reserved and unused.
 static const unsigned int MAX_OPCODE = OP_NOP10;
 
 std::string GetOpName(opcodetype opcode);

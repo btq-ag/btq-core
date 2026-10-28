@@ -458,9 +458,8 @@ Added to `src/script/script.h` and `src/script/interpreter.cpp`:
   - Verifies Dilithium signature against public key and sighash
   - Handles 2420-byte signatures instead of DER-encoded ECDSA
 
-- **OP_DILITHIUM_PUBKEY** (opcode TBD)
-  - Marks a script as containing Dilithium public key
-  - Enables script interpreter to identify Dilithium scripts
+- **OP_DILITHIUM_PUBKEY** (opcode TBD; later removed)
+  - `0xbf` is reserved. Execution fails. It is not an OP_SUCCESS.
 
 **2. Address Type Extensions**
 

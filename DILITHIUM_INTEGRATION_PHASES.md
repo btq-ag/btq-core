@@ -34,7 +34,7 @@ The next step is to extend support across the Bitcoin codebase so that Dilithium
 - Add script opcodes:
   - `OP_CHECKSIGDILITHIUM`
   - `OP_CHECKMULTISIGDILITHIUM`
-  - `OP_DILITHIUM_PUBKEY`
+  - `OP_DILITHIUM_PUBKEY` (later removed: `0xbf` is reserved and fails verification)
 - Update script interpreter for large signatures (~4.6KB)
 
 **Deliverable:** Generate/validate Dilithium addresses & scripts.

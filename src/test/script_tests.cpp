@@ -1727,6 +1727,33 @@ static bool VerifyP2MRLeafSpend(const CScript& leaf, const CDilithiumKey& key,
 static constexpr unsigned int P2MR_BASE_FLAGS{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DILITHIUM |
                                               SCRIPT_VERIFY_P2MR | SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY | SCRIPT_VERIFY_NULLDUMMY};
 
+static void ExpectP2MRLeafError(const CScript& leaf, ScriptError expected)
+{
+    const uint256 leaf_hash{ComputeTapleafHash(TAPROOT_LEAF_TAPSCRIPT, leaf)};
+    const CScript script_pubkey{CScript() << OP_2 << ToByteVector(leaf_hash)};
+    const CTransaction credit_tx{BuildCreditingTransaction(script_pubkey, 1)};
+    CMutableTransaction spend{BuildSpendingTransaction(CScript(), CScriptWitness(), credit_tx)};
+    spend.vin[0].scriptWitness.stack.push_back(ToByteVector(leaf));
+    spend.vin[0].scriptWitness.stack.push_back({static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 1)});
+    PrecomputedTransactionData txdata;
+    txdata.Init(spend, std::vector<CTxOut>{credit_tx.vout[0]}, /*force=*/true);
+    ScriptError err{SCRIPT_ERR_OK};
+    BOOST_CHECK(!VerifyScript(spend.vin[0].scriptSig, script_pubkey, &spend.vin[0].scriptWitness, P2MR_BASE_FLAGS,
+                              MutableTransactionSignatureChecker(&spend, 0, credit_tx.vout[0].nValue, txdata, MissingDataBehavior::ASSERT_FAIL), &err));
+    BOOST_CHECK_EQUAL(err, expected);
+}
+
+BOOST_AUTO_TEST_CASE(p2mr_reserved_dilithium_pubkey_opcode)
+{
+    ExpectP2MRLeafError(CScript() << OP_DILITHIUM_PUBKEY, SCRIPT_ERR_BAD_OPCODE);
+    // Still real opcodes in a P2MR leaf. Empty stack is a stack error, not a bad opcode.
+    ExpectP2MRLeafError(CScript() << OP_CHECKSIGADD, SCRIPT_ERR_INVALID_STACK_OPERATION);
+    ExpectP2MRLeafError(CScript() << OP_CHECKSIGDILITHIUM, SCRIPT_ERR_INVALID_STACK_OPERATION);
+    ExpectP2MRLeafError(CScript() << OP_CHECKSIGDILITHIUMVERIFY, SCRIPT_ERR_INVALID_STACK_OPERATION);
+    ExpectP2MRLeafError(CScript() << OP_CHECKMULTISIGDILITHIUM, SCRIPT_ERR_INVALID_STACK_OPERATION);
+    ExpectP2MRLeafError(CScript() << OP_CHECKMULTISIGDILITHIUMVERIFY, SCRIPT_ERR_INVALID_STACK_OPERATION);
+}
+
 BOOST_AUTO_TEST_CASE(p2mr_dilithium_validation_weight)
 {
     CDilithiumKey key;
@@ -1820,8 +1847,9 @@ static std::vector<unsigned int> AllConsensusFlags()
 /** Precomputed list of all valid combinations of consensus-relevant script validation flags. */
 static const std::vector<unsigned int> ALL_CONSENSUS_FLAGS = AllConsensusFlags();
 
-// Dilithium reclaimed BIP342 OP_SUCCESS 0xbb–0xbf. Skip cases whose success or failure
-// executed scripts contain those opcodes (GetOp walk), plus known size-limit comment prefixes.
+// 0xbb-0xbe are Dilithium opcodes. 0xbf is reserved. None of them are BIP342
+// OP_SUCCESS. Skip cases whose success or failure executed scripts contain
+// those bytes (GetOp walk), plus known size-limit comment prefixes.
 static bool ScriptHasReclaimedDilithiumOpcode(const CScript& script)
 {
     CScript::const_iterator pc = script.begin();
@@ -1897,7 +1925,7 @@ static bool IsDilithiumReclaimedOpSuccessCase(const UniValue& test)
 {
     if (SideHasReclaimedDilithiumOpcode(test, "success")) return true;
     if (SideHasReclaimedDilithiumOpcode(test, "failure")) return true;
-    // Remainder of the known 11-case taproot set: GetOp does not see 0xbb–0xbf inside the
+    // Remainder of the known 11-case taproot set: GetOp does not see 0xbb-0xbf inside the
     // 520/521-byte pushes. These cases assume Bitcoin's 520-byte element limit (failure is 521);
     // BTQ allows 15000 so the failure path succeeds.
     if (test.exists("comment")) {

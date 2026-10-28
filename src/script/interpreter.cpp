@@ -101,8 +101,7 @@ bool static IsValidDilithiumPubKey(const valtype &vchPubKey) {
     if (vchPubKey.size() != CDilithiumPubKey::SIZE) {
         return false;
     }
-    // Size + structural checks (nonzero rho and nonzero t1). Used by
-    // OP_CHECKSIGDILITHIUM* (via EvalChecksigDilithium) and OP_DILITHIUM_PUBKEY.
+    // Size + structural checks (nonzero rho and nonzero t1).
     return CDilithiumPubKey(vchPubKey).IsFullyValid();
 }
 
@@ -1401,33 +1400,6 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         else
                             return set_error(serror, SCRIPT_ERR_CHECKMULTISIGVERIFY);
                     }
-                }
-                break;
-
-                case OP_DILITHIUM_PUBKEY:
-                {
-                    // BTQ-AUDIT-048: once DEPLOYMENT_DILITHIUM_P2MR activates, Dilithium opcodes
-                    // are consensus-valid ONLY in P2MR tapscript (witness v2), so they cannot
-                    // retroactively change pre-existing script semantics. Before activation,
-                    // preserve the historical rule (rejected in BIP341 tapscript only) so
-                    // pre-fork blocks keep validating.
-                    if (flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY) {
-                        if (sigversion != SigVersion::P2MR_TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
-                    } else if (sigversion == SigVersion::TAPSCRIPT) {
-                        return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
-                    }
-                    if (!(flags & SCRIPT_VERIFY_DILITHIUM)) {
-                        return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE);
-                    }
-
-                    // (pubkey -- bool)
-                    if (stack.size() < 1)
-                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
-
-                    valtype& vchPubKey = stacktop(-1);
-                    bool fSuccess = IsValidDilithiumPubKey(vchPubKey);
-                    popstack(stack);
-                    stack.push_back(fSuccess ? vchTrue : vchFalse);
                 }
                 break;
 

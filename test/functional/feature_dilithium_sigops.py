@@ -9,11 +9,12 @@ Tests the following security fixes:
   1. Dilithium opcodes are counted in GetSigOpCount, preventing DoS
      attacks via uncounted signature verifications.
 
-  2. Dilithium opcodes are excluded from the OP_SUCCESSx range in
-     tapscript, preventing anyone-can-spend on tapscript outputs.
+  2. Dilithium opcodes (0xbb-0xbe) and reserved 0xbf are excluded from the
+     OP_SUCCESSx range, so a tapscript that contains them is not anyone-can-spend.
 
   3. Dilithium opcodes are explicitly disabled in tapscript execution,
      matching the pattern used for OP_CHECKMULTISIG in tapscript.
+     Reserved 0xbf fails as an unknown opcode.
 """
 
 import struct
@@ -299,9 +300,9 @@ class DilithiumSigopsTest(BTQTestFramework):
         print(sub_test('1e. Non-sigop opcodes correctly excluded'))
 
         cases = [
-            (CScript([OP_DILITHIUM_PUBKEY]),                                    0, 'OP_DILITHIUM_PUBKEY'),
+            (CScript([OP_DILITHIUM_PUBKEY]),                                    0, 'reserved 0xbf'),
             (CScript([OP_DUP, OP_HASH160, OP_EQUALVERIFY]),                     0, 'P2PKH template'),
-            (CScript([OP_DUP, OP_HASH160, OP_EQUALVERIFY, OP_DILITHIUM_PUBKEY]),0, 'mixed non-sigop'),
+            (CScript([OP_DUP, OP_HASH160, OP_EQUALVERIFY, OP_DILITHIUM_PUBKEY]),0, 'mixed reserved 0xbf'),
             (CScript([]),                                                        0, 'empty script'),
         ]
 
@@ -340,14 +341,14 @@ class DilithiumSigopsTest(BTQTestFramework):
             0xbc: 'OP_CHECKSIGDILITHIUMVERIFY',
             0xbd: 'OP_CHECKMULTISIGDILITHIUM',
             0xbe: 'OP_CHECKMULTISIGDILITHIUMVERIFY',
-            0xbf: 'OP_DILITHIUM_PUBKEY',
+            0xbf: 'reserved 0xbf',
         }
         for val, name in dilithium_ops.items():
             assert not is_op_success_fixed(val), f'{name} must not be OP_SUCCESSx'
             assert is_op_success_old(val), f'{name} was OP_SUCCESSx in vulnerable version'
             print(info(f'0x{val:02x} {name:40s} fixed=no  old=yes'))
 
-        print(passed('Dilithium range (0xbb-0xbf) excluded'))
+        print(passed('0xbb-0xbe and reserved 0xbf excluded'))
 
         # --- 2b: Opcodes 0xc0+ must still be OP_SUCCESSx ---
         print(sub_test('2b. Opcodes 0xc0-0xfe remain OP_SUCCESSx'))
@@ -361,8 +362,8 @@ class DilithiumSigopsTest(BTQTestFramework):
         print(sub_test('2c. Boundary values'))
         assert not is_op_success_fixed(0xba), '0xba (OP_CHECKSIGADD) is a real opcode'
         print(info('0xba OP_CHECKSIGADD   -> not OP_SUCCESSx'))
-        assert not is_op_success_fixed(0xbf), '0xbf (OP_DILITHIUM_PUBKEY) excluded'
-        print(info('0xbf OP_DILITHIUM_PK  -> not OP_SUCCESSx'))
+        assert not is_op_success_fixed(0xbf), '0xbf is reserved, not OP_SUCCESSx'
+        print(info('0xbf reserved         -> not OP_SUCCESSx'))
         assert is_op_success_fixed(0xc0), '0xc0 is first OP_SUCCESSx'
         print(info('0xc0 first OP_SUCCESS -> OP_SUCCESSx'))
         assert not is_op_success_fixed(0xff), '0xff (OP_INVALIDOPCODE) is not OP_SUCCESSx'
@@ -381,13 +382,12 @@ class DilithiumSigopsTest(BTQTestFramework):
         privkey.generate()
         xonly_pubkey, _ = compute_xonly_pubkey(privkey.get_bytes())
 
-        # --- 3a-3f: Each Dilithium opcode must be rejected in tapscript ---
+        # --- 3a-3d: Each Dilithium opcode must be rejected in tapscript ---
         reject_cases = [
             ('3a', 'OP_CHECKSIGDILITHIUM',           CScript([OP_TRUE, OP_TRUE, OP_CHECKSIGDILITHIUM]),                               [b'\x01', b'\x01']),
             ('3b', 'OP_CHECKSIGDILITHIUMVERIFY',      CScript([OP_TRUE, OP_TRUE, OP_CHECKSIGDILITHIUMVERIFY, OP_TRUE]),                [b'\x01', b'\x01']),
             ('3c', 'OP_CHECKMULTISIGDILITHIUM',       CScript([OP_0, OP_1, OP_1, OP_CHECKMULTISIGDILITHIUM]),                          [b'', b'\x01']),
             ('3d', 'OP_CHECKMULTISIGDILITHIUMVERIFY',  CScript([OP_0, OP_1, OP_1, OP_CHECKMULTISIGDILITHIUMVERIFY, OP_TRUE]),          [b'', b'\x01']),
-            ('3e', 'OP_DILITHIUM_PUBKEY',             CScript([OP_TRUE, OP_DILITHIUM_PUBKEY]),                                        [b'\x01']),
         ]
 
         for test_id, opcode_name, leaf_script, witness_stack in reject_cases:
@@ -403,6 +403,18 @@ class DilithiumSigopsTest(BTQTestFramework):
             )
             print(info(f"reject-reason: {result.get('reject-reason', '')[:80]}"))
             print(passed(f'{opcode_name} correctly rejected'))
+
+        print(sub_test('3e. reserved 0xbf in tapscript -> MUST REJECT'))
+        result = self._tapscript_spend_test(
+            node, wallet, xonly_pubkey,
+            CScript([OP_TRUE, OP_DILITHIUM_PUBKEY]), [b'\x01'],
+            label='leaf_3e',
+        )
+        assert not result['allowed'], 'reserved 0xbf should be rejected in tapscript!'
+        reason = result.get('reject-reason', '')
+        assert 'not understood' in reason.lower(), f'reserved 0xbf: expected bad opcode, got {result!r}'
+        print(info(f"reject-reason: {reason[:80]}"))
+        print(passed('reserved 0xbf correctly rejected'))
 
         # --- 3f: Control test - OP_TRUE must still work ---
         print(sub_test('3f. OP_TRUE in tapscript -> MUST ACCEPT (control test)'))

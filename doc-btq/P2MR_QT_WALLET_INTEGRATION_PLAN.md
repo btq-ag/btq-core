@@ -201,7 +201,7 @@ Ship built-in templates to avoid asking users for hex scripts on day one:
 | Template ID | Tree | Use case |
 |-------------|------|----------|
 | `op_true` | depth 0, leaf_version 192, script `51` (OP_TRUE) | Testing, CLI parity, E2E docs |
-| `single_dilithium` | One leaf with `OP_DILITHIUM_PUBKEY` + user key | PQ single-sig path (when keys in wallet) |
+| `single_dilithium` | One leaf with `<pubkey> OP_CHECKSIGDILITHIUM` | PQ single-sig path (when keys in wallet). `0xbf` is reserved and is not emitted |
 | `delay_nop` | OP_CHECKSEQUENCEVERIFY style leaf (future) | Time-locked vault |
 | `custom` | Advanced editor | Power users |
 
