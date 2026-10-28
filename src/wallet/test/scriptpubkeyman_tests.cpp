@@ -14,6 +14,7 @@
 #include <script/solver.h>
 #include <script/sign.h>
 #include <sync.h>
+#include <wallet/p2mr.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/wallet.h>
 #include <wallet/test/util.h>
@@ -432,6 +433,79 @@ BOOST_AUTO_TEST_CASE(descriptor_dilithium_needs_one_private_key)
     const auto grown_res = grows->GenerateNewDilithiumKey();
     BOOST_CHECK(!grown_res);
     BOOST_CHECK(util::ErrorString(grown_res).original.find("exactly one private key") != std::string::npos);
+}
+
+static std::optional<CDilithiumKey> DilithiumKeyFromDescriptor(CWallet& wallet, const CKeyID& keyid) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    for (ScriptPubKeyMan* spk_man : wallet.GetAllScriptPubKeyMans()) {
+        auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+        if (!desc) continue;
+        LOCK(desc->cs_desc_man);
+        CDilithiumKey key;
+        if (desc->GetDilithiumKey(keyid, key)) return key;
+    }
+    return std::nullopt;
+}
+
+// A legacy wallet that has called getnewdilithiumaddress shares HD indexes with
+// secp256k1. Migration must not abort on the index that has no secp256k1 script,
+// and the descriptor wallet must still hold that Dilithium key and the same
+// single-leaf P2MR destination.
+BOOST_AUTO_TEST_CASE(migrate_legacy_dilithium_keeps_p2mr)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet.m_keypool_size = 1;
+
+    CTxDestination dest;
+    CDilithiumKey original;
+    CKeyID keyid;
+    {
+        LOCK(wallet.cs_wallet);
+        wallet.SetMinVersion(FEATURE_LATEST);
+        LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
+        BOOST_REQUIRE(keyman.SetupGeneration(true));
+
+        const auto created = CreateDilithiumP2MRReceive(wallet, "recv");
+        BOOST_REQUIRE(created);
+        dest = created->dest;
+
+        const std::set<CKeyID> ids = keyman.GetDilithiumKeyIDs();
+        BOOST_REQUIRE_EQUAL(ids.size(), 1);
+        keyid = *ids.begin();
+        BOOST_REQUIRE(keyman.GetDilithiumKey(keyid, original));
+
+        bilingual_str error;
+        auto data = wallet.GetDescriptorsForLegacy(error);
+        BOOST_REQUIRE_MESSAGE(data, error.original);
+        BOOST_REQUIRE_MESSAGE(wallet.ApplyMigrationData(*data, error), error.original);
+
+        BOOST_CHECK(wallet.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS));
+        BOOST_CHECK(wallet.GetLegacyScriptPubKeyMan() == nullptr);
+
+        const auto migrated = DilithiumKeyFromDescriptor(wallet, keyid);
+        BOOST_REQUIRE(migrated);
+        BOOST_CHECK(*migrated == original);
+        BOOST_CHECK(wallet.IsMine(dest) == ISMINE_SPENDABLE);
+
+        const auto entries = ListP2MR(wallet);
+        BOOST_REQUIRE_EQUAL(entries.size(), 1);
+        BOOST_CHECK(entries[0].dest == dest);
+        BOOST_CHECK_EQUAL(entries[0].label, "recv");
+        BOOST_CHECK_EQUAL(entries[0].address, EncodeDestination(dest));
+    }
+
+    CWallet loaded(m_node.chain.get(), "", CreateMockableWalletDatabase(GetMockableDatabase(wallet).m_records));
+    BOOST_CHECK_EQUAL(loaded.LoadWallet(), DBErrors::LOAD_OK);
+    LOCK(loaded.cs_wallet);
+    BOOST_CHECK(loaded.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS));
+    const auto reloaded = DilithiumKeyFromDescriptor(loaded, keyid);
+    BOOST_REQUIRE(reloaded);
+    BOOST_CHECK(*reloaded == original);
+    BOOST_CHECK(loaded.IsMine(dest) == ISMINE_SPENDABLE);
+    const auto reloaded_entries = ListP2MR(loaded);
+    BOOST_REQUIRE_EQUAL(reloaded_entries.size(), 1);
+    BOOST_CHECK(reloaded_entries[0].dest == dest);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

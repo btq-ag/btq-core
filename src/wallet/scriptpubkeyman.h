@@ -764,6 +764,15 @@ public:
     void UpgradeDescriptorCache();
 };
 
+/** Dilithium private key taken from a legacy wallet during migration.
+ *  crypted_secret is the existing ciphertext when the legacy wallet is encrypted,
+ *  and empty otherwise. The stored key record stays in the database. */
+struct MigrationDilithiumKey
+{
+    CDilithiumKey key;
+    std::vector<unsigned char> crypted_secret;
+};
+
 /** struct containing information needed for migrating legacy wallets to descriptor wallets */
 struct MigrationData
 {
@@ -771,6 +780,7 @@ struct MigrationData
     std::vector<std::pair<std::string, int64_t>> watch_descs;
     std::vector<std::pair<std::string, int64_t>> solvable_descs;
     std::vector<std::unique_ptr<DescriptorScriptPubKeyMan>> desc_spkms;
+    std::vector<MigrationDilithiumKey> dilithium_keys;
     std::shared_ptr<CWallet> watchonly_wallet{nullptr};
     std::shared_ptr<CWallet> solvable_wallet{nullptr};
 };
