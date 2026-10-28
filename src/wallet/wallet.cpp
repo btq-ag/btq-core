@@ -1265,6 +1265,48 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, const SyncTxS
 
         bool fExisted = mapWallet.count(tx.GetHash()) != 0;
         if (fExisted && !fUpdate) return false;
+
+        // Seed-restore outputs are not IsMine yet: a used single-leaf P2MR or
+        // Dilithium pubkeyhash is not in the descriptor cache, so the check
+        // below would drop the tx and the next Dilithium key would reissue
+        // index 0. Only an old-block rescan imports those keys. A mempool
+        // transaction does not.
+        if (rescanning_old_block) {
+            bool stored_dilithium_key = false;
+            for (const CTxOut& txout : tx.vout) {
+                for (bool internal : {false, true}) {
+                    auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(GetScriptPubKeyMan(OutputType::LEGACY, internal));
+                    if (!desc) continue;
+                    const std::optional<int32_t> match = desc->FindDilithiumIndexForScript(txout.scriptPubKey);
+                    if (!match) continue;
+                    const int32_t range_begin = desc->GetDilithiumNextIndex();
+                    if (*match < range_begin) continue;
+                    bool recovered = true;
+                    for (int32_t index = range_begin; index <= *match; ++index) {
+                        const auto key = desc->GetDilithiumKeyForIndex(index);
+                        if (!key) {
+                            WalletLogPrintf("%s: Dilithium restore stopped at index %d\n", __func__, index);
+                            recovered = false;
+                            break;
+                        }
+                        // Change stays out of the address book, or IsChange treats it as receive.
+                        const auto created = RecoverDilithiumKeyAsP2MR(*this, *desc, *key, /*add_to_address_book=*/!internal);
+                        if (!created) {
+                            WalletLogPrintf("%s: Dilithium restore of index %d failed: %s\n", __func__, index, util::ErrorString(created).original);
+                            recovered = false;
+                            break;
+                        }
+                        stored_dilithium_key = true;
+                    }
+                    // Locked, missing descriptor key, or a failed store: leave the counter.
+                    // Keys already written are skipped the next time this script is seen.
+                    if (!recovered) continue;
+                    desc->CommitDilithiumNextIndex(*match + 1);
+                }
+            }
+            if (stored_dilithium_key) m_ismine_cache.clear();
+        }
+
         if (fExisted || IsMine(tx) || IsFromMe(tx))
         {
             /* Check if any keys in the wallet keypool that were supposed to be unused
@@ -1276,14 +1318,6 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, const SyncTxS
             // loop though all outputs
             for (const CTxOut& txout: tx.vout) {
                 std::set<ScriptPubKeyMan*> spk_mans = GetScriptPubKeyMans(txout.scriptPubKey);
-                // Dilithium and P2MR scripts are not descriptor scripts, so the
-                // LEGACY managers never show up here. Their derivation index
-                // still has to move when a used script is seen (INFO-26).
-                for (bool internal : {false, true}) {
-                    if (ScriptPubKeyMan* legacy = GetScriptPubKeyMan(OutputType::LEGACY, internal)) {
-                        spk_mans.insert(legacy);
-                    }
-                }
                 for (const auto& spk_man : spk_mans) {
                     auto destinations = spk_man->MarkUnusedAddresses(txout.scriptPubKey);
                     // Marking a used key can derive more keys from an inactive HD

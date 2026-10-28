@@ -184,20 +184,26 @@ BOOST_AUTO_TEST_CASE(dilithium_legacy_generation_disabled_on_p2mr_only_chain)
 }
 
 // INFO-26: the LEGACY descriptor used one next_index for ECDSA and Dilithium.
-// ECDSA generation must leave the Dilithium counter alone, and a restore that
-// sees a used Dilithium or single-leaf P2MR script must advance that counter
-// without moving the ECDSA lookahead.
+// ECDSA generation must leave the Dilithium counter alone. A rescan that sees
+// a used single-leaf P2MR before it is IsMine must store the keys it walks
+// past and advance the Dilithium counter without moving the ECDSA lookahead.
 BOOST_AUTO_TEST_CASE(descriptor_dilithium_index_independent_of_ecdsa)
 {
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
     DescriptorScriptPubKeyMan* keyman{nullptr};
+    DescriptorScriptPubKeyMan* internal{nullptr};
     {
         LOCK(wallet.cs_wallet);
+        // Gap is the keypool. Index 2 is inside it. The internal manager scans
+        // the same window for a script that is not its own.
+        wallet.m_keypool_size = 8;
         wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
         wallet.SetupDescriptorScriptPubKeyMans();
         keyman = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+        internal = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/true));
     }
     BOOST_REQUIRE(keyman);
+    BOOST_REQUIRE(internal);
 
     const auto ecdsa_dest = keyman->GetNewDestination(OutputType::LEGACY);
     BOOST_REQUIRE(ecdsa_dest);
@@ -208,38 +214,53 @@ BOOST_AUTO_TEST_CASE(descriptor_dilithium_index_independent_of_ecdsa)
     BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 0);
 
     const auto key0 = keyman->GetDilithiumKeyForIndex(0);
-    BOOST_REQUIRE(key0);
-    const CScript dilithium_spk = GetScriptForDestination(DilithiumPKHash(key0->GetPubKey()));
-    const CScript p2mr_spk = SingleLeafP2MRScript(key0->GetPubKey());
-
-    keyman->MarkUnusedAddresses(dilithium_spk);
-    {
-        LOCK(keyman->cs_desc_man);
-        BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
-    }
-    BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 1);
-
-    // Stale counter, same index, seen as the P2MR script instead.
-    keyman->LoadDilithiumNextIndex(0);
-    keyman->MarkUnusedAddresses(p2mr_spk);
-    {
-        LOCK(keyman->cs_desc_man);
-        BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
-    }
-    BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 1);
-
-    // A used script further along the Dilithium sequence jumps the counter
-    // past that index. An ECDSA descriptor script must not.
-    keyman->LoadDilithiumNextIndex(0);
+    const auto key1 = keyman->GetDilithiumKeyForIndex(1);
     const auto key2 = keyman->GetDilithiumKeyForIndex(2);
+    BOOST_REQUIRE(key0);
+    BOOST_REQUIRE(key1);
     BOOST_REQUIRE(key2);
-    keyman->MarkUnusedAddresses(SingleLeafP2MRScript(key2->GetPubKey()));
-    {
-        LOCK(keyman->cs_desc_man);
-        BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
-    }
-    BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 3);
+    const CKeyID id0{key0->GetPubKey().GetID()};
+    const CKeyID id1{key1->GetPubKey().GetID()};
+    const CKeyID id2{key2->GetPubKey().GetID()};
 
+    CMutableTransaction mtx;
+    mtx.vin.emplace_back(COutPoint(uint256::ONE, 0));
+    mtx.vout.emplace_back(COIN, SingleLeafP2MRScript(key2->GetPubKey()));
+    const CTransactionRef tx = MakeTransactionRef(mtx);
+
+    {
+        LOCK(wallet.cs_wallet);
+        BOOST_CHECK(!wallet.IsMine(*tx));
+        {
+            LOCK(keyman->cs_desc_man);
+            BOOST_CHECK(!keyman->HaveDilithiumKey(id2));
+        }
+
+        // Ordinary arrival does not import a script the wallet cannot yet recognize.
+        BOOST_CHECK(!wallet.AddToWalletIfInvolvingMe(tx, TxStateInactive{}, /*fUpdate=*/true, /*rescanning_old_block=*/false));
+        BOOST_CHECK(!wallet.GetWalletTx(tx->GetHash()));
+        BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 0);
+        {
+            LOCK(keyman->cs_desc_man);
+            BOOST_CHECK(!keyman->HaveDilithiumKey(id2));
+            BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
+        }
+
+        BOOST_CHECK(wallet.AddToWalletIfInvolvingMe(tx, TxStateInactive{}, /*fUpdate=*/true, /*rescanning_old_block=*/true));
+        BOOST_CHECK(wallet.GetWalletTx(tx->GetHash()));
+        BOOST_CHECK(wallet.IsMine(*tx));
+        BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 3);
+        BOOST_CHECK_EQUAL(internal->GetDilithiumNextIndex(), 0);
+        {
+            LOCK(keyman->cs_desc_man);
+            BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
+            BOOST_CHECK(keyman->HaveDilithiumKey(id0));
+            BOOST_CHECK(keyman->HaveDilithiumKey(id1));
+            BOOST_CHECK(keyman->HaveDilithiumKey(id2));
+        }
+    }
+
+    // An ECDSA descriptor script still moves next_index and leaves the Dilithium counter.
     CScript ecdsa_ahead;
     {
         LOCK(keyman->cs_desc_man);

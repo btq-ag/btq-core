@@ -653,13 +653,8 @@ private:
     //! manager's sequence. Needs the descriptor's private key material.
     util::Result<CDilithiumKey> DeriveDilithiumKeyAtIndex(int32_t index) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
 
-    //! If script is the Dilithium or single-leaf P2MR script derived at an
-    //! index at or above m_dilithium_next_index, advance the counter past it.
-    //! ECDSA descriptor scripts are ignored here so lookahead stays on next_index.
-    void AdvanceDilithiumIndexForScript(const CScript& script) EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
-
     //! Scripts derived for the restore scan, so a rescan does not re-derive
-    //! the same index for every output. cache_end is the first index not stored.
+    //! the same index for every output. cache_end is the first index not cached.
     std::map<CScript, int32_t> m_dilithium_script_index GUARDED_BY(cs_desc_man);
     int32_t m_dilithium_script_cache_end GUARDED_BY(cs_desc_man){0};
 
@@ -708,6 +703,13 @@ public:
     //! Set the persisted Dilithium derivation index (used by LoadWallet).
     void LoadDilithiumNextIndex(int32_t index) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
     int32_t GetDilithiumNextIndex() const EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
+    //! Index of a Dilithium pubkeyhash or single-leaf P2MR script at or above
+    //! m_dilithium_next_index and inside the keypool gap. nullopt leaves the
+    //! counter alone (other script types, past the gap, locked, or no
+    //! descriptor key). Does not store the key or move the counter.
+    std::optional<int32_t> FindDilithiumIndexForScript(const CScript& script) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
+    //! Persist a higher Dilithium derivation index. A lower value is ignored.
+    void CommitDilithiumNextIndex(int32_t index) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
 
     // Dilithium key management
     bool AddDilithiumKeyPubKey(const CDilithiumKey& key);

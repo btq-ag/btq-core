@@ -2960,24 +2960,19 @@ std::vector<WalletDestination> DescriptorScriptPubKeyMan::MarkUnusedAddresses(co
         }
     }
 
-    // Dilithium and single-leaf P2MR scripts are not in the descriptor cache,
-    // so the ECDSA walk above never sees them. A later ECDSA hit must not be
-    // what carries the Dilithium counter past a used index.
-    AdvanceDilithiumIndexForScript(script);
-
     return result;
 }
 
-void DescriptorScriptPubKeyMan::AdvanceDilithiumIndexForScript(const CScript& script)
+std::optional<int32_t> DescriptorScriptPubKeyMan::FindDilithiumIndexForScript(const CScript& script)
 {
-    AssertLockHeld(cs_desc_man);
-    if (m_dilithium_next_index < 0) return;
-
     std::vector<std::vector<unsigned char>> solutions;
     const TxoutType type = Solver(script, solutions);
     if (type != TxoutType::DILITHIUM_PUBKEYHASH && type != TxoutType::WITNESS_V2_P2MR) {
-        return;
+        return std::nullopt;
     }
+
+    LOCK(cs_desc_man);
+    if (m_dilithium_next_index < 0) return std::nullopt;
 
     // Same gap the descriptor keypool uses for ECDSA lookahead. A script
     // further ahead than that was not issued from this counter.
@@ -2993,10 +2988,10 @@ void DescriptorScriptPubKeyMan::AdvanceDilithiumIndexForScript(const CScript& sc
         while (m_dilithium_script_cache_end < window_end) {
             const int32_t index = m_dilithium_script_cache_end;
             auto key_res = DeriveDilithiumKeyAtIndex(index);
-            if (!key_res) return; // Locked, or no descriptor key. Cannot tell.
+            if (!key_res) return std::nullopt; // Locked, or no descriptor key.
             CScript dilithium_spk;
             CScript p2mr_spk;
-            if (!ScriptsForDilithiumPubkey(key_res->GetPubKey(), dilithium_spk, p2mr_spk)) return;
+            if (!ScriptsForDilithiumPubkey(key_res->GetPubKey(), dilithium_spk, p2mr_spk)) return std::nullopt;
             m_dilithium_script_index.emplace(std::move(dilithium_spk), index);
             m_dilithium_script_index.emplace(std::move(p2mr_spk), index);
             m_dilithium_script_cache_end = index + 1;
@@ -3005,13 +3000,21 @@ void DescriptorScriptPubKeyMan::AdvanceDilithiumIndexForScript(const CScript& sc
     }
 
     const auto it = m_dilithium_script_index.find(script);
-    if (it == m_dilithium_script_index.end() || it->second < m_dilithium_next_index) return;
+    if (it == m_dilithium_script_index.end() || it->second < m_dilithium_next_index || it->second >= window_end) {
+        return std::nullopt;
+    }
+    return it->second;
+}
 
-    m_dilithium_next_index = it->second + 1;
+void DescriptorScriptPubKeyMan::CommitDilithiumNextIndex(int32_t index)
+{
+    LOCK(cs_desc_man);
+    if (index <= m_dilithium_next_index) return;
     WalletBatch batch(m_storage.GetDatabase());
-    if (!batch.WriteDilithiumDescriptorIndex(GetID(), m_dilithium_next_index)) {
+    if (!batch.WriteDilithiumDescriptorIndex(GetID(), index)) {
         throw std::runtime_error(std::string(__func__) + ": writing Dilithium key index failed");
     }
+    m_dilithium_next_index = index;
 }
 
 void DescriptorScriptPubKeyMan::AddDescriptorKey(const CKey& key, const CPubKey &pubkey)
