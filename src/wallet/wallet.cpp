@@ -3185,6 +3185,20 @@ bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, co
     return true;
 }
 
+bool CWallet::EraseP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id)
+{
+    const std::string full_id = std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id;
+    if (!batch.EraseAddressReceiveRequest(dest, full_id)) return false;
+    const auto it = m_address_book.find(dest);
+    if (it != m_address_book.end()) {
+        it->second.receive_requests.erase(full_id);
+    }
+    // A spendable hit stays cached. Leaving it makes DelAddressBook refuse
+    // to drop the destination this call just created.
+    m_ismine_cache.erase(GetScriptForDestination(dest));
+    return true;
+}
+
 bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const
 {
     const auto* entry{common::FindKey(m_p2mr_metadata, dest)};

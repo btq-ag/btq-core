@@ -791,10 +791,44 @@ util::Result<P2MRCreated> RecoverDilithiumKeyAsP2MR(CWallet& wallet,
     // handing out new addresses. StoreDilithiumKeyInWallet would pick an
     // arbitrary manager and leave the deriving one blind to the index.
     if (!WalletHaveDilithiumKey(wallet, CKeyID{key.GetPubKey().GetID()}) &&
-        !manager.AddDilithiumKeyPubKey(key, CPubKey())) {
+        !manager.AddDilithiumKeyPubKey(key)) {
         return util::Error{Untranslated("Failed to add Dilithium key to wallet")};
     }
     return CreateSingleLeafDilithiumP2MR(wallet, key.GetPubKey(), /*label=*/"", add_to_address_book);
+}
+
+// Put the address book back to the state captured in prior_entry before a
+// failed call overwrote it. No prior entry: the entry this call added is
+// deleted, unless the destination is otherwise IsMine (another metadata
+// entry still tracks it; DelAddressBook would refuse and alarm the user).
+// Returns false when any restore step failed.
+static bool RestoreAddressBookEntry(CWallet& wallet, const CTxDestination& dest,
+                                    const std::optional<CAddressBookData>& prior_entry)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
+    bool ok = true;
+    if (prior_entry && !prior_entry->IsChange()) {
+        // Put back the label and purpose that were overwritten.
+        ok &= wallet.SetAddressBook(dest, prior_entry->GetLabel(), prior_entry->purpose);
+        if (!prior_entry->purpose) {
+            // The entry had no recorded purpose (pre-purpose wallet); drop
+            // the RECEIVE row this call added.
+            ok &= batch.ErasePurpose(EncodeDestination(dest));
+            wallet.m_address_book[dest].purpose = std::nullopt;
+        }
+    } else if (prior_entry) {
+        // A change entry has no label and no database rows; SetAddressBook
+        // added both. Remove them and put the in-memory entry back.
+        const std::string dest_str = EncodeDestination(dest);
+        ok &= batch.EraseName(dest_str);
+        ok &= batch.ErasePurpose(dest_str);
+        wallet.m_address_book[dest] = *prior_entry;
+    } else if (!wallet.IsMine(dest)) {
+        ok &= wallet.DelAddressBook(dest);
+    }
+    return ok;
 }
 
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
@@ -854,6 +888,8 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
             if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
                 return util::Error{Untranslated("failed to persist P2MR metadata")};
             }
+            out.reused = true;
+            return out;
         }
         return out;
     }
@@ -862,10 +898,20 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, label, leaves, ts);
 
     WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
+    // SetAddressBook overwrites any existing label for the destination, so
+    // snapshot the entry first: if the metadata write below fails, this call
+    // must not leave the user's label clobbered on the way out.
+    std::optional<CAddressBookData> prior_entry;
+    if (const auto* entry = wallet.FindAddressBookEntry(out.dest, /*allow_change=*/true)) {
+        prior_entry = *entry;
+    }
     if (add_to_address_book && !wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
         return util::Error{Untranslated("failed to set P2MR address book entry")};
     }
     if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
+        if (add_to_address_book && !RestoreAddressBookEntry(wallet, out.dest, prior_entry)) {
+            wallet.WalletLogPrintf("CreateP2MR: failed to fully roll back address book entry for %s\n", out.address);
+        }
         return util::Error{Untranslated("failed to persist P2MR metadata")};
     }
     return out;
@@ -966,6 +1012,19 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
         return util::Error{_("Wallet is locked")};
     }
 
+    // CreateP2MR overwrites any existing label for the destination, and the
+    // rollback below must know whether the address-book entry predates this
+    // call: a user may have labelled the destination without tracking it as
+    // a P2MR tree, and deleting that entry would also wipe its destdata.
+    std::optional<CAddressBookData> prior_entry;
+    {
+        auto tree_res = BuildP2MRTreeChecked(leaves);
+        if (!tree_res) return util::Error{util::ErrorString(tree_res)};
+        if (const auto* entry = wallet.FindAddressBookEntry(tree_res->GetOutput(), /*allow_change=*/true)) {
+            prior_entry = *entry;
+        }
+    }
+
     auto created_res = CreateP2MR(wallet, leaves, label, /*add_to_address_book=*/true, allow_trivial_leaves);
     if (!created_res) return util::Error{util::ErrorString(created_res)};
     P2MRCreated created = std::move(*created_res);
@@ -973,6 +1032,18 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
     std::vector<CRecipient> recipients{{created.dest, amount, subtract_fee_from_amount}};
     auto tx_res = CreateTransaction(wallet, recipients, /*change_pos=*/-1, coin_control, /*sign=*/true);
     if (!tx_res) {
+        // Funding failed, so drop what this call just created instead of
+        // leaving an orphaned tree and address-book row behind (Quarks
+        // INFO-15). A pre-existing tree that CreateP2MR reused stays, and a
+        // pre-existing address-book entry is restored rather than deleted.
+        if (!created.reused) {
+            WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
+            bool rollback_ok = wallet.EraseP2MRMetadata(batch, created.dest, created.id);
+            rollback_ok &= RestoreAddressBookEntry(wallet, created.dest, prior_entry);
+            if (!rollback_ok) {
+                wallet.WalletLogPrintf("FundP2MR: failed to fully roll back P2MR entry for %s\n", created.address);
+            }
+        }
         return util::Error{util::ErrorString(tx_res)};
     }
 
