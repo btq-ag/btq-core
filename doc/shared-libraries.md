@@ -71,8 +71,8 @@ The interface is defined in the C header `btqconsensus.h` located in `src/script
 - `btqconsensus_ERR_SPENT_OUTPUTS_MISMATCH` - Spent outputs size doesn't match tx inputs size
 
 ### Example Implementations
-- [NBTQ](https://github.com/MetacoSA/NBTQ/blob/5e1055cd7c4186dee4227c344af8892aea54faec/NBTQ/Script.cs#L979-#L1031) (.NET Bindings)
-- [node-libbtqconsensus](https://github.com/bitpay/node-libbtqconsensus) (Node.js Bindings)
-- [java-libbtqconsensus](https://github.com/dexX7/java-libbtqconsensus) (Java Bindings)
-- [btqconsensus-php](https://github.com/Bit-Wasp/btqconsensus-php) (PHP Bindings)
+- [NBitcoin](https://github.com/MetacoSA/NBitcoin/blob/5e1055cd7c4186dee4227c344af8892aea54faec/NBitcoin/Script.cs#L979-#L1031) (.NET Bindings)
+- [node-libbitcoinconsensus](https://github.com/bitpay/node-libbitcoinconsensus) (Node.js Bindings)
+- [java-libbitcoinconsensus](https://github.com/dexX7/java-libbitcoinconsensus) (Java Bindings)
+- [bitcoinconsensus-php](https://github.com/Bit-Wasp/bitcoinconsensus-php) (PHP Bindings)
 - [rust-bitcoinconsensus](https://github.com/rust-bitcoin/rust-bitcoinconsensus) (Rust Bindings)
