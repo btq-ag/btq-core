@@ -953,6 +953,12 @@ public:
     //! Get the ScriptPubKeyMan for the given OutputType and internal/external chain.
     ScriptPubKeyMan* GetScriptPubKeyMan(const OutputType& type, bool internal) const;
 
+    /** Dilithium pubkeyhash and single-leaf P2MR scripts the fast rescan filter
+     *  has not inserted yet. filled_end is the first index not yet returned,
+     *  keyed by LEGACY descriptor id. A locked wallet or a missing descriptor
+     *  key leaves that manager's cursor alone and adds nothing. */
+    std::vector<CScript> FetchDilithiumRescanScripts(std::map<uint256, int32_t>& filled_end) const;
+
     //! Get all the ScriptPubKeyMans for a script
     std::set<ScriptPubKeyMan*> GetScriptPubKeyMans(const CScript& script) const;
     //! Get the ScriptPubKeyMan by id

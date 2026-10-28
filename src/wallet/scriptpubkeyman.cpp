@@ -2543,6 +2543,18 @@ bool ScriptsForDilithiumPubkey(const CDilithiumPubKey& pubkey, CScript& dilithiu
     p2mr_spk = GetScriptForDestination(builder.GetOutput());
     return true;
 }
+
+// Exclusive end of the Dilithium restore window: next_index + keypool gap.
+// FindDilithiumIndexForScript and the fast rescan filter both use this.
+int32_t DilithiumLookaheadEnd(int32_t next_index, int64_t keypool_size)
+{
+    const int64_t gap = keypool_size > 0 ? keypool_size : 1;
+    const int64_t window_end_64 = static_cast<int64_t>(next_index) + gap;
+    if (window_end_64 > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) {
+        return std::numeric_limits<int32_t>::max();
+    }
+    return static_cast<int32_t>(window_end_64);
+}
 } // namespace
 
 util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKeyLocked()
@@ -2976,11 +2988,7 @@ std::optional<int32_t> DescriptorScriptPubKeyMan::FindDilithiumIndexForScript(co
 
     // Same gap the descriptor keypool uses for ECDSA lookahead. A script
     // further ahead than that was not issued from this counter.
-    const int64_t gap = m_keypool_size > 0 ? m_keypool_size : 1;
-    const int64_t window_end_64 = static_cast<int64_t>(m_dilithium_next_index) + gap;
-    const int32_t window_end = window_end_64 > std::numeric_limits<int32_t>::max()
-                                   ? std::numeric_limits<int32_t>::max()
-                                   : static_cast<int32_t>(window_end_64);
+    const int32_t window_end = DilithiumLookaheadEnd(m_dilithium_next_index, m_keypool_size);
 
     // A script already compared on an earlier output is a map lookup. Filling
     // the window here would re-derive a key per output during a rescan.
@@ -3004,6 +3012,26 @@ std::optional<int32_t> DescriptorScriptPubKeyMan::FindDilithiumIndexForScript(co
         return std::nullopt;
     }
     return it->second;
+}
+
+int32_t DescriptorScriptPubKeyMan::AppendDilithiumLookaheadScripts(int32_t already, std::vector<CScript>& out) const
+{
+    LOCK(cs_desc_man);
+    if (m_dilithium_next_index < 0) return already;
+
+    const int32_t window_end = DilithiumLookaheadEnd(m_dilithium_next_index, m_keypool_size);
+    int32_t index = already > m_dilithium_next_index ? already : m_dilithium_next_index;
+    while (index < window_end) {
+        const auto key_res = DeriveDilithiumKeyAtIndex(index);
+        if (!key_res) return index; // Locked, or no descriptor key.
+        CScript dilithium_spk;
+        CScript p2mr_spk;
+        if (!ScriptsForDilithiumPubkey(key_res->GetPubKey(), dilithium_spk, p2mr_spk)) return index;
+        out.emplace_back(std::move(dilithium_spk));
+        out.emplace_back(std::move(p2mr_spk));
+        ++index;
+    }
+    return window_end;
 }
 
 void DescriptorScriptPubKeyMan::CommitDilithiumNextIndex(int32_t index)

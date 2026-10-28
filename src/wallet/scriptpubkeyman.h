@@ -708,6 +708,10 @@ public:
     //! counter alone (other script types, past the gap, locked, or no
     //! descriptor key). Does not store the key or move the counter.
     std::optional<int32_t> FindDilithiumIndexForScript(const CScript& script) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
+    //! Pubkeyhash and single-leaf P2MR for indexes in [max(already, next), next+gap).
+    //! Stops at the first index that cannot be derived and returns it. Returns the
+    //! window end when the range was written. Does not store keys or move the counter.
+    int32_t AppendDilithiumLookaheadScripts(int32_t already, std::vector<CScript>& out) const EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
     //! Persist a higher Dilithium derivation index. A lower value is ignored.
     void CommitDilithiumNextIndex(int32_t index) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
 

@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <blockfilter.h>
 #include <key.h>
 #include <key_io.h>
 #include <addresstype.h>
@@ -223,6 +224,28 @@ BOOST_AUTO_TEST_CASE(descriptor_dilithium_index_independent_of_ecdsa)
     const CKeyID id1{key1->GetPubKey().GetID()};
     const CKeyID id2{key2->GetPubKey().GetID()};
 
+    // Fast rescan builds this set before any P2MR metadata exists. Index 2 is
+    // inside the keypool gap of 8. Index 8 is the first index past it.
+    const CScript index2_p2mr = SingleLeafP2MRScript(key2->GetPubKey());
+    const CScript index2_pkh = GetScriptForDestination(DilithiumPKHash(key2->GetPubKey()));
+    const auto key_past_gap = keyman->GetDilithiumKeyForIndex(8);
+    BOOST_REQUIRE(key_past_gap);
+    const CScript past_gap_p2mr = SingleLeafP2MRScript(key_past_gap->GetPubKey());
+    std::map<uint256, int32_t> filled;
+    {
+        LOCK(wallet.cs_wallet);
+        BOOST_CHECK(wallet.ListP2MRMetadata().empty());
+    }
+    const std::vector<CScript> lookahead = wallet.FetchDilithiumRescanScripts(filled);
+    GCSFilter::ElementSet filter_set;
+    for (const CScript& script : lookahead) {
+        filter_set.emplace(script.begin(), script.end());
+    }
+    BOOST_CHECK(filter_set.count(GCSFilter::Element(index2_p2mr.begin(), index2_p2mr.end())) == size_t{1});
+    BOOST_CHECK(filter_set.count(GCSFilter::Element(index2_pkh.begin(), index2_pkh.end())) == size_t{1});
+    BOOST_CHECK(filter_set.count(GCSFilter::Element(past_gap_p2mr.begin(), past_gap_p2mr.end())) == size_t{0});
+    BOOST_CHECK(wallet.FetchDilithiumRescanScripts(filled).empty());
+
     CMutableTransaction mtx;
     mtx.vin.emplace_back(COutPoint(uint256::ONE, 0));
     mtx.vout.emplace_back(COIN, SingleLeafP2MRScript(key2->GetPubKey()));
@@ -259,6 +282,15 @@ BOOST_AUTO_TEST_CASE(descriptor_dilithium_index_independent_of_ecdsa)
             BOOST_CHECK(keyman->HaveDilithiumKey(id2));
         }
     }
+
+    // Counter moved to 3, so the next fetch is only the newly opened gap.
+    const std::vector<CScript> extended = wallet.FetchDilithiumRescanScripts(filled);
+    bool extended_has_index2 = false;
+    for (const CScript& script : extended) {
+        if (script == index2_p2mr) extended_has_index2 = true;
+    }
+    BOOST_CHECK(!extended.empty());
+    BOOST_CHECK(!extended_has_index2);
 
     // An ECDSA descriptor script still moves next_index and leaves the Dilithium counter.
     CScript ecdsa_ahead;

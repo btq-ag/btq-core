@@ -322,6 +322,10 @@ public:
         // them the filter would skip blocks that pay only such addresses
         // and the rescan would silently miss their transactions.
         AddP2MRScripts();
+        // Not-yet-stored Dilithium scripts are in neither the descriptor cache
+        // nor P2MR metadata. Without them MatchesBlock skips the block and the
+        // rescan never sees the output.
+        AddDilithiumLookahead();
     }
 
     void UpdateIfNeeded()
@@ -341,6 +345,7 @@ public:
         if (WITH_LOCK(m_wallet.cs_wallet, return m_wallet.ListP2MRMetadata().size()) != m_p2mr_dest_count) {
             AddP2MRScripts();
         }
+        AddDilithiumLookahead();
     }
 
     std::optional<bool> MatchesBlock(const uint256& block_hash) const
@@ -361,6 +366,18 @@ private:
 
     /** Number of P2MR destinations already folded into the filter. */
     size_t m_p2mr_dest_count{0};
+
+    /** First Dilithium index not yet inserted, per LEGACY descriptor id.
+     *  UpdateIfNeeded extends this when the counter moves. It does not
+     *  derive the indexes already in the set. */
+    std::map<uint256, int32_t> m_dilithium_filled_end;
+
+    void AddDilithiumLookahead()
+    {
+        for (const CScript& script : m_wallet.FetchDilithiumRescanScripts(m_dilithium_filled_end)) {
+            m_filter_set.emplace(script.begin(), script.end());
+        }
+    }
 
     void AddScriptPubKeys(const DescriptorScriptPubKeyMan* desc_spkm, int32_t last_range_end = 0)
     {
@@ -3745,6 +3762,20 @@ std::set<ScriptPubKeyMan*> CWallet::GetAllScriptPubKeyMans() const
         spk_mans.insert(spk_man_pair.second.get());
     }
     return spk_mans;
+}
+
+std::vector<CScript> CWallet::FetchDilithiumRescanScripts(std::map<uint256, int32_t>& filled_end) const
+{
+    LOCK(cs_wallet);
+    std::vector<CScript> out;
+    for (bool internal : {false, true}) {
+        auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(GetScriptPubKeyMan(OutputType::LEGACY, internal));
+        if (!desc) continue;
+        const uint256 id{desc->GetID()};
+        int32_t& filled = filled_end[id];
+        filled = desc->AppendDilithiumLookaheadScripts(filled, out);
+    }
+    return out;
 }
 
 ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool internal) const
