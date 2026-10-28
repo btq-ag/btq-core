@@ -542,6 +542,23 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         
         CPrivKey vchDilithiumKey;
         ssValue >> vchDilithiumKey;
+
+        // WriteDilithiumKeyByID appends Hash(keyID || secret). Verify it
+        // when present, like the encrypted path does. Records written
+        // before the hash existed have nothing after the secret; keep
+        // loading those.
+        if (!ssValue.eof()) {
+            uint256 checksum;
+            ssValue >> checksum;
+            CPrivKey vchKey;
+            vchKey.reserve(keyID.size() + vchDilithiumKey.size());
+            vchKey.insert(vchKey.end(), keyID.begin(), keyID.end());
+            vchKey.insert(vchKey.end(), vchDilithiumKey.begin(), vchDilithiumKey.end());
+            if (Hash(vchKey) != checksum) {
+                strErr = "Error reading wallet database: Dilithium key corrupt";
+                return false;
+            }
+        }
         
         // Create CDilithiumKey from the stored data
         CDilithiumKey dilithiumKey;
@@ -560,7 +577,17 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
             strErr = "Error reading wallet database: Dilithium key record failed key self-checks";
             return false;
         }
-        
+
+        // Set only checks that the secret is a real key. With no checksum,
+        // the legacy manager would then store it under the derived id and
+        // ignore the id in the record. A valid secret filed under a
+        // different key id must not load. Records whose secret really
+        // belongs to the stored id still do.
+        if (CKeyID(dilithiumKey.GetPubKey().GetID()) != keyID) {
+            strErr = "Error reading wallet database: Dilithium key does not match key id";
+            return false;
+        }
+
         // A descriptor wallet has its managers built before records load, so
         // searching them is safe. A legacy wallet creates its manager on demand, and
         // an imported Dilithium key can be the first record to need one, so ask for
