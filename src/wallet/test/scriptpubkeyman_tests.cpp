@@ -37,6 +37,58 @@ CScript SingleLeafP2MRScript(const CDilithiumPubKey& pubkey)
     builder.Finalize();
     return GetScriptForDestination(builder.GetOutput());
 }
+
+// Plant index 0 so DeriveNewDilithiumChildKey retries, then check the key
+// that was kept has one derivation in key_origin.path (LOW-27).
+void CheckDilithiumOriginAfterCollision(CWallet& wallet, LegacyScriptPubKeyMan& keyman, bool internal)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet, keyman.cs_KeyStore)
+{
+    const uint32_t chain_index = internal ? 1u : 0u;
+
+    CKey wallet_seed;
+    BOOST_REQUIRE(keyman.GetKey(keyman.GetHDChain().seed_id, wallet_seed));
+
+    CDilithiumExtKey master;
+    master.SetSeed(wallet_seed);
+    CDilithiumExtKey account;
+    CDilithiumExtKey chain;
+    CDilithiumExtKey child0;
+    CDilithiumExtKey child1;
+    BOOST_REQUIRE(master.Derive(account, HARDENED | 0));
+    BOOST_REQUIRE(account.Derive(chain, HARDENED | chain_index));
+    BOOST_REQUIRE(chain.Derive(child0, HARDENED | 0));
+    BOOST_REQUIRE(chain.Derive(child1, HARDENED | 1));
+
+    const CKeyID collided_id = CKeyID(child0.key.GetPubKey().GetID());
+    const CKeyID expected_id = CKeyID(child1.key.GetPubKey().GetID());
+    BOOST_REQUIRE(collided_id != expected_id);
+    BOOST_REQUIRE(keyman.LoadDilithiumKey(child0.key));
+    BOOST_REQUIRE(keyman.HaveDilithiumKey(collided_id));
+
+    WalletBatch batch(wallet.GetDatabase());
+    CHDChain hd_chain = keyman.GetHDChain();
+    if (internal) {
+        hd_chain.nInternalChainCounter = 0;
+    } else {
+        hd_chain.nExternalChainCounter = 0;
+    }
+
+    const CDilithiumPubKey pubkey = keyman.GenerateNewDilithiumKey(batch, hd_chain, internal);
+    BOOST_REQUIRE(pubkey.IsValid());
+    BOOST_CHECK(CKeyID(pubkey.GetID()) == expected_id);
+    BOOST_CHECK(internal ? hd_chain.nInternalChainCounter == 2 : hd_chain.nExternalChainCounter == 2);
+
+    const auto meta = keyman.mapKeyMetadata.find(expected_id);
+    BOOST_REQUIRE(meta != keyman.mapKeyMetadata.end());
+    BOOST_CHECK(meta->second.has_key_origin);
+    BOOST_CHECK(meta->second.hdKeypath == (internal ? "m/0'/1'/1'" : "m/0'/0'/1'"));
+    const std::vector<uint32_t> expected_origin = {
+        HARDENED | 0u,
+        HARDENED | chain_index,
+        HARDENED | 1u,
+    };
+    BOOST_CHECK(meta->second.key_origin.path == expected_origin);
+}
 } // namespace
 
 // Test LegacyScriptPubKeyMan::CanProvide behavior, making sure it returns true
@@ -106,6 +158,22 @@ BOOST_AUTO_TEST_CASE(dilithium_hd_wallet_derivation_deterministic)
     BOOST_CHECK(wallet_key0 == child0.key);
     BOOST_CHECK(wallet_key1 == child1.key);
     BOOST_CHECK(wallet_key0 != wallet_key1);
+}
+
+BOOST_AUTO_TEST_CASE(dilithium_hd_retry_clears_key_origin_path)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
+    // Internal derivation is dropped unless the wallet can do HD split.
+    wallet.SetMinVersion(FEATURE_HD_SPLIT);
+
+    LOCK2(wallet.cs_wallet, keyman.cs_KeyStore);
+    BOOST_REQUIRE(keyman.SetupGeneration(true));
+    BOOST_REQUIRE(keyman.IsHDEnabled());
+    BOOST_REQUIRE(wallet.CanSupportFeature(FEATURE_HD_SPLIT));
+
+    CheckDilithiumOriginAfterCollision(wallet, keyman, /*internal=*/false);
+    CheckDilithiumOriginAfterCollision(wallet, keyman, /*internal=*/true);
 }
 
 // Production path: GetNewDestination(dilithium-*) must derive from the HD seed.
