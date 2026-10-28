@@ -174,6 +174,19 @@ util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
                                                      bool internal = false);
 
 /**
+ * Opt-in hybrid receive (Quarks F2.2): generate a wallet Dilithium key and
+ * create a single-leaf P2MR destination whose leaf is
+ * `<dilithium_pubkey> OP_CHECKSIGDILITHIUMVERIFY <schnorr_pubkey> OP_CHECKSIG`.
+ * Spending needs both signatures. The schnorr key is caller-supplied, so it
+ * can belong to this wallet or an external cosigner. Default receive paths
+ * stay Dilithium-only.
+ */
+util::Result<P2MRCreated> CreateHybridDilithiumP2MRReceive(CWallet& wallet,
+                                                           const XOnlyPubKey& schnorr_pubkey,
+                                                           const std::string& label,
+                                                           bool add_to_address_book = true);
+
+/**
  * Import an existing Dilithium key and create a matching single-leaf P2MR
  * receive destination for it.
  */
@@ -232,6 +245,14 @@ FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet,
  * skipped, as in BuildP2MRSigningProvider.
  */
 FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet, const CTxDestination& dest);
+
+/**
+ * Build a FlatSigningProvider holding only the wallet keys that the given
+ * leaves need, with no tree. Used to cosign a PSBT input whose tree is not
+ * tracked by this wallet: the PSBT carries the leaf and control block, so
+ * keys are all the signer has to contribute.
+ */
+FlatSigningProvider BuildP2MRLeafKeyProvider(const CWallet& wallet, const std::vector<P2MRTreeLeaf>& leaves);
 
 /** Return true if the script matches any wallet-tracked P2MR scriptPubKey. */
 bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script);

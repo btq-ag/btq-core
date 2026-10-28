@@ -61,7 +61,12 @@ RPCHelpMan getnewp2mraddress()
         "The normal Dilithium receive path is getnewdilithiumaddress. This RPC is for custom trees.\n"
         "Leaves are rejected unless the wallet holds at least one key in a recognised Dilithium\n"
         "template (including createdilithiummultisig's accumulator leaf) or allow_trivial_leaves is\n"
-        "true (regtest and tests only).\n",
+        "true (regtest and tests only).\n"
+        "The tree is stored only in this wallet's database. Restoring from the seed does\n"
+        "not recreate it, and recoverdilithiumkeys rebuilds a single-leaf program, which\n"
+        "is a different address. A legacy dumpwallet file writes the tree as a p2mr\n"
+        "record and importwallet restores that address. Descriptor wallets cannot use\n"
+        "dumpwallet; use backupwallet, or listp2mr and importp2mr.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
@@ -103,13 +108,81 @@ RPCHelpMan getnewp2mraddress()
     };
 }
 
+RPCHelpMan getnewhybridp2mraddress()
+{
+    return RPCHelpMan{
+        "getnewhybridp2mraddress",
+        "\nCreate and store an opt-in hybrid P2MR destination whose single leaf requires\n"
+        "both a Dilithium signature and a BIP340 (schnorr) signature to spend.\n"
+        "The wallet generates a fresh Dilithium key; the x-only key is supplied by the\n"
+        "caller and may belong to this wallet or an external cosigner.\n"
+        "Although the Dilithium key is seed-derived, the leaf pairing it with the\n"
+        "x-only key lives only in this wallet's database. Restoring from the seed\n"
+        "does not recreate the address. recoverdilithiumkeys rebuilds the single-leaf\n"
+        "program for that index, which is a different address. A legacy dumpwallet\n"
+        "file includes the tree as a p2mr record, and importwallet restores that\n"
+        "same address. Descriptor wallets cannot use dumpwallet; use backupwallet,\n"
+        "or listp2mr and importp2mr.\n",
+        {
+            {"xonly_pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "32-byte BIP340 x-only public key, hex encoded"},
+            {"label", RPCArg::Type::STR, RPCArg::Default{""}, "Optional label"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "address", "Generated P2MR address"},
+                {RPCResult::Type::STR, "p2mr_id", "Wallet-local metadata id"},
+                {RPCResult::Type::STR_HEX, "scriptPubKey", "P2MR scriptPubKey"},
+                {RPCResult::Type::STR_HEX, "merkle_root", "P2MR merkle root"},
+            }},
+        RPCExamples{HelpExampleCli("getnewhybridp2mraddress", "\"<64 hex characters>\"")},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+            if (!pwallet) return UniValue::VNULL;
+
+            const std::string pubkey_hex = request.params[0].get_str();
+            if (!IsHex(pubkey_hex)) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "xonly_pubkey must be hex");
+            }
+            const std::vector<unsigned char> pubkey_bytes = ParseHex(pubkey_hex);
+            if (pubkey_bytes.size() != 32) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "xonly_pubkey must be 32 bytes");
+            }
+            const XOnlyPubKey xonly{Span<const unsigned char>{pubkey_bytes}};
+            if (!xonly.IsFullyValid()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "xonly_pubkey is not a valid BIP340 public key");
+            }
+            const std::string label = request.params[1].isNull() ? "" : LabelFromValue(request.params[1]);
+
+            LOCK(pwallet->cs_wallet);
+            auto created = CreateHybridDilithiumP2MRReceive(*pwallet, xonly, label);
+            if (!created) {
+                throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+            }
+
+            UniValue out(UniValue::VOBJ);
+            out.pushKV("address", created->address);
+            out.pushKV("p2mr_id", created->id);
+            out.pushKV("scriptPubKey", HexStr(created->script_pub_key));
+            out.pushKV("merkle_root", HexStr(created->merkle_root));
+            return out;
+        },
+    };
+}
+
 RPCHelpMan sendtop2mr()
 {
     return RPCHelpMan{
         "sendtop2mr",
         "\nCreate a wallet-tracked P2MR destination and send funds to it.\n"
         "Leaves outside known wallet-spendable Dilithium templates are rejected unless\n"
-        "allow_trivial_leaves is true. Prefer getnewdilithiumaddress for ordinary receive.\n",
+        "allow_trivial_leaves is true. Prefer getnewdilithiumaddress for ordinary receive.\n"
+        "The tree is stored only in this wallet's database. Restoring from the seed does\n"
+        "not recreate it, and recoverdilithiumkeys rebuilds a single-leaf program, which\n"
+        "is a different address. A legacy dumpwallet file writes the tree as a p2mr\n"
+        "record and importwallet restores that address. Descriptor wallets cannot use\n"
+        "dumpwallet; use backupwallet, or listp2mr and importp2mr.\n",
         {
             {"tree", RPCArg::Type::ARR, RPCArg::Optional::NO, "P2MR tree leaves in DFS order", std::vector<RPCArg>{}, RPCArgOptions{}},
             {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "Amount to send"},

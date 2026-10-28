@@ -260,6 +260,66 @@ BOOST_FIXTURE_TEST_CASE(create_allows_threshold_accumulator_with_one_cosigner_ke
     BOOST_CHECK(!rejected);
 }
 
+// A 1-of-1 threshold, checkmultisig, or pubkey-hash leaf spends with the
+// Dilithium key alone. Requiring a plain CHECKSIGDILITHIUM leaf dropped
+// those addresses from signmessage. A hybrid leaf still does not count.
+BOOST_FIXTURE_TEST_CASE(signmessage_key_follows_leaves_the_dilithium_key_spends_alone, BasicTestingSetup)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    auto* spk_man = wallet.GetOrCreateLegacyScriptPubKeyMan();
+    BOOST_REQUIRE(spk_man);
+
+    CDilithiumKey mine;
+    mine.MakeNewKey();
+    BOOST_REQUIRE(mine.IsValid());
+    const CDilithiumPubKey pubkey = mine.GetPubKey();
+    const CKeyID keyid{pubkey.GetID()};
+
+    CKey schnorr;
+    schnorr.MakeNewKey(true);
+    const XOnlyPubKey xonly{schnorr.GetPubKey()};
+    BOOST_REQUIRE(xonly.IsFullyValid());
+
+    {
+        LOCK2(wallet.cs_wallet, spk_man->cs_KeyStore);
+        BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(mine));
+    }
+
+    const auto leaf_of = [](uint8_t depth, const CScript& script) {
+        return P2MRTreeLeaf{depth, TAPROOT_LEAF_TAPSCRIPT, {script.begin(), script.end()}};
+    };
+    const auto key_for = [&](const std::vector<P2MRTreeLeaf>& leaves) {
+        LOCK(wallet.cs_wallet);
+        auto created = CreateP2MR(wallet, leaves, "signmessage");
+        BOOST_REQUIRE(created);
+        return GetSingleDilithiumKeyIDForP2MR(wallet, created->dest);
+    };
+
+    const auto threshold_key = key_for({leaf_of(0, GetScriptForDilithiumThreshold(1, {pubkey}))});
+    BOOST_CHECK(threshold_key && *threshold_key == keyid);
+
+    CScript multisig;
+    multisig << 1 << ToByteVector(pubkey) << 1 << OP_CHECKMULTISIGDILITHIUM;
+    const auto multisig_key = key_for({leaf_of(0, multisig)});
+    BOOST_CHECK(multisig_key && *multisig_key == keyid);
+
+    const CScript pkh = GetScriptForDestination(CTxDestination{DilithiumPKHash{pubkey}});
+    const auto pkh_key = key_for({leaf_of(0, pkh)});
+    BOOST_CHECK(pkh_key && *pkh_key == keyid);
+
+    const CScript hybrid = GetScriptForHybridDilithiumLeaf(pubkey, xonly);
+    BOOST_CHECK(!key_for({leaf_of(0, hybrid)}));
+
+    CScript single;
+    single << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
+    const auto or_key = key_for({leaf_of(1, single), leaf_of(1, hybrid)});
+    BOOST_CHECK(or_key && *or_key == keyid);
+
+    // Same key twice still needs two signatures.
+    const auto two_key = key_for({leaf_of(0, GetScriptForDilithiumThreshold(2, {pubkey, pubkey}))});
+    BOOST_CHECK(!two_key);
+}
+
 BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_identical_tree, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);

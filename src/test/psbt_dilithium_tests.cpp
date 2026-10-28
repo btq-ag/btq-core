@@ -5,7 +5,9 @@
 #include <addresstype.h>
 #include <core_io.h>
 #include <crypto/dilithium_key.h>
+#include <key.h>
 #include <key_io.h>
+#include <pubkey.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <psbt.h>
@@ -653,6 +655,209 @@ BOOST_AUTO_TEST_CASE(output_p2mr_malformed_tree_is_rejected)
     PartiallySignedTransaction decoded;
     std::string error;
     BOOST_CHECK(!DecodeBase64PSBT(decoded, encoded, error));
+}
+
+BOOST_AUTO_TEST_CASE(hybrid_leaf_roundtrips_through_the_parser)
+{
+    const Signer signer = MakeSigner();
+    CKey schnorr_key;
+    schnorr_key.MakeNewKey(/*fCompressed=*/true);
+    const XOnlyPubKey xonly{schnorr_key.GetPubKey()};
+
+    const CScript script = GetScriptForHybridDilithiumLeaf(signer.pubkey, xonly);
+    const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(script);
+
+    BOOST_CHECK(policy.type == P2MRLeafTemplate::HYBRID_DILITHIUM_SCHNORR);
+    BOOST_CHECK_EQUAL(policy.m, 1);
+    BOOST_CHECK_EQUAL(policy.n(), 1);
+    BOOST_REQUIRE_EQUAL(policy.pubkeys.size(), 1U);
+    BOOST_CHECK(policy.pubkeys[0] == signer.pubkey);
+    BOOST_REQUIRE_EQUAL(policy.schnorr_pubkeys.size(), 1U);
+    BOOST_CHECK(policy.schnorr_pubkeys[0] == xonly);
+
+    // Near misses must stay unrecognised.
+    CScript no_checksig;
+    no_checksig << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUMVERIFY << ToByteVector(xonly);
+    BOOST_CHECK(!ParseP2MRDilithiumLeaf(no_checksig).IsValid());
+
+    CScript non_verify;
+    non_verify << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM << ToByteVector(xonly) << OP_CHECKSIG;
+    BOOST_CHECK(!ParseP2MRDilithiumLeaf(non_verify).IsValid());
+
+    CScript trailing = script;
+    trailing << OP_NOP;
+    BOOST_CHECK(!ParseP2MRDilithiumLeaf(trailing).IsValid());
+
+    CScript short_key;
+    short_key << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUMVERIFY
+              << std::vector<unsigned char>(31, 0x02) << OP_CHECKSIG;
+    BOOST_CHECK(!ParseP2MRDilithiumLeaf(short_key).IsValid());
+
+    // A 32-byte push above the field prime is not a BIP340 x coordinate.
+    // OP_CHECKSIG fails on any non-empty signature for it, so the leaf is
+    // unspendable and must not read as signable.
+    CScript bad_x;
+    bad_x << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUMVERIFY
+          << std::vector<unsigned char>(32, 0xff) << OP_CHECKSIG;
+    BOOST_CHECK(!ParseP2MRDilithiumLeaf(bad_x).IsValid());
+
+    // A non-minimal push of the x-only key parses with GetOp but fails
+    // MINIMALDATA at spend time, so the parser must not claim it.
+    CScript nonminimal;
+    nonminimal << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUMVERIFY;
+    nonminimal.push_back(OP_PUSHDATA1);
+    nonminimal.push_back(32);
+    nonminimal.insert(nonminimal.end(), xonly.begin(), xonly.end());
+    nonminimal.push_back(OP_CHECKSIG);
+    BOOST_CHECK(!ParseP2MRDilithiumLeaf(nonminimal).IsValid());
+}
+
+BOOST_AUTO_TEST_CASE(schnorr_only_signature_pins_the_leaf_choice)
+{
+    // Two-leaf tree: a plain Dilithium leaf and a hybrid leaf. With only the
+    // schnorr half of the hybrid leaf signed, inspection must still narrow
+    // the spend to the hybrid leaf and report a partial signature instead of
+    // unknown_leaf.
+    const Signer a = MakeSigner();
+    const Signer b = MakeSigner();
+    CKey schnorr_key;
+    schnorr_key.MakeNewKey(/*fCompressed=*/true);
+    const XOnlyPubKey xonly{schnorr_key.GetPubKey()};
+
+    CScript plain;
+    plain << ToByteVector(a.pubkey) << OP_CHECKSIGDILITHIUM;
+    const CScript hybrid = GetScriptForHybridDilithiumLeaf(b.pubkey, xonly);
+
+    P2MRBuilder builder;
+    builder.Add(1, plain, TAPROOT_LEAF_TAPSCRIPT);
+    builder.Add(1, hybrid, TAPROOT_LEAF_TAPSCRIPT);
+    builder.Finalize();
+    BOOST_REQUIRE(builder.IsComplete());
+
+    CMutableTransaction tx;
+    tx.nVersion = 2;
+    tx.vin.emplace_back(COutPoint{uint256{1}, 0});
+    tx.vout.emplace_back(90000, CScript() << OP_TRUE);
+    PartiallySignedTransaction psbt{tx};
+    psbt.inputs[0].witness_utxo = CTxOut{100000, GetScriptForDestination(builder.GetOutput())};
+
+    const P2MRSpendData spenddata = builder.GetSpendData();
+    psbt.inputs[0].m_p2mr_merkle_root = spenddata.merkle_root;
+    for (const auto& [leaf, control_blocks] : spenddata.scripts) {
+        psbt.inputs[0].m_p2mr_scripts[leaf].insert(control_blocks.begin(), control_blocks.end());
+    }
+
+    const uint256 hybrid_hash = ComputeTapleafHash(TAPROOT_LEAF_TAPSCRIPT, std::vector<unsigned char>(hybrid.begin(), hybrid.end()));
+    // 64 zero bytes plus SIGHASH_ALL: a well-formed signature that does not verify.
+    std::vector<unsigned char> bogus_sig(64, 0x00);
+    bogus_sig.push_back(SIGHASH_ALL);
+    psbt.inputs[0].m_tap_script_sigs[{xonly, hybrid_hash}] = bogus_sig;
+
+    const P2MRInputInfo info = InspectP2MRInput(psbt, 0);
+    BOOST_CHECK(info.status == P2MRInputStatus::PARTIALLY_SIGNED);
+    BOOST_CHECK(info.leaf_hash == hybrid_hash);
+
+    // A tap signature for a leaf this tree does not contain must not hide
+    // the hybrid leaf the real signature pinned.
+    CKey stray_key;
+    stray_key.MakeNewKey(/*fCompressed=*/true);
+    psbt.inputs[0].m_tap_script_sigs[{XOnlyPubKey{stray_key.GetPubKey()}, uint256::ONE}] =
+        std::vector<unsigned char>(64, 0x11);
+    const P2MRInputInfo with_stray = InspectP2MRInput(psbt, 0);
+    BOOST_CHECK(with_stray.status == P2MRInputStatus::PARTIALLY_SIGNED);
+    BOOST_CHECK(with_stray.leaf_hash == hybrid_hash);
+
+    // The cached schnorr half does not verify, so decode must reject the
+    // PSBT instead of handing signers a signature they will trust forever.
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    ss << psbt;
+    PartiallySignedTransaction decoded;
+    std::string error;
+    BOOST_CHECK(!DecodeBase64PSBT(decoded, EncodeBase64(MakeUCharSpan(ss)), error));
+    BOOST_CHECK(error.find("does not verify") != std::string::npos);
+}
+
+BOOST_AUTO_TEST_CASE(hybrid_witness_requires_both_signatures)
+{
+    const Signer signer = MakeSigner();
+    CKey schnorr_key;
+    schnorr_key.MakeNewKey(/*fCompressed=*/true);
+    const XOnlyPubKey xonly{schnorr_key.GetPubKey()};
+    const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(GetScriptForHybridDilithiumLeaf(signer.pubkey, xonly));
+
+    // Both present: schnorr signature at the stack bottom, Dilithium on top.
+    std::vector<std::vector<unsigned char>> stack;
+    BOOST_REQUIRE(BuildDilithiumLeafWitness(policy, {{0xdd}}, stack, {{0xee}}));
+    BOOST_REQUIRE_EQUAL(stack.size(), 2U);
+    BOOST_CHECK(stack[0] == std::vector<unsigned char>{0xee});
+    BOOST_CHECK(stack[1] == std::vector<unsigned char>{0xdd});
+
+    // Missing either signature cannot satisfy the leaf.
+    BOOST_CHECK(!BuildDilithiumLeafWitness(policy, {{}}, stack, {{0xee}}));
+    BOOST_CHECK(!BuildDilithiumLeafWitness(policy, {{0xdd}}, stack, {{}}));
+    BOOST_CHECK(!BuildDilithiumLeafWitness(policy, {{0xdd}}, stack, {}));
+}
+
+BOOST_AUTO_TEST_CASE(hybrid_psbt_needs_both_signatures_to_spend)
+{
+    const Signer signer = MakeSigner();
+    CKey schnorr_key;
+    schnorr_key.MakeNewKey(/*fCompressed=*/true);
+    const XOnlyPubKey xonly{schnorr_key.GetPubKey()};
+    const CScript leaf = GetScriptForHybridDilithiumLeaf(signer.pubkey, xonly);
+
+    Fixture f = MakeFixture(leaf, {signer});
+    const CPubKey schnorr_pubkey = schnorr_key.GetPubKey();
+    f.full_provider.pubkeys.emplace(schnorr_pubkey.GetID(), schnorr_pubkey);
+    f.full_provider.keys.emplace(schnorr_pubkey.GetID(), schnorr_key);
+
+    const PrecomputedTransactionData txdata = PrecomputePSBTData(f.psbt);
+
+    // The Dilithium key alone cannot complete the input.
+    {
+        PartiallySignedTransaction psbt = f.psbt;
+        BOOST_CHECK(!SignPSBTInput(f.ProviderFor({0}), psbt, 0, &txdata, SIGHASH_ALL, nullptr, /*finalize=*/true));
+    }
+    // The schnorr key alone cannot either.
+    {
+        PartiallySignedTransaction psbt = f.psbt;
+        FlatSigningProvider schnorr_only;
+        schnorr_only.p2mr_trees = f.full_provider.p2mr_trees;
+        schnorr_only.pubkeys.emplace(schnorr_pubkey.GetID(), schnorr_pubkey);
+        schnorr_only.keys.emplace(schnorr_pubkey.GetID(), schnorr_key);
+        BOOST_CHECK(!SignPSBTInput(schnorr_only, psbt, 0, &txdata, SIGHASH_ALL, nullptr, /*finalize=*/true));
+    }
+
+    // Both keys together produce a witness that verifies under consensus rules.
+    BOOST_CHECK(SignPSBTInput(f.full_provider, f.psbt, 0, &txdata, SIGHASH_ALL, nullptr, /*finalize=*/false));
+    BOOST_CHECK(WitnessVerifies(f, f.psbt));
+
+    // Consensus check: blanking either signature in the final witness fails.
+    PartiallySignedTransaction finalized = f.psbt;
+    CMutableTransaction spend;
+    BOOST_REQUIRE(FinalizeAndExtractPSBT(finalized, spend));
+    BOOST_REQUIRE_EQUAL(spend.vin[0].scriptWitness.stack.size(), 4U); // schnorr, dilithium, leaf, control
+
+    PrecomputedTransactionData spend_txdata;
+    spend_txdata.Init(spend, {f.prevout}, /*force=*/true);
+    const CTransaction spend_tx{spend};
+    TransactionSignatureChecker checker(&spend_tx, 0, f.prevout.nValue, spend_txdata, MissingDataBehavior::FAIL);
+    const auto verify_with = [&](const std::vector<std::vector<unsigned char>>& stack) {
+        CScriptWitness witness;
+        witness.stack = stack;
+        return VerifyScript(spend.vin[0].scriptSig, f.prevout.scriptPubKey, &witness,
+                            STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DILITHIUM, checker);
+    };
+
+    BOOST_CHECK(verify_with(spend.vin[0].scriptWitness.stack));
+
+    auto no_schnorr = spend.vin[0].scriptWitness.stack;
+    no_schnorr[0].clear();
+    BOOST_CHECK(!verify_with(no_schnorr));
+
+    auto no_dilithium = spend.vin[0].scriptWitness.stack;
+    no_dilithium[1].clear();
+    BOOST_CHECK(!verify_with(no_dilithium));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
