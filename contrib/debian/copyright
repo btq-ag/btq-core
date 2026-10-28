@@ -5,7 +5,7 @@ Upstream-Contact: Satoshi Nakamoto <satoshin@gmx.com>
 Source: https://github.com/btq-ag/btq-core
 
 Files: *
-Copyright: 2009-2023, BTQ Core Developers
+Copyright: 2009-2023, Bitcoin Core Developers
 License: Expat
 Comment: The BTQ Core Developers encompasses all contributors to the
          project, listed in the release notes or the git log.
