@@ -216,18 +216,21 @@ BOOST_AUTO_TEST_CASE(walletdb_checks_dilithium_key_checksum_and_id)
         BOOST_CHECK(has_key(*wallet, key_id));
     }
     {
-        // Without the trailer the key checks alone decide.
         auto [result, wallet] = load_with(record_key, DilithiumKeyRecordValue(secret, std::nullopt));
-        BOOST_CHECK_EQUAL(result, DBErrors::LOAD_OK);
-        BOOST_CHECK(has_key(*wallet, key_id));
+        BOOST_CHECK_EQUAL(result, DBErrors::CORRUPT);
+        BOOST_CHECK(!has_key(*wallet, key_id));
     }
     {
-        // A partial trailer is ignored, as a missing one is.
         SerializeData value{written.at(record_key)};
         value.pop_back();
         auto [result, wallet] = load_with(record_key, value);
-        BOOST_CHECK_EQUAL(result, DBErrors::LOAD_OK);
-        BOOST_CHECK(has_key(*wallet, key_id));
+        BOOST_CHECK_EQUAL(result, DBErrors::CORRUPT);
+        BOOST_CHECK(!has_key(*wallet, key_id));
+    }
+    {
+        auto [result, wallet] = load_with(record_key, DilithiumKeyRecordValue(secret, uint256{}));
+        BOOST_CHECK_EQUAL(result, DBErrors::CORRUPT);
+        BOOST_CHECK(!has_key(*wallet, key_id));
     }
     {
         SerializeData value{written.at(record_key)};

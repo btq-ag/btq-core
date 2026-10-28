@@ -524,13 +524,10 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         std::vector<unsigned char> vchDilithiumKey;
         ssValue >> vchDilithiumKey;
 
-        // WriteDilithiumKeyByID appends Hash(keyID || key). A record without
-        // that trailer still loads on the key checks below; a trailer that
-        // does not match is corruption.
+        // WriteDilithiumKeyByID always appends Hash(keyID || key). A short
+        // read throws into the catch below. A null hash is compared, not skipped.
         uint256 checksum;
-        try {
-            ssValue >> checksum;
-        } catch (const std::ios_base::failure&) {}
+        ssValue >> checksum;
         
         // Create CDilithiumKey from the stored data
         CDilithiumKey dilithiumKey;
@@ -541,7 +538,7 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
             return false;
         }
 
-        if (!checksum.IsNull() && Hash(keyID, vchDilithiumKey) != checksum) {
+        if (Hash(keyID, vchDilithiumKey) != checksum) {
             strErr = strprintf("Error reading wallet database: Dilithium key %s checksum mismatch", keyID.GetHex());
             return false;
         }
