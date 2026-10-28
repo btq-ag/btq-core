@@ -4,6 +4,7 @@
 
 #include <wallet/wallet.h>
 
+#include <algorithm>
 #include <future>
 #include <memory>
 #include <stdint.h>
@@ -797,6 +798,34 @@ BOOST_FIXTURE_TEST_CASE(LoadReceiveRequests, TestingSetup)
             auto requests = wallet->GetAddressReceiveRequests();
             auto erequests = {"val_rr11"};
             BOOST_CHECK_EQUAL_COLLECTIONS(requests.begin(), requests.end(), std::begin(erequests), std::end(erequests));
+        });
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(receive_requests_exclude_p2mr_metadata, TestingSetup)
+{
+    for (DatabaseFormat format : DATABASE_FORMATS) {
+        const std::string name{strprintf("p2mr-metadata-requests-%i", format)};
+        TestLoadWallet(name, format, [](std::shared_ptr<CWallet> wallet) EXCLUSIVE_LOCKS_REQUIRED(wallet->cs_wallet) {
+            WalletBatch batch{wallet->GetDatabase()};
+            BOOST_CHECK(wallet->SetAddressReceiveRequest(batch, PKHash(), "1", "val_rr1"));
+            BOOST_CHECK(wallet->SetP2MRMetadata(batch, PKHash(), "tree", "{\"leaves\":[]}"));
+            BOOST_CHECK(wallet->SetP2MRMetadata(batch, ScriptHash(), "", "{}"));
+            // Ids that only resemble the prefix are ordinary requests.
+            BOOST_CHECK(wallet->SetAddressReceiveRequest(batch, ScriptHash(), "rrp2m", "val_stem"));
+            BOOST_CHECK(wallet->SetAddressReceiveRequest(batch, ScriptHash(), "xrrp2mr:", "val_infix"));
+            BOOST_CHECK(wallet->SetAddressReceiveRequest(batch, ScriptHash(), "", "val_empty"));
+        });
+        TestLoadWallet(name, format, [](std::shared_ptr<CWallet> wallet) EXCLUSIVE_LOCKS_REQUIRED(wallet->cs_wallet) {
+            auto requests = wallet->GetAddressReceiveRequests();
+            std::sort(requests.begin(), requests.end());
+            const std::vector<std::string> expected{"val_empty", "val_infix", "val_rr1", "val_stem"};
+            BOOST_CHECK_EQUAL_COLLECTIONS(requests.begin(), requests.end(), expected.begin(), expected.end());
+            // Hidden from payment requests, still there for P2MR.
+            std::string tree;
+            BOOST_CHECK(wallet->GetP2MRMetadata(PKHash(), "tree", tree));
+            BOOST_CHECK_EQUAL(tree, "{\"leaves\":[]}");
+            BOOST_CHECK_EQUAL(wallet->ListP2MRMetadata().size(), 2U);
         });
     }
 }

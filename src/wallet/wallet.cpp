@@ -3121,11 +3121,18 @@ bool CWallet::IsAddressPreviouslySpent(const CTxDestination& dest) const
     return false;
 }
 
+namespace {
+constexpr std::string_view P2MR_RECEIVE_REQUEST_PREFIX{"rrp2mr:"};
+} // namespace
+
 std::vector<std::string> CWallet::GetAddressReceiveRequests() const
 {
+    // Leftover rrp2mr: rows are P2MR JSON, not RecentRequestEntry bytes.
+    // The GUI unserializes every value returned here (Quarks F2.17).
     std::vector<std::string> values;
     for (const auto& [dest, entry] : m_address_book) {
         for (const auto& [id, request] : entry.receive_requests) {
+            if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) == 0) continue;
             values.emplace_back(request);
         }
     }
