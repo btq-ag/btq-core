@@ -4159,7 +4159,7 @@ static bool MigrateLegacyDilithiumKeys(CWallet& wallet, const std::vector<Migrat
             loaded = !mig.crypted_secret.empty() &&
                      desc->LoadCryptedDilithiumKey(keyid, mig.crypted_secret, /*checksum_valid=*/true);
         } else {
-            loaded = desc->LoadDilithiumKey(mig.key, CPubKey());
+            loaded = desc->LoadDilithiumKey(mig.key);
         }
         if (!loaded) {
             error = _("Error: Could not migrate Dilithium key");
