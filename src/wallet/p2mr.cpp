@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <optional>
 #include <set>
+#include <tuple>
 #include <utility>
 
 namespace wallet {
@@ -89,15 +90,19 @@ bool DecodeMetadata(const std::string& raw, UniValue& out)
     return out.read(raw) && out.isObject();
 }
 
+// Sibling order does not change the merkle root, so the same tree can be
+// listed in more than one depth-first order. This only compares the leaf
+// multiset; it does not pin the shape.
 bool SameP2MRTree(const std::vector<P2MRTreeLeaf>& a, const std::vector<P2MRTreeLeaf>& b)
 {
     if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i) {
-        if (a[i].depth != b[i].depth) return false;
-        if (a[i].leaf_version != b[i].leaf_version) return false;
-        if (a[i].script != b[i].script) return false;
-    }
-    return true;
+    const auto key = [](const P2MRTreeLeaf& leaf) { return std::tie(leaf.depth, leaf.leaf_version, leaf.script); };
+    const auto less = [&](const P2MRTreeLeaf& x, const P2MRTreeLeaf& y) { return key(x) < key(y); };
+    auto sa = a;
+    auto sb = b;
+    std::sort(sa.begin(), sa.end(), less);
+    std::sort(sb.begin(), sb.end(), less);
+    return std::equal(sa.begin(), sa.end(), sb.begin(), [&](const P2MRTreeLeaf& x, const P2MRTreeLeaf& y) { return key(x) == key(y); });
 }
 
 void AddDilithiumKeyIDFromHash(Span<const unsigned char> bytes, std::set<CKeyID>& out)
@@ -824,30 +829,33 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const int64_t ts = created_at.value_or(GetTime());
 
     for (const auto& entry : ListP2MRForDestination(wallet, out.dest)) {
-        if (entry.script_pub_key == out.script_pub_key && SameP2MRTree(entry.tree, leaves)) {
-            out.id = entry.id;
-            out.address = entry.address;
-            out.merkle_root = entry.merkle_root;
-            out.dest = entry.dest;
-            const bool update_label = add_to_address_book && !label.empty() && label != entry.label;
-            const int64_t restored_created_at = created_at.has_value()
-                                                   ? MergeP2MRCreatedAt(entry.created_at, *created_at)
-                                                   : entry.created_at;
-            const bool update_created_at = restored_created_at != entry.created_at;
-            if (update_label || update_created_at) {
-                const std::string restored_label = update_label ? label : entry.label;
-                if (update_label &&
-                    !wallet.SetAddressBook(out.dest, restored_label, AddressPurpose::RECEIVE)) {
-                    return util::Error{Untranslated("failed to set P2MR address book entry")};
-                }
-                WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
-                const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, restored_label, leaves, restored_created_at);
-                if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
-                    return util::Error{Untranslated("failed to persist P2MR metadata")};
-                }
+        if (entry.script_pub_key != out.script_pub_key || !SameP2MRTree(entry.tree, leaves)) continue;
+        // entry.script_pub_key comes from the record key, not the stored tree,
+        // so a corrupt record can carry the right leaves in the wrong shape.
+        auto stored = BuildP2MRTreeChecked(entry.tree);
+        if (!stored || !(CTxDestination{stored->GetOutput()} == out.dest)) continue;
+        out.id = entry.id;
+        out.address = entry.address;
+        out.merkle_root = entry.merkle_root;
+        out.dest = entry.dest;
+        const bool update_label = add_to_address_book && !label.empty() && label != entry.label;
+        const int64_t restored_created_at = created_at.has_value()
+                                               ? MergeP2MRCreatedAt(entry.created_at, *created_at)
+                                               : entry.created_at;
+        const bool update_created_at = restored_created_at != entry.created_at;
+        if (update_label || update_created_at) {
+            const std::string restored_label = update_label ? label : entry.label;
+            if (update_label &&
+                !wallet.SetAddressBook(out.dest, restored_label, AddressPurpose::RECEIVE)) {
+                return util::Error{Untranslated("failed to set P2MR address book entry")};
             }
-            return out;
+            WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
+            const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, restored_label, leaves, restored_created_at);
+            if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
+                return util::Error{Untranslated("failed to persist P2MR metadata")};
+            }
         }
+        return out;
     }
 
     out.id = NewP2MRId();
