@@ -8,6 +8,7 @@
 #include <addresstype.h>
 #include <wallet/db.h>
 
+#include <functional>
 #include <memory>
 
 class ArgsManager;
@@ -71,6 +72,10 @@ class MockableBatch : public DatabaseBatch
 private:
     MockableData& m_records;
     bool m_pass;
+    // Optional. When set and it returns true, WriteKey fails and leaves the
+    // record unchanged. Lets a test fail one record type (the wallet-flags
+    // key) while earlier writes in the same call still commit.
+    std::function<bool(const SerializeData&)>* m_fail_write;
 
     bool ReadKey(DataStream&& key, DataStream& value) override;
     bool WriteKey(DataStream&& key, DataStream&& value, bool overwrite=true) override;
@@ -79,7 +84,8 @@ private:
     bool ErasePrefix(Span<const std::byte> prefix) override;
 
 public:
-    explicit MockableBatch(MockableData& records, bool pass) : m_records(records), m_pass(pass) {}
+    explicit MockableBatch(MockableData& records, bool pass, std::function<bool(const SerializeData&)>* fail_write = nullptr)
+        : m_records(records), m_pass(pass), m_fail_write(fail_write) {}
     ~MockableBatch() {}
 
     void Flush() override {}
@@ -104,6 +110,7 @@ class MockableDatabase : public WalletDatabase
 public:
     MockableData m_records;
     bool m_pass{true};
+    std::function<bool(const SerializeData&)> m_fail_write;
 
     MockableDatabase(MockableData records = {}) : WalletDatabase(), m_records(records) {}
     ~MockableDatabase() {};
@@ -122,7 +129,7 @@ public:
 
     std::string Filename() override { return "mockable"; }
     std::string Format() override { return "mock"; }
-    std::unique_ptr<DatabaseBatch> MakeBatch(bool flush_on_close = true) override { return std::make_unique<MockableBatch>(m_records, m_pass); }
+    std::unique_ptr<DatabaseBatch> MakeBatch(bool flush_on_close = true) override { return std::make_unique<MockableBatch>(m_records, m_pass, &m_fail_write); }
 };
 
 std::unique_ptr<WalletDatabase> CreateMockableWalletDatabase(MockableData records = {});
