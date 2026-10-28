@@ -1100,6 +1100,111 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_pays_given_change_address, TestChain10
         BOOST_REQUIRE(!wrong);
         BOOST_CHECK(util::ErrorString(wrong).original.find("change_address must be a P2MR address") != std::string::npos);
     }
+
+namespace {
+// Every shipped chain, including testnet, is P2MR-only from height 1.
+// Unschedule it in this fixture so the key-hash match, which applies only
+// where those payments can still be spent, has a chain to run on.
+struct LegacyDilithiumPaymentsSetup : public BasicTestingSetup {
+    LegacyDilithiumPaymentsSetup()
+        : BasicTestingSetup{ChainType::BTQTEST, /*extra_args=*/{"-testnetdilithiump2mrheight=2147483647"}} {}
+};
+} // namespace
+
+BOOST_FIXTURE_TEST_CASE(dilithium_key_hash_matches_where_still_spendable, LegacyDilithiumPaymentsSetup)
+{
+    BOOST_REQUIRE(LegacyDilithiumBase58PaymentsAllowed());
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CDilithiumPubKey pubkey{key.GetPubKey()};
+    CDilithiumKey other;
+    BOOST_REQUIRE(other.MakeNewKey());
+
+    BOOST_CHECK(DilithiumPubKeyMatchesDestination(pubkey, DilithiumPKHash{pubkey}));
+    BOOST_CHECK(DilithiumPubKeyMatchesDestination(pubkey, DilithiumWitnessV0KeyHash{pubkey}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(other.GetPubKey(), DilithiumPKHash{pubkey}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(other.GetPubKey(), DilithiumWitnessV0KeyHash{pubkey}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, PKHash{uint160{pubkey.GetID()}}));
+}
+
+BOOST_FIXTURE_TEST_CASE(dilithium_pubkey_matches_only_its_own_destinations, TestingSetup)
+{
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CDilithiumPubKey pubkey{key.GetPubKey()};
+    CDilithiumKey other;
+    BOOST_REQUIRE(other.MakeNewKey());
+    const CDilithiumPubKey other_pubkey{other.GetPubKey()};
+
+    // The one leaf is <OP_PUSHDATA2 1312-byte key> OP_CHECKSIGDILITHIUM, tapscript
+    // version, depth 0, and the address commits to that leaf's hash alone.
+    const auto leaves = SingleKeyDilithiumLeaves(pubkey);
+    BOOST_REQUIRE_EQUAL(leaves.size(), 1U);
+    BOOST_CHECK_EQUAL(leaves[0].depth, 0);
+    BOOST_CHECK_EQUAL(leaves[0].leaf_version, 0xc0);
+    std::vector<unsigned char> expected_leaf{0x4d, 0x20, 0x05};
+    expected_leaf.insert(expected_leaf.end(), pubkey.begin(), pubkey.end());
+    expected_leaf.push_back(0xbb);
+    BOOST_CHECK(leaves[0].script == expected_leaf);
+    const WitnessV2P2MR single{ComputeTapleafHash(0xc0, expected_leaf)};
+    auto single_tree = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(single_tree);
+    BOOST_CHECK(single_tree->GetOutput() == single);
+
+    BOOST_CHECK(DilithiumPubKeyMatchesDestination(pubkey, single));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(other_pubkey, single));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(CDilithiumPubKey{}, single));
+
+    // P2MR-only from height 1 on this chain: nobody can spend coins sent to a
+    // Dilithium key hash, so a signature cannot prove control of one.
+    BOOST_REQUIRE(!LegacyDilithiumBase58PaymentsAllowed());
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, DilithiumPKHash{pubkey}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, DilithiumWitnessV0KeyHash{pubkey}));
+
+    // The key's own hash under a type that is not a Dilithium key hash.
+    const uint160 key_hash{pubkey.GetID()};
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, PKHash{key_hash}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, WitnessV0KeyHash{key_hash}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, ScriptHash{key_hash}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, DilithiumScriptHash{key_hash}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, WitnessV1Taproot{XOnlyPubKey{Span<const unsigned char>{single.m_merkle_root, WitnessV2P2MR::SIZE}}}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, WitnessUnknown{3, std::vector<unsigned char>(single.m_merkle_root, single.m_merkle_root + 32)}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, CNoDestination{}));
+
+    // The key's leaf beside a second spend path is not the key's address.
+    std::vector<P2MRTreeLeaf> with_escape{SingleKeyDilithiumLeaves(pubkey)};
+    with_escape[0].depth = 1;
+    with_escape.push_back(P2MRTreeLeaf{/*depth=*/1, TAPROOT_LEAF_TAPSCRIPT, {static_cast<unsigned char>(OP_TRUE)}});
+    auto escape_tree = BuildP2MRTreeChecked(with_escape);
+    BOOST_REQUIRE(escape_tree);
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, escape_tree->GetOutput()));
+
+    // Nor is the same leaf script under another leaf version.
+    std::vector<P2MRTreeLeaf> other_version{SingleKeyDilithiumLeaves(pubkey)};
+    other_version[0].leaf_version = 0xc2;
+    auto version_tree = BuildP2MRTreeChecked(other_version);
+    BOOST_REQUIRE(version_tree);
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, version_tree->GetOutput()));
+
+    // Receive destinations the wallet creates match the key in their leaf.
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+    wallet->SetupDescriptorScriptPubKeyMans();
+
+    const auto received = CreateDilithiumP2MRReceive(*wallet, "receive");
+    BOOST_REQUIRE_MESSAGE(received, util::ErrorString(received).original);
+    const auto entry = GetP2MR(*wallet, received->id);
+    BOOST_REQUIRE(entry);
+    BOOST_REQUIRE_EQUAL(entry->tree.size(), 1U);
+    const auto policy = ParseP2MRDilithiumLeaf(CScript{entry->tree[0].script.begin(), entry->tree[0].script.end()});
+    BOOST_REQUIRE_EQUAL(policy.pubkeys.size(), 1U);
+    BOOST_CHECK(DilithiumPubKeyMatchesDestination(policy.pubkeys[0], received->dest));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, received->dest));
+
+    const auto imported = ImportDilithiumKeyAsP2MR(*wallet, key, "import");
+    BOOST_REQUIRE_MESSAGE(imported, util::ErrorString(imported).original);
+    BOOST_CHECK(imported->dest == CTxDestination{single});
 }
 
 BOOST_FIXTURE_TEST_CASE(produce_signature_preserves_p2mr_witness_stack, BasicTestingSetup)

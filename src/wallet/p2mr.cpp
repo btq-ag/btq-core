@@ -500,6 +500,39 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
     return *key_ids.begin();
 }
 
+std::vector<P2MRTreeLeaf> SingleKeyDilithiumLeaves(const CDilithiumPubKey& pubkey)
+{
+    const CScript leaf_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
+    return {P2MRTreeLeaf{
+        /*depth=*/0,
+        /*leaf_version=*/TAPROOT_LEAF_TAPSCRIPT,
+        /*script=*/std::vector<unsigned char>{leaf_script.begin(), leaf_script.end()},
+    }};
+}
+
+bool DilithiumPubKeyMatchesDestination(const CDilithiumPubKey& pubkey, const CTxDestination& dest)
+{
+    if (!pubkey.IsFullyValid()) return false;
+    // Outside P2MR a Dilithium key hash can be spent only while this network
+    // still allows those payments. Elsewhere nobody can spend coins sent there.
+    if ((std::holds_alternative<DilithiumPKHash>(dest) || std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) &&
+        !LegacyDilithiumBase58PaymentsAllowed()) {
+        return false;
+    }
+    if (const auto* hash = std::get_if<DilithiumPKHash>(&dest)) {
+        return *hash == DilithiumPKHash{pubkey};
+    }
+    if (const auto* hash = std::get_if<DilithiumWitnessV0KeyHash>(&dest)) {
+        return *hash == DilithiumWitnessV0KeyHash{pubkey};
+    }
+    if (const auto* output = std::get_if<WitnessV2P2MR>(&dest)) {
+        // Any other tree may hold a spend path this key does not sign.
+        auto builder = BuildP2MRTreeChecked(SingleKeyDilithiumLeaves(pubkey));
+        return builder && builder->GetOutput() == *output;
+    }
+    return false;
+}
+
 // --- Signing provider ------------------------------------------------------
 
 static FlatSigningProvider BuildSigningProviderForEntries(const CWallet& wallet, const std::vector<P2MREntry>& entries)
@@ -664,14 +697,7 @@ util::Result<P2MRCreated> CreateSingleLeafDilithiumP2MR(CWallet& wallet,
     if (!pubkey.IsValid()) {
         return util::Error{Untranslated("invalid Dilithium public key")};
     }
-    const CScript leaf_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
-    std::vector<P2MRTreeLeaf> leaves;
-    leaves.push_back(P2MRTreeLeaf{
-        /*depth=*/0,
-        /*leaf_version=*/TAPROOT_LEAF_TAPSCRIPT,
-        /*script=*/std::vector<unsigned char>{leaf_script.begin(), leaf_script.end()},
-    });
-    return CreateP2MR(wallet, leaves, label, add_to_address_book, /*allow_trivial_leaves=*/false, created_at);
+    return CreateP2MR(wallet, SingleKeyDilithiumLeaves(pubkey), label, add_to_address_book, /*allow_trivial_leaves=*/false, created_at);
 }
 
 bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
