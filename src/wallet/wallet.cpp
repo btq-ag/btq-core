@@ -2859,6 +2859,13 @@ void CWallet::ListLockedCoins(std::vector<COutPoint>& vOutpts) const
 
 /** @} */ // end of Actions
 
+/** How many blocks below the tip an inferred key-birth height must sit.
+ *  The tip can be reorganized, so keys with no older wallet tx are anchored
+ *  this deep. This margin is a reorg depth. It is not one day of blocks.
+ *  Upstream Bitcoin uses the same 144. Blocks are 60 seconds, so the
+ *  window is 2.4 hours. */
+static constexpr int KEY_BIRTH_REORG_DEPTH{144};
+
 void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
     AssertLockHeld(cs_wallet);
     mapKeyBirth.clear();
@@ -2866,7 +2873,7 @@ void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
     // map in which we'll infer heights of other keys
     std::map<CKeyID, const TxStateConfirmed*> mapKeyFirstBlock;
     TxStateConfirmed max_confirm{uint256{}, /*height=*/-1, /*index=*/-1};
-    max_confirm.confirmed_block_height = GetLastBlockHeight() > 144 ? GetLastBlockHeight() - 144 : 0; // the tip can be reorganized; use a 144-block reorg-depth safety margin (a depth, not a day)
+    max_confirm.confirmed_block_height = GetLastBlockHeight() > KEY_BIRTH_REORG_DEPTH ? GetLastBlockHeight() - KEY_BIRTH_REORG_DEPTH : 0;
     CHECK_NONFATAL(chain().findAncestorByHeight(GetLastBlockHash(), max_confirm.confirmed_block_height, FoundBlock().hash(max_confirm.confirmed_block_hash)));
 
     {
