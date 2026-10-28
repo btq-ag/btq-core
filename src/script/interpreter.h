@@ -155,8 +155,8 @@ enum : uint32_t {
     SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY = (1U << 23),
 
     // Charge VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED instead of the
-    // _LEGACY value per P2MR Dilithium check, and saturate P2MR leaf sigop
-    // counts instead of wrapping. Active from nDilithiumLimitsHeight.
+    // _LEGACY value per P2MR Dilithium check, and count legacy sigops in
+    // 64 bits so the block total does not wrap. Active from nDilithiumLimitsHeight.
     SCRIPT_VERIFY_DILITHIUM_LIMITS = (1U << 24),
 
     // Constants to point to the highest flag in use. Add new flags above this line.

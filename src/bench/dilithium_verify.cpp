@@ -92,22 +92,11 @@ static void ECDSAVerify(benchmark::Bench& bench)
     ECC_Stop();
 }
 
-// The two benchmarks above measure the signature primitives in isolation. That
-// is not the unit the sigop budget charges.
-//
-// DILITHIUM_SIGOP_COST is applied per signature *opcode inside a script*, by
-// CScript::GetSigOpCount, reached for P2MR through WitnessSigOps ->
-// CountWitnessSigOps -> GetTransactionSigOpCost, and enforced against
-// the block sigop limit in ConnectBlock. So what a node actually pays per
-// charged sigop is a whole input verification: witness parsing, control-block
-// and Merkle-path checking, sighash computation over the transaction, script
-// execution, and only then the signature check.
-//
-// That overhead is substantial and largely algorithm-independent, so it dilutes
-// the primitive ratio. Measuring only the primitive overstates how much dearer a
-// Dilithium input is than an ECDSA one. The two benchmarks below verify complete
-// inputs through VerifyScript, which is the comparison the constant should be
-// derived from:
+// The two benchmarks above measure the signature primitives in isolation.
+// P2MR signature checks are bounded by m_validation_weight_left.
+// DILITHIUM_SIGOP_COST still applies to legacy, P2SH, and witness-v0
+// scripts via GetSigOpCount. The benchmarks below run complete inputs
+// through VerifyScript:
 //
 //     ./src/bench/bench_btq -filter='(P2MRDilithium|P2WPKHECDSA)Input'
 //

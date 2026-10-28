@@ -73,20 +73,10 @@ static constexpr int64_t VALIDATION_WEIGHT_PER_SIGOP_PASSED{50};
 static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED{1439};
 // Charged before SCRIPT_VERIFY_DILITHIUM_LIMITS is active.
 static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED_LEGACY{500};
-// Dilithium is charged 50 sigops against the block sigop limit
-// (MAX_BLOCK_SIGOPS_COST, MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS from
-// nDilithiumLimitsHeight).
-// 50 is provisional until the input-level ratio is recorded. Measure with
-//   ./src/bench/bench_btq -filter='(P2MRDilithium|P2WPKHECDSA)Input'
-// Compute required = ceil(ratio * 1.5). Keep 50 iff required <= 50; otherwise
-// propose `required` with a testnet reset. Do not lower 50 without a written
-// DoS argument: under-weighting packs more PQ verifies per block.
-//
-// At 80000 the sigop limit bound first: 80000/50 = 1600 Dilithium inputs per
-// block vs ~1817 by weight at ~4402 WU for a 1-in P2MR input. At 160000 the
-// weight limit binds first for single-key spends, and the sigop limit caps an
-// adversarial block at 160000/50 = 3200 Dilithium verifies. The bench is one-input
-// VerifyScript (script, P2MR control, sighash, verify), not full block cost.
+// Dilithium opcode cost in legacy, P2SH, and witness-v0 sigop accounting,
+// including the pre-P2MR-only witness-v0 keyhash path. P2MR leaves are not
+// included in the block sigop total. Do not lower 50 without a written DoS
+// argument: these scripts are still counted before execution.
 static constexpr unsigned int DILITHIUM_SIGOP_COST = 50;
 
 // How much weight budget is added to the witness size (Tapscript only, see BIP 342).

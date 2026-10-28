@@ -2447,23 +2447,9 @@ size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& wi
         }
     }
 
-    if (witversion == 2 && witprogram.size() == WITNESS_V2_P2MR_SIZE && witness.stack.size() >= 2) {
-        // P2MR witness: [args...] [script] [control_block] [optional annex]
-        // Mirror VerifyWitnessProgram's annex / control / script indexing, then
-        // reuse GetSigOpCount(true) so Dilithium (and any ECDSA) opcodes get the
-        // same weighting as legacy / P2WSH — including accurate multisig key counts.
-        const size_t last = witness.stack.size() - 1;
-        const bool has_annex = !witness.stack[last].empty() && witness.stack[last][0] == ANNEX_TAG;
-        const size_t control_idx = has_annex ? last - 1 : last;
-        if (control_idx < 1) return 0;
-        const size_t script_idx = control_idx - 1;
-
-        CScript subscript(witness.stack[script_idx].begin(), witness.stack[script_idx].end());
-        // A P2MR leaf has no size limit, so ~4.3 MB of bare
-        // OP_CHECKMULTISIGDILITHIUM (1000 each) wraps an unsigned int count.
-        return subscript.GetSigOpCount(true, /*saturate=*/(flags & SCRIPT_VERIFY_DILITHIUM_LIMITS) != 0);
-    }
-
+    // v1 tapscript and v2 P2MR contribute 0 sigops. GetSigOpCount ignores
+    // OP_CHECKSIGADD and charges every key in a Dilithium threshold leaf.
+    // m_validation_weight_left bounds the signature checks.
     // Future flags may be implemented here.
     return 0;
 }

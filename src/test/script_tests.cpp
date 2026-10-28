@@ -1806,6 +1806,7 @@ BOOST_AUTO_TEST_CASE(p2mr_dilithium_multisig_validation_weight)
 BOOST_AUTO_TEST_CASE(p2mr_sigop_count_saturates)
 {
     // 1000 sigops per bare OP_CHECKMULTISIGDILITHIUM; this many wraps to 704.
+    // The block sigop total does not use that count for a P2MR witness.
     const std::vector<unsigned char> bytes(4294968, OP_CHECKMULTISIGDILITHIUM);
     const CScript leaf(bytes.begin(), bytes.end());
     BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true), 704U);
@@ -1814,9 +1815,8 @@ BOOST_AUTO_TEST_CASE(p2mr_sigop_count_saturates)
     CScriptWitness witness;
     witness.stack = {ToByteVector(leaf), {static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 1)}};
     const CScript script_pubkey{CScript() << OP_2 << ToByteVector(uint256::ONE)};
-    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS), 704U);
-    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS),
-                      std::numeric_limits<unsigned int>::max());
+    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS), 0U);
+    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS), 0U);
 }
 
 static std::vector<unsigned int> AllConsensusFlags()
