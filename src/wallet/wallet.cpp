@@ -2211,6 +2211,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     // builders/keys and retry so ordinary send/fund paths can spend Dilithium
     // (and other) P2MR leaves without requiring signp2mrtransaction.
     // Read only the entries for the coins being spent, once per destination.
+    // cs_wallet is already held (AssertLockHeld above); the helpers require it.
     std::set<WitnessV2P2MR> p2mr_outputs;
     for (const auto& [outpoint, coin] : coins) {
         CTxDestination dest;
@@ -2835,9 +2836,10 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::optional<AddressPur
 }
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool internal)
+    EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)
 {
-    // Not an EXCLUSIVE_LOCKS_REQUIRED annotation: CWallet is incomplete where
-    // ReserveDestination is declared, so pwallet->cs_wallet cannot be named there.
+    // CWallet is incomplete where ReserveDestination is declared, so the
+    // requirement is on this definition. Callers already hold cs_wallet.
     AssertLockHeld(pwallet->cs_wallet);
     if (type == OutputType::P2MR) {
         // P2MR destinations are not keypool-backed: each is a freshly derived
@@ -3917,7 +3919,8 @@ LegacyScriptPubKeyMan* CWallet::GetOrCreateLegacyScriptPubKeyMan()
 void CWallet::AddScriptPubKeyMan(const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man)
 {
     const auto& spkm = m_spk_managers[id] = std::move(spkm_man);
-    m_ismine_cache.clear();
+    // cs_wallet is recursive; some callers already hold it, wallet setup does not.
+    WITH_LOCK(cs_wallet, m_ismine_cache.clear());
 
     // Update birth time if needed
     FirstKeyTimeChanged(spkm.get(), spkm->GetTimeFirstKey());

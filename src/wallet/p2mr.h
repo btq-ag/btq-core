@@ -13,6 +13,9 @@
 #include <uint256.h>
 #include <util/result.h>
 #include <wallet/types.h>
+// Pulled in for the EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet) annotations
+// below; clang's thread-safety analysis needs the complete CWallet type.
+#include <wallet/wallet.h>
 
 #include <cstdint>
 #include <optional>
@@ -24,7 +27,6 @@ class CCoinControl;
 class UniValue;
 
 namespace wallet {
-class CWallet;
 
 /**
  * Internal representation of a BIP360 P2MR script tree leaf.
@@ -119,23 +121,23 @@ UniValue P2MRTreeToUniValue(const std::vector<P2MRTreeLeaf>& leaves);
 // --- Wallet operations (GUI-friendly, non-throwing) --------------------------
 
 /** List all P2MR metadata entries stored in the wallet. */
-std::vector<P2MREntry> ListP2MR(const CWallet& wallet);
+std::vector<P2MREntry> ListP2MR(const CWallet& wallet) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Lookup a single entry by id. */
-std::optional<P2MREntry> GetP2MR(const CWallet& wallet, const std::string& id);
+std::optional<P2MREntry> GetP2MR(const CWallet& wallet, const std::string& id) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Lookup a tracked P2MR entry by scriptPubKey. */
-std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script);
+std::optional<P2MREntry> GetP2MRByScript(const CWallet& wallet, const CScript& script) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Lookup a tracked P2MR entry by destination / address encoding. */
-std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDestination& dest);
+std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Resolve the Dilithium key id used by a single-key Dilithium P2MR receive
  * destination. Returns nullopt if the address is not a tracked P2MR or the
  * tree does not contain exactly one Dilithium key.
  */
-std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest);
+std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Whether any ScriptPubKeyMan in the wallet holds this Dilithium private key. */
 bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid);
@@ -151,7 +153,7 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::string& label,
                                      bool add_to_address_book = true,
                                      bool allow_trivial_leaves = false,
-                                     std::optional<int64_t> created_at = std::nullopt);
+                                     std::optional<int64_t> created_at = std::nullopt) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Validate a dumped P2MR entry without changing the wallet. */
 util::Result<void> ValidateP2MRRestore(const UniValue& meta);
@@ -159,7 +161,7 @@ util::Result<void> ValidateP2MRRestore(const UniValue& meta);
 /** Restore a dumped P2MR entry. Rebuilds the tree and requires any supplied
  *  address / scriptPubKey / merkle_root to match before writing. Trivial
  *  leaves are allowed because this is a restore. */
-util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta);
+util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR
@@ -171,7 +173,7 @@ util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta);
 util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
                                                      const std::string& label,
                                                      bool add_to_address_book = true,
-                                                     bool internal = false);
+                                                     bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Opt-in hybrid receive (Quarks F2.2): generate a wallet Dilithium key and
@@ -184,7 +186,7 @@ util::Result<P2MRCreated> CreateDilithiumP2MRReceive(CWallet& wallet,
 util::Result<P2MRCreated> CreateHybridDilithiumP2MRReceive(CWallet& wallet,
                                                            const XOnlyPubKey& schnorr_pubkey,
                                                            const std::string& label,
-                                                           bool add_to_address_book = true);
+                                                           bool add_to_address_book = true) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Import an existing Dilithium key and create a matching single-leaf P2MR
@@ -193,7 +195,7 @@ util::Result<P2MRCreated> CreateHybridDilithiumP2MRReceive(CWallet& wallet,
 util::Result<P2MRCreated> ImportDilithiumKeyAsP2MR(CWallet& wallet,
                                                    const CDilithiumKey& key,
                                                    const std::string& label,
-                                                   std::optional<int64_t> created_at = std::nullopt);
+                                                   std::optional<int64_t> created_at = std::nullopt) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 class DescriptorScriptPubKeyMan;
 
@@ -205,7 +207,7 @@ class DescriptorScriptPubKeyMan;
 util::Result<P2MRCreated> RecoverDilithiumKeyAsP2MR(CWallet& wallet,
                                                     DescriptorScriptPubKeyMan& manager,
                                                     const CDilithiumKey& key,
-                                                    bool add_to_address_book = true);
+                                                    bool add_to_address_book = true) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Create + persist + fund a P2MR destination in one call. */
 util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
@@ -214,7 +216,7 @@ util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
                                   const std::string& label,
                                   bool subtract_fee_from_amount,
                                   const CCoinControl& coin_control,
-                                  bool allow_trivial_leaves = false);
+                                  bool allow_trivial_leaves = false) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Build an unsigned spend of a tracked P2MR UTXO to a destination.
  *  Non-const because change address generation may extend the keypool. */
@@ -222,12 +224,12 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
                                                 const std::string& p2mr_id,
                                                 const CTxDestination& to_dest,
                                                 CAmount send_amount,
-                                                CAmount fee);
+                                                CAmount fee) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Sign P2MR inputs using stored metadata. Leaves unrelated inputs untouched. */
 util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
                                                   const CMutableTransaction& tx_in,
-                                                  const std::optional<std::string>& only_id);
+                                                  const std::optional<std::string>& only_id) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Dry-run mempool accept (no broadcast/relay). */
 P2MRMempoolAccept TestP2MRTransaction(CWallet& wallet, const CMutableTransaction& tx);
@@ -237,14 +239,14 @@ P2MRMempoolAccept TestP2MRTransaction(CWallet& wallet, const CMutableTransaction
  * wallet's stored metadata, optionally restricted to a single id.
  */
 FlatSigningProvider BuildP2MRSigningProvider(const CWallet& wallet,
-                                             const std::optional<std::string>& only_id);
+                                             const std::optional<std::string>& only_id) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Build a FlatSigningProvider from the entries stored under one destination,
  * without reading the other entries. Entries whose tree does not build are
  * skipped, as in BuildP2MRSigningProvider.
  */
-FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet, const CTxDestination& dest);
+FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet, const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Build a FlatSigningProvider holding only the wallet keys that the given
@@ -252,19 +254,19 @@ FlatSigningProvider BuildP2MRSigningProviderForDestination(const CWallet& wallet
  * tracked by this wallet: the PSBT carries the leaf and control block, so
  * keys are all the signer has to contribute.
  */
-FlatSigningProvider BuildP2MRLeafKeyProvider(const CWallet& wallet, const std::vector<P2MRTreeLeaf>& leaves);
+FlatSigningProvider BuildP2MRLeafKeyProvider(const CWallet& wallet, const std::vector<P2MRTreeLeaf>& leaves) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Return true if the script matches any wallet-tracked P2MR scriptPubKey. */
-bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script);
+bool IsTrackedP2MRScript(const CWallet& wallet, const CScript& script) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Return spendable/watch-only ownership for a wallet-tracked P2MR scriptPubKey. */
-isminetype GetTrackedP2MRScriptIsMine(const CWallet& wallet, const CScript& script);
+isminetype GetTrackedP2MRScriptIsMine(const CWallet& wallet, const CScript& script) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Sum the values of confirmed unspent outputs whose script matches a tracked P2MR. */
-CAmount GetTrackedP2MRBalance(const CWallet& wallet, int min_depth = 1);
+CAmount GetTrackedP2MRBalance(const CWallet& wallet, int min_depth = 1) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Per-entry confirmed unspent balance. */
-CAmount GetP2MREntryBalance(const CWallet& wallet, const P2MREntry& entry, int min_depth = 1);
+CAmount GetP2MREntryBalance(const CWallet& wallet, const P2MREntry& entry, int min_depth = 1) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 } // namespace wallet
 
