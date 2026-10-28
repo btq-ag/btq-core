@@ -673,7 +673,7 @@ bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
     if (wallet.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
         for (auto* spk_man : wallet.GetAllScriptPubKeyMans()) {
             if (auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
-                if (desc->AddDilithiumKeyPubKey(key, CPubKey())) {
+                if (desc->AddDilithiumKeyPubKey(key)) {
                     // Unknown birthday. Stops blockConnected from skipping
                     // pre-wallet blocks. Does not rewind a stored locator.
                     desc->UpdateTimeFirstKey(1);
@@ -685,7 +685,7 @@ bool StoreDilithiumKeyInWallet(CWallet& wallet, const CDilithiumKey& key)
         }
     } else {
         LegacyScriptPubKeyMan* legacy = wallet.GetLegacyScriptPubKeyMan();
-        if (legacy && legacy->AddDilithiumKeyPubKey(key, CPubKey())) {
+        if (legacy && legacy->AddDilithiumKeyPubKey(key)) {
             LOCK(legacy->cs_KeyStore);
             legacy->UpdateTimeFirstKey(1);
             stored = true;
