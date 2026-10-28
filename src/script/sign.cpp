@@ -630,6 +630,12 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
     case TxoutType::WITNESS_V1_TAPROOT:
         return SignTaproot(provider, creator, WitnessV1Taproot(XOnlyPubKey{vSolutions[0]}), sigdata, ret);
     case TxoutType::WITNESS_V2_P2MR:
+        // A P2MR output is only signable from the top level (sigversion BASE).
+        // Without this check a P2MR leaf that itself parses as a witness v2
+        // program (e.g. OP_2 <32-byte-push>) re-enters SignP2MR from inside
+        // SignTaprootScript, iterating the same sigdata.p2mr_spenddata.scripts
+        // map again and recursing until stack exhaustion.
+        if (sigversion != SigVersion::BASE) return false;
         return SignP2MR(provider, creator, WitnessV2P2MR(uint256(vSolutions[0])), sigdata, ret);
     case TxoutType::DILITHIUM_PUBKEY: {
         // Dilithium opcodes are consensus-valid only inside P2MR tapscript leaves.
