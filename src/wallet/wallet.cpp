@@ -338,7 +338,7 @@ public:
         }
         // P2MR destinations can also be added while a scan is in progress
         // (e.g. recoverdilithiumkeys from another thread).
-        if (WITH_LOCK(m_wallet.cs_wallet, return m_wallet.m_p2mr_metadata.size()) != m_p2mr_dest_count) {
+        if (WITH_LOCK(m_wallet.cs_wallet, return m_wallet.ListP2MRMetadata().size()) != m_p2mr_dest_count) {
             AddP2MRScripts();
         }
     }
@@ -372,9 +372,11 @@ private:
     void AddP2MRScripts()
     {
         LOCK(m_wallet.cs_wallet);
-        m_p2mr_dest_count = m_wallet.m_p2mr_metadata.size();
-        for (const auto& [dest, entries] : m_wallet.m_p2mr_metadata) {
-            const CScript script_pub_key = GetScriptForDestination(dest);
+        // This tree stores P2MR metadata in the address book, not a side map.
+        const auto records = m_wallet.ListP2MRMetadata();
+        m_p2mr_dest_count = records.size();
+        for (const auto& record : records) {
+            const CScript script_pub_key = GetScriptForDestination(std::get<0>(record));
             m_filter_set.emplace(script_pub_key.begin(), script_pub_key.end());
         }
     }
@@ -1273,7 +1275,16 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, const SyncTxS
 
             // loop though all outputs
             for (const CTxOut& txout: tx.vout) {
-                for (const auto& spk_man : GetScriptPubKeyMans(txout.scriptPubKey)) {
+                std::set<ScriptPubKeyMan*> spk_mans = GetScriptPubKeyMans(txout.scriptPubKey);
+                // Dilithium and P2MR scripts are not descriptor scripts, so the
+                // LEGACY managers never show up here. Their derivation index
+                // still has to move when a used script is seen (INFO-26).
+                for (bool internal : {false, true}) {
+                    if (ScriptPubKeyMan* legacy = GetScriptPubKeyMan(OutputType::LEGACY, internal)) {
+                        spk_mans.insert(legacy);
+                    }
+                }
+                for (const auto& spk_man : spk_mans) {
                     auto destinations = spk_man->MarkUnusedAddresses(txout.scriptPubKey);
                     // Marking a used key can derive more keys from an inactive HD
                     // seed. Previously unknown scripts may now belong to us.
@@ -3081,11 +3092,6 @@ bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, co
     const bool result = SetAddressReceiveRequest(batch, dest, std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id, value);
     if (result) m_ismine_cache.erase(GetScriptForDestination(dest));
     return result;
-}
-
-const std::map<std::string, std::string>* CWallet::GetP2MRMetadataForDest(const CTxDestination& dest) const
-{
-    return common::FindKey(m_p2mr_metadata, dest);
 }
 
 bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const

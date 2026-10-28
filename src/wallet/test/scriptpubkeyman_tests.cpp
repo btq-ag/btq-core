@@ -11,8 +11,10 @@
 #include <primitives/transaction.h>
 #include <test/util/setup_common.h>
 #include <script/descriptor.h>
+#include <script/interpreter.h>
 #include <script/solver.h>
 #include <script/sign.h>
+#include <script/signingprovider.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/wallet.h>
 #include <wallet/test/util.h>
@@ -24,6 +26,16 @@ BOOST_FIXTURE_TEST_SUITE(scriptpubkeyman_tests, BasicTestingSetup)
 
 namespace {
 constexpr uint32_t HARDENED = 0x80000000u;
+
+CScript SingleLeafP2MRScript(const CDilithiumPubKey& pubkey)
+{
+    const CScript leaf = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
+    const std::vector<unsigned char> leaf_bytes(leaf.begin(), leaf.end());
+    P2MRBuilder builder;
+    builder.Add(/*depth=*/0, leaf_bytes, TAPROOT_LEAF_TAPSCRIPT);
+    builder.Finalize();
+    return GetScriptForDestination(builder.GetOutput());
+}
 } // namespace
 
 // Test LegacyScriptPubKeyMan::CanProvide behavior, making sure it returns true
@@ -169,6 +181,89 @@ BOOST_AUTO_TEST_CASE(dilithium_legacy_generation_disabled_on_p2mr_only_chain)
     // The refusal must not take Dilithium key generation with it: P2MR receive
     // needs the same key on exactly the chains where the destination is refused.
     BOOST_CHECK(desc_keyman->GenerateNewDilithiumKey());
+}
+
+// INFO-26: the LEGACY descriptor used one next_index for ECDSA and Dilithium.
+// ECDSA generation must leave the Dilithium counter alone, and a restore that
+// sees a used Dilithium or single-leaf P2MR script must advance that counter
+// without moving the ECDSA lookahead.
+BOOST_AUTO_TEST_CASE(descriptor_dilithium_index_independent_of_ecdsa)
+{
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    DescriptorScriptPubKeyMan* keyman{nullptr};
+    {
+        LOCK(wallet.cs_wallet);
+        wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+        wallet.SetupDescriptorScriptPubKeyMans();
+        keyman = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+    }
+    BOOST_REQUIRE(keyman);
+
+    const auto ecdsa_dest = keyman->GetNewDestination(OutputType::LEGACY);
+    BOOST_REQUIRE(ecdsa_dest);
+    {
+        LOCK(keyman->cs_desc_man);
+        BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
+    }
+    BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 0);
+
+    const auto key0 = keyman->GetDilithiumKeyForIndex(0);
+    BOOST_REQUIRE(key0);
+    const CScript dilithium_spk = GetScriptForDestination(DilithiumPKHash(key0->GetPubKey()));
+    const CScript p2mr_spk = SingleLeafP2MRScript(key0->GetPubKey());
+
+    keyman->MarkUnusedAddresses(dilithium_spk);
+    {
+        LOCK(keyman->cs_desc_man);
+        BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
+    }
+    BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 1);
+
+    // Stale counter, same index, seen as the P2MR script instead.
+    keyman->LoadDilithiumNextIndex(0);
+    keyman->MarkUnusedAddresses(p2mr_spk);
+    {
+        LOCK(keyman->cs_desc_man);
+        BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
+    }
+    BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 1);
+
+    // A used script further along the Dilithium sequence jumps the counter
+    // past that index. An ECDSA descriptor script must not.
+    keyman->LoadDilithiumNextIndex(0);
+    const auto key2 = keyman->GetDilithiumKeyForIndex(2);
+    BOOST_REQUIRE(key2);
+    keyman->MarkUnusedAddresses(SingleLeafP2MRScript(key2->GetPubKey()));
+    {
+        LOCK(keyman->cs_desc_man);
+        BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
+    }
+    BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 3);
+
+    CScript ecdsa_ahead;
+    {
+        LOCK(keyman->cs_desc_man);
+        FlatSigningProvider out;
+        std::vector<CScript> scripts;
+        const WalletDescriptor desc = keyman->GetWalletDescriptor();
+        BOOST_REQUIRE(desc.descriptor->ExpandFromCache(2, desc.cache, scripts, out));
+        BOOST_REQUIRE(!scripts.empty());
+        ecdsa_ahead = scripts[0];
+    }
+    keyman->MarkUnusedAddresses(ecdsa_ahead);
+    {
+        LOCK(keyman->cs_desc_man);
+        BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 3);
+    }
+    BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 3);
+
+    // The next Dilithium key is index 3, not an index the ECDSA calls consumed.
+    const auto minted = keyman->GenerateNewDilithiumKey();
+    BOOST_REQUIRE(minted);
+    const auto expect3 = keyman->GetDilithiumKeyForIndex(3);
+    BOOST_REQUIRE(expect3);
+    BOOST_CHECK(minted->GetID() == expect3->GetPubKey().GetID());
+    BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 4);
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_bech32_generation_disabled)

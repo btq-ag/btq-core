@@ -461,14 +461,11 @@ std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDe
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!std::holds_alternative<WitnessV2P2MR>(dest)) return std::nullopt;
-    // Metadata is keyed by destination, so decode only this destination's
-    // rows instead of every record in the wallet.
-    const auto* entries = wallet.GetP2MRMetadataForDest(dest);
-    if (!entries) return std::nullopt;
-    for (const auto& [rid, raw] : *entries) {
-        UniValue meta;
-        if (!DecodeMetadata(raw, meta)) continue;
-        return MetadataToEntry(dest, meta, rid);
+    // Metadata is stored on this destination's address-book entry, so decode
+    // those rows only instead of every record in the wallet.
+    const CScript script = GetScriptForDestination(dest);
+    for (auto& entry : ListP2MRForDestination(wallet, dest)) {
+        if (entry.script_pub_key == script) return entry;
     }
     return std::nullopt;
 }
