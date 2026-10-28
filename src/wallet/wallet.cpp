@@ -3071,17 +3071,6 @@ bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, co
     return result;
 }
 
-bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const
-{
-    const auto* entry{common::FindKey(m_address_book, dest)};
-    if (!entry) return false;
-    const auto full_id = std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id;
-    const auto* request{common::FindKey(entry->receive_requests, full_id)};
-    if (!request) return false;
-    value = *request;
-    return true;
-}
-
 std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata(const CTxDestination& dest) const
 {
     std::vector<std::tuple<CTxDestination, std::string, std::string>> out;

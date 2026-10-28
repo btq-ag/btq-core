@@ -93,8 +93,6 @@ extern const std::string WATCHS;
 extern const std::string DILITHIUM_KEY;
 extern const std::string DILITHIUM_CRYPTED_KEY;
 extern const std::string DILITHIUM_KEYMETA;
-extern const std::string DILITHIUM_HDCHAIN;
-extern const std::string DILITHIUM_POOL;
 
 // Keys in this set pertain only to the legacy wallet (LegacyScriptPubKeyMan) and are removed during migration from legacy to descriptors.
 extern const std::unordered_set<std::string> LEGACY_TYPES;
@@ -246,11 +244,9 @@ public:
     bool WriteCryptedKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
     bool WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey);
 
-    // Dilithium records are keyed by CKeyID. CPubKey cannot hold a Dilithium pubkey.
+    // Dilithium keys are stored by CKeyID. Wallet load still reads these records.
     bool WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata &keyMeta);
     bool WriteCryptedDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
-    bool WriteDilithiumHDChain(const CHDChain& chain);
-    bool WriteDilithiumPool(int64_t nPool, const CKeyPool& keypool);
 
     bool WriteCScript(const uint160& hash, const CScript& redeemScript);
 

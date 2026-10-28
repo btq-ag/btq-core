@@ -66,8 +66,6 @@ const std::string WATCHS{"watchs"};
 const std::string DILITHIUM_KEY{"dilithiumkey"};
 const std::string DILITHIUM_CRYPTED_KEY{"dilithiumckey"};
 const std::string DILITHIUM_KEYMETA{"dilithiumkeymeta"};
-const std::string DILITHIUM_HDCHAIN{"dilithiumhdchain"};
-const std::string DILITHIUM_POOL{"dilithiumpool"};
 
 const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS};
 } // namespace DBKeys
@@ -159,7 +157,7 @@ bool WalletBatch::WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey)
     return WriteIC(std::make_pair(DBKeys::MASTER_KEY, nID), kMasterKey, true);
 }
 
-// Dilithium records are keyed by CKeyID. CPubKey cannot hold a Dilithium pubkey.
+// Dilithium keys are stored by CKeyID. Wallet load still reads these records.
 bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata& keyMeta)
 {
     // Create a unique key for this Dilithium key using the key ID
@@ -207,15 +205,6 @@ bool WalletBatch::WriteCryptedDilithiumKeyByID(const CKeyID& keyID, const std::v
 }
 
 
-bool WalletBatch::WriteDilithiumHDChain(const CHDChain& chain)
-{
-    return WriteIC(DBKeys::DILITHIUM_HDCHAIN, chain);
-}
-
-bool WalletBatch::WriteDilithiumPool(int64_t nPool, const CKeyPool& keypool)
-{
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_POOL, nPool), keypool);
-}
 
 bool WalletBatch::WriteCScript(const uint160& hash, const CScript& redeemScript)
 {

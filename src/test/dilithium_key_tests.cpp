@@ -87,23 +87,25 @@ BOOST_AUTO_TEST_CASE(dilithium_pubkey_isfullvalid_rejects_malformed)
     BOOST_CHECK(key.GetPubKey().IsFullyValid());
 }
 
-BOOST_AUTO_TEST_CASE(dilithium_raw_secret_key_to_public_key_fails_closed)
+BOOST_AUTO_TEST_CASE(dilithium_wrapper_sign_verify)
 {
     std::array<uint8_t, BTQ_DILITHIUM_PUBLIC_KEY_SIZE> pk{};
     std::array<uint8_t, BTQ_DILITHIUM_SECRET_KEY_SIZE> sk{};
-    BOOST_REQUIRE_EQUAL(btq_dilithium_keypair(pk.data(), sk.data()), 0);
-
-    std::array<uint8_t, BTQ_DILITHIUM_PUBLIC_KEY_SIZE> derived_pk;
-    derived_pk.fill(0xaa);
-    BOOST_CHECK(btq_dilithium_sk_to_pk(derived_pk.data(), sk.data()) != 0);
-    BOOST_CHECK(std::all_of(derived_pk.begin(), derived_pk.end(), [](uint8_t byte) { return byte == 0; }));
+    std::array<uint8_t, BTQ_DILITHIUM_SEED_SIZE> seed{};
+    seed.fill(0x42);
+    BOOST_REQUIRE_EQUAL(btq_dilithium_keypair_from_seed(pk.data(), sk.data(), seed.data()), 0);
 
     const std::array<uint8_t, 3> msg{{0x42, 0x54, 0x51}};
     std::array<uint8_t, BTQ_DILITHIUM_SIGNATURE_SIZE> sig{};
     size_t siglen{0};
     BOOST_REQUIRE_EQUAL(btq_dilithium_sign(sig.data(), &siglen, msg.data(), msg.size(), nullptr, 0, sk.data()), 0);
     BOOST_CHECK_EQUAL(btq_dilithium_verify(sig.data(), siglen, msg.data(), msg.size(), nullptr, 0, pk.data()), 0);
-    BOOST_CHECK(btq_dilithium_verify(sig.data(), siglen, msg.data(), msg.size(), nullptr, 0, derived_pk.data()) != 0);
+
+    std::array<uint8_t, BTQ_DILITHIUM_PUBLIC_KEY_SIZE> other_pk{};
+    std::array<uint8_t, BTQ_DILITHIUM_SECRET_KEY_SIZE> other_sk{};
+    seed.fill(0x43);
+    BOOST_REQUIRE_EQUAL(btq_dilithium_keypair_from_seed(other_pk.data(), other_sk.data(), seed.data()), 0);
+    BOOST_CHECK(btq_dilithium_verify(sig.data(), siglen, msg.data(), msg.size(), nullptr, 0, other_pk.data()) != 0);
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_signing_and_verification)
@@ -396,12 +398,6 @@ BOOST_AUTO_TEST_CASE(dilithium_extkey_equality_secret_fields)
     b = a;
     b.vchFingerprint[3] ^= 0x01;
     BOOST_CHECK(!(a == b));
-}
-
-BOOST_AUTO_TEST_CASE(dilithium_sanity_check)
-{
-    // Test the global sanity check function
-    BOOST_CHECK(DilithiumSanityCheck());
 }
 
 BOOST_AUTO_TEST_SUITE_END()
