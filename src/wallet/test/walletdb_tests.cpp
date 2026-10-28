@@ -182,7 +182,8 @@ BOOST_AUTO_TEST_CASE(walletdb_checks_dilithium_key_checksum_and_id)
         LOCK(wallet->cs_wallet);
         wallet->SetupLegacyScriptPubKeyMan();
         WalletBatch batch{wallet->GetDatabase()};
-        BOOST_REQUIRE(batch.WriteDilithiumKeyByID(key_id, secret, CKeyMetadata{123456789}));
+        const std::vector<unsigned char> stored(secret.begin(), secret.end());
+        BOOST_REQUIRE(batch.WriteDilithiumKeyByID(key_id, stored, CKeyMetadata{123456789}));
         wallet->Flush();
         written = GetMockableDatabase(*wallet).m_records;
     }
