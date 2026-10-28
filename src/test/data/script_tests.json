@@ -1013,7 +1013,7 @@
 ["1","RESERVED1", "P2SH,STRICTENC", "BAD_OPCODE", "OP_RESERVED1 is reserved"],
 ["1","RESERVED2", "P2SH,STRICTENC", "BAD_OPCODE", "OP_RESERVED2 is reserved"],
 ["1","0xba", "P2SH,STRICTENC", "BAD_OPCODE", "OP_CHECKSIGADD invalid in legacy script when executed"],
-["1","0xc0", "P2SH,STRICTENC", "BAD_OPCODE", "0xc0 == MAX_OPCODE + 1 (OP_DILITHIUM_PUBKEY = 0xbf)"],
+["1","0xc0", "P2SH,STRICTENC", "BAD_OPCODE", "opcode 0xc0 is undefined"],
 
 ["2147483648", "1ADD 1", "P2SH,STRICTENC", "UNKNOWN_ERROR", "We cannot do math on 5-byte integers"],
 ["2147483648", "NEGATE 1", "P2SH,STRICTENC", "UNKNOWN_ERROR", "We cannot do math on 5-byte integers"],

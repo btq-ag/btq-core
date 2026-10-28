@@ -1479,6 +1479,12 @@ BOOST_AUTO_TEST_CASE(script_HasValidOps)
     BOOST_CHECK(!script.HasValidOps());
     script = ScriptFromHex("88acc0"); // Script with undefined opcode
     BOOST_CHECK(!script.HasValidOps());
+    script = ScriptFromHex("b9"); // OP_NOP10 is the pre-Taproot ceiling
+    BOOST_CHECK(script.HasValidOps());
+    script = ScriptFromHex("ba"); // OP_CHECKSIGADD
+    BOOST_CHECK(!script.HasValidOps());
+    script = ScriptFromHex("bf"); // OP_DILITHIUM_PUBKEY
+    BOOST_CHECK(!script.HasValidOps());
 }
 
 static CMutableTransaction TxFromHex(const std::string& str)

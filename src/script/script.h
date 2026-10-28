@@ -248,8 +248,11 @@ enum opcodetype
     OP_INVALIDOPCODE = 0xff,
 };
 
-// Maximum value that an opcode can be
-static const unsigned int MAX_OPCODE = OP_DILITHIUM_PUBKEY;
+// Pre-Taproot ceiling for HasValidOps and the asm parser.
+// OP_CHECKSIGADD and the Dilithium opcodes sit above this. EvalScript
+// still accepts them in a P2MR tapscript leaf. The tx decoder does not
+// run witness bytes through HasValidOps.
+static const unsigned int MAX_OPCODE = OP_NOP10;
 
 std::string GetOpName(opcodetype opcode);
 
