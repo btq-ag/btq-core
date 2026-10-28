@@ -1047,6 +1047,9 @@ BOOST_AUTO_TEST_CASE(test_IsWitnessStandard_stack_item_size_limits)
     const CScript p2mr_script = CScript() << OP_2 << std::vector<unsigned char>(WITNESS_V2_P2MR_SIZE, 0);
     BOOST_CHECK(check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE, p2mr_control)));
     BOOST_CHECK(!check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE + 1, p2mr_control)));
+    // 0xc0 is the same leaf version with the parity bit clear. That witness
+    // is within the stack-item limit, so only the parity check can reject it.
+    BOOST_CHECK(!check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE, TAPROOT_LEAF_TAPSCRIPT)));
 }
 
 //! SpendsWitnessProgram must agree with what the interpreter would conclude,
