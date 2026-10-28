@@ -2,6 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <algorithm>
+#include <array>
 #include <key.h>
 #include <key_io.h>
 #include <addresstype.h>
@@ -32,6 +34,10 @@ BOOST_FIXTURE_TEST_SUITE(scriptpubkeyman_tests, BasicTestingSetup)
 
 namespace {
 constexpr uint32_t HARDENED = 0x80000000u;
+
+struct PreP2MRTestingSetup : BasicTestingSetup {
+    PreP2MRTestingSetup() : BasicTestingSetup(ChainType::BTQTEST) {}
+};
 } // namespace
 
 // Test LegacyScriptPubKeyMan::CanProvide behavior, making sure it returns true
@@ -602,6 +608,160 @@ BOOST_AUTO_TEST_CASE(migrate_legacy_dilithium_keeps_p2mr)
     const auto reloaded_entries = ListP2MR(loaded);
     BOOST_REQUIRE_EQUAL(reloaded_entries.size(), 1);
     BOOST_CHECK(reloaded_entries[0].dest == dest);
+}
+
+BOOST_FIXTURE_TEST_CASE(descriptor_dilithium_keypool_reservation_is_refused, PreP2MRTestingSetup)
+{
+    BOOST_REQUIRE(LegacyDilithiumBase58PaymentsAllowed());
+    CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    LOCK(wallet.cs_wallet);
+    wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+    wallet.SetupDescriptorScriptPubKeyMans();
+    auto* manager = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+    BOOST_REQUIRE(manager);
+    // The public wallet path has no Dilithium-legacy keypool manager.
+    BOOST_CHECK(!wallet.GetNewChangeDestination(OutputType::DILITHIUM_LEGACY));
+    int32_t ecdsa_index;
+    {
+        LOCK(manager->cs_desc_man);
+        ecdsa_index = manager->GetWalletDescriptor().next_index;
+    }
+    int64_t index{-1};
+    CKeyPool keypool;
+    BOOST_CHECK(!manager->GetReservedDestination(OutputType::DILITHIUM_LEGACY, /*internal=*/false, index, keypool));
+    BOOST_CHECK_EQUAL(index, -1);
+    {
+        LOCK(manager->cs_desc_man);
+        BOOST_CHECK_EQUAL(manager->GetWalletDescriptor().next_index, ecdsa_index);
+    }
+    // A refused reservation must not consume an index in either sequence.
+    const auto expected = manager->GetDilithiumKeyForIndex(0);
+    const auto generated = manager->GenerateNewDilithiumKey();
+    BOOST_REQUIRE(expected);
+    BOOST_REQUIRE(generated);
+    BOOST_CHECK(generated->GetID() == expected->GetPubKey().GetID());
+}
+
+BOOST_AUTO_TEST_CASE(descriptor_dilithium_generation_checks_other_managers)
+{
+    for (const bool encrypted : {false, true}) {
+        BOOST_TEST_CONTEXT("encrypted=" << encrypted) {
+            CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+            std::array<DescriptorScriptPubKeyMan*, 2> managers;
+            std::array<CKeyID, 2> expected_ids;
+            {
+                LOCK(wallet.cs_wallet);
+                wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+                wallet.SetupDescriptorScriptPubKeyMans();
+                if (encrypted) {
+                    BOOST_REQUIRE(wallet.EncryptWallet("test-passphrase"));
+                    BOOST_REQUIRE(wallet.Unlock("test-passphrase"));
+                }
+                for (int i = 0; i < 2; ++i) {
+                    managers[i] = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/i == 1));
+                    BOOST_REQUIRE(managers[i]);
+                }
+                BOOST_REQUIRE(managers[0] != managers[1]);
+                for (int i = 0; i < 2; ++i) {
+                    // Match reload behavior: the deriving manager does not own
+                    // its first key. Both lookup directions must work.
+                    const auto recovered = managers[i]->GetDilithiumKeyForIndex(0);
+                    const auto next = managers[i]->GetDilithiumKeyForIndex(1);
+                    BOOST_REQUIRE(recovered);
+                    BOOST_REQUIRE(next);
+                    BOOST_REQUIRE(managers[1 - i]->AddDilithiumKeyPubKey(*recovered));
+                    expected_ids[i] = CKeyID{next->GetPubKey().GetID()};
+                }
+            }
+            for (int i = 0; i < 2; ++i) {
+                const auto generated = managers[i]->GenerateNewDilithiumKey();
+                BOOST_REQUIRE(generated);
+                BOOST_CHECK(CKeyID{generated->GetID()} == expected_ids[i]);
+            }
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(descriptor_dilithium_key_write_failure_drops_memory)
+{
+    for (const bool encrypted : {false, true}) {
+        BOOST_TEST_CONTEXT("encrypted=" << encrypted) {
+            CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
+            DescriptorScriptPubKeyMan* keyman{nullptr};
+            {
+                LOCK(wallet.cs_wallet);
+                wallet.SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+                wallet.SetupDescriptorScriptPubKeyMans();
+                if (encrypted) {
+                    BOOST_REQUIRE(wallet.EncryptWallet("test-passphrase"));
+                    BOOST_REQUIRE(wallet.Unlock("test-passphrase"));
+                }
+                keyman = dynamic_cast<DescriptorScriptPubKeyMan*>(wallet.GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/false));
+            }
+            BOOST_REQUIRE(keyman);
+
+            // Fail only the private-key record, after the descriptor index
+            // write. Check durable index advancement below.
+            const std::string record_type = encrypted ? "dilithiumckey" : "dilithiumkey";
+            DataStream prefix{};
+            prefix << record_type;
+            const SerializeData prefix_bytes{prefix.begin(), prefix.end()};
+            GetMockableDatabase(wallet).m_fail_write = [prefix_bytes](const SerializeData& key) {
+                return key.size() >= prefix_bytes.size() &&
+                       std::equal(prefix_bytes.begin(), prefix_bytes.end(), key.begin());
+            };
+
+            const auto check_persisted_index = [&](int32_t expected) {
+                DataStream index_key{};
+                index_key << DBKeys::DILITHIUM_DESC_INDEX << keyman->GetID();
+                const SerializeData bytes{index_key.begin(), index_key.end()};
+                const auto& records = GetMockableDatabase(wallet).m_records;
+                const auto record = records.find(bytes);
+                BOOST_REQUIRE(record != records.end());
+                DataStream value{record->second};
+                int32_t index;
+                value >> index;
+                BOOST_CHECK_EQUAL(index, expected);
+            };
+            BOOST_CHECK(!keyman->GenerateNewDilithiumKey());
+            check_persisted_index(1);
+            const auto skipped = keyman->GetDilithiumKeyForIndex(0);
+            BOOST_REQUIRE(skipped);
+            const CKeyID skipped_id{skipped->GetPubKey().GetID()};
+            DataStream record_key{};
+            record_key << record_type << skipped_id;
+            const SerializeData record_bytes{record_key.begin(), record_key.end()};
+            BOOST_CHECK_EQUAL(GetMockableDatabase(wallet).m_records.count(record_bytes), 0);
+            {
+                LOCK(wallet.cs_wallet);
+                BOOST_CHECK(!wallet.HaveDilithiumKeyAnywhere(skipped_id));
+                LOCK(keyman->cs_desc_man);
+                BOOST_CHECK(!keyman->HaveDilithiumKey(skipped_id));
+            }
+
+            GetMockableDatabase(wallet).m_fail_write = nullptr;
+            const auto pubkey = keyman->GenerateNewDilithiumKey();
+            BOOST_REQUIRE(pubkey);
+            check_persisted_index(2);
+            {
+                LOCK2(wallet.cs_wallet, keyman->cs_desc_man);
+                BOOST_CHECK(keyman->HaveDilithiumKey(CKeyID{pubkey->GetID()}));
+                BOOST_CHECK(!keyman->HaveDilithiumKey(skipped_id));
+            }
+            // Retrying the same key must persist it, not mistake a leftover
+            // in-memory entry for a successful earlier write.
+            {
+                LOCK(wallet.cs_wallet);
+                BOOST_REQUIRE(keyman->AddDilithiumKeyPubKey(*skipped));
+                BOOST_CHECK(wallet.HaveDilithiumKeyAnywhere(skipped_id));
+                BOOST_CHECK_EQUAL(GetMockableDatabase(wallet).m_records.count(record_bytes), 1);
+                LOCK(keyman->cs_desc_man);
+                CDilithiumKey stored;
+                BOOST_REQUIRE(keyman->GetDilithiumKey(skipped_id, stored));
+                BOOST_CHECK(stored == *skipped);
+            }
+        }
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

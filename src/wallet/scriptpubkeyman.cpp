@@ -19,6 +19,7 @@
 #include <util/time.h>
 #include <util/translation.h>
 #include <wallet/scriptpubkeyman.h>
+#include <wallet/wallet.h>
 #include <addresstype.h>
 
 #include <optional>
@@ -2472,13 +2473,7 @@ bool LegacyScriptPubKeyMan::DeleteRecords()
     return batch.EraseRecords(DBKeys::LEGACY_TYPES);
 }
 
-util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKey()
-{
-    LOCK(cs_desc_man);
-    return GenerateNewDilithiumKeyLocked();
-}
-
-util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKeyLocked()
+util::Result<CDilithiumKey> DescriptorScriptPubKeyMan::DeriveDilithiumKeyAtIndex(int32_t index) const
 {
     AssertLockHeld(cs_desc_man);
 
@@ -2507,7 +2502,7 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     hmac.Write(descriptor_key.begin(), descriptor_key.size());
     const uint256 desc_id = GetID();
     hmac.Write(desc_id.begin(), desc_id.size());
-    const uint32_t idx_be = htobe32(m_wallet_descriptor.next_index);
+    const uint32_t idx_be = htobe32(static_cast<uint32_t>(index));
     hmac.Write(reinterpret_cast<const unsigned char*>(&idx_be), sizeof(idx_be));
     // Retained for backwards compatibility of the derivation: keys generated
     // before P2MR became its own OutputType committed to DILITHIUM_LEGACY here,
@@ -2523,23 +2518,70 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     if (!ok) {
         return util::Error{_("Error: Failed to generate Dilithium key")};
     }
+    return dilithium_key;
+}
 
-    const CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
-    const CKeyID keyid = CKeyID(dilithium_pubkey.GetID());
+util::Result<CDilithiumKey> DescriptorScriptPubKeyMan::GetDilithiumKeyForIndex(int32_t index)
+{
+    AssertLockNotHeld(cs_desc_man);
+    CWallet& wallet = static_cast<CWallet&>(m_storage);
+    LOCK(wallet.cs_wallet);
+    LOCK(cs_desc_man);
+    return DeriveDilithiumKeyAtIndex(index);
+}
 
-    if (HaveDilithiumKey(keyid)) {
-        return util::Error{_("Error: Failed to generate unique Dilithium key")};
+void DescriptorScriptPubKeyMan::LoadDilithiumNextIndex(int32_t index)
+{
+    AssertLockNotHeld(cs_desc_man);
+    CWallet& wallet = static_cast<CWallet&>(m_storage);
+    LOCK(wallet.cs_wallet);
+    LOCK(cs_desc_man);
+    m_dilithium_next_index = index;
+}
+
+util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKey()
+{
+    AssertLockNotHeld(cs_desc_man);
+    CWallet& wallet = static_cast<CWallet&>(m_storage);
+    LOCK(wallet.cs_wallet);
+
+    // The wallet lock serializes generation, imports and recovery across all
+    // managers. Hold this manager's lock only for derivation/index persistence
+    // and key storage. The wallet-wide lookup must run without a manager lock:
+    // otherwise receive and change generation acquire the managers in opposite
+    // orders and abort DEBUG_LOCKORDER builds.
+    while (true) {
+        CDilithiumKey key;
+        {
+            LOCK(cs_desc_man);
+            const int32_t index = m_dilithium_next_index;
+            if (index < 0) {
+                return util::Error{_("Error: Dilithium key index space exhausted")};
+            }
+            auto key_res = DeriveDilithiumKeyAtIndex(index);
+            if (!key_res) return util::Error{util::ErrorString(key_res)};
+            key = std::move(key_res.value());
+
+            WalletBatch batch(m_storage.GetDatabase());
+            m_dilithium_next_index = index + 1;
+            if (!batch.WriteDilithiumDescriptorIndex(GetID(), m_dilithium_next_index)) {
+                return util::Error{_("Error: Failed to persist Dilithium key index")};
+            }
+        }
+
+        const CDilithiumPubKey pubkey = key.GetPubKey();
+        const CKeyID keyid{pubkey.GetID()};
+        // Loaded key records can reside in a different manager. Skip every
+        // materialized key, including scan-aheads, without reissuing addresses.
+        if (m_storage.HaveDilithiumKeyAnywhere(keyid)) continue;
+
+        LOCK(cs_desc_man);
+        WalletBatch batch(m_storage.GetDatabase());
+        if (!AddDilithiumKeyWithDB(batch, key, keyid)) {
+            return util::Error{_("Error: Failed to store Dilithium key")};
+        }
+        return pubkey;
     }
-
-    WalletBatch batch(m_storage.GetDatabase());
-    if (!AddDilithiumKeyWithDB(batch, dilithium_key, keyid)) {
-        return util::Error{_("Error: Failed to store Dilithium key")};
-    }
-
-    m_wallet_descriptor.next_index++;
-    batch.WriteDescriptor(GetID(), m_wallet_descriptor);
-
-    return dilithium_pubkey;
 }
 
 util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const OutputType type)
@@ -2547,6 +2589,21 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
     // Returns true if this descriptor supports getting new addresses. Conditions where we may be unable to fetch them (e.g. locked) are caught later
     if (!CanGetAddresses()) {
         return util::Error{_("No addresses available")};
+    }
+    if (type == OutputType::DILITHIUM_LEGACY) {
+        {
+            LOCK(cs_desc_man);
+            assert(m_wallet_descriptor.descriptor->IsSingleType());
+            if (m_wallet_descriptor.descriptor->GetOutputType() != OutputType::LEGACY) {
+                return util::Error{_("Error: Descriptor type is not compatible with requested Dilithium address type")};
+            }
+        }
+        if (!LegacyDilithiumBase58PaymentsAllowed()) {
+            return util::Error{DilithiumLegacyDisabledError()};
+        }
+        auto pubkey = GenerateNewDilithiumKey();
+        if (!pubkey) return util::Error{util::ErrorString(pubkey)};
+        return CTxDestination{DilithiumPKHash(*pubkey)};
     }
     {
         LOCK(cs_desc_man);
@@ -2559,18 +2616,6 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
             return util::Error{_("Error: dilithium-bech32 is disabled because witness v0 keyhash programs are indistinguishable from ECDSA P2WPKH and are not spendable with Dilithium keys")};
         }
 
-        if (type == OutputType::DILITHIUM_LEGACY) {
-            if (*desc_addr_type != OutputType::LEGACY) {
-                return util::Error{_("Error: Descriptor type is not compatible with requested Dilithium address type")};
-            }
-            if (!LegacyDilithiumBase58PaymentsAllowed()) {
-                return util::Error{DilithiumLegacyDisabledError()};
-            }
-            auto pubkey = GenerateNewDilithiumKeyLocked();
-            if (!pubkey) return util::Error{util::ErrorString(pubkey)};
-            return CTxDestination{DilithiumPKHash(*pubkey)};
-        }
-        
         if (type != *desc_addr_type) {
             throw std::runtime_error(std::string(__func__) + ": Types are inconsistent. Stored type does not match type of newly generated address");
         }
@@ -2694,6 +2739,11 @@ bool DescriptorScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, Walle
 
 util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetReservedDestination(const OutputType type, bool internal, int64_t& index, CKeyPool& keypool)
 {
+    // This reservation uses the ECDSA descriptor index. Dilithium keys have
+    // their own non-returnable sequence and cannot use that keypool contract.
+    if (type == OutputType::DILITHIUM_LEGACY) {
+        return util::Error{_("Error: dilithium-legacy addresses cannot be reserved from the keypool")};
+    }
     LOCK(cs_desc_man);
     auto op_dest = GetNewDestination(type);
     index = m_wallet_descriptor.next_index - 1;
@@ -2992,11 +3042,22 @@ bool DescriptorScriptPubKeyMan::AddDilithiumKeyWithDB(WalletBatch& batch, const 
         }
 
         m_map_crypted_dilithium_keys[keyid] = make_pair(CPubKey(), crypted_secret);
-        return batch.WriteCryptedDilithiumKeyByID(keyid, crypted_secret, CKeyMetadata(GetTime()));
+        if (!batch.WriteCryptedDilithiumKeyByID(keyid, crypted_secret, CKeyMetadata(GetTime()))) {
+            // The index was already bumped. Leaving the key in memory makes
+            // HaveDilithiumKey true, so recoverdilithiumkeys in this session
+            // skips the store and still writes a P2MR row the reload cannot spend.
+            m_map_crypted_dilithium_keys.erase(keyid);
+            return false;
+        }
+        return true;
     } else {
         m_map_dilithium_keys[keyid] = key;
         const CPrivKey dilithium_privkey(key.begin(), key.end());
-        return batch.WriteDilithiumKeyByID(keyid, dilithium_privkey, CKeyMetadata(GetTime()));
+        if (!batch.WriteDilithiumKeyByID(keyid, dilithium_privkey, CKeyMetadata(GetTime()))) {
+            m_map_dilithium_keys.erase(keyid);
+            return false;
+        }
+        return true;
     }
 }
 
@@ -3038,6 +3099,9 @@ bool DescriptorScriptPubKeyMan::HaveDilithiumKey(const CKeyID& keyid) const
 
 bool DescriptorScriptPubKeyMan::AddDilithiumKeyPubKey(const CDilithiumKey& key)
 {
+    AssertLockNotHeld(cs_desc_man);
+    CWallet& wallet = static_cast<CWallet&>(m_storage);
+    LOCK(wallet.cs_wallet);
     LOCK(cs_desc_man);
     WalletBatch batch(m_storage.GetDatabase());
     CDilithiumPubKey dilithium_pubkey = key.GetPubKey();
@@ -3065,6 +3129,9 @@ void DescriptorScriptPubKeyMan::UpdateTimeFirstKey(int64_t nCreateTime)
 
 bool DescriptorScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& key)
 {
+    AssertLockNotHeld(cs_desc_man);
+    CWallet& wallet = static_cast<CWallet&>(m_storage);
+    LOCK(wallet.cs_wallet);
     LOCK(cs_desc_man);
     // For descriptor wallets, we just store the key in memory
     // The key will be persisted when the wallet is saved
@@ -3076,6 +3143,9 @@ bool DescriptorScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& key)
 
 bool DescriptorScriptPubKeyMan::LoadCryptedDilithiumKey(const CKeyID& keyid, const std::vector<unsigned char>& vchCryptedSecret, bool checksum_valid)
 {
+    AssertLockNotHeld(cs_desc_man);
+    CWallet& wallet = static_cast<CWallet&>(m_storage);
+    LOCK(wallet.cs_wallet);
     LOCK(cs_desc_man);
     if (!checksum_valid) {
         m_decryption_thoroughly_checked = false;
