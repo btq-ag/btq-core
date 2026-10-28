@@ -158,7 +158,7 @@ bool WalletBatch::WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey)
 }
 
 // Dilithium keys are stored by CKeyID. Wallet load still reads these records.
-bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata& keyMeta)
+bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const CPrivKey& vchPrivKey, const CKeyMetadata& keyMeta)
 {
     // Create a unique key for this Dilithium key using the key ID
     const auto key = std::make_pair(DBKeys::DILITHIUM_KEY, keyID);
@@ -169,7 +169,7 @@ bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<u
     }
 
     // hash key data to accelerate wallet load
-    std::vector<unsigned char> vchKey;
+    CPrivKey vchKey;
     vchKey.reserve(keyID.size() + vchPrivKey.size());
     vchKey.insert(vchKey.end(), keyID.begin(), keyID.end());
     vchKey.insert(vchKey.end(), vchPrivKey.begin(), vchPrivKey.end());
@@ -510,7 +510,7 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         CKeyID keyID;
         ssKey >> keyID;
         
-        std::vector<unsigned char> vchDilithiumKey;
+        CPrivKey vchDilithiumKey;
         ssValue >> vchDilithiumKey;
 
         // WriteDilithiumKeyByID always appends Hash(keyID || key). A short

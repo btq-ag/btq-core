@@ -4,6 +4,7 @@
 
 #include <crypto/sha256.h>
 #include <crypto/common.h>
+#include <support/cleanse.h>
 
 #include <assert.h>
 #include <string.h>
@@ -732,10 +733,13 @@ void CSHA256::Finalize(unsigned char hash[OUTPUT_SIZE])
     WriteBE32(hash + 20, s[5]);
     WriteBE32(hash + 24, s[6]);
     WriteBE32(hash + 28, s[7]);
+    // Digest is already in hash. buf still holds the last block.
+    memory_cleanse(buf, sizeof(buf));
 }
 
 CSHA256& CSHA256::Reset()
 {
+    memory_cleanse(buf, sizeof(buf));
     bytes = 0;
     sha256::Initialize(s);
     return *this;

@@ -218,7 +218,7 @@ BOOST_AUTO_TEST_CASE(dilithium_serialization)
     BOOST_REQUIRE(key1.IsValid());
     
     // Serialize the key
-    std::vector<unsigned char> serialized = key1.Serialize();
+    CPrivKey serialized = key1.Serialize();
     BOOST_CHECK(serialized.size() == CDilithiumKey::GetKeySize());
     
     // Load into a new key
@@ -246,7 +246,7 @@ BOOST_AUTO_TEST_CASE(dilithium_load_and_set_reject_mismatched_stored_pubkey)
     BOOST_REQUIRE(key2.IsValid());
     BOOST_REQUIRE(key1.GetPubKey() != key2.GetPubKey());
 
-    std::vector<unsigned char> malformed = key1.Serialize();
+    CPrivKey malformed = key1.Serialize();
     BOOST_REQUIRE_EQUAL(malformed.size(), CDilithiumKey::GetKeySize());
     const CDilithiumPubKey wrong_pubkey = key2.GetPubKey();
     std::copy(wrong_pubkey.begin(), wrong_pubkey.end(), malformed.begin() + DilithiumConstants::SECRET_KEY_SIZE);
@@ -352,7 +352,7 @@ BOOST_AUTO_TEST_CASE(dilithium_key_equality_last_byte_differs)
 {
     CDilithiumKey key1;
     BOOST_REQUIRE(key1.MakeNewKey());
-    std::vector<unsigned char> bytes = key1.Serialize();
+    CPrivKey bytes = key1.Serialize();
     BOOST_REQUIRE_EQUAL(bytes.size(), CDilithiumKey::GetKeySize());
 
     CDilithiumKey key_same;
@@ -362,7 +362,7 @@ BOOST_AUTO_TEST_CASE(dilithium_key_equality_last_byte_differs)
     // Flip the final secret-key byte. Load/Set may reject inconsistent
     // key material via self-checks, so compare via TimingSafeEqual on the
     // serialized buffers and via operator== only when both keys remain valid.
-    std::vector<unsigned char> mutated = bytes;
+    CPrivKey mutated = bytes;
     mutated.back() ^= 0x01;
     BOOST_CHECK(!dilithium_internal::TimingSafeEqual(bytes.data(), mutated.data(), bytes.size()));
 
