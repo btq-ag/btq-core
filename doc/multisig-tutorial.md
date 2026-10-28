@@ -154,7 +154,7 @@ The `getbalances` RPC may be used to check the balance. Coins with `trusted` sta
 
 Unlike singlesig wallets, multisig wallets cannot create and sign transactions directly because they require the signatures of the co-signers. Instead they create a Partially Signed BTQ Transaction (PSBT).
 
-PSBT is a data format that allows wallets and other tools to exchange information about a BTQ transaction and the signatures necessary to complete it. [[source](https://btqops.org/en/topics/psbt/)]
+PSBT is a data format that allows wallets and other tools to exchange information about a BTQ transaction and the signatures necessary to complete it. [[source](https://bitcoinops.org/en/topics/psbt/)]
 
 The current PSBT version (v0) is defined in [BIP 174](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki).
 

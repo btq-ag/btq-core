@@ -37,7 +37,7 @@ Some of them might no longer be applicable. So if you are interested, but
 unsure, you might want to leave a comment on the issue first.
 
 You may also participate in the weekly
-[BTQ Core PR Review Club](https://btqcore.reviews/) meeting.
+[BTQ Core PR Review Club](https://bitcoincore.reviews/) meeting.
 
 ### Good First Issue Label
 

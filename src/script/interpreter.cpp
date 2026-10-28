@@ -220,7 +220,7 @@ bool static IsLowDERSignature(const valtype &vchSig, ScriptError* serror) {
     if (!IsValidSignatureEncoding(vchSig)) {
         return set_error(serror, SCRIPT_ERR_SIG_DER);
     }
-    // https://btq.stackexchange.com/a/12556:
+    // https://bitcoin.stackexchange.com/a/12556:
     //     Also note that inside transaction signatures, an extra hashtype byte
     //     follows the actual signature data.
     std::vector<unsigned char> vchSigCopy(vchSig.begin(), vchSig.begin() + vchSig.size() - 1);
