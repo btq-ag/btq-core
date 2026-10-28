@@ -50,7 +50,7 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     // public key + an ECDSA signature). For Segwit v1 Taproot outputs the minimum
     // satisfaction is lower (a single BIP340 signature) but this computation was
     // kept to not further reduce the dust level.
-    // See discussion in https://github.com/btq/btq/pull/22779 for details.
+    // See discussion in https://github.com/bitcoin/bitcoin/pull/22779 for details.
     if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
         // sum the sizes of the parts of a transaction input
         // with witness discount applied to the script size (1/WITNESS_SCALE_FACTOR weight).

@@ -32,7 +32,7 @@ Drag BTQ Core to your applications folder, and then run BTQ Core.
 for help and more information.
 * Ask for help on [BTQ StackExchange](https://btq.stackexchange.com).
 * Ask for help on #btq on Libera Chat. If you don't have an IRC client, you can use [web.libera.chat](https://web.libera.chat/#btq).
-* Ask for help on the [BTQTalk](https://btqtalk.org/) forums, in the [Technical Support board](https://btqtalk.org/index.php?board=4.0).
+* Ask for help on the [BTQTalk](https://bitcointalk.org/) forums, in the [Technical Support board](https://bitcointalk.org/index.php?board=4.0).
 
 Building
 ---------------------
@@ -66,7 +66,7 @@ The BTQ repo's [root README](/README.md) contains relevant information on the de
 - [Protocol Notes](protocol/)
 
 ### Resources
-* Discuss on the [BTQTalk](https://btqtalk.org/) forums, in the [Development & Technical Discussion board](https://btqtalk.org/index.php?board=6.0).
+* Discuss on the [BTQTalk](https://bitcointalk.org/) forums, in the [Development & Technical Discussion board](https://bitcointalk.org/index.php?board=6.0).
 * Discuss project-specific development on #btq-core-dev on Libera Chat. If you don't have an IRC client, you can use [web.libera.chat](https://web.libera.chat/#btq-core-dev).
 
 ### Miscellaneous

@@ -75,4 +75,4 @@ The interface is defined in the C header `btqconsensus.h` located in `src/script
 - [node-libbtqconsensus](https://github.com/bitpay/node-libbtqconsensus) (Node.js Bindings)
 - [java-libbtqconsensus](https://github.com/dexX7/java-libbtqconsensus) (Java Bindings)
 - [btqconsensus-php](https://github.com/Bit-Wasp/btqconsensus-php) (PHP Bindings)
-- [rust-btqconsensus](https://github.com/rust-btq/rust-btqconsensus) (Rust Bindings)
+- [rust-bitcoinconsensus](https://github.com/rust-bitcoin/rust-bitcoinconsensus) (Rust Bindings)

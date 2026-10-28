@@ -2944,7 +2944,7 @@ void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
  *   the block time.
  *
  * For more information see CWalletTx::nTimeSmart,
- * https://btqtalk.org/?topic=54527, or
+ * https://bitcointalk.org/?topic=54527, or
  * https://github.com/bitcoin/bitcoin/pull/1393.
  */
 unsigned int CWallet::ComputeTimeSmart(const CWalletTx& wtx, bool rescanning_old_block) const
