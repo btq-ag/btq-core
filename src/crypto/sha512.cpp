@@ -1,10 +1,11 @@
-// Copyright (c) 2014-2022 The BTQ Core developers
+// Copyright (c) 2014-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <crypto/sha512.h>
 
 #include <crypto/common.h>
+#include <support/cleanse.h>
 
 #include <string.h>
 
@@ -197,10 +198,13 @@ void CSHA512::Finalize(unsigned char hash[OUTPUT_SIZE])
     WriteBE64(hash + 40, s[5]);
     WriteBE64(hash + 48, s[6]);
     WriteBE64(hash + 56, s[7]);
+    // Digest is already in hash. buf still holds the last block.
+    memory_cleanse(buf, sizeof(buf));
 }
 
 CSHA512& CSHA512::Reset()
 {
+    memory_cleanse(buf, sizeof(buf));
     bytes = 0;
     sha512::Initialize(s);
     return *this;

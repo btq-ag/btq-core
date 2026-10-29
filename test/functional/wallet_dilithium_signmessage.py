@@ -36,7 +36,8 @@ class WalletDilithiumSignMessageTest(BTQTestFramework):
         wallet = node.get_wallet_rpc("signer")
         self.generatetoaddress(node, 101, wallet.getnewaddress())
 
-        address = wallet.getnewdilithiumaddress()["address"]
+        first = wallet.getnewdilithiumaddress()
+        address = first["address"]
         other_address = wallet.getnewdilithiumaddress()["address"]
         message = "prove you own this address"
 
@@ -96,6 +97,104 @@ class WalletDilithiumSignMessageTest(BTQTestFramework):
         assert_raises_rpc_error(
             -5, "Invalid signature encoding",
             wallet.verifydilithiumsignature, message, address, "not base64 $$$",
+        )
+
+        self.log.info("A verifier without the signer's wallet checks the proof with the public key")
+        created = wallet.getnewdilithiumaddress()
+        pubkey = wallet.getdilithiumpubkey(created["p2mr_id"])["pubkeys"][0]["pubkey"]
+        other_pubkey = wallet.getdilithiumpubkey(wallet.getnewdilithiumaddress()["p2mr_id"])["pubkeys"][0]["pubkey"]
+        proof = wallet.signmessagewithdilithium(created["address"], message)
+        node.createwallet(wallet_name="verifier", descriptors=True)
+        verifier = node.get_wallet_rpc("verifier")
+        assert verifier.verifymessagewithdilithium(created["address"], proof, message, pubkey)
+        assert verifier.verifydilithiumsignature(message, created["address"], proof, pubkey)
+        assert not verifier.verifymessagewithdilithium(created["address"], proof, message + "!", pubkey)
+        assert not verifier.verifymessagewithdilithium(created["address"], signature, message, pubkey)
+        assert_raises_rpc_error(
+            -5, "Pass the signer's Dilithium public key",
+            verifier.verifymessagewithdilithium, created["address"], proof, message,
+        )
+        assert_raises_rpc_error(
+            -5, "Dilithium public key does not match the address",
+            verifier.verifymessagewithdilithium, created["address"], proof, message, other_pubkey,
+        )
+        assert_raises_rpc_error(
+            -5, "pubkey must be a 1312-byte Dilithium public key in hex",
+            verifier.verifymessagewithdilithium, created["address"], proof, message, pubkey[:-2],
+        )
+        assert_raises_rpc_error(
+            -5, "Dilithium public key does not match the address",
+            verifier.verifydilithiumsignature, message, created["address"], proof, other_pubkey,
+        )
+        assert verifier.verifymessagewithdilithium(address=created["address"], signature=proof, message=message, pubkey=pubkey)
+        assert verifier.verifymessagewithdilithium(created["address"].upper(), proof, message, pubkey.upper())
+        # An explicit null pubkey takes the wallet path.
+        assert wallet.verifymessagewithdilithium(address=created["address"], signature=proof, message=message, pubkey=None)
+
+        self.log.info("A transaction signature is not a message proof, with or without its sighash byte")
+        spent_pubkey = wallet.getdilithiumpubkey(first["p2mr_id"])["pubkeys"][0]["pubkey"]
+        for tx_sig in (real_sig, real_sig[:-1]):
+            assert not verifier.verifymessagewithdilithium(address, base64.b64encode(tx_sig).decode(), message, spent_pubkey)
+
+        self.log.info("The key's signature proves no address that has another spend path")
+        leaf = wallet.getp2mrinfo(created["p2mr_id"])["tree"][0]
+        escape = wallet.getnewp2mraddress([
+            {"depth": 1, "leaf_version": leaf["leaf_version"], "script": leaf["script"]},
+            {"depth": 1, "leaf_version": leaf["leaf_version"], "script": "51"},
+        ], "escape", True)
+        # The same key behind a 1-of-1 threshold leaf, and its own leaf with
+        # the key pushed by OP_PUSHDATA4, are other trees as well.
+        one_of_one = wallet.createdilithiummultisig(1, [pubkey], "one-of-one")
+        pushdata4 = wallet.getnewp2mraddress([
+            {"depth": 0, "leaf_version": leaf["leaf_version"], "script": "4e" + (1312).to_bytes(4, "little").hex() + pubkey + "bb"},
+        ], "pushdata4", True)
+        for other_tree in (escape["address"], one_of_one["address"], pushdata4["address"]):
+            assert_raises_rpc_error(
+                -5, "Dilithium public key does not match the address",
+                verifier.verifymessagewithdilithium, other_tree, proof, message, pubkey,
+            )
+        # The signer's wallet holds the key and the tree, and still says no.
+        for other_tree in (escape["address"], one_of_one["address"]):
+            assert_raises_rpc_error(
+                -5, "not a single-key Dilithium P2MR address",
+                wallet.verifymessagewithdilithium, other_tree, proof, message,
+            )
+            assert_raises_rpc_error(
+                -5, "not a single-key Dilithium P2MR address",
+                wallet.signmessagewithdilithium, other_tree, message,
+            )
+
+        self.log.info("A tracked address and a locked wallet both verify with the pubkey")
+        # signer holds the key. The pubkey argument does not load it.
+        assert wallet.verifymessagewithdilithium(created["address"], proof, message, pubkey)
+        assert_raises_rpc_error(
+            -5, "Dilithium public key does not match the address",
+            wallet.verifymessagewithdilithium, created["address"], proof, message, other_pubkey,
+        )
+        assert_raises_rpc_error(
+            -5, "pubkey must be a 1312-byte Dilithium public key in hex",
+            wallet.verifymessagewithdilithium, created["address"], proof, message, "zz",
+        )
+        wallet.encryptwallet("pass")
+        assert wallet.verifymessagewithdilithium(created["address"], proof, message, pubkey)
+        assert not wallet.verifymessagewithdilithium(created["address"], proof, message + "!", pubkey)
+        assert_raises_rpc_error(
+            -13, "Please enter the wallet passphrase with walletpassphrase first",
+            wallet.signmessagewithdilithium, created["address"], message,
+        )
+
+        self.log.info("The public key path needs no wallet selected or loaded")
+        # Several wallets are loaded, so a call without a wallet endpoint names none.
+        assert len(node.listwallets()) > 1
+        assert node.verifymessagewithdilithium(created["address"], proof, message, pubkey)
+        for name in node.listwallets():
+            node.unloadwallet(name)
+        assert_equal(node.listwallets(), [])
+        assert node.verifymessagewithdilithium(created["address"], proof, message, pubkey)
+        assert not node.verifymessagewithdilithium(created["address"], proof, message + "!", pubkey)
+        assert_raises_rpc_error(
+            -18, "No wallet is loaded",
+            node.verifymessagewithdilithium, created["address"], proof, message,
         )
 
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -101,8 +101,7 @@ bool static IsValidDilithiumPubKey(const valtype &vchPubKey) {
     if (vchPubKey.size() != CDilithiumPubKey::SIZE) {
         return false;
     }
-    // Size + structural checks (nonzero rho and nonzero t1). Used by
-    // OP_CHECKSIGDILITHIUM* (via EvalChecksigDilithium) and OP_DILITHIUM_PUBKEY.
+    // Size + structural checks (nonzero rho and nonzero t1).
     return CDilithiumPubKey(vchPubKey).IsFullyValid();
 }
 
@@ -147,7 +146,7 @@ static bool EvalChecksigDilithium(const valtype& sig, const valtype& pubkey, CSc
  * excessively padded (do not start with a 0 byte, unless an otherwise negative number follows,
  * in which case a single 0 byte is necessary and even required).
  *
- * See https://btqtalk.org/index.php?topic=8392.msg127623#msg127623
+ * See https://bitcointalk.org/index.php?topic=8392.msg127623#msg127623
  *
  * This function is consensus-critical since BIP66.
  */
@@ -220,7 +219,7 @@ bool static IsLowDERSignature(const valtype &vchSig, ScriptError* serror) {
     if (!IsValidSignatureEncoding(vchSig)) {
         return set_error(serror, SCRIPT_ERR_SIG_DER);
     }
-    // https://btq.stackexchange.com/a/12556:
+    // https://bitcoin.stackexchange.com/a/12556:
     //     Also note that inside transaction signatures, an extra hashtype byte
     //     follows the actual signature data.
     std::vector<unsigned char> vchSigCopy(vchSig.begin(), vchSig.begin() + vchSig.size() - 1);
@@ -1404,33 +1403,6 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 }
                 break;
 
-                case OP_DILITHIUM_PUBKEY:
-                {
-                    // BTQ-AUDIT-048: once DEPLOYMENT_DILITHIUM_P2MR activates, Dilithium opcodes
-                    // are consensus-valid ONLY in P2MR tapscript (witness v2), so they cannot
-                    // retroactively change pre-existing script semantics. Before activation,
-                    // preserve the historical rule (rejected in BIP341 tapscript only) so
-                    // pre-fork blocks keep validating.
-                    if (flags & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY) {
-                        if (sigversion != SigVersion::P2MR_TAPSCRIPT) return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
-                    } else if (sigversion == SigVersion::TAPSCRIPT) {
-                        return set_error(serror, SCRIPT_ERR_TAPSCRIPT_DILITHIUM);
-                    }
-                    if (!(flags & SCRIPT_VERIFY_DILITHIUM)) {
-                        return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_PUBKEYTYPE);
-                    }
-
-                    // (pubkey -- bool)
-                    if (stack.size() < 1)
-                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
-
-                    valtype& vchPubKey = stacktop(-1);
-                    bool fSuccess = IsValidDilithiumPubKey(vchPubKey);
-                    popstack(stack);
-                    stack.push_back(fSuccess ? vchTrue : vchFalse);
-                }
-                break;
-
                 default:
                     return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
             }
@@ -2475,23 +2447,9 @@ size_t static WitnessSigOps(int witversion, const std::vector<unsigned char>& wi
         }
     }
 
-    if (witversion == 2 && witprogram.size() == WITNESS_V2_P2MR_SIZE && witness.stack.size() >= 2) {
-        // P2MR witness: [args...] [script] [control_block] [optional annex]
-        // Mirror VerifyWitnessProgram's annex / control / script indexing, then
-        // reuse GetSigOpCount(true) so Dilithium (and any ECDSA) opcodes get the
-        // same weighting as legacy / P2WSH — including accurate multisig key counts.
-        const size_t last = witness.stack.size() - 1;
-        const bool has_annex = !witness.stack[last].empty() && witness.stack[last][0] == ANNEX_TAG;
-        const size_t control_idx = has_annex ? last - 1 : last;
-        if (control_idx < 1) return 0;
-        const size_t script_idx = control_idx - 1;
-
-        CScript subscript(witness.stack[script_idx].begin(), witness.stack[script_idx].end());
-        // A P2MR leaf has no size limit, so ~4.3 MB of bare
-        // OP_CHECKMULTISIGDILITHIUM (1000 each) wraps an unsigned int count.
-        return subscript.GetSigOpCount(true, /*saturate=*/(flags & SCRIPT_VERIFY_DILITHIUM_LIMITS) != 0);
-    }
-
+    // v1 tapscript and v2 P2MR contribute 0 sigops. GetSigOpCount ignores
+    // OP_CHECKSIGADD and charges every key in a Dilithium threshold leaf.
+    // m_validation_weight_left bounds the signature checks.
     // Future flags may be implemented here.
     return 0;
 }

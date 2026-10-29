@@ -37,7 +37,7 @@ Some of them might no longer be applicable. So if you are interested, but
 unsure, you might want to leave a comment on the issue first.
 
 You may also participate in the weekly
-[BTQ Core PR Review Club](https://btqcore.reviews/) meeting.
+[BTQ Core PR Review Club](https://bitcoincore.reviews/) meeting.
 
 ### Good First Issue Label
 
@@ -57,16 +57,16 @@ Communication Channels
 
 Most communication about BTQ Core development happens on IRC, in the
 `#btq-core-dev` channel on Libera Chat. The easiest way to participate on IRC is
-with the web client, [web.libera.chat](https://web.libera.chat/#btq-core-dev). Chat
+with the web client, [web.libera.chat](https://web.libera.chat/#bitcoin-core-dev). Chat
 history logs can be found
-on [https://www.erisian.com.au/btq-core-dev/](https://www.erisian.com.au/btq-core-dev/)
-and [https://gnusha.org/btq-core-dev/](https://gnusha.org/btq-core-dev/).
+on [https://www.erisian.com.au/bitcoin-core-dev/](https://www.erisian.com.au/bitcoin-core-dev/)
+and [https://gnusha.org/bitcoin-core-dev/](https://gnusha.org/bitcoin-core-dev/).
 
 Discussion about codebase improvements happens in GitHub issues and pull
 requests.
 
 The developer
-[mailing list](https://lists.linuxfoundation.org/mailman/listinfo/btq-dev)
+[mailing list](https://lists.linuxfoundation.org/mailman/listinfo/bitcoin-dev)
 should be used to discuss complicated or controversial consensus or P2P protocol changes before working on
 a patch set.
 

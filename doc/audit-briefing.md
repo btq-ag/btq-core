@@ -75,11 +75,11 @@ from a constant that moved sitting next to one that did not.
 | --- | --- | --- | --- |
 | `MAX_SCRIPT_ELEMENT_SIZE` | 520 | 15,000 | `script/script.h` |
 | `MAX_SCRIPT_SIZE` | 10,000 | 100,000 | `script/script.h` |
-| `MAX_OPCODE` | `OP_NOP10` (0xb9) | `OP_DILITHIUM_PUBKEY` (0xbf) | `script/script.h` |
+| `MAX_OPCODE` | `OP_NOP10` (0xb9) | `OP_CHECKMULTISIGDILITHIUMVERIFY` (0xbe) | `script/script.h` |
 | `MAX_OPS_PER_SCRIPT` | 201 | 201 (unchanged) | `script/script.h` |
 | `MAX_STACK_SIZE` | 1,000 | 1,000 (unchanged) | `script/script.h` |
 
-Dilithium reclaims BIP342 OP_SUCCESS bytes `0xbb`–`0xbf` (`IsOpSuccess` in `src/script/script.cpp`). Upstream `script_assets_test` cases are skipped when a GetOp walk of the success or failure executed scripts finds those opcodes, or when the comment starts with `tapscript/inputmaxlimit` / `tapscript/pushmaxlimit` (Bitcoin’s 520-byte element limit; BTQ allows 15000). This is intentional and there are no unexplained corpus divergences. The JSON is fetched from `bitcoin-core/qa-assets` at the commit in `contrib/qa-assets.pin`, not `main`. `btq-ag/qa-assets` is TBD. Weekly pin bumps are `.github/workflows/qa-assets-bump.yml`.
+Dilithium opcodes are `0xbb`-`0xbe`. `0xbf` is reserved: it is not OP_SUCCESS and execution fails (`IsOpSuccess` in `src/script/script.cpp` still starts the upper range at `0xc0`). Upstream `script_assets_test` cases are skipped when a GetOp walk of the success or failure executed scripts finds `0xbb`-`0xbf`, or when the comment starts with `tapscript/inputmaxlimit` / `tapscript/pushmaxlimit` (Bitcoin's 520-byte element limit; BTQ allows 15000). This is intentional and there are no unexplained corpus divergences. The JSON is fetched from `bitcoin-core/qa-assets` at the commit in `contrib/qa-assets.pin`, not `main`. `btq-ag/qa-assets` is TBD. Weekly pin bumps are `.github/workflows/qa-assets-bump.yml`.
 
 ### Mempool policy
 

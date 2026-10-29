@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -317,7 +317,15 @@ public:
                 m_last_range_ends.emplace(desc_spkm->GetID(), desc_spkm->GetEndRange());
             }
         }
-        AddP2MRScriptPubKeys();
+        // P2MR destinations tracked through wallet metadata (imported or
+        // recovered Dilithium trees) belong to no descriptor, so without
+        // them the filter would skip blocks that pay only such addresses
+        // and the rescan would silently miss their transactions.
+        AddP2MRScripts();
+        // Not-yet-stored Dilithium scripts are in neither the descriptor cache
+        // nor P2MR metadata. Without them MatchesBlock skips the block and the
+        // rescan never sees the output.
+        AddDilithiumLookahead();
     }
 
     void UpdateIfNeeded()
@@ -332,7 +340,12 @@ public:
                 m_last_range_ends.at(desc_spkm->GetID()) = current_range_end;
             }
         }
-        AddP2MRScriptPubKeys();
+        // P2MR destinations can also be added while a scan is in progress
+        // (e.g. recoverdilithiumkeys from another thread).
+        if (WITH_LOCK(m_wallet.cs_wallet, return m_wallet.ListP2MRMetadata().size()) != m_p2mr_dest_count) {
+            AddP2MRScripts();
+        }
+        AddDilithiumLookahead();
     }
 
     std::optional<bool> MatchesBlock(const uint256& block_hash) const
@@ -351,19 +364,36 @@ private:
     std::map<uint256, int32_t> m_last_range_ends;
     GCSFilter::ElementSet m_filter_set;
 
-    void AddP2MRScriptPubKeys()
+    /** Number of P2MR destinations already folded into the filter. */
+    size_t m_p2mr_dest_count{0};
+
+    /** First Dilithium index not yet inserted, per LEGACY descriptor id.
+     *  UpdateIfNeeded extends this when the counter moves. It does not
+     *  derive the indexes already in the set. */
+    std::map<uint256, int32_t> m_dilithium_filled_end;
+
+    void AddDilithiumLookahead()
     {
-        LOCK(m_wallet.cs_wallet);
-        for (const auto& record : m_wallet.ListP2MRMetadata()) {
-            const CTxDestination& dest = std::get<0>(record);
-            const CScript script_pub_key = GetScriptForDestination(dest);
-            m_filter_set.emplace(script_pub_key.begin(), script_pub_key.end());
+        for (const CScript& script : m_wallet.FetchDilithiumRescanScripts(m_dilithium_filled_end)) {
+            m_filter_set.emplace(script.begin(), script.end());
         }
     }
 
     void AddScriptPubKeys(const DescriptorScriptPubKeyMan* desc_spkm, int32_t last_range_end = 0)
     {
         for (const auto& script_pub_key : desc_spkm->GetScriptPubKeys(last_range_end)) {
+            m_filter_set.emplace(script_pub_key.begin(), script_pub_key.end());
+        }
+    }
+
+    void AddP2MRScripts()
+    {
+        LOCK(m_wallet.cs_wallet);
+        // This tree stores P2MR metadata in the address book, not a side map.
+        const auto records = m_wallet.ListP2MRMetadata();
+        m_p2mr_dest_count = records.size();
+        for (const auto& record : records) {
+            const CScript script_pub_key = GetScriptForDestination(std::get<0>(record));
             m_filter_set.emplace(script_pub_key.begin(), script_pub_key.end());
         }
     }
@@ -1252,6 +1282,48 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, const SyncTxS
 
         bool fExisted = mapWallet.count(tx.GetHash()) != 0;
         if (fExisted && !fUpdate) return false;
+
+        // Seed-restore outputs are not IsMine yet: a used single-leaf P2MR or
+        // Dilithium pubkeyhash is not in the descriptor cache, so the check
+        // below would drop the tx and the next Dilithium key would reissue
+        // index 0. Only an old-block rescan imports those keys. A mempool
+        // transaction does not.
+        if (rescanning_old_block) {
+            bool stored_dilithium_key = false;
+            for (const CTxOut& txout : tx.vout) {
+                for (bool internal : {false, true}) {
+                    auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(GetScriptPubKeyMan(OutputType::LEGACY, internal));
+                    if (!desc) continue;
+                    const std::optional<int32_t> match = desc->FindDilithiumIndexForScript(txout.scriptPubKey);
+                    if (!match) continue;
+                    const int32_t range_begin = desc->GetDilithiumNextIndex();
+                    if (*match < range_begin) continue;
+                    bool recovered = true;
+                    for (int32_t index = range_begin; index <= *match; ++index) {
+                        const auto key = desc->GetDilithiumKeyForIndex(index);
+                        if (!key) {
+                            WalletLogPrintf("%s: Dilithium restore stopped at index %d\n", __func__, index);
+                            recovered = false;
+                            break;
+                        }
+                        // Change stays out of the address book, or IsChange treats it as receive.
+                        const auto created = RecoverDilithiumKeyAsP2MR(*this, *desc, *key, /*add_to_address_book=*/!internal);
+                        if (!created) {
+                            WalletLogPrintf("%s: Dilithium restore of index %d failed: %s\n", __func__, index, util::ErrorString(created).original);
+                            recovered = false;
+                            break;
+                        }
+                        stored_dilithium_key = true;
+                    }
+                    // Locked, missing descriptor key, or a failed store: leave the counter.
+                    // Keys already written are skipped the next time this script is seen.
+                    if (!recovered) continue;
+                    desc->CommitDilithiumNextIndex(*match + 1);
+                }
+            }
+            if (stored_dilithium_key) m_ismine_cache.clear();
+        }
+
         if (fExisted || IsMine(tx) || IsFromMe(tx))
         {
             /* Check if any keys in the wallet keypool that were supposed to be unused
@@ -1262,7 +1334,8 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, const SyncTxS
 
             // loop though all outputs
             for (const CTxOut& txout: tx.vout) {
-                for (const auto& spk_man : GetScriptPubKeyMans(txout.scriptPubKey)) {
+                std::set<ScriptPubKeyMan*> spk_mans = GetScriptPubKeyMans(txout.scriptPubKey);
+                for (const auto& spk_man : spk_mans) {
                     auto destinations = spk_man->MarkUnusedAddresses(txout.scriptPubKey);
                     // Marking a used key can derive more keys from an inactive HD
                     // seed. Previously unknown scripts may now belong to us.
@@ -1714,6 +1787,17 @@ void CWallet::UnsetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
     m_wallet_flags &= ~flag;
     if (!batch.WriteWalletFlags(m_wallet_flags))
         throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
+}
+
+void CWallet::SetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
+{
+    LOCK(cs_wallet);
+    // Disk first. Setting the in-memory bit before a failed write would make
+    // guards like SetP2MRMetadata's IsWalletFlagSet check pass for the rest
+    // of the session while the on-disk wallet never got the flag.
+    if (!batch.WriteWalletFlags(m_wallet_flags | flag))
+        throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
+    m_wallet_flags |= flag;
 }
 
 void CWallet::UnsetBlankWalletFlag(WalletBatch& batch)
@@ -2324,6 +2408,24 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
         }
     }
 
+    // Outputs paying a tracked P2MR destination: record the script tree and
+    // merkle root so the receiving side can store the spend metadata it needs
+    // (Quarks F2.10). Like the input pass above, these scripts are owned via
+    // wallet metadata rather than a ScriptPubKeyMan, so the spk_man loop never
+    // fills them.
+    for (unsigned int i = 0; i < psbtx.tx->vout.size(); ++i) {
+        const auto entry{GetP2MRByScript(*this, psbtx.tx->vout[i].scriptPubKey)};
+        if (!entry || !std::holds_alternative<WitnessV2P2MR>(entry->dest)) continue;
+        auto builder_res = BuildP2MRTreeChecked(entry->tree);
+        if (!builder_res) continue;
+        // Only the tree is wanted on an output; hand UpdatePSBTOutput a
+        // provider that holds nothing else, instead of collecting (and
+        // decrypting) every key behind the tree just to hide it again.
+        FlatSigningProvider tree_provider;
+        tree_provider.p2mr_trees[std::get<WitnessV2P2MR>(entry->dest)] = std::move(*builder_res);
+        UpdatePSBTOutput(tree_provider, psbtx, i);
+    }
+
     RemoveUnnecessaryTransactions(psbtx, sighash_type);
 
     // Complete if every input is now signed
@@ -2348,8 +2450,10 @@ SigningResult CWallet::SignMessage(const std::string& message, const PKHash& pkh
     return SigningResult::PRIVATE_KEY_NOT_AVAILABLE;
 }
 
-OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& change_type, const std::vector<CRecipient>& vecSend) const
+OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& change_type, const std::vector<CRecipient>& vecSend, const CCoinControl* coin_control) const
 {
+    AssertLockHeld(cs_wallet);
+
     // If -changetype is specified, always use that change type.
     if (change_type) {
         return *change_type;
@@ -2373,6 +2477,30 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
         } else if (std::get_if<WitnessV2P2MR>(&recipient.dest) ||
                    std::get_if<DilithiumPKHash>(&recipient.dest)) {
             any_quantum_safe = true;
+        }
+    }
+
+    // Change follows the inputs too. Spending a P2MR UTXO to a classical
+    // recipient must not move the remainder onto an ECDSA script. Only
+    // preselected inputs are visible here; automatic selection has not run.
+    // CreateTransactionInternal swaps the change script after selection.
+    if (coin_control && !any_quantum_safe) {
+        for (const COutPoint& outpoint : coin_control->ListSelected()) {
+            CTxOut prevout;
+            if (const CWalletTx* wtx = GetWalletTx(outpoint.hash); wtx && outpoint.n < wtx->tx->vout.size()) {
+                prevout = wtx->tx->vout[outpoint.n];
+            } else if (auto ext = coin_control->GetExternalOutput(outpoint)) {
+                prevout = *ext;
+            } else {
+                continue;
+            }
+            CTxDestination input_dest;
+            if (ExtractDestination(prevout.scriptPubKey, input_dest) &&
+                (std::holds_alternative<WitnessV2P2MR>(input_dest) ||
+                 std::holds_alternative<DilithiumPKHash>(input_dest))) {
+                any_quantum_safe = true;
+                break;
+            }
         }
     }
 
@@ -2737,9 +2865,10 @@ std::set<std::string> CWallet::ListAddrBookLabels(const std::optional<AddressPur
 }
 
 util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool internal)
+    EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)
 {
-    // Not an EXCLUSIVE_LOCKS_REQUIRED annotation: CWallet is incomplete where
-    // ReserveDestination is declared, so pwallet->cs_wallet cannot be named there.
+    // CWallet is incomplete where ReserveDestination is declared, so the
+    // requirement is on this definition. Callers already hold cs_wallet.
     AssertLockHeld(pwallet->cs_wallet);
     if (type == OutputType::P2MR) {
         // P2MR destinations are not keypool-backed: each is a freshly derived
@@ -2748,7 +2877,8 @@ util::Result<CTxDestination> ReserveDestination::GetReservedDestination(bool int
         // ReturnDestination() are no-ops for this type.
         if (!IsValidDestination(address)) {
             auto created = CreateDilithiumP2MRReceive(*pwallet, /*label=*/"",
-                                                      /*add_to_address_book=*/!internal);
+                                                      /*add_to_address_book=*/!internal,
+                                                      internal);
             if (!created) return util::Error{util::ErrorString(created)};
             address = created->dest;
             fInternal = internal;
@@ -2859,6 +2989,13 @@ void CWallet::ListLockedCoins(std::vector<COutPoint>& vOutpts) const
 
 /** @} */ // end of Actions
 
+/** How many blocks below the tip an inferred key-birth height must sit.
+ *  The tip can be reorganized, so keys with no older wallet tx are anchored
+ *  this deep. This margin is a reorg depth. It is not one day of blocks.
+ *  Upstream Bitcoin uses the same 144. Blocks are 60 seconds, so the
+ *  window is 2.4 hours. */
+static constexpr int KEY_BIRTH_REORG_DEPTH{144};
+
 void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
     AssertLockHeld(cs_wallet);
     mapKeyBirth.clear();
@@ -2866,7 +3003,7 @@ void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
     // map in which we'll infer heights of other keys
     std::map<CKeyID, const TxStateConfirmed*> mapKeyFirstBlock;
     TxStateConfirmed max_confirm{uint256{}, /*height=*/-1, /*index=*/-1};
-    max_confirm.confirmed_block_height = GetLastBlockHeight() > 144 ? GetLastBlockHeight() - 144 : 0; // the tip can be reorganized; use a 144-block reorg-depth safety margin (a depth, not a day)
+    max_confirm.confirmed_block_height = GetLastBlockHeight() > KEY_BIRTH_REORG_DEPTH ? GetLastBlockHeight() - KEY_BIRTH_REORG_DEPTH : 0;
     CHECK_NONFATAL(chain().findAncestorByHeight(GetLastBlockHash(), max_confirm.confirmed_block_height, FoundBlock().hash(max_confirm.confirmed_block_hash)));
 
     {
@@ -2944,7 +3081,7 @@ void CWallet::GetKeyBirthTimes(std::map<CKeyID, int64_t>& mapKeyBirth) const {
  *   the block time.
  *
  * For more information see CWalletTx::nTimeSmart,
- * https://btqtalk.org/?topic=54527, or
+ * https://bitcointalk.org/?topic=54527, or
  * https://github.com/bitcoin/bitcoin/pull/1393.
  */
 unsigned int CWallet::ComputeTimeSmart(const CWalletTx& wtx, bool rescanning_old_block) const
@@ -3028,11 +3165,18 @@ bool CWallet::IsAddressPreviouslySpent(const CTxDestination& dest) const
     return false;
 }
 
+namespace {
+constexpr std::string_view P2MR_RECEIVE_REQUEST_PREFIX{"rrp2mr:"};
+} // namespace
+
 std::vector<std::string> CWallet::GetAddressReceiveRequests() const
 {
+    // Leftover rrp2mr: rows are P2MR JSON, not RecentRequestEntry bytes.
+    // The GUI unserializes every value returned here (Quarks F2.17).
     std::vector<std::string> values;
     for (const auto& [dest, entry] : m_address_book) {
         for (const auto& [id, request] : entry.receive_requests) {
+            if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) == 0) continue;
             values.emplace_back(request);
         }
     }
@@ -3049,40 +3193,76 @@ bool CWallet::SetAddressReceiveRequest(WalletBatch& batch, const CTxDestination&
 bool CWallet::EraseAddressReceiveRequest(WalletBatch& batch, const CTxDestination& dest, const std::string& id)
 {
     if (!batch.EraseAddressReceiveRequest(dest, id)) return false;
-    m_address_book[dest].receive_requests.erase(id);
+    // FindKey first: operator[] would plant an empty address-book entry for
+    // destinations that never had one, and that ghost entry would differ
+    // from what a reload produces.
+    if (auto* entry{common::FindKey(m_address_book, dest)}) entry->receive_requests.erase(id);
     return true;
 }
 
-namespace {
-static constexpr std::string_view P2MR_RECEIVE_REQUEST_PREFIX{"rrp2mr:"};
+void CWallet::LoadP2MRMetadata(const CTxDestination& dest, const std::string& id, const std::string& value)
+{
+    m_p2mr_metadata[dest][id] = value;
 }
 
 bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id, const std::string& value)
 {
-    const bool result = SetAddressReceiveRequest(batch, dest, std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id, value);
-    if (result) m_ismine_cache.erase(GetScriptForDestination(dest));
-    return result;
+    // Flag the wallet before the first p2mrmeta row hits disk. The flag is
+    // in the mandatory (upper-bit) range, so binaries that predate the
+    // record type refuse to open the wallet instead of silently hiding the
+    // P2MR balance they cannot see. Flag first: a crash in between leaves a
+    // flagged wallet with no metadata row, which only over-restricts.
+    if (!IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA)) {
+        SetWalletFlagWithDB(batch, WALLET_FLAG_P2MR_METADATA);
+    }
+    if (!batch.WriteP2MRMetadata(dest, id, value)) return false;
+    // Older wallets stored this as a receive request under "rrp2mr:<id>"
+    // (Quarks F2.17). Drop any such row, in the DB and in memory, so the
+    // two copies cannot diverge. If the erase fails, take the new row back
+    // out rather than leaving both copies on disk.
+    if (!EraseAddressReceiveRequest(batch, dest, "rrp2mr:" + id)) {
+        batch.EraseP2MRMetadata(dest, id);
+        return false;
+    }
+    m_p2mr_metadata[dest][id] = value;
+    m_ismine_cache.erase(GetScriptForDestination(dest));
+    return true;
+}
+
+bool CWallet::EraseP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id)
+{
+    // Drop the p2mrmeta row (LOW-19) and any leftover rrp2mr: receive-request
+    // copy so FundP2MR rollback cannot leave an orphaned tree (INFO-15).
+    if (!batch.EraseP2MRMetadata(dest, id)) return false;
+    if (auto dest_it = m_p2mr_metadata.find(dest); dest_it != m_p2mr_metadata.end()) {
+        dest_it->second.erase(id);
+        if (dest_it->second.empty()) m_p2mr_metadata.erase(dest_it);
+    }
+    EraseAddressReceiveRequest(batch, dest, std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id);
+    // A spendable hit stays cached. Leaving it makes DelAddressBook refuse
+    // to drop the destination this call just created.
+    m_ismine_cache.erase(GetScriptForDestination(dest));
+    return true;
 }
 
 bool CWallet::GetP2MRMetadata(const CTxDestination& dest, const std::string& id, std::string& value) const
 {
-    const auto* entry{common::FindKey(m_address_book, dest)};
+    const auto* entry{common::FindKey(m_p2mr_metadata, dest)};
     if (!entry) return false;
-    const auto full_id = std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id;
-    const auto* request{common::FindKey(entry->receive_requests, full_id)};
-    if (!request) return false;
-    value = *request;
+    const auto* meta{common::FindKey(*entry, id)};
+    if (!meta) return false;
+    value = *meta;
     return true;
 }
+
 
 std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata(const CTxDestination& dest) const
 {
     std::vector<std::tuple<CTxDestination, std::string, std::string>> out;
-    const auto* entry{common::FindKey(m_address_book, dest)};
+    const auto* entry{common::FindKey(m_p2mr_metadata, dest)};
     if (!entry) return out;
-    for (const auto& [id, request] : entry->receive_requests) {
-        if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) != 0) continue;
-        out.emplace_back(dest, id.substr(P2MR_RECEIVE_REQUEST_PREFIX.size()), request);
+    for (const auto& [id, value] : *entry) {
+        out.emplace_back(dest, id, value);
     }
     return out;
 }
@@ -3090,10 +3270,9 @@ std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP
 std::vector<std::tuple<CTxDestination, std::string, std::string>> CWallet::ListP2MRMetadata() const
 {
     std::vector<std::tuple<CTxDestination, std::string, std::string>> out;
-    for (const auto& [dest, entry] : m_address_book) {
-        for (const auto& [id, request] : entry.receive_requests) {
-            if (id.rfind(P2MR_RECEIVE_REQUEST_PREFIX, 0) != 0) continue;
-            out.emplace_back(dest, id.substr(P2MR_RECEIVE_REQUEST_PREFIX.size()), request);
+    for (const auto& [dest, entries] : m_p2mr_metadata) {
+        for (const auto& [id, value] : entries) {
+            out.emplace_back(dest, id, value);
         }
     }
     return out;
@@ -3682,6 +3861,20 @@ std::set<ScriptPubKeyMan*> CWallet::GetAllScriptPubKeyMans() const
     return spk_mans;
 }
 
+std::vector<CScript> CWallet::FetchDilithiumRescanScripts(std::map<uint256, int32_t>& filled_end) const
+{
+    LOCK(cs_wallet);
+    std::vector<CScript> out;
+    for (bool internal : {false, true}) {
+        auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(GetScriptPubKeyMan(OutputType::LEGACY, internal));
+        if (!desc) continue;
+        const uint256 id{desc->GetID()};
+        int32_t& filled = filled_end[id];
+        filled = desc->AppendDilithiumLookaheadScripts(filled, out);
+    }
+    return out;
+}
+
 ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const OutputType& type, bool internal) const
 {
     const std::map<OutputType, ScriptPubKeyMan*>& spk_managers = internal ? m_internal_spk_managers : m_external_spk_managers;
@@ -3793,9 +3986,26 @@ void CWallet::SetupLegacyScriptPubKeyMan()
     AddScriptPubKeyMan(id, std::move(spk_manager));
 }
 
-const CKeyingMaterial& CWallet::GetEncryptionKey() const
+bool CWallet::WithEncryptionKey(std::function<bool (const CKeyingMaterial&)> cb) const
 {
-    return vMasterKey;
+    LOCK(cs_wallet);
+    return cb(vMasterKey);
+}
+
+bool CWallet::HaveDilithiumKeyAnywhere(const CKeyID& keyid) const
+{
+    // May run while a manager holds its own cs_desc_man (the Dilithium key
+    // generator skip-check); that re-lock is fine because cs_desc_man is
+    // recursive and generator calls are serialized under cs_wallet.
+    for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
+        if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+            LOCK(desc_spk_man->cs_desc_man);
+            if (desc_spk_man->HaveDilithiumKey(keyid)) return true;
+        } else if (auto* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
+            if (legacy_spk_man->HaveDilithiumKey(keyid)) return true;
+        }
+    }
+    return false;
 }
 
 bool CWallet::HasEncryptionKeys() const

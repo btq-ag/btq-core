@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 The BTQ Core developers
+// Copyright (c) 2019-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,6 +9,7 @@
 #include <logging.h>
 #include <outputtype.h>
 #include <script/descriptor.h>
+#include <script/interpreter.h>
 #include <script/script.h>
 #include <script/sign.h>
 #include <script/solver.h>
@@ -21,6 +22,7 @@
 #include <wallet/scriptpubkeyman.h>
 #include <addresstype.h>
 
+#include <limits>
 #include <optional>
 
 namespace wallet {
@@ -302,7 +304,7 @@ bool LegacyScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master_key
                 break;
             }
             const CKeyID& keyID = entry.first;
-            const std::vector<unsigned char>& vchCryptedSecret = entry.second.second;
+            const std::vector<unsigned char>& vchCryptedSecret = entry.second;
             CDilithiumKey key;
             if (!DecryptDilithiumKey(master_key, vchCryptedSecret, keyID, key)) {
                 keyFail = true;
@@ -323,10 +325,10 @@ bool LegacyScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master_key
 
         bool dilithiumPass = mapCryptedDilithiumKeys.empty();
         bool dilithiumFail = false;
-        for (const auto& [keyID, crypted_pair] : mapCryptedDilithiumKeys)
+        for (const auto& [keyID, crypted_secret] : mapCryptedDilithiumKeys)
         {
             CDilithiumKey key;
-            if (!DecryptDilithiumKey(master_key, crypted_pair.second, keyID, key)) {
+            if (!DecryptDilithiumKey(master_key, crypted_secret, keyID, key)) {
                 dilithiumFail = true;
                 break;
             }
@@ -385,7 +387,7 @@ bool LegacyScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, WalletBat
             encrypted_batch = nullptr;
             return false;
         }
-        mapCryptedDilithiumKeys[keyID] = make_pair(CPubKey(), vchCryptedSecret);
+        mapCryptedDilithiumKeys[keyID] = vchCryptedSecret;
         const CKeyMetadata meta = mapKeyMetadata.count(keyID) ? mapKeyMetadata.at(keyID) : CKeyMetadata(GetTime());
         if (encrypted_batch && !encrypted_batch->WriteCryptedDilithiumKeyByID(keyID, vchCryptedSecret, meta)) {
             encrypted_batch = nullptr;
@@ -927,7 +929,9 @@ bool LegacyScriptPubKeyMan::AddKeyPubKeyInner(const CKey& key, const CPubKey &pu
 
     std::vector<unsigned char> vchCryptedSecret;
     CKeyingMaterial vchSecret(key.begin(), key.end());
-    if (!EncryptSecret(m_storage.GetEncryptionKey(), vchSecret, pubkey.GetHash(), vchCryptedSecret)) {
+    if (!m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+            return EncryptSecret(encryption_key, vchSecret, pubkey.GetHash(), vchCryptedSecret);
+        })) {
         return false;
     }
 
@@ -976,14 +980,14 @@ bool LegacyScriptPubKeyMan::AddCryptedKey(const CPubKey &vchPubKey,
 }
 
 // Dilithium key management methods
-bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKey(const CDilithiumKey& secret, const CPubKey &pubkey)
+bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKey(const CDilithiumKey& secret)
 {
     LOCK(cs_KeyStore);
     WalletBatch batch(m_storage.GetDatabase());
-    return LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(batch, secret, pubkey);
+    return LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(batch, secret);
 }
 
-bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, const CDilithiumKey& secret, const CPubKey& pubkey)
+bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, const CDilithiumKey& secret)
 {
     AssertLockHeld(cs_KeyStore);
 
@@ -994,14 +998,14 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, cons
     CDilithiumPubKey dilithium_pubkey = secret.GetPubKey();
     CKeyID keyID = CKeyID(dilithium_pubkey.GetID());
 
-    // FillableSigningProvider has no concept of wallet databases, but calls AddCryptedDilithiumKey
-    // which is overridden below.  To avoid flushes, the database handle is
-    // tunneled through to it.
+    // AddDilithiumKeyPubKeyInner writes encrypted keys through
+    // encrypted_batch. To avoid flushes, the database handle is tunneled
+    // through to it.
     bool needsDB = !encrypted_batch;
     if (needsDB) {
         encrypted_batch = &batch;
     }
-    if (!AddDilithiumKeyPubKeyInner(secret, pubkey)) {
+    if (!AddDilithiumKeyPubKeyInner(secret)) {
         if (needsDB) encrypted_batch = nullptr;
         return false;
     }
@@ -1017,17 +1021,17 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyWithDB(WalletBatch& batch, cons
     m_storage.UnsetBlankWalletFlag(batch);
     if (!m_storage.HasEncryptionKeys()) {
         // Use the new WriteDilithiumKeyByID method that properly stores by CKeyID
-        std::vector<unsigned char> vchPrivKey(secret.begin(), secret.end());
+        const CPrivKey vchPrivKey(secret.begin(), secret.end());
         return batch.WriteDilithiumKeyByID(keyID, vchPrivKey, mapKeyMetadata[keyID]);
     }
     return true;
 }
 
-bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyInner(const CDilithiumKey& key, const CPubKey &pubkey)
+bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyInner(const CDilithiumKey& key)
 {
     LOCK(cs_KeyStore);
     
-    // Get the actual Dilithium key ID (not from the dummy CPubKey)
+    // Dilithium keys are identified by the ID of their own pubkey
     CDilithiumPubKey dilithium_pubkey = key.GetPubKey();
     CKeyID keyID = CKeyID(dilithium_pubkey.GetID());
     
@@ -1044,14 +1048,13 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyInner(const CDilithiumKey& key,
     std::vector<unsigned char> vchCryptedSecret;
     CKeyingMaterial vchSecret(key.begin(), key.end());
     // Use the Dilithium key ID for encryption salt
-    if (!EncryptDilithiumSecret(m_storage.GetEncryptionKey(), vchSecret, DeriveDilithiumKeyIV(keyID), vchCryptedSecret)) {
+    if (!m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+            return EncryptDilithiumSecret(encryption_key, vchSecret, DeriveDilithiumKeyIV(keyID), vchCryptedSecret);
+        })) {
         return false;
     }
 
-    // Store the encrypted key using the key ID
-    // Create a dummy CPubKey with the correct ID for compatibility
-    CPubKey dummy_pubkey;
-    mapCryptedDilithiumKeys[keyID] = make_pair(dummy_pubkey, vchCryptedSecret);
+    mapCryptedDilithiumKeys[keyID] = vchCryptedSecret;
     
     // Write to database using the proper method
     if (encrypted_batch) {
@@ -1061,33 +1064,7 @@ bool LegacyScriptPubKeyMan::AddDilithiumKeyPubKeyInner(const CDilithiumKey& key,
     return true;
 }
 
-bool LegacyScriptPubKeyMan::AddCryptedDilithiumKeyInner(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
-{
-    LOCK(cs_KeyStore);
-    mapCryptedDilithiumKeys[vchPubKey.GetID()] = make_pair(vchPubKey, vchCryptedSecret);
-    ImplicitlyLearnRelatedKeyScripts(vchPubKey);
-    return true;
-}
-
-bool LegacyScriptPubKeyMan::AddCryptedDilithiumKey(const CPubKey &vchPubKey,
-                            const std::vector<unsigned char> &vchCryptedSecret)
-{
-    if (!AddCryptedDilithiumKeyInner(vchPubKey, vchCryptedSecret))
-        return false;
-    {
-        LOCK(cs_KeyStore);
-        if (encrypted_batch)
-            return encrypted_batch->WriteCryptedDilithiumKey(vchPubKey,
-                                                        vchCryptedSecret,
-                                                        mapKeyMetadata[vchPubKey.GetID()]);
-        else
-            return WalletBatch(m_storage.GetDatabase()).WriteCryptedDilithiumKey(vchPubKey,
-                                                            vchCryptedSecret,
-                                                            mapKeyMetadata[vchPubKey.GetID()]);
-    }
-}
-
-bool LegacyScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& secret, const CPubKey &pubkey)
+bool LegacyScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& secret)
 {
     LOCK(cs_KeyStore);
     if (m_storage.HasEncryptionKeys()) {
@@ -1106,7 +1083,7 @@ bool LegacyScriptPubKeyMan::LoadCryptedDilithiumKey(const CKeyID &keyID, const s
 
     {
         LOCK(cs_KeyStore);
-        mapCryptedDilithiumKeys[keyID] = make_pair(CPubKey(), vchCryptedSecret);
+        mapCryptedDilithiumKeys[keyID] = vchCryptedSecret;
     }
     return true;
 }
@@ -1131,8 +1108,10 @@ bool LegacyScriptPubKeyMan::GetDilithiumKey(const CKeyID &address, CDilithiumKey
     CryptedDilithiumKeyMap::const_iterator mi = mapCryptedDilithiumKeys.find(address);
     if (mi != mapCryptedDilithiumKeys.end())
     {
-        const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
-        return DecryptDilithiumKey(m_storage.GetEncryptionKey(), vchCryptedSecret, address, keyOut);
+        const std::vector<unsigned char> &vchCryptedSecret = mi->second;
+        return m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+            return DecryptDilithiumKey(encryption_key, vchCryptedSecret, address, keyOut);
+        });
     }
     return false;
 }
@@ -1157,12 +1136,11 @@ bool LegacyScriptPubKeyMan::GetDilithiumKeyByHash(const DilithiumPKHash& address
 
 bool LegacyScriptPubKeyMan::GetDilithiumPubKey(const DilithiumPKHash& address, CDilithiumPubKey& pubkey) const
 {
-    // Encrypted legacy wallets store only a dummy CPubKey alongside the
-    // Dilithium ciphertext (unlike ECDSA, which keeps a real pubkey in
-    // mapCryptedKeys). Derive the Dilithium pubkey from the private key,
-    // which requires the wallet to be unlocked. Callers that need pubkey
-    // metadata while locked (e.g. some PSBT fill paths) will fail until a
-    // future wallet-format change persists CDilithiumPubKey with the ciphertext.
+    // Encrypted legacy wallets store only the ciphertext, keyed by CKeyID.
+    // Derive the Dilithium pubkey from the private key, which requires the
+    // wallet to be unlocked. Callers that need pubkey metadata while locked
+    // (e.g. some PSBT fill paths) will fail until a future wallet-format
+    // change persists CDilithiumPubKey with the ciphertext.
     CDilithiumKey key;
     if (!GetDilithiumKeyByHash(address, key)) {
         return false;
@@ -1218,8 +1196,7 @@ CDilithiumPubKey LegacyScriptPubKeyMan::GenerateNewDilithiumKey(WalletBatch &bat
     mapKeyMetadata[key_id] = metadata;
     UpdateTimeFirstKey(nCreationTime);
 
-    CPubKey pubkey(dilithium_pubkey.begin(), dilithium_pubkey.end());
-    if (!AddDilithiumKeyPubKeyWithDB(batch, secret, pubkey)) {
+    if (!AddDilithiumKeyPubKeyWithDB(batch, secret)) {
         throw std::runtime_error(std::string(__func__) + ": AddDilithiumKeyPubKey failed");
     }
     return dilithium_pubkey;
@@ -1254,6 +1231,10 @@ void LegacyScriptPubKeyMan::DeriveNewDilithiumChildKey(WalletBatch &batch, CKeyM
     DeriveDilithiumExtKey(accountKey, BIP32_HARDENED_KEY_LIMIT + (internal ? 1 : 0), chainChildKey);
 
     do {
+        // hdKeypath is replaced each iteration; the origin path is appended
+        // to, so it has to start empty or a retry leaves the previous
+        // iteration's indices in front of the real ones (Quarks F2.13).
+        metadata.key_origin.path.clear();
         if (internal) {
             DeriveDilithiumExtKey(chainChildKey, hd_chain.nInternalChainCounter | BIP32_HARDENED_KEY_LIMIT, childKey);
             metadata.hdKeypath = "m/0'/1'/" + ToString(hd_chain.nInternalChainCounter) + "'";
@@ -1420,7 +1401,9 @@ bool LegacyScriptPubKeyMan::GetKey(const CKeyID &address, CKey& keyOut) const
     {
         const CPubKey &vchPubKey = (*mi).second.first;
         const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
-        return DecryptKey(m_storage.GetEncryptionKey(), vchCryptedSecret, vchPubKey, keyOut);
+        return m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+            return DecryptKey(encryption_key, vchCryptedSecret, vchPubKey, keyOut);
+        });
     }
     return false;
 }
@@ -2492,7 +2475,7 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     return GenerateNewDilithiumKeyLocked();
 }
 
-util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKeyLocked()
+util::Result<CDilithiumKey> DescriptorScriptPubKeyMan::DeriveDilithiumKeyAtIndex(int32_t index) const
 {
     AssertLockHeld(cs_desc_man);
 
@@ -2503,6 +2486,11 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     const KeyMap descriptor_private_keys = GetKeys();
     if (descriptor_private_keys.empty()) {
         return util::Error{_("Error: Descriptor private key is not available for Dilithium key generation")};
+    }
+    // The derivation below commits to one key. With several, the one picked is
+    // the lowest CKeyID, and a restore that lacks it derives different keys.
+    if (descriptor_private_keys.size() != 1) {
+        return util::Error{_("Error: Dilithium key generation needs a descriptor with exactly one private key. Import an active single-key descriptor such as pkh(xprv/*), or set a change address for P2MR payments.")};
     }
 
     const CKey& descriptor_key = descriptor_private_keys.begin()->second;
@@ -2516,7 +2504,7 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     hmac.Write(descriptor_key.begin(), descriptor_key.size());
     const uint256 desc_id = GetID();
     hmac.Write(desc_id.begin(), desc_id.size());
-    const uint32_t idx_be = htobe32(m_wallet_descriptor.next_index);
+    const uint32_t idx_be = htobe32(static_cast<uint32_t>(index));
     hmac.Write(reinterpret_cast<const unsigned char*>(&idx_be), sizeof(idx_be));
     // Retained for backwards compatibility of the derivation: keys generated
     // before P2MR became its own OutputType committed to DILITHIUM_LEGACY here,
@@ -2525,32 +2513,102 @@ util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKe
     hmac.Write(&type_byte, 1);
     unsigned char I[64];
     hmac.Finalize(I);
-    std::vector<unsigned char> seed(I, I + BTQ_DILITHIUM_SEED_SIZE);
-    memory_cleanse(I, sizeof(I));
 
     CDilithiumKey dilithium_key;
-    const bool ok = dilithium_key.GenerateFromEntropy(seed);
-    memory_cleanse(seed.data(), seed.size());
+    const bool ok = dilithium_key.GenerateFromEntropy(Span{I}.first(BTQ_DILITHIUM_SEED_SIZE));
+    memory_cleanse(I, sizeof(I));
     if (!ok) {
         return util::Error{_("Error: Failed to generate Dilithium key")};
     }
+    return dilithium_key;
+}
 
-    const CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
-    const CKeyID keyid = CKeyID(dilithium_pubkey.GetID());
+util::Result<CDilithiumKey> DescriptorScriptPubKeyMan::GetDilithiumKeyForIndex(int32_t index)
+{
+    LOCK(cs_desc_man);
+    return DeriveDilithiumKeyAtIndex(index);
+}
 
-    if (HaveDilithiumKey(keyid)) {
-        return util::Error{_("Error: Failed to generate unique Dilithium key")};
+void DescriptorScriptPubKeyMan::LoadDilithiumNextIndex(int32_t index)
+{
+    LOCK(cs_desc_man);
+    m_dilithium_next_index = index;
+}
+
+int32_t DescriptorScriptPubKeyMan::GetDilithiumNextIndex() const
+{
+    LOCK(cs_desc_man);
+    return m_dilithium_next_index;
+}
+
+namespace {
+bool ScriptsForDilithiumPubkey(const CDilithiumPubKey& pubkey, CScript& dilithium_spk, CScript& p2mr_spk)
+{
+    if (!pubkey.IsValid()) return false;
+    dilithium_spk = GetScriptForDestination(DilithiumPKHash(pubkey));
+    const CScript leaf = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
+    const std::vector<unsigned char> leaf_bytes(leaf.begin(), leaf.end());
+    P2MRBuilder builder;
+    builder.Add(/*depth=*/0, leaf_bytes, TAPROOT_LEAF_TAPSCRIPT);
+    if (!builder.IsValid() || !builder.IsComplete()) return false;
+    builder.Finalize();
+    p2mr_spk = GetScriptForDestination(builder.GetOutput());
+    return true;
+}
+
+// Exclusive end of the Dilithium restore window: next_index + keypool gap.
+// FindDilithiumIndexForScript and the fast rescan filter both use this.
+int32_t DilithiumLookaheadEnd(int32_t next_index, int64_t keypool_size)
+{
+    const int64_t gap = keypool_size > 0 ? keypool_size : 1;
+    const int64_t window_end_64 = static_cast<int64_t>(next_index) + gap;
+    if (window_end_64 > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) {
+        return std::numeric_limits<int32_t>::max();
     }
+    return static_cast<int32_t>(window_end_64);
+}
+} // namespace
 
-    WalletBatch batch(m_storage.GetDatabase());
-    if (!AddDilithiumKeyWithDB(batch, dilithium_key, keyid)) {
-        return util::Error{_("Error: Failed to store Dilithium key")};
+util::Result<CDilithiumPubKey> DescriptorScriptPubKeyMan::GenerateNewDilithiumKeyLocked()
+{
+    AssertLockHeld(cs_desc_man);
+
+    // The Dilithium sequence has its own counter (Quarks F2.5). Wallets that
+    // predate the counter derived from the shared next_index, and
+    // recoverdilithiumkeys materializes indexes ahead of the counter, so
+    // skip indexes whose keys exist rather than fail. The check has to be
+    // wallet-wide: loaded key records do not say which manager derived them
+    // and land in an arbitrary manager, so after a reload this manager's own
+    // maps miss keys it derived (plaintext wallets then fail the
+    // no-overwrite store, encrypted wallets silently re-issue an address).
+    // Every skipped index matches a distinct existing key, so the loop ends
+    // after at most as many iterations as the wallet has Dilithium keys.
+    while (true) {
+        const int32_t index = m_dilithium_next_index;
+        if (index < 0) {
+            return util::Error{_("Error: Dilithium key index space exhausted")};
+        }
+        auto key_res = DeriveDilithiumKeyAtIndex(index);
+        if (!key_res) return util::Error{util::ErrorString(key_res)};
+
+        const CDilithiumPubKey dilithium_pubkey = key_res->GetPubKey();
+        const CKeyID keyid = CKeyID(dilithium_pubkey.GetID());
+
+        WalletBatch batch(m_storage.GetDatabase());
+        m_dilithium_next_index = index + 1;
+        if (!batch.WriteDilithiumDescriptorIndex(GetID(), m_dilithium_next_index)) {
+            return util::Error{_("Error: Failed to persist Dilithium key index")};
+        }
+
+        if (m_storage.HaveDilithiumKeyAnywhere(keyid)) {
+            continue; // Already materialized; held by this or another manager.
+        }
+
+        if (!AddDilithiumKeyWithDB(batch, key_res.value(), keyid)) {
+            return util::Error{_("Error: Failed to store Dilithium key")};
+        }
+        return dilithium_pubkey;
     }
-
-    m_wallet_descriptor.next_index++;
-    batch.WriteDescriptor(GetID(), m_wallet_descriptor);
-
-    return dilithium_pubkey;
 }
 
 util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const OutputType type)
@@ -2646,7 +2704,7 @@ bool DescriptorScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master
             break;
         }
         const CKeyID& keyid = entry.first;
-        const std::vector<unsigned char>& crypted_secret = entry.second.second;
+        const std::vector<unsigned char>& crypted_secret = entry.second;
         CDilithiumKey key;
         if (!DecryptDilithiumKey(master_key, crypted_secret, keyid, key)) {
             keyFail = true;
@@ -2694,7 +2752,7 @@ bool DescriptorScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, Walle
         if (!EncryptDilithiumSecret(master_key, secret, DeriveDilithiumKeyIV(keyid), crypted_secret)) {
             return false;
         }
-        m_map_crypted_dilithium_keys[keyid] = make_pair(CPubKey(), crypted_secret);
+        m_map_crypted_dilithium_keys[keyid] = crypted_secret;
         if (!batch->WriteCryptedDilithiumKeyByID(keyid, crypted_secret, CKeyMetadata(GetTime()))) {
             return false;
         }
@@ -2731,7 +2789,9 @@ std::map<CKeyID, CKey> DescriptorScriptPubKeyMan::GetKeys() const
             const CPubKey& pubkey = key_pair.second.first;
             const std::vector<unsigned char>& crypted_secret = key_pair.second.second;
             CKey key;
-            DecryptKey(m_storage.GetEncryptionKey(), crypted_secret, pubkey, key);
+            m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                return DecryptKey(encryption_key, crypted_secret, pubkey, key);
+            });
             keys[pubkey.GetID()] = key;
         }
         return keys;
@@ -2798,7 +2858,9 @@ bool DescriptorScriptPubKeyMan::GetKeyByXOnly(const XOnlyPubKey& pubkey, CKey& k
         if (!m_storage.HasEncryptionKeys() || m_storage.IsLocked()) continue;
         const CPubKey& pubkey_in_wallet = crypted->second.first;
         const std::vector<unsigned char>& crypted_secret = crypted->second.second;
-        if (DecryptKey(m_storage.GetEncryptionKey(), crypted_secret, pubkey_in_wallet, key)) {
+        if (m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                return DecryptKey(encryption_key, crypted_secret, pubkey_in_wallet, key);
+            })) {
             return true;
         }
     }
@@ -2828,7 +2890,9 @@ std::map<DilithiumPKHash, CDilithiumKey> DescriptorScriptPubKeyMan::GetDilithium
     if (m_storage.HasEncryptionKeys() && !m_storage.IsLocked()) {
         for (const auto& key_pair : m_map_crypted_dilithium_keys) {
             CDilithiumKey key;
-            if (DecryptDilithiumKey(m_storage.GetEncryptionKey(), key_pair.second.second, key_pair.first, key)) {
+            if (m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                    return DecryptDilithiumKey(encryption_key, key_pair.second, key_pair.first, key);
+                })) {
                 DilithiumPKHash dilithium_hash;
                 std::memcpy(dilithium_hash.begin(), key_pair.first.begin(), 20);
                 result[dilithium_hash] = key;
@@ -2929,6 +2993,76 @@ std::vector<WalletDestination> DescriptorScriptPubKeyMan::MarkUnusedAddresses(co
     return result;
 }
 
+std::optional<int32_t> DescriptorScriptPubKeyMan::FindDilithiumIndexForScript(const CScript& script)
+{
+    std::vector<std::vector<unsigned char>> solutions;
+    const TxoutType type = Solver(script, solutions);
+    if (type != TxoutType::DILITHIUM_PUBKEYHASH && type != TxoutType::WITNESS_V2_P2MR) {
+        return std::nullopt;
+    }
+
+    LOCK(cs_desc_man);
+    if (m_dilithium_next_index < 0) return std::nullopt;
+
+    // Same gap the descriptor keypool uses for ECDSA lookahead. A script
+    // further ahead than that was not issued from this counter.
+    const int32_t window_end = DilithiumLookaheadEnd(m_dilithium_next_index, m_keypool_size);
+
+    // A script already compared on an earlier output is a map lookup. Filling
+    // the window here would re-derive a key per output during a rescan.
+    if (m_dilithium_script_index.find(script) == m_dilithium_script_index.end()) {
+        while (m_dilithium_script_cache_end < window_end) {
+            const int32_t index = m_dilithium_script_cache_end;
+            auto key_res = DeriveDilithiumKeyAtIndex(index);
+            if (!key_res) return std::nullopt; // Locked, or no descriptor key.
+            CScript dilithium_spk;
+            CScript p2mr_spk;
+            if (!ScriptsForDilithiumPubkey(key_res->GetPubKey(), dilithium_spk, p2mr_spk)) return std::nullopt;
+            m_dilithium_script_index.emplace(std::move(dilithium_spk), index);
+            m_dilithium_script_index.emplace(std::move(p2mr_spk), index);
+            m_dilithium_script_cache_end = index + 1;
+            if (m_dilithium_script_index.count(script) != 0) break;
+        }
+    }
+
+    const auto it = m_dilithium_script_index.find(script);
+    if (it == m_dilithium_script_index.end() || it->second < m_dilithium_next_index || it->second >= window_end) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+int32_t DescriptorScriptPubKeyMan::AppendDilithiumLookaheadScripts(int32_t already, std::vector<CScript>& out) const
+{
+    LOCK(cs_desc_man);
+    if (m_dilithium_next_index < 0) return already;
+
+    const int32_t window_end = DilithiumLookaheadEnd(m_dilithium_next_index, m_keypool_size);
+    int32_t index = already > m_dilithium_next_index ? already : m_dilithium_next_index;
+    while (index < window_end) {
+        const auto key_res = DeriveDilithiumKeyAtIndex(index);
+        if (!key_res) return index; // Locked, or no descriptor key.
+        CScript dilithium_spk;
+        CScript p2mr_spk;
+        if (!ScriptsForDilithiumPubkey(key_res->GetPubKey(), dilithium_spk, p2mr_spk)) return index;
+        out.emplace_back(std::move(dilithium_spk));
+        out.emplace_back(std::move(p2mr_spk));
+        ++index;
+    }
+    return window_end;
+}
+
+void DescriptorScriptPubKeyMan::CommitDilithiumNextIndex(int32_t index)
+{
+    LOCK(cs_desc_man);
+    if (index <= m_dilithium_next_index) return;
+    WalletBatch batch(m_storage.GetDatabase());
+    if (!batch.WriteDilithiumDescriptorIndex(GetID(), index)) {
+        throw std::runtime_error(std::string(__func__) + ": writing Dilithium key index failed");
+    }
+    m_dilithium_next_index = index;
+}
+
 void DescriptorScriptPubKeyMan::AddDescriptorKey(const CKey& key, const CPubKey &pubkey)
 {
     LOCK(cs_desc_man);
@@ -2956,7 +3090,9 @@ bool DescriptorScriptPubKeyMan::AddDescriptorKeyWithDB(WalletBatch& batch, const
 
         std::vector<unsigned char> crypted_secret;
         CKeyingMaterial secret(key.begin(), key.end());
-        if (!EncryptSecret(m_storage.GetEncryptionKey(), secret, pubkey.GetHash(), crypted_secret)) {
+        if (!m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                return EncryptSecret(encryption_key, secret, pubkey.GetHash(), crypted_secret);
+            })) {
             return false;
         }
 
@@ -2988,25 +3124,19 @@ bool DescriptorScriptPubKeyMan::AddDilithiumKeyWithDB(WalletBatch& batch, const 
 
         std::vector<unsigned char> crypted_secret;
         CKeyingMaterial secret(key.begin(), key.end());
-        if (!EncryptDilithiumSecret(m_storage.GetEncryptionKey(), secret, DeriveDilithiumKeyIV(keyid), crypted_secret)) {
+        if (!m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                return EncryptDilithiumSecret(encryption_key, secret, DeriveDilithiumKeyIV(keyid), crypted_secret);
+            })) {
             return false;
         }
 
-        m_map_crypted_dilithium_keys[keyid] = make_pair(CPubKey(), crypted_secret);
+        m_map_crypted_dilithium_keys[keyid] = crypted_secret;
         return batch.WriteCryptedDilithiumKeyByID(keyid, crypted_secret, CKeyMetadata(GetTime()));
     } else {
         m_map_dilithium_keys[keyid] = key;
-        std::vector<unsigned char> dilithium_privkey(key.begin(), key.end());
+        const CPrivKey dilithium_privkey(key.begin(), key.end());
         return batch.WriteDilithiumKeyByID(keyid, dilithium_privkey, CKeyMetadata(GetTime()));
     }
-}
-
-bool DescriptorScriptPubKeyMan::AddCryptedDilithiumKeyWithDB(WalletBatch& batch, const CPubKey& pubkey, const std::vector<unsigned char>& crypted_secret)
-{
-    AssertLockHeld(cs_desc_man);
-    
-    m_map_crypted_dilithium_keys[pubkey.GetID()] = make_pair(pubkey, crypted_secret);
-    return batch.WriteCryptedDilithiumKey(pubkey, crypted_secret, CKeyMetadata(GetTime()));
 }
 
 bool DescriptorScriptPubKeyMan::GetDilithiumKey(const CKeyID& keyid, CDilithiumKey& key) const
@@ -3024,8 +3154,10 @@ bool DescriptorScriptPubKeyMan::GetDilithiumKey(const CKeyID& keyid, CDilithiumK
     auto mi = m_map_crypted_dilithium_keys.find(keyid);
     if (mi != m_map_crypted_dilithium_keys.end()) {
         if (m_storage.HasEncryptionKeys() && !m_storage.IsLocked()) {
-            const std::vector<unsigned char>& crypted_secret = mi->second.second;
-            return DecryptDilithiumKey(m_storage.GetEncryptionKey(), crypted_secret, keyid, key);
+            const std::vector<unsigned char>& crypted_secret = mi->second;
+            return m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                return DecryptDilithiumKey(encryption_key, crypted_secret, keyid, key);
+            });
         }
     }
 
@@ -3043,7 +3175,7 @@ bool DescriptorScriptPubKeyMan::HaveDilithiumKey(const CKeyID& keyid) const
     }
 }
 
-bool DescriptorScriptPubKeyMan::AddDilithiumKeyPubKey(const CDilithiumKey& key, const CPubKey& pubkey)
+bool DescriptorScriptPubKeyMan::AddDilithiumKeyPubKey(const CDilithiumKey& key)
 {
     LOCK(cs_desc_man);
     WalletBatch batch(m_storage.GetDatabase());
@@ -3070,12 +3202,11 @@ void DescriptorScriptPubKeyMan::UpdateTimeFirstKey(int64_t nCreateTime)
     NotifyFirstKeyTimeChanged(this, m_wallet_descriptor.creation_time);
 }
 
-bool DescriptorScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& key, const CPubKey& pubkey)
+bool DescriptorScriptPubKeyMan::LoadDilithiumKey(const CDilithiumKey& key)
 {
     LOCK(cs_desc_man);
     // For descriptor wallets, we just store the key in memory
     // The key will be persisted when the wallet is saved
-    // Use the Dilithium public key ID, not the dummy CPubKey ID
     CDilithiumPubKey dilithium_pubkey = key.GetPubKey();
     CKeyID keyID = CKeyID(static_cast<uint160>(dilithium_pubkey.GetID()));
     m_map_dilithium_keys[keyID] = key;
@@ -3088,7 +3219,7 @@ bool DescriptorScriptPubKeyMan::LoadCryptedDilithiumKey(const CKeyID& keyid, con
     if (!checksum_valid) {
         m_decryption_thoroughly_checked = false;
     }
-    m_map_crypted_dilithium_keys[keyid] = std::make_pair(CPubKey(), vchCryptedSecret);
+    m_map_crypted_dilithium_keys[keyid] = vchCryptedSecret;
     return true;
 }
 

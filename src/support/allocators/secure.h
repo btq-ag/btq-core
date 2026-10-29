@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The BTQ Core developers
+// Copyright (c) 2009-2021 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 //
 // Allocator that locks its contents from being paged
@@ -56,6 +57,9 @@ struct secure_allocator {
 // This is exactly like std::string, but with a custom allocator.
 // TODO: Consider finding a way to make incoming RPC request.params[i] mlock()ed as well
 typedef std::basic_string<char, std::char_traits<char>, secure_allocator<char> > SecureString;
+
+/** Byte vector that locks and cleanses its contents. Same type as CPrivKey. */
+typedef std::vector<unsigned char, secure_allocator<unsigned char> > CKeyingMaterial;
 
 template<typename T>
 struct SecureUniqueDeleter {

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -78,6 +78,7 @@ extern const std::string MINVERSION;
 extern const std::string NAME;
 extern const std::string OLD_KEY;
 extern const std::string ORDERPOSNEXT;
+extern const std::string P2MR_METADATA;
 extern const std::string POOL;
 extern const std::string PURPOSE;
 extern const std::string SETTINGS;
@@ -93,8 +94,7 @@ extern const std::string WATCHS;
 extern const std::string DILITHIUM_KEY;
 extern const std::string DILITHIUM_CRYPTED_KEY;
 extern const std::string DILITHIUM_KEYMETA;
-extern const std::string DILITHIUM_HDCHAIN;
-extern const std::string DILITHIUM_POOL;
+extern const std::string DILITHIUM_DESC_INDEX;
 
 // Keys in this set pertain only to the legacy wallet (LegacyScriptPubKeyMan) and are removed during migration from legacy to descriptors.
 extern const std::unordered_set<std::string> LEGACY_TYPES;
@@ -246,17 +246,9 @@ public:
     bool WriteCryptedKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
     bool WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey);
 
-    // Dilithium key storage methods
-    bool WriteDilithiumKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey, const CKeyMetadata &keyMeta);
-    bool WriteDilithiumKeyRaw(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata &keyMeta);
-    bool WriteCryptedDilithiumKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
-    
-    // Proper Dilithium key storage methods that don't require dummy CPubKey
-    bool WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata &keyMeta);
+    // Dilithium keys are stored by CKeyID. Wallet load still reads these records.
+    bool WriteDilithiumKeyByID(const CKeyID& keyID, const CPrivKey& vchPrivKey, const CKeyMetadata &keyMeta);
     bool WriteCryptedDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchCryptedSecret, const CKeyMetadata &keyMeta);
-    bool WriteDilithiumKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubkey, const bool overwrite);
-    bool WriteDilithiumHDChain(const CHDChain& chain);
-    bool WriteDilithiumPool(int64_t nPool, const CKeyPool& keypool);
 
     bool WriteCScript(const uint160& hash, const CScript& redeemScript);
 
@@ -281,6 +273,8 @@ public:
     bool WriteDescriptorParentCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index);
     bool WriteDescriptorLastHardenedCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index);
     bool WriteDescriptorCacheItems(const uint256& desc_id, const DescriptorCache& cache);
+    //! Persist the next index of a descriptor manager's Dilithium key sequence.
+    bool WriteDilithiumDescriptorIndex(const uint256& desc_id, int32_t index);
 
     bool WriteLockedUTXO(const COutPoint& output);
     bool EraseLockedUTXO(const COutPoint& output);
@@ -288,6 +282,8 @@ public:
     bool WriteAddressPreviouslySpent(const CTxDestination& dest, bool previously_spent);
     bool WriteAddressReceiveRequest(const CTxDestination& dest, const std::string& id, const std::string& receive_request);
     bool EraseAddressReceiveRequest(const CTxDestination& dest, const std::string& id);
+    bool WriteP2MRMetadata(const CTxDestination& dest, const std::string& id, const std::string& value);
+    bool EraseP2MRMetadata(const CTxDestination& dest, const std::string& id);
     bool EraseAddressData(const CTxDestination& dest);
 
     bool WriteActiveScriptPubKeyMan(uint8_t type, const uint256& id, bool internal);

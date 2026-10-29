@@ -21,14 +21,6 @@ extern "C" {
 #define BTQ_DILITHIUM_SEED_SIZE 32
 
 /**
- * Generate a new Dilithium key pair using fresh randomness.
- * @param pk Output buffer for public key (must be BTQ_DILITHIUM_PUBLIC_KEY_SIZE bytes)
- * @param sk Output buffer for secret key (must be BTQ_DILITHIUM_SECRET_KEY_SIZE bytes)
- * @return 0 on success, non-zero on failure
- */
-int btq_dilithium_keypair(uint8_t *pk, uint8_t *sk);
-
-/**
  * Generate a Dilithium key pair deterministically from a caller-supplied
  * 32-byte seed. Same seed always produces the same (pk, sk). This is the
  * building block for HD wallet derivation, where each child-key seed is
@@ -72,18 +64,6 @@ int btq_dilithium_verify(const uint8_t *sig, size_t siglen,
                          const uint8_t *m, size_t mlen,
                          const uint8_t *ctx, size_t ctxlen,
                          const uint8_t *pk);
-
-/**
- * Raw Dilithium2 secret keys do not contain enough material to return the
- * packed public key used by verification. This helper fails closed; callers
- * should retain the public key returned by key generation or use BTQ's stored
- * sk || pk keydata representation.
- *
- * @param pk Output buffer for public key (must be BTQ_DILITHIUM_PUBLIC_KEY_SIZE bytes)
- * @param sk Secret key (must be BTQ_DILITHIUM_SECRET_KEY_SIZE bytes)
- * @return Always non-zero.
- */
-int btq_dilithium_sk_to_pk(uint8_t *pk, const uint8_t *sk);
 
 #ifdef __cplusplus
 }

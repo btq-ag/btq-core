@@ -8,7 +8,7 @@ BIP-level comprehensive test suite covering:
   1.  P2MR output format and funding
   2.  Script path spending with mining confirmation
   3.  No key path (reject 0 or 1 witness elements)
-  4.  Dilithium enabled in P2MR, blocked in P2TR (all 5 opcodes)
+  4.  Dilithium enabled in P2MR, blocked in P2TR. Reserved 0xbf fails in both.
   5.  Dilithium error message verification
   6.  OP_CHECKMULTISIG still blocked in P2MR tapscript
   7.  Two-leaf and four-leaf script trees
@@ -243,9 +243,10 @@ class P2MRTest(BTQTestFramework):
     # ================================================================
     def test_04_dilithium_p2mr_vs_p2tr(self):
         print(section('TEST 4 \u2014 Dilithium Opcodes: P2MR (allow) vs P2TR (block)'))
-        print(dot('This test verifies each of the 5 Dilithium opcodes is:'))
+        print(dot('This test verifies each implemented Dilithium opcode is:'))
         print(dot('  - BLOCKED in P2TR tapscript (quantum-vulnerable key path makes it pointless)'))
         print(dot('  - ALLOWED in P2MR tapscript (no key path, so Dilithium provides real protection)'))
+        print(dot('0xbf is reserved. A leaf that executes it fails in both.'))
         print(dot(''))
 
         pk = ECKey(); pk.generate()
@@ -256,7 +257,6 @@ class P2MRTest(BTQTestFramework):
             ('OP_CHECKSIGDILITHIUMVERIFY',      OP_CHECKSIGDILITHIUMVERIFY,     '0xbc'),
             ('OP_CHECKMULTISIGDILITHIUM',       OP_CHECKMULTISIGDILITHIUM,      '0xbd'),
             ('OP_CHECKMULTISIGDILITHIUMVERIFY',  OP_CHECKMULTISIGDILITHIUMVERIFY,'0xbe'),
-            ('OP_DILITHIUM_PUBKEY',             OP_DILITHIUM_PUBKEY,            '0xbf'),
         ]
         for name, op, hex_val in opcodes:
             print(sub(f'{name} ({hex_val})'))
@@ -285,6 +285,22 @@ class P2MRTest(BTQTestFramework):
             else:
                 print(got('P2MR accepted'))
             print(ok(f'{name}: P2TR=blocked, P2MR=allowed'))
+
+        print(sub('OP_DILITHIUM_PUBKEY (0xbf)'))
+        print(why('0xbf is reserved. It is not OP_SUCCESS and it has no implementation.'))
+        leaf = CScript([OP_TRUE, OP_DILITHIUM_PUBKEY])
+        print(expect('Rejection: opcode missing or not understood'))
+        tap = taproot_construct(xo, [("l", leaf)])
+        f = self.fund(tap.scriptPubKey)
+        r = self.spend_taproot(f, tap, "l", [b'\x01'])
+        assert not r['accepted']
+        assert 'not understood' in r['error'].lower(), r['error'][:80]
+        p2mr = p2mr_construct([("l", leaf)])
+        f2 = self.fund(p2mr.scriptPubKey)
+        r2 = self.spend_p2mr(f2, p2mr, "l", [b'\x01'])
+        assert not r2['accepted']
+        assert 'not understood' in r2['error'].lower(), r2['error'][:80]
+        print(ok('0xbf fails in P2TR and P2MR'))
 
     # ================================================================
     #  5 - Error Message Verification

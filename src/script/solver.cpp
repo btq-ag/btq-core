@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -297,24 +297,6 @@ CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys)
     for (const CPubKey& key : keys)
         script << ToByteVector(key);
     script << keys.size() << OP_CHECKMULTISIG;
-
-    return script;
-}
-
-// Dilithium script generation functions
-CScript GetScriptForRawDilithiumPubKey(const CDilithiumPubKey& pubKey)
-{
-    return CScript() << std::vector<unsigned char>(pubKey.begin(), pubKey.end()) << OP_CHECKSIGDILITHIUM;
-}
-
-CScript GetScriptForDilithiumMultisig(int nRequired, const std::vector<CDilithiumPubKey>& keys)
-{
-    CScript script;
-
-    script << nRequired;
-    for (const CDilithiumPubKey& key : keys)
-        script << ToByteVector(key);
-    script << keys.size() << OP_CHECKMULTISIGDILITHIUM;
 
     return script;
 }

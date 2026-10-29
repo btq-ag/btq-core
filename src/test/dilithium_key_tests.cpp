@@ -87,23 +87,25 @@ BOOST_AUTO_TEST_CASE(dilithium_pubkey_isfullvalid_rejects_malformed)
     BOOST_CHECK(key.GetPubKey().IsFullyValid());
 }
 
-BOOST_AUTO_TEST_CASE(dilithium_raw_secret_key_to_public_key_fails_closed)
+BOOST_AUTO_TEST_CASE(dilithium_wrapper_sign_verify)
 {
     std::array<uint8_t, BTQ_DILITHIUM_PUBLIC_KEY_SIZE> pk{};
     std::array<uint8_t, BTQ_DILITHIUM_SECRET_KEY_SIZE> sk{};
-    BOOST_REQUIRE_EQUAL(btq_dilithium_keypair(pk.data(), sk.data()), 0);
-
-    std::array<uint8_t, BTQ_DILITHIUM_PUBLIC_KEY_SIZE> derived_pk;
-    derived_pk.fill(0xaa);
-    BOOST_CHECK(btq_dilithium_sk_to_pk(derived_pk.data(), sk.data()) != 0);
-    BOOST_CHECK(std::all_of(derived_pk.begin(), derived_pk.end(), [](uint8_t byte) { return byte == 0; }));
+    std::array<uint8_t, BTQ_DILITHIUM_SEED_SIZE> seed{};
+    seed.fill(0x42);
+    BOOST_REQUIRE_EQUAL(btq_dilithium_keypair_from_seed(pk.data(), sk.data(), seed.data()), 0);
 
     const std::array<uint8_t, 3> msg{{0x42, 0x54, 0x51}};
     std::array<uint8_t, BTQ_DILITHIUM_SIGNATURE_SIZE> sig{};
     size_t siglen{0};
     BOOST_REQUIRE_EQUAL(btq_dilithium_sign(sig.data(), &siglen, msg.data(), msg.size(), nullptr, 0, sk.data()), 0);
     BOOST_CHECK_EQUAL(btq_dilithium_verify(sig.data(), siglen, msg.data(), msg.size(), nullptr, 0, pk.data()), 0);
-    BOOST_CHECK(btq_dilithium_verify(sig.data(), siglen, msg.data(), msg.size(), nullptr, 0, derived_pk.data()) != 0);
+
+    std::array<uint8_t, BTQ_DILITHIUM_PUBLIC_KEY_SIZE> other_pk{};
+    std::array<uint8_t, BTQ_DILITHIUM_SECRET_KEY_SIZE> other_sk{};
+    seed.fill(0x43);
+    BOOST_REQUIRE_EQUAL(btq_dilithium_keypair_from_seed(other_pk.data(), other_sk.data(), seed.data()), 0);
+    BOOST_CHECK(btq_dilithium_verify(sig.data(), siglen, msg.data(), msg.size(), nullptr, 0, other_pk.data()) != 0);
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_signing_and_verification)
@@ -216,7 +218,7 @@ BOOST_AUTO_TEST_CASE(dilithium_serialization)
     BOOST_REQUIRE(key1.IsValid());
     
     // Serialize the key
-    std::vector<unsigned char> serialized = key1.Serialize();
+    CPrivKey serialized = key1.Serialize();
     BOOST_CHECK(serialized.size() == CDilithiumKey::GetKeySize());
     
     // Load into a new key
@@ -244,7 +246,7 @@ BOOST_AUTO_TEST_CASE(dilithium_load_and_set_reject_mismatched_stored_pubkey)
     BOOST_REQUIRE(key2.IsValid());
     BOOST_REQUIRE(key1.GetPubKey() != key2.GetPubKey());
 
-    std::vector<unsigned char> malformed = key1.Serialize();
+    CPrivKey malformed = key1.Serialize();
     BOOST_REQUIRE_EQUAL(malformed.size(), CDilithiumKey::GetKeySize());
     const CDilithiumPubKey wrong_pubkey = key2.GetPubKey();
     std::copy(wrong_pubkey.begin(), wrong_pubkey.end(), malformed.begin() + DilithiumConstants::SECRET_KEY_SIZE);
@@ -350,7 +352,7 @@ BOOST_AUTO_TEST_CASE(dilithium_key_equality_last_byte_differs)
 {
     CDilithiumKey key1;
     BOOST_REQUIRE(key1.MakeNewKey());
-    std::vector<unsigned char> bytes = key1.Serialize();
+    CPrivKey bytes = key1.Serialize();
     BOOST_REQUIRE_EQUAL(bytes.size(), CDilithiumKey::GetKeySize());
 
     CDilithiumKey key_same;
@@ -360,7 +362,7 @@ BOOST_AUTO_TEST_CASE(dilithium_key_equality_last_byte_differs)
     // Flip the final secret-key byte. Load/Set may reject inconsistent
     // key material via self-checks, so compare via TimingSafeEqual on the
     // serialized buffers and via operator== only when both keys remain valid.
-    std::vector<unsigned char> mutated = bytes;
+    CPrivKey mutated = bytes;
     mutated.back() ^= 0x01;
     BOOST_CHECK(!dilithium_internal::TimingSafeEqual(bytes.data(), mutated.data(), bytes.size()));
 
@@ -396,12 +398,6 @@ BOOST_AUTO_TEST_CASE(dilithium_extkey_equality_secret_fields)
     b = a;
     b.vchFingerprint[3] ^= 0x01;
     BOOST_CHECK(!(a == b));
-}
-
-BOOST_AUTO_TEST_CASE(dilithium_sanity_check)
-{
-    // Test the global sanity check function
-    BOOST_CHECK(DilithiumSanityCheck());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

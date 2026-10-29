@@ -7,6 +7,7 @@
 
 #include <serialize.h>
 #include <support/allocators/secure.h>
+#include <support/cleanse.h>
 #include <uint256.h>
 #include <span.h>
 #include <key.h>
@@ -33,26 +34,6 @@ inline bool TimingSafeEqual(const unsigned char* a, const unsigned char* b, size
 }
 } // namespace dilithium_internal
 
-// Dilithium extended key serialization size.
-//
-// We persist the 32-byte HD seed (not the 2560-byte expanded secret key) plus
-// the BIP32-style header. The expanded keypair is regenerated deterministically
-// from the seed via `btq_dilithium_keypair_from_seed()` on decode. This is the
-// only design that is consistent with Dilithium's algebraic structure: the
-// reference implementation derives (rho, key, t0, s1, s2) from a 32-byte seed
-// via SHAKE256, so the seed - not the packed sk bytes - is the durable parent
-// material for HD derivation.
-//
-// Layout: 1 (depth) + 4 (fingerprint) + 4 (child) + 32 (chaincode) + 32 (seed)
-const unsigned int DILITHIUM_EXTKEY_SIZE = 73;
-
-// Dilithium extended pubkey size: 1 (depth) + 4 (fingerprint) + 4 (child) +
-// 32 (chaincode) + 1312 (Dilithium2 public key) = 1353 bytes.
-//
-// NB: Dilithium2, not Dilithium3, is the BTQ default - the previous 1952-byte
-// constant was wrong and would overflow the encode buffer.
-const unsigned int DILITHIUM_EXTPUBKEY_SIZE = 1353;
-
 // Forward declarations for Dilithium C API
 extern "C" {
 #include "dilithium_wrapper.h"
@@ -77,7 +58,6 @@ namespace DilithiumConstants {
 }
 
 class CDilithiumPubKey; // Forward declaration
-class CDilithiumExtPubKey; // Forward declaration
 
 /** An encapsulated Dilithium private key. */
 class CDilithiumKey
@@ -180,7 +160,7 @@ public:
      * @param entropy 32 bytes of entropy for key generation
      * @return true if key was generated successfully
      */
-    bool GenerateFromEntropy(const std::vector<unsigned char>& entropy);
+    bool GenerateFromEntropy(Span<const unsigned char> entropy);
 
     /**
      * Compute the public key from this private key.
@@ -218,13 +198,10 @@ public:
     bool Load(Span<const unsigned char> privkey);
 
     //! Serialize the private key (for wallet storage, etc.)
-    std::vector<unsigned char> Serialize() const;
+    CPrivKey Serialize() const;
 
     //! Get key size in bytes
     static constexpr size_t GetKeySize() { return DilithiumConstants::SECRET_KEY_SIZE + DilithiumConstants::PUBLIC_KEY_SIZE; }
-    
-    //! Get public key size in bytes
-    static constexpr size_t GetPubKeySize() { return DilithiumConstants::PUBLIC_KEY_SIZE; }
     
     //! Get private key as CPrivKey
     CPrivKey GetPrivKey() const
@@ -392,6 +369,15 @@ public:
     /** Expanded keypair, regenerated from `seed`. */
     CDilithiumKey key;
 
+    CDilithiumExtKey() = default;
+    CDilithiumExtKey(const CDilithiumExtKey&) = default;
+    CDilithiumExtKey& operator=(const CDilithiumExtKey&) = default;
+    ~CDilithiumExtKey()
+    {
+        memory_cleanse(seed.data(), seed.size());
+        memory_cleanse(chaincode.begin(), chaincode.size());
+    }
+
     friend bool operator==(const CDilithiumExtKey& a, const CDilithiumExtKey& b)
     {
         // Seed and chaincode are secret HD material. Evaluate both
@@ -407,61 +393,13 @@ public:
                a.nDepth == b.nDepth && a.nChild == b.nChild;
     }
 
-    void Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const;
-    void Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE]);
-
     /**
      * Derive a child extended key. Only hardened indices are accepted;
      * `nChild` must have its high bit set (i.e. `nChild >= 0x80000000`).
      * Returns false for non-hardened indices.
      */
     [[nodiscard]] bool Derive(CDilithiumExtKey& out, unsigned int nChild) const;
-    CDilithiumExtPubKey Neuter() const;
     void SetSeed(Span<const std::byte> hd_seed);
 };
-
-/**
- * Dilithium extended public key.
- *
- * Carries the BIP32 metadata plus a Dilithium2 public key (1312 bytes).
- * `Derive()` always returns false: see CDilithiumExtKey's class comment for
- * why public-only derivation is not cryptographically feasible for Dilithium.
- */
-class CDilithiumExtPubKey {
-public:
-    unsigned char nDepth{0};
-    unsigned char vchFingerprint[4]{0, 0, 0, 0};
-    unsigned int nChild{0};
-    ChainCode chaincode;
-    CDilithiumPubKey pubkey;
-
-    friend bool operator==(const CDilithiumExtPubKey& a, const CDilithiumExtPubKey& b)
-    {
-        // Chaincode is HD secret material; always CT-compare it (local first
-        // so short-circuit cannot skip the scan). Pubkey == uses TimingSafeEqual.
-        const bool chaincode_equal = dilithium_internal::TimingSafeEqual(
-            a.chaincode.begin(), b.chaincode.begin(), a.chaincode.size());
-        const bool fingerprint_equal = dilithium_internal::TimingSafeEqual(
-            a.vchFingerprint, b.vchFingerprint, sizeof(vchFingerprint));
-        const bool pubkey_equal = (a.pubkey == b.pubkey);
-        return chaincode_equal && fingerprint_equal && pubkey_equal &&
-               a.nDepth == b.nDepth && a.nChild == b.nChild;
-    }
-
-    void Encode(unsigned char code[DILITHIUM_EXTPUBKEY_SIZE]) const;
-    void Decode(const unsigned char code[DILITHIUM_EXTPUBKEY_SIZE]);
-
-    /**
-     * Public-only derivation is not supported for Dilithium. Always returns
-     * false; callers must derive from the private CDilithiumExtKey.
-     */
-    [[nodiscard]] bool Derive(CDilithiumExtPubKey& out, unsigned int nChild) const;
-};
-
-/** Initialize the Dilithium cryptographic support. */
-void DilithiumInit();
-
-/** Check that required Dilithium support is available at runtime. */
-bool DilithiumSanityCheck();
 
 #endif // BTQ_CRYPTO_DILITHIUM_KEY_H

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -49,6 +49,7 @@ const std::string MINVERSION{"minversion"};
 const std::string NAME{"name"};
 const std::string OLD_KEY{"wkey"};
 const std::string ORDERPOSNEXT{"orderposnext"};
+const std::string P2MR_METADATA{"p2mrmeta"};
 const std::string POOL{"pool"};
 const std::string PURPOSE{"purpose"};
 const std::string SETTINGS{"settings"};
@@ -66,8 +67,7 @@ const std::string WATCHS{"watchs"};
 const std::string DILITHIUM_KEY{"dilithiumkey"};
 const std::string DILITHIUM_CRYPTED_KEY{"dilithiumckey"};
 const std::string DILITHIUM_KEYMETA{"dilithiumkeymeta"};
-const std::string DILITHIUM_HDCHAIN{"dilithiumhdchain"};
-const std::string DILITHIUM_POOL{"dilithiumpool"};
+const std::string DILITHIUM_DESC_INDEX{"dilithiumdescindex"};
 
 const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS};
 } // namespace DBKeys
@@ -159,65 +159,8 @@ bool WalletBatch::WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey)
     return WriteIC(std::make_pair(DBKeys::MASTER_KEY, nID), kMasterKey, true);
 }
 
-// Dilithium key storage methods
-bool WalletBatch::WriteDilithiumKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey, const CKeyMetadata& keyMeta)
-{
-    if (!WriteDilithiumKeyMetadata(keyMeta, vchPubKey, false)) {
-        return false;
-    }
-
-    // hash pubkey/privkey to accelerate wallet load
-    std::vector<unsigned char> vchKey;
-    vchKey.reserve(vchPubKey.size() + vchPrivKey.size());
-    vchKey.insert(vchKey.end(), vchPubKey.begin(), vchPubKey.end());
-    vchKey.insert(vchKey.end(), vchPrivKey.begin(), vchPrivKey.end());
-
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_KEY, vchPubKey), std::make_pair(vchPrivKey, Hash(vchKey)), false);
-}
-
-bool WalletBatch::WriteDilithiumKeyRaw(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata& keyMeta)
-{
-    if (!WriteDilithiumKeyMetadata(keyMeta, vchPubKey, false)) {
-        return false;
-    }
-
-    // hash pubkey/privkey to accelerate wallet load
-    std::vector<unsigned char> vchKey;
-    vchKey.reserve(vchPubKey.size() + vchPrivKey.size());
-    vchKey.insert(vchKey.end(), vchPubKey.begin(), vchPubKey.end());
-    vchKey.insert(vchKey.end(), vchPrivKey.begin(), vchPrivKey.end());
-
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_KEY, vchPubKey), std::make_pair(vchPrivKey, Hash(vchKey)), false);
-}
-
-bool WalletBatch::WriteCryptedDilithiumKey(const CPubKey& vchPubKey,
-                                          const std::vector<unsigned char>& vchCryptedSecret,
-                                          const CKeyMetadata& keyMeta)
-{
-    if (!WriteDilithiumKeyMetadata(keyMeta, vchPubKey, true)) {
-        return false;
-    }
-
-    // Compute a checksum of the encrypted key
-    uint256 checksum = Hash(vchCryptedSecret);
-
-    const auto key = std::make_pair(DBKeys::DILITHIUM_CRYPTED_KEY, vchPubKey);
-    if (!WriteIC(key, std::make_pair(vchCryptedSecret, checksum), false)) {
-        // It may already exist, so try writing just the checksum
-        std::vector<unsigned char> val;
-        if (!m_batch->Read(key, val)) {
-            return false;
-        }
-        if (!WriteIC(key, std::make_pair(val, checksum), true)) {
-            return false;
-        }
-    }
-    EraseIC(std::make_pair(DBKeys::DILITHIUM_KEY, vchPubKey));
-    return true;
-}
-
-// Proper Dilithium key storage methods that use CKeyID instead of dummy CPubKey
-bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<unsigned char>& vchPrivKey, const CKeyMetadata& keyMeta)
+// Dilithium keys are stored by CKeyID. Wallet load still reads these records.
+bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const CPrivKey& vchPrivKey, const CKeyMetadata& keyMeta)
 {
     // Create a unique key for this Dilithium key using the key ID
     const auto key = std::make_pair(DBKeys::DILITHIUM_KEY, keyID);
@@ -228,7 +171,7 @@ bool WalletBatch::WriteDilithiumKeyByID(const CKeyID& keyID, const std::vector<u
     }
 
     // hash key data to accelerate wallet load
-    std::vector<unsigned char> vchKey;
+    CPrivKey vchKey;
     vchKey.reserve(keyID.size() + vchPrivKey.size());
     vchKey.insert(vchKey.end(), keyID.begin(), keyID.end());
     vchKey.insert(vchKey.end(), vchPrivKey.begin(), vchPrivKey.end());
@@ -263,20 +206,7 @@ bool WalletBatch::WriteCryptedDilithiumKeyByID(const CKeyID& keyID, const std::v
     return true;
 }
 
-bool WalletBatch::WriteDilithiumKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubkey, const bool overwrite)
-{
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_KEYMETA, pubkey), meta, overwrite);
-}
 
-bool WalletBatch::WriteDilithiumHDChain(const CHDChain& chain)
-{
-    return WriteIC(DBKeys::DILITHIUM_HDCHAIN, chain);
-}
-
-bool WalletBatch::WriteDilithiumPool(int64_t nPool, const CKeyPool& keypool)
-{
-    return WriteIC(std::make_pair(DBKeys::DILITHIUM_POOL, nPool), keypool);
-}
 
 bool WalletBatch::WriteCScript(const uint160& hash, const CScript& redeemScript)
 {
@@ -371,6 +301,11 @@ bool WalletBatch::WriteCryptedDescriptorKey(const uint256& desc_id, const CPubKe
 bool WalletBatch::WriteDescriptor(const uint256& desc_id, const WalletDescriptor& descriptor)
 {
     return WriteIC(make_pair(DBKeys::WALLETDESCRIPTOR, desc_id), descriptor);
+}
+
+bool WalletBatch::WriteDilithiumDescriptorIndex(const uint256& desc_id, int32_t index)
+{
+    return WriteIC(std::make_pair(DBKeys::DILITHIUM_DESC_INDEX, desc_id), index);
 }
 
 bool WalletBatch::WriteDescriptorDerivedCache(const CExtPubKey& xpub, const uint256& desc_id, uint32_t key_exp_index, uint32_t der_index)
@@ -582,8 +517,13 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         CKeyID keyID;
         ssKey >> keyID;
         
-        std::vector<unsigned char> vchDilithiumKey;
+        CPrivKey vchDilithiumKey;
         ssValue >> vchDilithiumKey;
+
+        // WriteDilithiumKeyByID always appends Hash(keyID || key). A short
+        // read throws into the catch below. A null hash is compared, not skipped.
+        uint256 checksum;
+        ssValue >> checksum;
         
         // Create CDilithiumKey from the stored data
         CDilithiumKey dilithiumKey;
@@ -593,9 +533,28 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
             strErr = strprintf("Error reading wallet database: Invalid Dilithium key size, expected %zu, got %zu", expected_size, vchDilithiumKey.size());
             return false;
         }
+
+        if (Hash(keyID, vchDilithiumKey) != checksum) {
+            strErr = strprintf("Error reading wallet database: Dilithium key %s checksum mismatch", keyID.GetHex());
+            return false;
+        }
         
-        // Set the key data using the Set method
+        // Set clears the key when its sign/verify self-checks fail, so a
+        // corrupt record must fail the load instead of installing an
+        // invalid key under this keyID.
         dilithiumKey.Set(vchDilithiumKey.begin(), vchDilithiumKey.end());
+        if (!dilithiumKey.IsValid()) {
+            strErr = "Error reading wallet database: Dilithium key record failed key self-checks";
+            return false;
+        }
+
+        // Every writer files a key under exactly its own id, and encrypting the
+        // wallet erases the plaintext record by that key. A key filed under
+        // anything else would survive encryption on disk in the clear.
+        if (!ssKey.empty() || CKeyID{dilithiumKey.GetPubKey().GetID()} != keyID) {
+            strErr = strprintf("Error reading wallet database: Dilithium key %s stored under another record key", keyID.GetHex());
+            return false;
+        }
         
         // A descriptor wallet has its managers built before records load, so
         // searching them is safe. A legacy wallet creates its manager on demand, and
@@ -605,14 +564,14 @@ bool LoadDilithiumKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, 
         if (pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
             for (auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
                 auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
-                if (desc_spk_man && desc_spk_man->LoadDilithiumKey(dilithiumKey, CPubKey())) {
+                if (desc_spk_man && desc_spk_man->LoadDilithiumKey(dilithiumKey)) {
                     return true;
                 }
             }
             strErr = "Error reading wallet database: Failed to load Dilithium key into any descriptor key manager";
             return false;
         }
-        if (!pwallet->GetOrCreateLegacyScriptPubKeyMan()->LoadDilithiumKey(dilithiumKey, CPubKey())) {
+        if (!pwallet->GetOrCreateLegacyScriptPubKeyMan()->LoadDilithiumKey(dilithiumKey)) {
             strErr = "Error reading wallet database: Failed to load Dilithium key into the legacy key manager";
             return false;
         }
@@ -1146,6 +1105,14 @@ static DBErrors LoadDescriptorWalletRecords(CWallet* pwallet, DatabaseBatch& bat
         assert(spk_man);
         spk_man->SetCache(cache);
 
+        // Dedicated Dilithium derivation counter (Quarks F2.5). Absent in
+        // wallets from before the split; those start at 0 and the generator
+        // skips indexes whose keys already exist.
+        int32_t dilithium_next_index{0};
+        if (batch.Read(std::make_pair(DBKeys::DILITHIUM_DESC_INDEX, id), dilithium_next_index)) {
+            spk_man->LoadDilithiumNextIndex(dilithium_next_index);
+        }
+
         // Get unencrypted keys
         prefix = PrefixStream(DBKeys::WALLETDESCRIPTORKEY, id);
         LoadResult key_res = LoadRecords(pwallet, batch, DBKeys::WALLETDESCRIPTORKEY, prefix,
@@ -1276,12 +1243,33 @@ static DBErrors LoadAddressBookRecords(CWallet* pwallet, DatabaseBatch& batch) E
             pwallet->LoadAddressPreviouslySpent(dest);
         } else if (strKey.compare(0, 2, "rr") == 0) {
             // Load "rr##" keys where ## is a decimal number, and strValue
-            // is a serialized RecentRequestEntry object.
-            pwallet->LoadAddressReceiveRequest(dest, strKey.substr(2), strValue);
+            // is a serialized RecentRequestEntry object. Wallets written
+            // before P2MR metadata had its own record type stored it here
+            // under "rrrrp2mr:<id>"; route those rows to the metadata map so
+            // GetAddressReceiveRequests never returns them (Quarks F2.17).
+            const std::string rr_id = strKey.substr(2);
+            constexpr std::string_view legacy_p2mr_prefix{"rrp2mr:"};
+            if (rr_id.rfind(legacy_p2mr_prefix, 0) == 0) {
+                pwallet->LoadP2MRMetadata(dest, rr_id.substr(legacy_p2mr_prefix.size()), strValue);
+            } else {
+                pwallet->LoadAddressReceiveRequest(dest, rr_id, strValue);
+            }
         }
         return DBErrors::LOAD_OK;
     });
     result = std::max(result, dest_res.m_result);
+
+    // Load P2MR metadata records
+    LoadResult p2mr_meta_res = LoadRecords(pwallet, batch, DBKeys::P2MR_METADATA,
+        [] (CWallet* pwallet, DataStream& key, CDataStream& value, std::string& err) EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet) {
+        std::string strAddress, strId, strValue;
+        key >> strAddress;
+        key >> strId;
+        value >> strValue;
+        pwallet->LoadP2MRMetadata(DecodeDestination(strAddress), strId, strValue);
+        return DBErrors::LOAD_OK;
+    });
+    result = std::max(result, p2mr_meta_res.m_result);
 
     return result;
 }
@@ -1650,6 +1638,16 @@ bool WalletBatch::EraseAddressData(const CTxDestination& dest)
     DataStream prefix;
     prefix << DBKeys::DESTDATA << EncodeDestination(dest);
     return m_batch->ErasePrefix(prefix);
+}
+
+bool WalletBatch::WriteP2MRMetadata(const CTxDestination& dest, const std::string& id, const std::string& value)
+{
+    return WriteIC(std::make_pair(DBKeys::P2MR_METADATA, std::make_pair(EncodeDestination(dest), id)), value);
+}
+
+bool WalletBatch::EraseP2MRMetadata(const CTxDestination& dest, const std::string& id)
+{
+    return EraseIC(std::make_pair(DBKeys::P2MR_METADATA, std::make_pair(EncodeDestination(dest), id)));
 }
 
 bool WalletBatch::WriteHDChain(const CHDChain& chain)

@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2021 The BTQ Core developers
+// Copyright (c) 2009-2021 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -61,8 +61,6 @@ public:
     }
 };
 
-typedef std::vector<unsigned char, secure_allocator<unsigned char> > CKeyingMaterial;
-
 namespace wallet_crypto_tests
 {
     class TestCrypter;
@@ -108,9 +106,6 @@ public:
 bool EncryptSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vchPlaintext, const uint256& nIV, std::vector<unsigned char> &vchCiphertext);
 bool DecryptSecret(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCiphertext, const uint256& nIV, CKeyingMaterial& vchPlaintext);
 bool DecryptKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CPubKey& vchPubKey, CKey& key);
-
-/** Zero-pad a 160-bit key id into a uint256 IV (wallet crypto uses first 16 bytes). */
-uint256 KeyIDToIV(const CKeyID& id);
 
 // Dilithium key encryption/decryption functions
 /** Historical hash-based Dilithium IV retained for encrypted-wallet compatibility. */

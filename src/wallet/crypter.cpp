@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2021 The BTQ Core developers
+// Copyright (c) 2009-2021 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,14 +14,6 @@
 #include <vector>
 
 namespace wallet {
-uint256 KeyIDToIV(const CKeyID& id)
-{
-    uint256 iv;
-    iv.SetNull();
-    memcpy(iv.begin(), id.begin(), id.size());
-    return iv;
-}
-
 int CCrypter::BytesToKeySHA512AES(const std::vector<unsigned char>& chSalt, const SecureString& strKeyData, int count, unsigned char *key,unsigned char *iv) const
 {
     // This mimics the behavior of openssl's EVP_BytesToKey with an aes256cbc

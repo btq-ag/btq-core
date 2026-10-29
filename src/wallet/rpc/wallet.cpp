@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -877,6 +877,7 @@ RPCHelpMan verifymessagewithdilithium();
 // dilithium
 RPCHelpMan getnewdilithiumaddress();
 RPCHelpMan importdilithiumkey();
+RPCHelpMan recoverdilithiumkeys();
 RPCHelpMan getdilithiumpubkey();
 RPCHelpMan createdilithiummultisig();
 RPCHelpMan signtransactionwithdilithium();
@@ -965,6 +966,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &verifymessagewithdilithium},
         {"wallet", &getnewdilithiumaddress},
         {"wallet", &importdilithiumkey},
+        {"wallet", &recoverdilithiumkeys},
         {"wallet", &getdilithiumpubkey},
         {"wallet", &createdilithiummultisig},
         {"wallet", &signtransactionwithdilithium},

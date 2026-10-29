@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2019-2022 The BTQ Core developers
+# Copyright (c) 2019-2022 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 # Test Taproot softfork (BIPs 340-342)
@@ -836,7 +836,8 @@ def spenders_taproot_active():
                     valid = not (p2mr and not p2sh)
                     error = None if valid else "Witness program hash mismatch"
                     add_spender(spenders, "applic/keypath", p2sh=p2sh, spk_mutate_pre_p2sh=mutate, tap=tap, key=secs[1], standard=False, valid=valid, err_msg=error)
-                    add_spender(spenders, "applic/scriptpath", p2sh=p2sh, leaf="s0", spk_mutate_pre_p2sh=mutate, tap=tap, key=secs[0], **SINGLE_SIG, standard=False, valid=valid, err_msg=error, sigops_weight=int(p2mr))
+                    # v2 P2MR is not legacy-sigop counted, so this spend adds no sigop weight.
+                    add_spender(spenders, "applic/scriptpath", p2sh=p2sh, leaf="s0", spk_mutate_pre_p2sh=mutate, tap=tap, key=secs[0], **SINGLE_SIG, standard=False, valid=valid, err_msg=error)
 
     # == Test various aspects of BIP341 spending paths ==
 

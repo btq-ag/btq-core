@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -213,7 +213,6 @@ RPCHelpMan importprivkey()
         
         if (is_dilithium) {
             CDilithiumPubKey dilithium_pubkey = dilithium_key.GetPubKey();
-            pubkey = CPubKey(dilithium_pubkey.begin(), dilithium_pubkey.end());
             vchAddress = CKeyID(dilithium_pubkey.GetID());
         } else {
             pubkey = key.GetPubKey();
@@ -242,7 +241,7 @@ RPCHelpMan importprivkey()
             // Use timestamp of 1 to scan the whole chain
             if (is_dilithium) {
                 // For Dilithium keys, use the Dilithium key import method
-                if (!pwallet->GetLegacyScriptPubKeyMan()->AddDilithiumKeyPubKey(dilithium_key, pubkey)) {
+                if (!pwallet->GetLegacyScriptPubKeyMan()->AddDilithiumKeyPubKey(dilithium_key)) {
                     throw JSONRPCError(RPC_WALLET_ERROR, "Error adding Dilithium key to wallet");
                 }
                 // The key can turn a tracked P2MR from watch-only to spendable.
@@ -651,6 +650,10 @@ RPCHelpMan importwallet()
                 std::string strLabel;
                 bool fLabel = true;
                 for (unsigned int nStr = 2; nStr < vstr.size(); nStr++) {
+                    // SplitString produces empty tokens for doubled or trailing
+                    // spaces; front() on an empty string is undefined behavior.
+                    if (vstr[nStr].empty())
+                        continue;
                     if (vstr[nStr].front() == '#')
                         break;
                     if (vstr[nStr] == "change=1")
@@ -669,6 +672,9 @@ RPCHelpMan importwallet()
                 std::string strLabel;
                 bool fLabel = true;
                 for (unsigned int nStr = 2; nStr < vstr.size(); nStr++) {
+                    // Same empty-token guard as the ECDSA loop above.
+                    if (vstr[nStr].empty())
+                        continue;
                     if (vstr[nStr].front() == '#')
                         break;
                     if (vstr[nStr] == "change=1")

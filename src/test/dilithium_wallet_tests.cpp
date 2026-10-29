@@ -22,12 +22,10 @@ extern "C" {
 #include <crypto/dilithium_wrapper.h>
 }
 
-using wallet::CKeyingMaterial;
 using wallet::DeriveDilithiumKeyIV;
 using wallet::EncryptDilithiumSecret;
 using wallet::DecryptDilithiumSecret;
 using wallet::DecryptDilithiumKey;
-using wallet::KeyIDToIV;
 
 BOOST_FIXTURE_TEST_SUITE(dilithium_wallet_tests, BasicTestingSetup)
 
@@ -158,7 +156,8 @@ BOOST_AUTO_TEST_CASE(dilithium_key_encryption_wrong_iv_fails)
     }
 
     const CKeyID key_id = CKeyID(key.GetPubKey().GetID());
-    const uint256 iv = KeyIDToIV(key_id);
+    uint256 iv;
+    std::copy(key_id.begin(), key_id.end(), iv.begin());
 
     std::vector<unsigned char> encrypted_secret;
     CKeyingMaterial secret(key.begin(), key.end());
@@ -379,119 +378,8 @@ BOOST_AUTO_TEST_CASE(dilithium_extkey_hardened_only_derivation)
     BOOST_CHECK_EQUAL(grand_a.nDepth, 2);
 }
 
-// BTQ-AUDIT-021 / issue #53 (5): Encode/Decode must round-trip without
-// crashing (previously Encode asserted key.size() == 2560 on a 3872-byte
-// buffer and Decode handed 2560 bytes to a Set() that required 3872).
-BOOST_AUTO_TEST_CASE(dilithium_extkey_encode_decode_roundtrip)
-{
-    CDilithiumExtKey master;
-    const auto raw_seed = std::vector<std::byte>(32, std::byte{0x77});
-    master.SetSeed(Span<const std::byte>(raw_seed.data(), raw_seed.size()));
-    BOOST_REQUIRE(master.key.IsValid());
-
-    std::array<unsigned char, DILITHIUM_EXTKEY_SIZE> buf{};
-    master.Encode(buf.data());
-
-    CDilithiumExtKey decoded;
-    decoded.Decode(buf.data());
-
-    BOOST_CHECK(decoded == master);
-    BOOST_CHECK(decoded.key.IsValid());
-    BOOST_CHECK(decoded.key == master.key);
-    BOOST_CHECK(decoded.key.GetPubKey() == master.key.GetPubKey());
-}
-
-BOOST_AUTO_TEST_CASE(dilithium_extkey_decode_rejects_non_hardened_child_metadata)
-{
-    CDilithiumExtKey master;
-    const auto raw_seed = std::vector<std::byte>(32, std::byte{0x78});
-    master.SetSeed(Span<const std::byte>(raw_seed.data(), raw_seed.size()));
-
-    CDilithiumExtKey child;
-    BOOST_REQUIRE(master.Derive(child, HARDENED | 7));
-    BOOST_REQUIRE(child.key.IsValid());
-
-    std::array<unsigned char, DILITHIUM_EXTKEY_SIZE> buf{};
-    child.Encode(buf.data());
-    buf[5] = 0;
-    buf[6] = 0;
-    buf[7] = 0;
-    buf[8] = 7;
-
-    CDilithiumExtKey decoded;
-    decoded.Decode(buf.data());
-    BOOST_CHECK(!decoded.key.IsValid());
-    BOOST_CHECK_EQUAL(decoded.nDepth, 0);
-    BOOST_CHECK_EQUAL(decoded.nChild, 0u);
-    BOOST_CHECK(decoded.chaincode == ChainCode{});
-}
-
-// CDilithiumExtPubKey Encode/Decode previously over-stated the pubkey size
-// (1952 instead of 1312); make sure the Dilithium2 layout round-trips.
-BOOST_AUTO_TEST_CASE(dilithium_extpubkey_encode_decode_roundtrip)
-{
-    CDilithiumExtKey master;
-    const auto raw_seed = std::vector<std::byte>(32, std::byte{0x55});
-    master.SetSeed(Span<const std::byte>(raw_seed.data(), raw_seed.size()));
-    BOOST_REQUIRE(master.key.IsValid());
-
-    CDilithiumExtPubKey neutered = master.Neuter();
-    BOOST_REQUIRE(neutered.pubkey.IsValid());
-
-    std::array<unsigned char, DILITHIUM_EXTPUBKEY_SIZE> buf{};
-    neutered.Encode(buf.data());
-
-    CDilithiumExtPubKey decoded;
-    decoded.Decode(buf.data());
-
-    BOOST_CHECK(decoded == neutered);
-    BOOST_CHECK(decoded.pubkey == master.key.GetPubKey());
-}
-
-BOOST_AUTO_TEST_CASE(dilithium_extpubkey_decode_rejects_non_hardened_child_metadata)
-{
-    CDilithiumExtKey master;
-    const auto raw_seed = std::vector<std::byte>(32, std::byte{0x56});
-    master.SetSeed(Span<const std::byte>(raw_seed.data(), raw_seed.size()));
-
-    CDilithiumExtKey child;
-    BOOST_REQUIRE(master.Derive(child, HARDENED | 9));
-    const CDilithiumExtPubKey neutered = child.Neuter();
-    BOOST_REQUIRE(neutered.pubkey.IsValid());
-
-    std::array<unsigned char, DILITHIUM_EXTPUBKEY_SIZE> buf{};
-    neutered.Encode(buf.data());
-    buf[5] = 0;
-    buf[6] = 0;
-    buf[7] = 0;
-    buf[8] = 9;
-
-    CDilithiumExtPubKey decoded;
-    decoded.Decode(buf.data());
-    BOOST_CHECK(!decoded.pubkey.IsValid());
-    BOOST_CHECK_EQUAL(decoded.nDepth, 0);
-    BOOST_CHECK_EQUAL(decoded.nChild, 0u);
-    BOOST_CHECK(decoded.chaincode == ChainCode{});
-}
-
-// Public-only derivation cannot work for Dilithium (no group law); the
-// implementation must say so by returning false rather than producing a
-// keypair that fails to verify.
-BOOST_AUTO_TEST_CASE(dilithium_extpubkey_derive_unsupported)
-{
-    CDilithiumExtKey master;
-    const auto raw_seed = std::vector<std::byte>(32, std::byte{0x33});
-    master.SetSeed(Span<const std::byte>(raw_seed.data(), raw_seed.size()));
-    CDilithiumExtPubKey neutered = master.Neuter();
-
-    CDilithiumExtPubKey child;
-    BOOST_CHECK(!neutered.Derive(child, 0));
-    BOOST_CHECK(!neutered.Derive(child, HARDENED | 0));
-}
-
-// End-to-end HD path: derived key signs, neutered parent's child pubkey
-// verifies, and a wrong message is rejected. Proves wallet seed
-// backup/restore actually works.
+// End-to-end HD path: derived key signs, its pubkey verifies, and a wrong
+// message is rejected. Proves wallet seed backup/restore actually works.
 BOOST_AUTO_TEST_CASE(dilithium_hd_path_sign_and_verify)
 {
     CDilithiumExtKey master;
@@ -534,9 +422,6 @@ BOOST_AUTO_TEST_CASE(dilithium_hd_path_sign_and_verify)
         k2 = next;
     }
     BOOST_CHECK(k == k2);
-
-    // Neuter() must expose the same pubkey as the derived private key.
-    BOOST_CHECK(k.Neuter().pubkey == k.key.GetPubKey());
 
     // Sign with the derived key, verify with its pubkey.
     uint256 msg = uint256::ONE;

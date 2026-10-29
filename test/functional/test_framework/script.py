@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-2022 The BTQ Core developers
+# Copyright (c) 2015-2022 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Functionality to build scripts, as well as signature hash functions.
@@ -259,6 +259,7 @@ OP_CHECKSIGDILITHIUM = CScriptOp(0xbb)
 OP_CHECKSIGDILITHIUMVERIFY = CScriptOp(0xbc)
 OP_CHECKMULTISIGDILITHIUM = CScriptOp(0xbd)
 OP_CHECKMULTISIGDILITHIUMVERIFY = CScriptOp(0xbe)
+# Reserved. Execution fails. Do not reuse 0xbf.
 OP_DILITHIUM_PUBKEY = CScriptOp(0xbf)
 
 OP_INVALIDOPCODE = CScriptOp(0xff)
@@ -945,7 +946,7 @@ def taproot_construct(pubkey, scripts=None, treat_internal_as_infinity=False):
     return TaprootInfo(CScript([OP_1, tweaked]), pubkey, negated + 0, tweak, leaves, h, tweaked)
 
 def is_op_success(o):
-    # BTQ: Exclude Dilithium opcodes (0xbb-0xbf) from OP_SUCCESSx range.
+    # Dilithium opcodes are 0xbb-0xbe. 0xbf is reserved and must not be OP_SUCCESS.
     # Must match IsOpSuccess() in src/script/script.cpp
     return o == 0x50 or o == 0x62 or o == 0x89 or o == 0x8a or o == 0x8d or o == 0x8e or (o >= 0x7e and o <= 0x81) or (o >= 0x83 and o <= 0x86) or (o >= 0x95 and o <= 0x99) or (o >= 0xc0 and o <= 0xfe)
 

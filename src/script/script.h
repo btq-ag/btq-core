@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -67,25 +67,16 @@ static constexpr int64_t VALIDATION_WEIGHT_PER_SIGOP_PASSED{50};
 // (P2MR tapscript only). It bounds re-checking one signature with OP_2DUP.
 // OP_CHECKMULTISIGDILITHIUM charges once per key tried, last key first, so
 // a 1-of-n spend signed by the first key pays n times while bringing one
-// signature (~2485 bytes of budget with the rest of the witness) and n
-// 1315-byte key pushes. Covering n = 20 needs a charge <= 1315 + 2485 / 20.
-static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED{1400};
+// signature (2485 bytes of budget with the rest of the witness) and n
+// 1315-byte key pushes. A depth-0 1-of-20 is 28785 weight. 1500 * 20
+// exceeds that, so the charge is 1439 (20 * 1439 = 28780).
+static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED{1439};
 // Charged before SCRIPT_VERIFY_DILITHIUM_LIMITS is active.
 static constexpr int64_t VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED_LEGACY{500};
-// Dilithium is charged 50 sigops against the block sigop limit
-// (MAX_BLOCK_SIGOPS_COST, MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS from
-// nDilithiumLimitsHeight).
-// 50 is provisional until the input-level ratio is recorded. Measure with
-//   ./src/bench/bench_btq -filter='(P2MRDilithium|P2WPKHECDSA)Input'
-// Compute required = ceil(ratio * 1.5). Keep 50 iff required <= 50; otherwise
-// propose `required` with a testnet reset. Do not lower 50 without a written
-// DoS argument: under-weighting packs more PQ verifies per block.
-//
-// At 80000 the sigop limit bound first: 80000/50 = 1600 Dilithium inputs per
-// block vs ~1817 by weight at ~4402 WU for a 1-in P2MR input. At 160000 the
-// weight limit binds first for single-key spends, and the sigop limit caps an
-// adversarial block at 160000/50 = 3200 Dilithium verifies. The bench is one-input
-// VerifyScript (script, P2MR control, sighash, verify), not full block cost.
+// Dilithium opcode cost in legacy, P2SH, and witness-v0 sigop accounting,
+// including the pre-P2MR-only witness-v0 keyhash path. P2MR leaves are not
+// included in the block sigop total. Do not lower 50 without a written DoS
+// argument: these scripts are still counted before execution.
 static constexpr unsigned int DILITHIUM_SIGOP_COST = 50;
 
 // How much weight budget is added to the witness size (Tapscript only, see BIP 342).
@@ -242,13 +233,17 @@ enum opcodetype
     OP_CHECKSIGDILITHIUMVERIFY = 0xbc,
     OP_CHECKMULTISIGDILITHIUM = 0xbd,
     OP_CHECKMULTISIGDILITHIUMVERIFY = 0xbe,
+    // Reserved. No implementation: execution fails. Do not reuse 0xbf.
     OP_DILITHIUM_PUBKEY = 0xbf,
 
     OP_INVALIDOPCODE = 0xff,
 };
 
-// Maximum value that an opcode can be
-static const unsigned int MAX_OPCODE = OP_DILITHIUM_PUBKEY;
+// Pre-Taproot ceiling for HasValidOps and the asm parser.
+// OP_CHECKSIGADD and the Dilithium opcodes sit above this. EvalScript
+// still accepts them in a P2MR tapscript leaf. The tx decoder does not
+// run witness bytes through HasValidOps. 0xbf stays reserved and unused.
+static const unsigned int MAX_OPCODE = OP_NOP10;
 
 std::string GetOpName(opcodetype opcode);
 

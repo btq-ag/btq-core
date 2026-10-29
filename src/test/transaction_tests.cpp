@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2022 The BTQ Core developers
+// Copyright (c) 2011-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -1029,21 +1029,27 @@ BOOST_AUTO_TEST_CASE(test_IsWitnessStandard_stack_item_size_limits)
     BOOST_CHECK(check_witness_standard(p2wsh_script, p2wsh_witness(MAX_STANDARD_P2WSH_STACK_ITEM_SIZE)));
     BOOST_CHECK(!check_witness_standard(p2wsh_script, p2wsh_witness(MAX_STANDARD_P2WSH_STACK_ITEM_SIZE + 1)));
 
-    const auto tapscript_witness = [](size_t item_size) {
+    const auto tapscript_witness = [](size_t item_size, unsigned char control = TAPROOT_LEAF_TAPSCRIPT) {
         CScriptWitness witness;
         const CScript script{CScript() << OP_TRUE};
         witness.stack.emplace_back(item_size, 0);
         witness.stack.emplace_back(script.begin(), script.end());
-        witness.stack.push_back({TAPROOT_LEAF_TAPSCRIPT});
+        witness.stack.push_back({control});
         return witness;
     };
     const CScript taproot_script = CScript() << OP_1 << std::vector<unsigned char>(WITNESS_V1_TAPROOT_SIZE, 0);
     BOOST_CHECK(check_witness_standard(taproot_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE)));
     BOOST_CHECK(!check_witness_standard(taproot_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE + 1)));
 
+    // P2MR fixes the control-block parity bit to 1. Keep the tapscript leaf
+    // version (0xc0 | 1) so the oversized item is still what fails the check.
+    const unsigned char p2mr_control{static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 0x01)};
     const CScript p2mr_script = CScript() << OP_2 << std::vector<unsigned char>(WITNESS_V2_P2MR_SIZE, 0);
-    BOOST_CHECK(check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE)));
-    BOOST_CHECK(!check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE + 1)));
+    BOOST_CHECK(check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE, p2mr_control)));
+    BOOST_CHECK(!check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE + 1, p2mr_control)));
+    // 0xc0 is the same leaf version with the parity bit clear. That witness
+    // is within the stack-item limit, so only the parity check can reject it.
+    BOOST_CHECK(!check_witness_standard(p2mr_script, tapscript_witness(MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE, TAPROOT_LEAF_TAPSCRIPT)));
 }
 
 //! SpendsWitnessProgram must agree with what the interpreter would conclude,

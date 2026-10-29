@@ -1,11 +1,11 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: BTQ
 Upstream-Contact: Satoshi Nakamoto <satoshin@gmx.com>
- irc://#btq-core-dev@libera.chat
+ irc://#bitcoin-core-dev@libera.chat
 Source: https://github.com/btq-ag/btq-core
 
 Files: *
-Copyright: 2009-2023, BTQ Core Developers
+Copyright: 2009-2023, Bitcoin Core Developers
 License: Expat
 Comment: The BTQ Core Developers encompasses all contributors to the
          project, listed in the release notes or the git log.
@@ -72,7 +72,7 @@ Files: src/qt/res/icons/btq.*
        src/qt/res/src/btq.svg
 Copyright: Bitboy, Jonas Schnelli
 License: public-domain
-Comment: Site: https://btqtalk.org/?topic=1756.0
+Comment: Site: https://bitcointalk.org/?topic=1756.0
 
 Files: src/qt/res/icons/proxy.png
        src/qt/res/src/proxy.svg

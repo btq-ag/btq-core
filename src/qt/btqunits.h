@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2021 The BTQ Core developers
+// Copyright (c) 2011-2021 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -37,7 +37,7 @@ public:
     explicit BTQUnits(QObject *parent);
 
     /** BTQ units.
-      @note Source: https://en.btq.it/wiki/Units . Please add only sensible ones
+      @note Source: https://en.bitcoin.it/wiki/Units . Please add only sensible ones
      */
     enum class Unit {
         BTQ,

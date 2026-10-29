@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The BTQ Core developers
+// Copyright (c) 2009-2021 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -31,7 +31,7 @@
 extern "C" {
 #endif
 
-#define BTQCONSENSUS_API_VER 2
+#define BTQCONSENSUS_API_VER 3
 
 typedef enum btqconsensus_error_t
 {
@@ -57,11 +57,14 @@ enum
     btqconsensus_SCRIPT_FLAGS_VERIFY_WITNESS             = (1U << 11), // enable WITNESS (BIP141)
     btqconsensus_SCRIPT_FLAGS_VERIFY_TAPROOT             = (1U << 17), // enable TAPROOT (BIPs 341 & 342)
     btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM          = (1U << 21), // enable Dilithium signature validation
-    btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS   = (1U << 24), // 1400 validation weight per P2MR Dilithium check
+    btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR                = (1U << 22), // enable P2MR (witness v2); needs spent outputs
+    btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY = (1U << 23), // Dilithium opcodes only in P2MR tapscript
+    btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS   = (1U << 24), // 1439 validation weight per P2MR Dilithium check
     btqconsensus_SCRIPT_FLAGS_VERIFY_ALL                 = btqconsensus_SCRIPT_FLAGS_VERIFY_P2SH | btqconsensus_SCRIPT_FLAGS_VERIFY_DERSIG |
                                                                btqconsensus_SCRIPT_FLAGS_VERIFY_NULLDUMMY | btqconsensus_SCRIPT_FLAGS_VERIFY_CHECKLOCKTIMEVERIFY |
                                                                btqconsensus_SCRIPT_FLAGS_VERIFY_CHECKSEQUENCEVERIFY | btqconsensus_SCRIPT_FLAGS_VERIFY_WITNESS |
                                                                btqconsensus_SCRIPT_FLAGS_VERIFY_TAPROOT | btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM |
+                                                               btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR | btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY |
                                                                btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS
 };
 

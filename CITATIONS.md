@@ -99,7 +99,7 @@ B_{2,z} = e^{1/4} · (√(n+1)·τ·σ_t + σ_w)·√(N(k+ℓ)) + (τ·2^νt + 2
 
 `src/crypto/dilithium_key.{h,cpp}` implements **Construction 1** (seed-based deterministic ML-DSA key generation) for HD derivation. The 32-byte HD seed at each node is expanded into a full ML-DSA-44 key pair by `btq_dilithium_keypair_from_seed()`, which forwards the seed to the Dilithium reference implementation's keypair routine in place of `randombytes()`. Child seeds are produced by HMAC-SHA512 over the parent chaincode and seed in BIP32 style.
 
-Public-only (non-hardened) derivation is **explicitly rejected** at the API level (`CDilithiumExtKey::Derive` returns false for non-hardened indices and `CDilithiumExtPubKey::Derive` always returns false): without a Raccoon-G implementation there is no sound construction for it, and silently fabricating a child pubkey that fails to verify against the corresponding child secret would be worse than refusing.
+Public-only (non-hardened) derivation is **explicitly rejected** at the API level (`CDilithiumExtKey::Derive` returns false for non-hardened indices, and there is no public-key derivation type): without a Raccoon-G implementation there is no sound construction for it, and silently fabricating a child pubkey that fails to verify against the corresponding child secret would be worse than refusing.
 
 - Construction 1 (deterministic ML-DSA keygen from a seed): implemented.
 - Construction 2 (Raccoon-G with non-hardened pubkey derivation): not implemented; deferred per issue tracker.

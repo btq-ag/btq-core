@@ -103,7 +103,7 @@ respectively before being closed. Passing a smoke test is not enough.
 | Mixed signing | Replaced placeholder mixed ECDSA/Dilithium tests with real signing and script execution tests. | `dilithium_mixed_mode_tests/*` and broader Dilithium unit tranche passed. |
 | P2MR wallet ownership | Wallet-created P2MR metadata now participates in `IsMine`, with cache invalidation and corrupt-metadata rejection. | `p2mr_tests/*`, `ismine_tests/*`, `wallet_tests/*`, `wallet_bip360_send_paths.py --descriptors` passed. |
 | Partial signature merge | `SignatureData::MergeSignatureData` now preserves Dilithium, Taproot, missing-key, and preimage fields. | `dilithium_basic_tests/*`, `script_tests/script_combineSigs`, `transaction_tests/test_witness` passed. |
-| Dilithium raw `sk_to_pk` helper | Helper now fails closed instead of returning invalid public-key bytes from a raw secret key. | `dilithium_key_tests/dilithium_raw_secret_key_to_public_key_fails_closed` passed. |
+| Dilithium raw `sk_to_pk` helper | Helper removed (Quarkslab INFO-35). Keys come only from `btq_dilithium_keypair_from_seed`. | `dilithium_key_tests/dilithium_wrapper_sign_verify` passed. |
 | BTQ constants lint | Confirmed consensus/test-framework constants are currently synchronized. | `python3 test/lint/lint-btq-consensus-constants.py` passed. |
 
 Stage 0 does not close the mainnet audit. It only removes several blockers that
@@ -116,7 +116,7 @@ would have invalidated later evidence.
 | P2MR Dilithium script-path signing | Added P2MR Dilithium sighash support, OP_2/P2MR BIP341-style precompute detection, script-path Dilithium wallet signing provider export, and RPC signing coverage. | `p2mr_tests/*`, `feature_p2mr_rpc.py --descriptors`, and `wallet_bip360_send_paths.py --descriptors` passed. |
 | P2MR Dilithium mutation coverage | Added real P2MR Dilithium pubkey and pubkeyhash leaf spends, wrong-amount, mutated-signature, mutated-script, and descriptor-wallet provider tests. | `p2mr_tests` passed. |
 | Dilithium key material invariants | `CDilithiumKey::Load()` and `Set()` now reject `sk||pk` blobs whose stored pubkey cannot verify a signature from the secret key. | `dilithium_key_tests/dilithium_load_and_set_reject_mismatched_stored_pubkey` and full Dilithium focused tranche passed. |
-| Dilithium HD metadata invariants | Extended key decode now rejects non-hardened child metadata, matching hardened-only Dilithium derivation semantics. | `dilithium_wallet_tests/dilithium_extkey_decode_rejects_non_hardened_child_metadata` and `dilithium_extpubkey_decode_rejects_non_hardened_child_metadata` passed. |
+| Dilithium HD metadata invariants | Extended key encode/decode and the extended pubkey type were removed (Quarkslab INFO-35); nothing serializes a `CDilithiumExtKey`. `Derive` stays hardened-only. | `dilithium_wallet_tests/dilithium_extkey_hardened_only_derivation` passed. |
 | LWMA retarget and activation | LWMA now honors `fPowNoRetargeting`, avoids low-target zero underflow, documents `lwma` in `-testactivationheight`, and advertises `!lwma` in GBT for the next active block. | `pow_lwma_tests`, `pow_tests`, `argsman_tests/testactivationheight_help_lists_lwma`, and `feature_lwma_activation.py` passed. |
 | Dilithium NULLFAIL | `OP_CHECKSIGDILITHIUM` now rejects failed non-empty signatures under `SCRIPT_VERIFY_NULLFAIL`, including P2MR script-path execution. | `dilithium_basic_tests/dilithium_checksig_nullfail_rejects_nonempty_invalid_signature` and `p2mr_tests/p2mr_dilithium_checksig_nullfail_rejects_nonempty_invalid_signature` passed. |
 
@@ -175,7 +175,7 @@ happened to pass.
 | C09 | Real P2MR Dilithium script spends | Dilithium signature creation/checking inside P2MR leaf | Stage 1 adds real C++ P2MR Dilithium pubkey/pubkeyhash signing and RPC mined spend coverage | Broaden mined mutation matrix, invalid control paths, annex/codeseparator binding, same script rejected under Taproot | V3/V4 | 2026-06-04 |
 | C10 | Dilithium C wrapper | Keygen, seeded keygen, sign, verify, fail-closed unsupported helpers | `dilithium_key_tests`, new `sk_to_pk` regression | NIST/known-answer vectors, malformed/null input policy, deterministic seed vectors | V3 | 2026-07-31 |
 | C11 | `CDilithiumKey` and `CDilithiumPubKey` | Invalid, generated, loaded, serialized, mismatched `sk||pk`, signing | Stage 1 rejects mismatched `sk||pk`; focused Dilithium key/wallet suites pass | Random full-size blob quarantine, `IsValid` vs `IsFullyValid` consistency, KAT/differential verification | V3 | 2026-07-31 |
-| C12 | Dilithium HD/ext keys | Seed, derive hardened, encode/decode, depth/fingerprint state | Stage 1 rejects non-hardened child metadata during extkey/extpubkey decode | Max-depth, invalid master metadata, broader decode mutation, reload and restored-signing tests | V3 | 2026-06-04 |
+| C12 | Dilithium HD/ext keys | Seed, derive hardened, encode/decode, depth/fingerprint state | Ext key encode/decode removed (INFO-35); derivation is hardened-only | Max-depth, invalid master metadata, broader decode mutation, reload and restored-signing tests | V3 | 2026-06-04 |
 | C13 | Classical ECDSA/Schnorr compatibility | Legacy, segwit, taproot, existing Bitcoin signing FSMs | Upstream-derived unit and functional tests | Prove BTQ changes did not weaken DER/STRICTENC, Taproot, PSBT, or descriptor signing | V2/V3 | **never** |
 | C14 | Sighash and domain separation | BASE/WITNESS_V0/TAPSCRIPT/P2MR hashing and signature family split | `sighash_tests`, Dilithium sighash-byte test, mixed-mode tests | P2MR Dilithium mutation matrix for leaf script, control path, prevout, amount, annex, codeseparator | V3 | **never** |
 | C15 | Sigops and resource accounting | Legacy/witness/P2MR sigop counts, Dilithium cost, validation weight | `sigopcount_tests`, `feature_dilithium_sigops.py`, constants lint | Interpreter debit equals script counting, P2MR witness-v2 accounting, max-cost block and mempool tests | V4 | 2026-07-30 |
@@ -271,7 +271,7 @@ evidence:
 - Three known-unspendable or unreachable code paths that read as live capability:
   unused `DILITHIUM5_*` constants against a hardcoded Dilithium2 build,
   `SignatureAlgorithm::FALCON`/`SPHINCS` written on every network and read
-  nowhere (#116), and `TxoutType::DILITHIUM_SCRIPTHASH`, which `Solver()` can
+  nowhere (#116, since removed under Quarkslab INFO-35), and `TxoutType::DILITHIUM_SCRIPTHASH`, which `Solver()` can
   never produce (#112). None are defects; all will cost a reviewer time.
 
 Closed since the June revision: broad `script_tests` is now green, along with

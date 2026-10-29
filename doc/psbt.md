@@ -14,7 +14,7 @@ PSBT is an interchange format for BTQ transactions that are not fully signed
 yet, together with relevant metadata to help entities work towards signing it.
 It is intended to simplify workflows where multiple parties need to cooperate to
 produce a transaction. Examples include hardware wallets, multisig setups, and
-[CoinJoin](https://btqtalk.org/?topic=279249) transactions.
+[CoinJoin](https://bitcointalk.org/?topic=279249) transactions.
 
 ### Overall workflow
 

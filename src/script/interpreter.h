@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -155,8 +155,8 @@ enum : uint32_t {
     SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY = (1U << 23),
 
     // Charge VALIDATION_WEIGHT_PER_DILITHIUM_SIGOP_PASSED instead of the
-    // _LEGACY value per P2MR Dilithium check, and saturate P2MR leaf sigop
-    // counts instead of wrapping. Active from nDilithiumLimitsHeight.
+    // _LEGACY value per P2MR Dilithium check, and count legacy sigops in
+    // 64 bits so the block total does not wrap. Active from nDilithiumLimitsHeight.
     SCRIPT_VERIFY_DILITHIUM_LIMITS = (1U << 24),
 
     // Constants to point to the highest flag in use. Add new flags above this line.
@@ -258,6 +258,11 @@ static constexpr size_t P2MR_CONTROL_BASE_SIZE = 1;
 static constexpr size_t P2MR_CONTROL_NODE_SIZE = 32;
 static constexpr size_t P2MR_CONTROL_MAX_NODE_COUNT = 128;
 static constexpr size_t P2MR_CONTROL_MAX_SIZE = P2MR_CONTROL_BASE_SIZE + P2MR_CONTROL_NODE_SIZE * P2MR_CONTROL_MAX_NODE_COUNT;
+/** Upper bound for a single P2MR leaf script, shared by every producer and
+ *  parser (wallet tree storage, PSBT fields). Consensus does not bound P2MR
+ *  leaf scripts directly, so one side accepting more than the other would
+ *  make the wallet emit PSBTs its own parser rejects. */
+static constexpr size_t MAX_P2MR_LEAF_SCRIPT_SIZE = 100000;
 
 extern const HashWriter HASHER_TAPSIGHASH; //!< Hasher with tag "TapSighash" pre-fed to it.
 extern const HashWriter HASHER_TAPLEAF;    //!< Hasher with tag "TapLeaf" pre-fed to it.

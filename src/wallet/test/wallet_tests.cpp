@@ -1,15 +1,17 @@
-// Copyright (c) 2012-2022 The BTQ Core developers
+// Copyright (c) 2012-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <wallet/wallet.h>
 
+#include <algorithm>
 #include <future>
 #include <memory>
 #include <stdint.h>
 #include <vector>
 
 #include <addresstype.h>
+#include <crypto/dilithium_key.h>
 #include <interfaces/chain.h>
 #include <key_io.h>
 #include <node/blockstorage.h>
@@ -21,6 +23,7 @@
 #include <test/util/logging.h>
 #include <test/util/random.h>
 #include <test/util/setup_common.h>
+#include <util/message.h>
 #include <util/strencodings.h>
 #include <util/translation.h>
 #include <validation.h>
@@ -45,6 +48,8 @@ RPCHelpMan importmulti();
 RPCHelpMan importprivkey();
 RPCHelpMan dumpwallet();
 RPCHelpMan importwallet();
+RPCHelpMan verifymessagewithdilithium();
+RPCHelpMan verifydilithiumsignature();
 
 // Ensure that fee levels defined in the wallet are at least as high
 // as the default levels for node policy.
@@ -363,7 +368,7 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, Walle
         {
             LOCK2(wallet->cs_wallet, spk_man->cs_KeyStore);
             spk_man->mapKeyMetadata[keyid].nCreateTime = key_time;
-            BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(key, CPubKey(pubkey.begin(), pubkey.end())));
+            BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(key));
             BOOST_REQUIRE(wallet->SetAddressBook(destination, "dilithium backup", AddressPurpose::RECEIVE));
             AddWallet(context, wallet);
             LOCK(Assert(m_node.chainman)->GetMutex());
@@ -630,6 +635,72 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_p2mr_commitment_mismatch
     }
 }
 
+// SplitString turns doubled or trailing spaces into empty tokens, and the
+// importwallet label loop used to call front() on them, which is undefined
+// behavior on an empty string. A dump line with sloppy spacing must import.
+BOOST_FIXTURE_TEST_CASE(importwallet_tolerates_empty_tokens, WalletTestingSetup)
+{
+    const fs::path dump_path = m_args.GetDataDirNet() / "empty-token.dump";
+
+    CKey key;
+    key.MakeNewKey(/*fCompressedIn=*/true);
+    const CKeyID keyid = key.GetPubKey().GetID();
+
+    CDilithiumKey dilithium_key;
+    dilithium_key.MakeNewKey();
+    BOOST_REQUIRE(dilithium_key.IsValid());
+    const CKeyID dilithium_keyid{dilithium_key.GetPubKey().GetID()};
+
+    {
+        std::ofstream dump_file{dump_path};
+        // No '#' before the empty tokens. SplitString keeps a token for the
+        // doubled space and for the trailing space, and the label loop must
+        // skip those instead of calling front(). A '#' earlier in the line
+        // would stop the scan before the trailing token.
+        dump_file << EncodeSecret(key) << " 2026-01-01T00:00:00Z  label=spaced \n";
+        dump_file << EncodeDilithiumSecret(dilithium_key) << " 2026-01-01T00:00:00Z  label=dspaced \n";
+        dump_file << "# End of dump\n";
+    }
+
+    WalletContext context;
+    context.args = &m_args;
+    const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet->SetupLegacyScriptPubKeyMan();
+
+    JSONRPCRequest request;
+    request.context = &context;
+    request.params.setArray();
+    request.params.push_back(fs::PathToString(dump_path));
+    AddWallet(context, wallet);
+    {
+        LOCK(Assert(m_node.chainman)->GetMutex());
+        LOCK(wallet->cs_wallet);
+        wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+    }
+
+    wallet::importwallet().HandleRequest(request);
+    RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+
+    LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+    BOOST_REQUIRE(spk_man);
+    {
+        LOCK(spk_man->cs_KeyStore);
+        BOOST_CHECK(spk_man->HaveKey(keyid));
+    }
+    CDilithiumKey recovered;
+    BOOST_REQUIRE(spk_man->GetDilithiumKey(dilithium_keyid, recovered));
+    BOOST_CHECK(recovered == dilithium_key);
+    const auto* entry = wallet->FindAddressBookEntry(PKHash(keyid));
+    BOOST_REQUIRE(entry);
+    BOOST_CHECK_EQUAL(entry->GetLabel(), "spaced");
+    {
+        LOCK(wallet->cs_wallet);
+        const auto p2mr_entries = ListP2MR(*wallet);
+        BOOST_REQUIRE_EQUAL(p2mr_entries.size(), 1U);
+        BOOST_CHECK_EQUAL(p2mr_entries[0].label, "dspaced");
+    }
+}
+
 BOOST_FIXTURE_TEST_CASE(importprivkey_stores_dilithium_key_by_dilithium_id, WalletTestingSetup)
 {
     CDilithiumKey key;
@@ -797,6 +868,34 @@ BOOST_FIXTURE_TEST_CASE(LoadReceiveRequests, TestingSetup)
             auto requests = wallet->GetAddressReceiveRequests();
             auto erequests = {"val_rr11"};
             BOOST_CHECK_EQUAL_COLLECTIONS(requests.begin(), requests.end(), std::begin(erequests), std::end(erequests));
+        });
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(receive_requests_exclude_p2mr_metadata, TestingSetup)
+{
+    for (DatabaseFormat format : DATABASE_FORMATS) {
+        const std::string name{strprintf("p2mr-metadata-requests-%i", format)};
+        TestLoadWallet(name, format, [](std::shared_ptr<CWallet> wallet) EXCLUSIVE_LOCKS_REQUIRED(wallet->cs_wallet) {
+            WalletBatch batch{wallet->GetDatabase()};
+            BOOST_CHECK(wallet->SetAddressReceiveRequest(batch, PKHash(), "1", "val_rr1"));
+            BOOST_CHECK(wallet->SetP2MRMetadata(batch, PKHash(), "tree", "{\"leaves\":[]}"));
+            BOOST_CHECK(wallet->SetP2MRMetadata(batch, ScriptHash(), "", "{}"));
+            // Ids that only resemble the prefix are ordinary requests.
+            BOOST_CHECK(wallet->SetAddressReceiveRequest(batch, ScriptHash(), "rrp2m", "val_stem"));
+            BOOST_CHECK(wallet->SetAddressReceiveRequest(batch, ScriptHash(), "xrrp2mr:", "val_infix"));
+            BOOST_CHECK(wallet->SetAddressReceiveRequest(batch, ScriptHash(), "", "val_empty"));
+        });
+        TestLoadWallet(name, format, [](std::shared_ptr<CWallet> wallet) EXCLUSIVE_LOCKS_REQUIRED(wallet->cs_wallet) {
+            auto requests = wallet->GetAddressReceiveRequests();
+            std::sort(requests.begin(), requests.end());
+            const std::vector<std::string> expected{"val_empty", "val_infix", "val_rr1", "val_stem"};
+            BOOST_CHECK_EQUAL_COLLECTIONS(requests.begin(), requests.end(), expected.begin(), expected.end());
+            // Hidden from payment requests, still there for P2MR.
+            std::string tree;
+            BOOST_CHECK(wallet->GetP2MRMetadata(PKHash(), "tree", tree));
+            BOOST_CHECK_EQUAL(tree, "{\"leaves\":[]}");
+            BOOST_CHECK_EQUAL(wallet->ListP2MRMetadata().size(), 2U);
         });
     }
 }
@@ -1417,6 +1516,146 @@ BOOST_AUTO_TEST_CASE(ismine_cache_tracks_keys_derived_after_a_miss)
         BOOST_REQUIRE(derived);
         BOOST_CHECK(GetScriptForDestination(*derived) == future);
         BOOST_CHECK_EQUAL(wallet->IsMine(future), ISMINE_SPENDABLE);
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(verifymessagewithdilithium_needs_only_the_public_key, WalletTestingSetup)
+{
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CDilithiumPubKey pubkey{key.GetPubKey()};
+    CDilithiumKey other;
+    BOOST_REQUIRE(other.MakeNewKey());
+    const std::string message{"I control this address"};
+    std::string signature;
+    BOOST_REQUIRE(DilithiumMessageSign(key, message, signature));
+    std::string other_signature;
+    BOOST_REQUIRE(DilithiumMessageSign(other, message, other_signature));
+    const std::string pubkey_hex{HexStr(pubkey)};
+
+    // A fresh RPCHelpMan per call, as the RPC table does.
+    using RPCFactory = RPCHelpMan (*)();
+    const RPCFactory verify{verifymessagewithdilithium};
+    const RPCFactory verify_deprecated{verifydilithiumsignature};
+    const auto call = [](WalletContext& context, RPCFactory rpc, const std::vector<std::string>& args) {
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        for (const auto& arg : args) request.params.push_back(arg);
+        return rpc().HandleRequest(request);
+    };
+    const auto make_wallet = [&]() {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->SetupLegacyScriptPubKeyMan();
+        return wallet;
+    };
+
+    std::string address;
+    {
+        // The signer's own wallet still verifies without the argument.
+        WalletContext context;
+        context.args = &m_args;
+        const auto signer = make_wallet();
+        {
+            LOCK(signer->cs_wallet);
+            const auto created = ImportDilithiumKeyAsP2MR(*signer, key, "owner");
+            BOOST_REQUIRE(created);
+            address = created->address;
+        }
+        AddWallet(context, signer);
+        BOOST_CHECK(call(context, verify, {address, signature, message}).get_bool());
+        // The wallet tracks the address. The pubkey argument still does not
+        // load the secret.
+        BOOST_CHECK(call(context, verify, {address, signature, message, pubkey_hex}).get_bool());
+        BOOST_CHECK(!call(context, verify, {address, signature, message + "!"}).get_bool());
+        RemoveWallet(context, signer, /*load_on_start=*/std::nullopt);
+    }
+
+    // RPC errors are thrown as UniValue objects; match the code and the text.
+    const auto rpc_error = [](int code, std::string text) {
+        return [code, text](const UniValue& error) {
+            return error.find_value("code").getInt<int>() == code &&
+                   error.find_value("message").get_str().find(text) != std::string::npos;
+        };
+    };
+
+    // No wallet loaded at all.
+    WalletContext no_wallets;
+    no_wallets.args = &m_args;
+    BOOST_CHECK(call(no_wallets, verify, {address, signature, message, pubkey_hex}).get_bool());
+    BOOST_CHECK(call(no_wallets, verify, {address, signature, message, ToUpper(pubkey_hex)}).get_bool());
+    BOOST_CHECK(call(no_wallets, verify_deprecated, {message, address, signature, pubkey_hex}).get_bool());
+    BOOST_CHECK(!call(no_wallets, verify, {address, signature, message + "!", pubkey_hex}).get_bool());
+    BOOST_CHECK(!call(no_wallets, verify, {address, signature, "", pubkey_hex}).get_bool());
+    BOOST_CHECK(!call(no_wallets, verify, {address, other_signature, message, pubkey_hex}).get_bool());
+    BOOST_CHECK(!call(no_wallets, verify, {address, "", message, pubkey_hex}).get_bool());
+    BOOST_CHECK_EXCEPTION(call(no_wallets, verify, {address, signature, message}), UniValue,
+                          rpc_error(RPC_WALLET_NOT_FOUND, "No wallet is loaded"));
+
+    // A key for another address is an error, not a verified proof.
+    const std::string mismatch{"Dilithium public key does not match the address"};
+    BOOST_CHECK_EXCEPTION(call(no_wallets, verify, {address, other_signature, message, HexStr(other.GetPubKey())}), UniValue,
+                          rpc_error(RPC_INVALID_ADDRESS_OR_KEY, mismatch));
+    BOOST_CHECK_EXCEPTION(call(no_wallets, verify_deprecated, {message, address, other_signature, HexStr(other.GetPubKey())}), UniValue,
+                          rpc_error(RPC_INVALID_ADDRESS_OR_KEY, mismatch));
+    for (const CTxDestination& foreign : std::vector<CTxDestination>{PKHash{uint160{pubkey.GetID()}}, WitnessV0KeyHash{uint160{pubkey.GetID()}},
+                                                                     ScriptHash{uint160{pubkey.GetID()}}, WitnessV1Taproot{}}) {
+        BOOST_CHECK_EXCEPTION(call(no_wallets, verify, {EncodeDestination(foreign), signature, message, pubkey_hex}), UniValue,
+                              rpc_error(RPC_INVALID_ADDRESS_OR_KEY, mismatch));
+    }
+    // This chain is P2MR-only from height 1, so a Dilithium key hash holds no
+    // spendable coins and a signature proves nothing about it.
+    for (const CTxDestination& key_hash : std::vector<CTxDestination>{DilithiumPKHash{pubkey}, DilithiumWitnessV0KeyHash{pubkey}}) {
+        BOOST_CHECK_EXCEPTION(call(no_wallets, verify, {EncodeDestination(key_hash), signature, message, pubkey_hex}), UniValue,
+                              rpc_error(RPC_INVALID_ADDRESS_OR_KEY, "cannot hold spendable coins on this network"));
+    }
+    BOOST_CHECK_EXCEPTION(call(no_wallets, verify, {"not-an-address", signature, message, pubkey_hex}), UniValue,
+                          rpc_error(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address. Expected argument order"));
+    BOOST_CHECK_EXCEPTION(call(no_wallets, verify, {address, "not base64 $$$", message, pubkey_hex}), UniValue,
+                          rpc_error(RPC_INVALID_ADDRESS_OR_KEY, "Invalid signature encoding"));
+    for (const std::string& bad : {std::string{}, std::string{"aa"}, std::string{"zz"}, pubkey_hex.substr(1),
+                                   pubkey_hex + "00", pubkey_hex.substr(2)}) {
+        BOOST_CHECK_EXCEPTION(call(no_wallets, verify, {address, signature, message, bad}), UniValue,
+                              rpc_error(RPC_INVALID_ADDRESS_OR_KEY, "pubkey must be a 1312-byte Dilithium public key in hex"));
+    }
+    BOOST_CHECK_EXCEPTION(call(no_wallets, verify, {address, signature, message, std::string(pubkey_hex.size(), '0')}), UniValue,
+                          rpc_error(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dilithium public key"));
+
+    {
+        // The secret is in the wallet, and the wallet is locked. The pubkey
+        // argument still verifies. Without it the secret cannot be loaded.
+        WalletContext context;
+        context.args = &m_args;
+        const auto locked = make_wallet();
+        {
+            LOCK(locked->cs_wallet);
+            const auto created = ImportDilithiumKeyAsP2MR(*locked, key, "locked");
+            BOOST_REQUIRE(created);
+            BOOST_CHECK_EQUAL(created->address, address);
+        }
+        BOOST_REQUIRE(locked->EncryptWallet("pass"));
+        BOOST_CHECK(locked->IsLocked());
+        AddWallet(context, locked);
+        BOOST_CHECK(call(context, verify, {address, signature, message, pubkey_hex}).get_bool());
+        BOOST_CHECK(!call(context, verify, {address, signature, message + "!", pubkey_hex}).get_bool());
+        BOOST_CHECK_EXCEPTION(call(context, verify, {address, signature, message}), UniValue,
+                              rpc_error(RPC_WALLET_ERROR, "Dilithium key not found in wallet"));
+        RemoveWallet(context, locked, /*load_on_start=*/std::nullopt);
+    }
+
+    {
+        // Two wallets and none selected: the argument still needs neither.
+        WalletContext context;
+        context.args = &m_args;
+        const auto first = make_wallet();
+        const auto second = make_wallet();
+        AddWallet(context, first);
+        AddWallet(context, second);
+        BOOST_CHECK(call(context, verify, {address, signature, message, pubkey_hex}).get_bool());
+        BOOST_CHECK_EXCEPTION(call(context, verify, {address, signature, message}), UniValue,
+                              rpc_error(RPC_WALLET_NOT_SPECIFIED, "Wallet file not specified"));
+        RemoveWallet(context, first, /*load_on_start=*/std::nullopt);
+        RemoveWallet(context, second, /*load_on_start=*/std::nullopt);
     }
 }
 

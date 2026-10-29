@@ -69,7 +69,7 @@ bool CDilithiumKey::MakeNewKey()
     return true;
 }
 
-bool CDilithiumKey::GenerateFromEntropy(const std::vector<unsigned char>& entropy)
+bool CDilithiumKey::GenerateFromEntropy(Span<const unsigned char> entropy)
 {
     // We require exactly 32 bytes: this is the SEEDBYTES the Dilithium ref
     // impl consumes directly. Previously the code expanded entropy with
@@ -181,71 +181,20 @@ bool CDilithiumKey::Load(Span<const unsigned char> privkey)
     return true;
 }
 
-std::vector<unsigned char> CDilithiumKey::Serialize() const
+CPrivKey CDilithiumKey::Serialize() const
 {
     if (!IsValid()) {
         return {};
     }
-    
-    return std::vector<unsigned char>(keydata->begin(), keydata->end());
-}
 
-// Global initialization functions
-
-void DilithiumInit()
-{
-    // Initialize any global Dilithium state if needed
-    // For the reference implementation, no special initialization is required
-}
-
-bool DilithiumSanityCheck()
-{
-    // Perform a basic sanity check by generating a key pair and signing/verifying
-    try {
-        CDilithiumKey key;
-        key.MakeNewKey();
-        
-        if (!key.IsValid()) {
-            return false;
-        }
-        
-        CDilithiumPubKey pubkey = key.GetPubKey();
-        if (!pubkey.IsValid()) {
-            return false;
-        }
-        
-        // Test signing and verification
-        uint256 test_hash;
-        test_hash.SetHex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-        
-        std::vector<unsigned char> signature;
-        if (!key.Sign(test_hash, signature)) {
-            return false;
-        }
-        
-        if (!pubkey.Verify(test_hash, signature)) {
-            return false;
-        }
-        
-        // Test with different message should fail
-        uint256 different_hash;
-        different_hash.SetHex("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210");
-        
-        if (pubkey.Verify(different_hash, signature)) {
-            return false; // Should have failed
-        }
-        
-        return true;
-    } catch (...) {
-        return false;
-    }
+    return CPrivKey(keydata->begin(), keydata->end());
 }
 
 // CDilithiumExtKey implementation
 //
-// The persisted state is the 32-byte HD seed + BIP32 chaincode + position.
+// The state is the 32-byte HD seed + BIP32 chaincode + position.
 // The 2560/1312-byte expanded keypair is regenerated from the seed every time
-// it is needed via `key.GenerateFromEntropy(seed_vec)`. This avoids storing
+// it is needed via `key.GenerateFromEntropy(seed)`. This avoids storing
 // 3872 redundant bytes per node and - critically - keeps the relationship
 // between seed and (sk, pk) deterministic and verifiable.
 
@@ -253,48 +202,6 @@ namespace {
 /** Mask used to test whether a BIP32 child index is hardened. */
 constexpr uint32_t DILITHIUM_HARDENED_BIT = 0x80000000u;
 } // namespace
-
-void CDilithiumExtKey::Encode(unsigned char code[DILITHIUM_EXTKEY_SIZE]) const
-{
-    code[0] = nDepth;
-    memcpy(code + 1, vchFingerprint, 4);
-    WriteBE32(code + 5, nChild);
-    memcpy(code + 9, chaincode.begin(), 32);
-    memcpy(code + 41, seed.data(), SEED_SIZE);
-}
-
-void CDilithiumExtKey::Decode(const unsigned char code[DILITHIUM_EXTKEY_SIZE])
-{
-    nDepth = code[0];
-    memcpy(vchFingerprint, code + 1, 4);
-    nChild = ReadBE32(code + 5);
-    memcpy(chaincode.begin(), code + 9, 32);
-    memcpy(seed.data(), code + 41, SEED_SIZE);
-
-    // Master keys MUST have the BIP32 invariants nChild == 0 and
-    // fingerprint == 0; reject anything else as corrupt rather than silently
-    // promoting it to a master key.
-    const bool master_ok = (nDepth != 0) || (nChild == 0 && ReadLE32(vchFingerprint) == 0);
-    const bool child_metadata_ok = (nDepth == 0) || ((nChild & DILITHIUM_HARDENED_BIT) != 0);
-    if (!master_ok || !child_metadata_ok) {
-        // Wipe to a clearly-invalid state.
-        nDepth = 0;
-        memset(vchFingerprint, 0, 4);
-        nChild = 0;
-        chaincode = ChainCode{};
-        seed.fill(0);
-        key = CDilithiumKey();
-        return;
-    }
-
-    // Regenerate the expanded keypair from the seed.
-    std::vector<unsigned char> seed_vec(seed.begin(), seed.end());
-    const bool ok = key.GenerateFromEntropy(seed_vec);
-    memory_cleanse(seed_vec.data(), seed_vec.size());
-    if (!ok) {
-        key = CDilithiumKey();
-    }
-}
 
 bool CDilithiumExtKey::Derive(CDilithiumExtKey& out, unsigned int child_index) const
 {
@@ -334,24 +241,11 @@ bool CDilithiumExtKey::Derive(CDilithiumExtKey& out, unsigned int child_index) c
     memory_cleanse(I, sizeof(I));
 
     // Expand the seed into the full keypair.
-    std::vector<unsigned char> child_seed_vec(out.seed.begin(), out.seed.end());
-    const bool ok = out.key.GenerateFromEntropy(child_seed_vec);
-    memory_cleanse(child_seed_vec.data(), child_seed_vec.size());
+    const bool ok = out.key.GenerateFromEntropy(out.seed);
     if (!ok) {
         return false;
     }
     return out.key.IsValid();
-}
-
-CDilithiumExtPubKey CDilithiumExtKey::Neuter() const
-{
-    CDilithiumExtPubKey ret;
-    ret.nDepth = nDepth;
-    memcpy(ret.vchFingerprint, vchFingerprint, 4);
-    ret.nChild = nChild;
-    ret.chaincode = chaincode;
-    ret.pubkey = key.GetPubKey();
-    return ret;
 }
 
 void CDilithiumExtKey::SetSeed(Span<const std::byte> hd_seed)
@@ -374,51 +268,8 @@ void CDilithiumExtKey::SetSeed(Span<const std::byte> hd_seed)
     memset(vchFingerprint, 0, 4);
     nChild = 0;
 
-    std::vector<unsigned char> seed_vec(seed.begin(), seed.end());
-    const bool ok = key.GenerateFromEntropy(seed_vec);
-    memory_cleanse(seed_vec.data(), seed_vec.size());
+    const bool ok = key.GenerateFromEntropy(seed);
     if (!ok) {
         key = CDilithiumKey();
     }
-}
-
-// CDilithiumExtPubKey implementation
-
-void CDilithiumExtPubKey::Encode(unsigned char code[DILITHIUM_EXTPUBKEY_SIZE]) const
-{
-    code[0] = nDepth;
-    memcpy(code + 1, vchFingerprint, 4);
-    WriteBE32(code + 5, nChild);
-    memcpy(code + 9, chaincode.begin(), 32);
-    static_assert(DilithiumConstants::PUBLIC_KEY_SIZE == 1312,
-                  "extpubkey layout assumes Dilithium2 (1312-byte) pubkey");
-    memcpy(code + 41, pubkey.begin(), DilithiumConstants::PUBLIC_KEY_SIZE);
-}
-
-void CDilithiumExtPubKey::Decode(const unsigned char code[DILITHIUM_EXTPUBKEY_SIZE])
-{
-    nDepth = code[0];
-    memcpy(vchFingerprint, code + 1, 4);
-    nChild = ReadBE32(code + 5);
-    memcpy(chaincode.begin(), code + 9, 32);
-    pubkey.Set(code + 41, code + 41 + DilithiumConstants::PUBLIC_KEY_SIZE);
-    const bool master_ok = (nDepth != 0) || (nChild == 0 && ReadLE32(vchFingerprint) == 0);
-    const bool child_metadata_ok = (nDepth == 0) || ((nChild & DILITHIUM_HARDENED_BIT) != 0);
-    if (!master_ok || !child_metadata_ok || !pubkey.IsFullyValid()) {
-        nDepth = 0;
-        memset(vchFingerprint, 0, 4);
-        nChild = 0;
-        chaincode = ChainCode{};
-        pubkey = CDilithiumPubKey();
-    }
-}
-
-bool CDilithiumExtPubKey::Derive(CDilithiumExtPubKey& /*out*/, unsigned int /*child_index*/) const
-{
-    // Dilithium's lattice structure has no analogue of secp256k1's group law,
-    // so there is no public-only derivation that preserves the invariant
-    // ExtPubKey.Derive(n).pubkey == ExtKey.Derive(n).GetPubKey(). Refusing
-    // here is the honest behavior - callers that need child pubkeys must
-    // derive from CDilithiumExtKey and call Neuter().
-    return false;
 }

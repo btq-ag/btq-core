@@ -108,6 +108,47 @@ class P2MRRPCTest(BTQTestFramework):
         dilithium_tx = wallet.gettransaction(dilithium_txid, True)
         assert dilithium_tx["confirmations"] > 0
 
+        self.log.info("Change from a P2MR spend is P2MR, is change, and the wallet can spend it")
+        assert dilithium_spend["change_amount"] > 0
+        decoded = node.decoderawtransaction(dilithium_tx["hex"])
+        change_out = next(o for o in decoded["vout"] if o["value"] == dilithium_spend["change_amount"])
+        assert_equal(change_out["scriptPubKey"]["type"], "witness_v2_p2mr")
+        change_info = wallet.getaddressinfo(change_out["scriptPubKey"]["address"])
+        assert change_info["ismine"]
+        assert change_info["ischange"]
+        assert change_info["solvable"]
+        change_raw = wallet.createrawtransaction(
+            [{"txid": dilithium_txid, "vout": change_out["n"]}],
+            [{destination: change_out["value"] - Decimal("0.0002")}],
+        )
+        change_signed = wallet.signrawtransactionwithwallet(change_raw)
+        assert change_signed["complete"], change_signed
+        assert node.testmempoolaccept([change_signed["hex"]])[0]["allowed"]
+
+        self.log.info("P2MR change from a locked wallet needs the passphrase")
+        node.createwallet(wallet_name="locked", descriptors=True)
+        locked = node.get_wallet_rpc("locked")
+        locked_created = locked.getnewdilithiumaddress()
+        wallet.sendtoaddress(locked_created["address"], Decimal("0.2"))
+        self.generate(node, 1)
+        locked.encryptwallet("pass")
+        assert_raises_rpc_error(-13, "walletpassphrase", locked.createp2mrspend, locked_created["p2mr_id"], destination, Decimal("0.1"))
+        locked.walletpassphrase("pass", 60)
+        locked_spend = locked.createp2mrspend(locked_created["p2mr_id"], destination, Decimal("0.1"))
+        assert locked_spend["change_amount"] > 0
+        assert locked.getaddressinfo(locked_spend["change_address"])["ischange"]
+
+        self.log.info("change_address chooses where P2MR change goes, and must be P2MR")
+        given = wallet.getnewdilithiumaddress()["address"]
+        given_spend = locked.createp2mrspend(locked_created["p2mr_id"], destination, Decimal("0.1"), Decimal("0.00001"), given)
+        assert_equal(given_spend["change_address"], given)
+        given_outputs = [o["scriptPubKey"].get("address") for o in node.decoderawtransaction(given_spend["hex"])["vout"]]
+        assert given in given_outputs
+        assert_raises_rpc_error(-5, "change_address must be a P2MR address", locked.createp2mrspend,
+                                locked_created["p2mr_id"], destination, Decimal("0.1"), Decimal("0.00001"), wallet.getnewaddress())
+        assert_raises_rpc_error(-5, "Invalid change_address", locked.createp2mrspend,
+                                locked_created["p2mr_id"], destination, Decimal("0.1"), Decimal("0.00001"), "not-an-address")
+
         self.log.info("Do not mark a single-leaf P2MR script complete without required witness data")
         needs_stack_tree = [{
             "depth": 0,

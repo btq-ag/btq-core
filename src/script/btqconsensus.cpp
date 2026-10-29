@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,6 +10,9 @@
 #include <script/interpreter.h>
 #include <version.h>
 
+static_assert(static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM) == static_cast<unsigned int>(SCRIPT_VERIFY_DILITHIUM));
+static_assert(static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR) == static_cast<unsigned int>(SCRIPT_VERIFY_P2MR));
+static_assert(static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY) == static_cast<unsigned int>(SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY));
 static_assert(static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_LIMITS) == static_cast<unsigned int>(SCRIPT_VERIFY_DILITHIUM_LIMITS));
 
 namespace {
@@ -81,7 +84,8 @@ static int verify_script(const unsigned char *scriptPubKey, unsigned int scriptP
         return set_error(err, btqconsensus_ERR_INVALID_FLAGS);
     }
 
-    if (flags & btqconsensus_SCRIPT_FLAGS_VERIFY_TAPROOT && spentOutputs == nullptr) {
+    const bool needs_spent_outputs{(flags & (btqconsensus_SCRIPT_FLAGS_VERIFY_TAPROOT | btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR)) != 0};
+    if (needs_spent_outputs && spentOutputs == nullptr) {
         return set_error(err, btqconsensus_ERR_SPENT_OUTPUTS_REQUIRED);
     }
 
@@ -106,13 +110,20 @@ static int verify_script(const unsigned char *scriptPubKey, unsigned int scriptP
             return set_error(err, btqconsensus_ERR_TX_INDEX);
         if (GetSerializeSize(tx, PROTOCOL_VERSION) != txToLen)
             return set_error(err, btqconsensus_ERR_TX_SIZE_MISMATCH);
+        // The sighash commits to spent_outputs, while the script runs against
+        // scriptPubKey. A P2MR Dilithium check fails soft when they disagree,
+        // so a NOT-wrapped check could pass.
+        if (spentOutputs != nullptr && needs_spent_outputs &&
+            (spent_outputs[nIn].nValue != amount || spent_outputs[nIn].scriptPubKey != CScript(scriptPubKey, scriptPubKey + scriptPubKeyLen))) {
+            return set_error(err, btqconsensus_ERR_SPENT_OUTPUTS_MISMATCH);
+        }
 
         // Regardless of the verification result, the tx did not error.
         set_error(err, btqconsensus_ERR_OK);
 
         PrecomputedTransactionData txdata(tx);
 
-        if (spentOutputs != nullptr && flags & btqconsensus_SCRIPT_FLAGS_VERIFY_TAPROOT) {
+        if (spentOutputs != nullptr && needs_spent_outputs) {
             txdata.Init(tx, std::move(spent_outputs));
         }
 

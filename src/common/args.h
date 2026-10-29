@@ -1,4 +1,4 @@
-// Copyright (c) 2023 The BTQ Core developers
+// Copyright (c) 2023 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -215,21 +215,21 @@ protected:
      *
      * @return Blocks path which is network specific
      */
-    const fs::path& GetBlocksDirPath() const;
+    fs::path GetBlocksDirPath() const;
 
     /**
      * Get data directory path
      *
      * @return Absolute path on success, otherwise an empty path when a non-directory path would be returned
      */
-    const fs::path& GetDataDirBase() const { return GetDataDir(false); }
+    fs::path GetDataDirBase() const { return GetDataDir(false); }
 
     /**
      * Get data directory path with appended network identifier
      *
      * @return Absolute path on success, otherwise an empty path when a non-directory path would be returned
      */
-    const fs::path& GetDataDirNet() const { return GetDataDir(true); }
+    fs::path GetDataDirNet() const { return GetDataDir(true); }
 
     /**
      * Clear cached directory paths
@@ -425,7 +425,7 @@ private:
      * @param net_specific Append network identifier to the returned path
      * @return Absolute path on success, otherwise an empty path when a non-directory path would be returned
      */
-    const fs::path& GetDataDir(bool net_specific) const;
+    fs::path GetDataDir(bool net_specific) const;
 
     /**
      * Return -regtest/-signet/-testnet/-chain= setting as a ChainType enum if a

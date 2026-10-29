@@ -248,12 +248,16 @@ RPCHelpMan createp2mrspend()
 {
     return RPCHelpMan{
         "createp2mrspend",
-        "\nCreate an unsigned transaction spending a wallet-tracked P2MR output.\n",
+        "\nCreate an unsigned transaction spending a wallet-tracked P2MR output.\n"
+        "Change goes to change_address, or else to a new P2MR address of this wallet.\n"
+        "Deriving that address needs the wallet unlocked if it is encrypted, and a\n"
+        "wallet without private keys must pass change_address.\n",
         {
             {"p2mr_id", RPCArg::Type::STR, RPCArg::Optional::NO, "P2MR metadata id"},
             {"to_address", RPCArg::Type::STR, RPCArg::Optional::NO, "Recipient address"},
             {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "Recipient amount"},
             {"fee", RPCArg::Type::AMOUNT, RPCArg::Default{"0.00001"}, "Fixed fee amount"},
+            {"change_address", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "P2MR address for the change, e.g. one from the wallet that will sign"},
         },
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "hex", "Unsigned raw transaction"},
@@ -270,6 +274,7 @@ RPCHelpMan createp2mrspend()
             {RPCResult::Type::STR_AMOUNT, "input_amount", "Total selected P2MR input amount"},
             {RPCResult::Type::STR_AMOUNT, "effective_fee", "Actual transaction fee after change and dust handling"},
             {RPCResult::Type::STR_AMOUNT, "change_amount", "Change amount, or 0 when change is dust and added to fee"},
+            {RPCResult::Type::STR, "change_address", /*optional=*/true, "P2MR address the change pays, when there is change"},
         }},
         RPCExamples{HelpExampleCli("createp2mrspend", "\"abcd1234\" \"" + EXAMPLE_ADDRESS[0] + "\" 0.5")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -282,13 +287,20 @@ RPCHelpMan createp2mrspend()
             const CAmount send_amount = AmountFromValue(request.params[2]);
             const CAmount fee = request.params[3].isNull() ? AmountFromValue(UniValue("0.00001"))
                                                             : AmountFromValue(request.params[3]);
+            std::optional<CTxDestination> change_dest;
+            if (!request.params[4].isNull()) {
+                change_dest = DecodeDestination(request.params[4].get_str());
+                if (!IsValidDestination(*change_dest)) {
+                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid change_address");
+                }
+            }
 
             LOCK(pwallet->cs_wallet);
-            auto spend = CreateP2MRSpend(*pwallet, p2mr_id, to_dest, send_amount, fee);
+            auto spend = CreateP2MRSpend(*pwallet, p2mr_id, to_dest, send_amount, fee, change_dest);
             if (!spend) {
                 // Map common errors to specific RPC codes for backwards compatibility.
                 const std::string msg = util::ErrorString(spend).original;
-                if (msg.find("invalid destination") != std::string::npos) {
+                if (msg.find("invalid destination") != std::string::npos || msg.find("change_address must be") != std::string::npos) {
                     throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, msg);
                 }
                 if (msg.find("unknown p2mr_id") != std::string::npos) {
@@ -296,6 +308,9 @@ RPCHelpMan createp2mrspend()
                 }
                 if (msg.find("insufficient") != std::string::npos || msg.find("no spendable") != std::string::npos) {
                     throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, msg);
+                }
+                if (msg.find("walletpassphrase") != std::string::npos) {
+                    throw JSONRPCError(RPC_WALLET_UNLOCK_NEEDED, msg);
                 }
                 throw JSONRPCError(RPC_WALLET_ERROR, msg);
             }
@@ -317,6 +332,7 @@ RPCHelpMan createp2mrspend()
             out.pushKV("input_amount", ValueFromAmount(spend->input_amount));
             out.pushKV("effective_fee", ValueFromAmount(spend->effective_fee));
             out.pushKV("change_amount", ValueFromAmount(spend->change_amount));
+            if (spend->has_change) out.pushKV("change_address", EncodeDestination(spend->change_dest));
             return out;
         },
     };

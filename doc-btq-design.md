@@ -135,7 +135,7 @@ Example
 - Increased max tx size for PQ cryptography
 - Disabled legacy witness serialization
 
-🔑 Verify: https://github.com/BTQ/releases/tag/v0.21.0
+🔑 Verify: https://github.com/bitcoin/bitcoin/releases/tag/v0.21.0
 SHA256SUMS + GPG signatures included.
 
 

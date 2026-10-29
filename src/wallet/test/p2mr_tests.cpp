@@ -14,12 +14,15 @@
 #include <script/script.h>
 #include <script/sign.h>
 #include <script/signingprovider.h>
+#include <script/solver.h>
 #include <univalue.h>
 #include <util/result.h>
 #include <util/strencodings.h>
 #include <util/vector.h>
 #include <validation.h>
+#include <wallet/coincontrol.h>
 #include <wallet/p2mr.h>
+#include <wallet/receive.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/test/util.h>
 #include <wallet/wallet.h>
@@ -236,7 +239,7 @@ BOOST_FIXTURE_TEST_CASE(create_allows_threshold_accumulator_with_one_cosigner_ke
 
     {
         LOCK2(wallet.cs_wallet, spk_man->cs_KeyStore);
-        BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(mine, CPubKey()));
+        BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(mine));
 
         const CScript leaf_script = GetScriptForDilithiumThreshold(
             2, {mine.GetPubKey(), other_a.GetPubKey(), other_b.GetPubKey()});
@@ -360,6 +363,246 @@ BOOST_FIXTURE_TEST_CASE(restore_rejects_negative_created_at, BasicTestingSetup)
     meta.pushKV("tree", P2MRTreeToUniValue(MakeOpTrueTree()));
     meta.pushKV("created_at", int64_t{-1});
     BOOST_CHECK(!ValidateP2MRRestore(meta));
+}
+
+BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_reordered_tree, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    const P2MRTreeLeaf a{/*depth=*/1, TAPROOT_LEAF_TAPSCRIPT, {OP_1}};
+    const P2MRTreeLeaf b{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_2}};
+    const P2MRTreeLeaf c{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_3}};
+
+    auto first = CreateP2MR(*wallet, {a, b, c}, "first", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+    BOOST_REQUIRE(first);
+    for (const auto& order : std::vector<std::vector<P2MRTreeLeaf>>{{a, c, b}, {b, c, a}, {c, b, a}}) {
+        auto again = CreateP2MR(*wallet, order, "again", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(again);
+        BOOST_CHECK_EQUAL(again->id, first->id);
+        BOOST_CHECK_EQUAL(HexStr(again->script_pub_key), HexStr(first->script_pub_key));
+    }
+    BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+
+    const P2MRTreeLeaf different_leaf{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_4}};
+    auto different = CreateP2MR(*wallet, {a, b, different_leaf}, "different", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+    BOOST_REQUIRE(different);
+    BOOST_CHECK(different->id != first->id);
+    BOOST_CHECK(different->script_pub_key != first->script_pub_key);
+    BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 2U);
+}
+
+BOOST_FIXTURE_TEST_CASE(create_does_not_reuse_same_leaves_in_another_shape, BasicTestingSetup)
+{
+    const P2MRTreeLeaf a{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_1}};
+    const P2MRTreeLeaf b{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_2}};
+    const P2MRTreeLeaf c{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_3}};
+    const P2MRTreeLeaf d{/*depth=*/2, TAPROOT_LEAF_TAPSCRIPT, {OP_4}};
+    const std::vector<P2MRTreeLeaf> abcd{a, b, c, d};
+    const std::vector<P2MRTreeLeaf> acbd{a, c, b, d};
+
+    {
+        // ((A,B),(C,D)) and ((A,C),(B,D)) have the same leaf multiset and different roots
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        auto first = CreateP2MR(*wallet, abcd, "first", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(first);
+        auto swapped = CreateP2MR(*wallet, {b, a, d, c}, "swapped", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(swapped);
+        BOOST_CHECK_EQUAL(swapped->id, first->id);
+        auto other = CreateP2MR(*wallet, acbd, "other", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(other);
+        BOOST_CHECK(other->id != first->id);
+        BOOST_CHECK(other->script_pub_key != first->script_pub_key);
+        BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 2U);
+    }
+
+    {
+        // A record under the ((A,B),(C,D)) output whose stored tree is ((A,C),(B,D))
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        auto builder = BuildP2MRTreeChecked(abcd);
+        BOOST_REQUIRE(builder);
+        const CTxDestination dest = builder->GetOutput();
+        const CScript spk = GetScriptForDestination(dest);
+        const std::string bad_id{"00000000000000aa"};
+        UniValue meta(UniValue::VOBJ);
+        meta.pushKV("id", bad_id);
+        meta.pushKV("address", EncodeDestination(dest));
+        meta.pushKV("scriptPubKey", HexStr(spk));
+        const WitnessV2P2MR& root = std::get<WitnessV2P2MR>(dest);
+        meta.pushKV("merkle_root", HexStr(Span<const unsigned char>{root.begin(), root.end()}));
+        meta.pushKV("created_at", int64_t{1});
+        meta.pushKV("label", "bad");
+        meta.pushKV("state", "created");
+        meta.pushKV("tree", P2MRTreeToUniValue(acbd));
+        WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+        BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, dest, bad_id, meta.write()));
+
+        auto created = CreateP2MR(*wallet, abcd, "good", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(created);
+        BOOST_CHECK(created->id != bad_id);
+        BOOST_CHECK_EQUAL(HexStr(created->script_pub_key), HexStr(spk));
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(p2mr_metadata_not_in_receive_requests, BasicTestingSetup)
+{
+    // F2.17: P2MR metadata has its own record type; the GUI-facing receive
+    // request list must never see it, including rows written by old wallets.
+    const auto leaves = MakeOpTrueTree();
+    std::string address;
+    std::string legacy_json;
+    MockableData records;
+    // The downgrade guard must sit in the mandatory flag range, where
+    // binaries that do not know it refuse to load the wallet.
+    static_assert((WALLET_FLAG_P2MR_METADATA >> 32) != 0);
+
+    {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->LoadWallet();
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK(!wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+        auto created = CreateP2MR(*wallet, leaves, "meta", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(created);
+        address = created->address;
+
+        // The first p2mrmeta write marks the wallet so older binaries,
+        // which would silently hide the P2MR balance, refuse to open it.
+        BOOST_CHECK(wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+
+        std::string value;
+        BOOST_CHECK(wallet->GetP2MRMetadata(created->dest, created->id, value));
+        BOOST_CHECK(wallet->GetAddressReceiveRequests().empty());
+
+        // Erasing a receive request for an unknown destination must not
+        // plant a ghost address-book entry (reload would not have one).
+        const CTxDestination unknown{PKHash{uint160{}}};
+        BOOST_CHECK(wallet->m_address_book.find(unknown) == wallet->m_address_book.end());
+        WalletBatch ghost_batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+        wallet->EraseAddressReceiveRequest(ghost_batch, unknown, "nope");
+        BOOST_CHECK(wallet->m_address_book.find(unknown) == wallet->m_address_book.end());
+
+        // Simulate a pre-F2.17 wallet: metadata stored as a receive request.
+        legacy_json = value;
+        WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+        BOOST_REQUIRE(wallet->SetAddressReceiveRequest(batch, created->dest, "rrp2mr:legacy-id", legacy_json));
+        records = GetMockableDatabase(*wallet).m_records;
+    }
+
+    {
+        auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+        LOCK(wallet->cs_wallet);
+        const CTxDestination dest = DecodeDestination(address);
+        std::string value;
+        // The legacy row is routed into the metadata map on load...
+        BOOST_CHECK(wallet->GetP2MRMetadata(dest, "legacy-id", value));
+        BOOST_CHECK_EQUAL(value, legacy_json);
+        // ...together with the natively stored entry...
+        BOOST_CHECK_EQUAL(wallet->ListP2MRMetadata().size(), 2U);
+        // ...and receive requests stay empty.
+        BOOST_CHECK(wallet->GetAddressReceiveRequests().empty());
+        // The downgrade guard survives the reload.
+        BOOST_CHECK(wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA));
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSetup)
+{
+    const auto leaves = MakeOpTrueTree();
+    CCoinControl coin_control;
+    auto builder = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(builder);
+    const CTxDestination dest = builder->GetOutput();
+
+    auto wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+    wallet->LoadWallet();
+
+    // Reopens the wallet from its current records, so every assertion can
+    // also be checked against what a restart would load.
+    const auto reload = [&] {
+        MockableData records = GetMockableDatabase(*wallet).m_records;
+        wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+    };
+
+    // The wallet has no coins, so CreateTransaction fails. The entry this
+    // call created must be rolled back (Quarks INFO-15).
+    {
+        LOCK(wallet->cs_wallet);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "fund-fail", /*subtract_fee_from_amount=*/false, coin_control, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(!funded);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK(ListP2MR(*wallet).empty());
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        BOOST_CHECK(!wallet->FindAddressBookEntry(dest));
+    }
+
+    // A pre-existing address-book entry (labelled, but not P2MR-tracked)
+    // must survive the rollback with its label and purpose intact, even
+    // though CreateP2MR overwrote them.
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
+        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(!funded);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+        const auto* entry = wallet->FindAddressBookEntry(dest);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "pre-existing");
+        BOOST_CHECK(entry->purpose == AddressPurpose::SEND);
+        BOOST_REQUIRE(wallet->DelAddressBook(dest));
+    }
+
+    // A pre-existing change entry (no label, no database rows) must come
+    // back in memory, and the rollback must remove the name/purpose rows
+    // CreateP2MR's SetAddressBook added.
+    {
+        LOCK(wallet->cs_wallet);
+        wallet->m_address_book[dest]; // plant an in-memory change entry
+        auto funded = FundP2MR(*wallet, leaves, CENT, "overwrite", /*subtract_fee_from_amount=*/false, coin_control, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(!funded);
+        const auto* entry = wallet->FindAddressBookEntry(dest, /*allow_change=*/true);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK(entry->IsChange());
+        BOOST_CHECK(!entry->purpose);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        // The change entry had no rows of its own, so after a reload the
+        // destination must be absent entirely: leaked rows would make it
+        // reappear as a labelled entry.
+        BOOST_CHECK(!wallet->FindAddressBookEntry(dest, /*allow_change=*/true));
+        BOOST_CHECK(wallet->ListP2MRMetadata().empty());
+    }
+
+    // A pre-existing tree that the failing call reused stays.
+    {
+        LOCK(wallet->cs_wallet);
+        auto created = CreateP2MR(*wallet, leaves, "keep", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(created);
+        BOOST_CHECK(!created->reused);
+        auto funded = FundP2MR(*wallet, leaves, CENT, "keep", /*subtract_fee_from_amount=*/false, coin_control, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(!funded);
+    }
+    reload();
+    {
+        LOCK(wallet->cs_wallet);
+        BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+        BOOST_CHECK(wallet->FindAddressBookEntry(dest));
+        const auto metadata = wallet->ListP2MRMetadata();
+        BOOST_REQUIRE_EQUAL(metadata.size(), 1U);
+        std::string value;
+        BOOST_CHECK(wallet->GetP2MRMetadata(dest, std::get<1>(metadata.front()), value));
+    }
 }
 
 BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTestingSetup)
@@ -705,6 +948,269 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_aggregates_inputs_and_reports_effectiv
     BOOST_REQUIRE_EQUAL(spend->tx.vout.size(), 1U);
 }
 
+BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_change_stays_p2mr, TestChain100Setup)
+{
+    const CBlockIndex* tip = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip());
+    BOOST_REQUIRE(tip);
+
+    CKey recipient_key;
+    recipient_key.MakeNewKey(/*fCompressedIn=*/true);
+    const CTxDestination recipient{PKHash(recipient_key.GetPubKey())};
+    const CAmount send{CENT};
+    const CAmount fee{1000};
+    const CAmount dust_gate{546};
+
+    // One confirmed output on a fresh OP_TRUE P2MR entry.
+    const auto fund = [&](CWallet& wallet, CAmount amount) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet) {
+        wallet.SetLastBlockProcessed(tip->nHeight, tip->GetBlockHash());
+        auto created = CreateP2MR(wallet, MakeOpTrueTree(), "change-source", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(created);
+        CMutableTransaction funding;
+        funding.nVersion = 2;
+        funding.nLockTime = 1;
+        funding.vout.emplace_back(amount, created->script_pub_key);
+        BOOST_REQUIRE(wallet.AddToWallet(MakeTransactionRef(std::move(funding)), TxStateConfirmed{tip->GetBlockHash(), tip->nHeight, /*index=*/0}));
+        return *created;
+    };
+
+    // Every case gets its own wallet: the OP_TRUE entries share one script, so
+    // a second funding in the same wallet would change which coin is picked.
+    const auto make_wallet = [&](bool descriptors) {
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        if (descriptors) {
+            wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+            wallet->SetupDescriptorScriptPubKeyMans();
+        } else {
+            wallet->SetupLegacyScriptPubKeyMan();
+            LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+            BOOST_REQUIRE(spk_man);
+            BOOST_REQUIRE(WITH_LOCK(spk_man->cs_KeyStore, return spk_man->SetupGeneration(true)));
+        }
+        return wallet;
+    };
+
+    for (const bool descriptors : {true, false}) {
+        BOOST_TEST_MESSAGE(strprintf("descriptors=%d", descriptors));
+        {
+            auto wallet = make_wallet(descriptors);
+            LOCK(wallet->cs_wallet);
+            const auto at_gate = fund(*wallet, send + fee + dust_gate);
+            auto no_change = CreateP2MRSpend(*wallet, at_gate.id, recipient, send, fee);
+            BOOST_REQUIRE_MESSAGE(no_change, util::ErrorString(no_change).original);
+            BOOST_CHECK(!no_change->has_change);
+            BOOST_CHECK_EQUAL(no_change->tx.vout.size(), 1U);
+            BOOST_CHECK_EQUAL(no_change->effective_fee, fee + dust_gate);
+        }
+
+        auto wallet = make_wallet(descriptors);
+        LOCK(wallet->cs_wallet);
+        const auto over_gate = fund(*wallet, send + fee + dust_gate + 1);
+        std::vector<CScript> change_scripts;
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            auto spend = CreateP2MRSpend(*wallet, over_gate.id, recipient, send, fee);
+            BOOST_REQUIRE_MESSAGE(spend, util::ErrorString(spend).original);
+            BOOST_REQUIRE(spend->has_change);
+            BOOST_CHECK_EQUAL(spend->change_amount, dust_gate + 1);
+            BOOST_REQUIRE_EQUAL(spend->tx.vout.size(), 2U);
+            const CTxOut& change_out = spend->tx.vout[1];
+            BOOST_CHECK_EQUAL(change_out.nValue, dust_gate + 1);
+
+            std::vector<std::vector<unsigned char>> solutions;
+            const TxoutType change_type{Solver(change_out.scriptPubKey, solutions)};
+            BOOST_CHECK_MESSAGE(change_type == TxoutType::WITNESS_V2_P2MR,
+                                strprintf("change output is %s", GetTxnOutputType(change_type)));
+            BOOST_CHECK(change_out.scriptPubKey != over_gate.script_pub_key);
+            BOOST_CHECK(wallet->IsMine(change_out.scriptPubKey) == ISMINE_SPENDABLE);
+            BOOST_CHECK(OutputIsChange(*wallet, change_out));
+            change_scripts.push_back(change_out.scriptPubKey);
+        }
+        // Each spend gets a fresh change key.
+        BOOST_CHECK(change_scripts[0] != change_scripts[1]);
+    }
+
+    for (const bool descriptors : {true, false}) {
+        BOOST_TEST_MESSAGE(strprintf("locked, descriptors=%d", descriptors));
+        // A locked wallet cannot derive the change key, and says so instead of
+        // failing inside key derivation.
+        auto wallet = make_wallet(descriptors);
+        const auto over_gate = WITH_LOCK(wallet->cs_wallet, return fund(*wallet, send + fee + dust_gate + 1));
+        BOOST_REQUIRE(wallet->EncryptWallet("pass"));
+        BOOST_REQUIRE(wallet->IsLocked());
+        {
+            LOCK(wallet->cs_wallet);
+            auto refused = CreateP2MRSpend(*wallet, over_gate.id, recipient, send, fee);
+            BOOST_REQUIRE(!refused);
+            BOOST_CHECK(util::ErrorString(refused).original.find("walletpassphrase") != std::string::npos);
+        }
+        BOOST_REQUIRE(wallet->Unlock("pass"));
+        LOCK(wallet->cs_wallet);
+        auto spend = CreateP2MRSpend(*wallet, over_gate.id, recipient, send, fee);
+        BOOST_REQUIRE_MESSAGE(spend, util::ErrorString(spend).original);
+        BOOST_REQUIRE_EQUAL(spend->tx.vout.size(), 2U);
+        std::vector<std::vector<unsigned char>> solutions;
+        BOOST_CHECK(Solver(spend->tx.vout[1].scriptPubKey, solutions) == TxoutType::WITNESS_V2_P2MR);
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_pays_given_change_address, TestChain100Setup)
+{
+    const CBlockIndex* tip = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip());
+    BOOST_REQUIRE(tip);
+    CKey recipient_key;
+    recipient_key.MakeNewKey(/*fCompressedIn=*/true);
+    const CTxDestination recipient{PKHash(recipient_key.GetPubKey())};
+    const CAmount send{CENT};
+    const CAmount fee{1000};
+    const CTxDestination change_to{WitnessV2P2MR{std::vector<unsigned char>(WitnessV2P2MR::SIZE, 0x42)}};
+
+    for (const bool watch_only : {true, false}) {
+        BOOST_TEST_MESSAGE(strprintf("watch_only=%d", watch_only));
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+        if (watch_only) {
+            wallet->SetWalletFlag(WALLET_FLAG_DISABLE_PRIVATE_KEYS);
+        } else {
+            wallet->SetupDescriptorScriptPubKeyMans();
+        }
+        wallet->SetLastBlockProcessed(tip->nHeight, tip->GetBlockHash());
+        auto created = CreateP2MR(*wallet, MakeOpTrueTree(), "source", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(created);
+        CMutableTransaction funding;
+        funding.nVersion = 2;
+        funding.nLockTime = 1;
+        funding.vout.emplace_back(20 * CENT, created->script_pub_key);
+        BOOST_REQUIRE(wallet->AddToWallet(MakeTransactionRef(std::move(funding)), TxStateConfirmed{tip->GetBlockHash(), tip->nHeight, /*index=*/0}));
+
+        if (watch_only) {
+            // Without private keys there is no Dilithium key to derive change
+            // from, and the change is not quietly moved to witness v0.
+            auto refused = CreateP2MRSpend(*wallet, created->id, recipient, send, fee);
+            BOOST_REQUIRE(!refused);
+            BOOST_CHECK(util::ErrorString(refused).original.find("Pass change_address") != std::string::npos);
+        }
+
+        auto spend = CreateP2MRSpend(*wallet, created->id, recipient, send, fee, change_to);
+        BOOST_REQUIRE_MESSAGE(spend, util::ErrorString(spend).original);
+        BOOST_REQUIRE(spend->has_change);
+        BOOST_CHECK(spend->change_dest == change_to);
+        BOOST_REQUIRE_EQUAL(spend->tx.vout.size(), 2U);
+        BOOST_CHECK(spend->tx.vout[1].scriptPubKey == GetScriptForDestination(change_to));
+        BOOST_CHECK_EQUAL(spend->tx.vout[1].nValue, 20 * CENT - send - fee);
+
+        auto wrong = CreateP2MRSpend(*wallet, created->id, recipient, send, fee, recipient);
+        BOOST_REQUIRE(!wrong);
+        BOOST_CHECK(util::ErrorString(wrong).original.find("change_address must be a P2MR address") != std::string::npos);
+    }
+}
+
+namespace {
+// Every shipped chain, including testnet, is P2MR-only from height 1.
+// Unschedule it in this fixture so the key-hash match, which applies only
+// where those payments can still be spent, has a chain to run on.
+struct LegacyDilithiumPaymentsSetup : public BasicTestingSetup {
+    LegacyDilithiumPaymentsSetup()
+        : BasicTestingSetup{ChainType::BTQTEST, /*extra_args=*/{"-testnetdilithiump2mrheight=2147483647"}} {}
+};
+} // namespace
+
+BOOST_FIXTURE_TEST_CASE(dilithium_key_hash_matches_where_still_spendable, LegacyDilithiumPaymentsSetup)
+{
+    BOOST_REQUIRE(LegacyDilithiumBase58PaymentsAllowed());
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CDilithiumPubKey pubkey{key.GetPubKey()};
+    CDilithiumKey other;
+    BOOST_REQUIRE(other.MakeNewKey());
+
+    BOOST_CHECK(DilithiumPubKeyMatchesDestination(pubkey, DilithiumPKHash{pubkey}));
+    BOOST_CHECK(DilithiumPubKeyMatchesDestination(pubkey, DilithiumWitnessV0KeyHash{pubkey}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(other.GetPubKey(), DilithiumPKHash{pubkey}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(other.GetPubKey(), DilithiumWitnessV0KeyHash{pubkey}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, PKHash{uint160{pubkey.GetID()}}));
+}
+
+BOOST_FIXTURE_TEST_CASE(dilithium_pubkey_matches_only_its_own_destinations, TestingSetup)
+{
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CDilithiumPubKey pubkey{key.GetPubKey()};
+    CDilithiumKey other;
+    BOOST_REQUIRE(other.MakeNewKey());
+    const CDilithiumPubKey other_pubkey{other.GetPubKey()};
+
+    // The one leaf is <OP_PUSHDATA2 1312-byte key> OP_CHECKSIGDILITHIUM, tapscript
+    // version, depth 0, and the address commits to that leaf's hash alone.
+    const auto leaves = SingleKeyDilithiumLeaves(pubkey);
+    BOOST_REQUIRE_EQUAL(leaves.size(), 1U);
+    BOOST_CHECK_EQUAL(leaves[0].depth, 0);
+    BOOST_CHECK_EQUAL(leaves[0].leaf_version, 0xc0);
+    std::vector<unsigned char> expected_leaf{0x4d, 0x20, 0x05};
+    expected_leaf.insert(expected_leaf.end(), pubkey.begin(), pubkey.end());
+    expected_leaf.push_back(0xbb);
+    BOOST_CHECK(leaves[0].script == expected_leaf);
+    const WitnessV2P2MR single{ComputeTapleafHash(0xc0, expected_leaf)};
+    auto single_tree = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(single_tree);
+    BOOST_CHECK(single_tree->GetOutput() == single);
+
+    BOOST_CHECK(DilithiumPubKeyMatchesDestination(pubkey, single));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(other_pubkey, single));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(CDilithiumPubKey{}, single));
+
+    // P2MR-only from height 1 on this chain: nobody can spend coins sent to a
+    // Dilithium key hash, so a signature cannot prove control of one.
+    BOOST_REQUIRE(!LegacyDilithiumBase58PaymentsAllowed());
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, DilithiumPKHash{pubkey}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, DilithiumWitnessV0KeyHash{pubkey}));
+
+    // The key's own hash under a type that is not a Dilithium key hash.
+    const uint160 key_hash{pubkey.GetID()};
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, PKHash{key_hash}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, WitnessV0KeyHash{key_hash}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, ScriptHash{key_hash}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, DilithiumScriptHash{key_hash}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, WitnessV1Taproot{XOnlyPubKey{Span<const unsigned char>{single.m_merkle_root, WitnessV2P2MR::SIZE}}}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, WitnessUnknown{3, std::vector<unsigned char>(single.m_merkle_root, single.m_merkle_root + 32)}));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, CNoDestination{}));
+
+    // The key's leaf beside a second spend path is not the key's address.
+    std::vector<P2MRTreeLeaf> with_escape{SingleKeyDilithiumLeaves(pubkey)};
+    with_escape[0].depth = 1;
+    with_escape.push_back(P2MRTreeLeaf{/*depth=*/1, TAPROOT_LEAF_TAPSCRIPT, {static_cast<unsigned char>(OP_TRUE)}});
+    auto escape_tree = BuildP2MRTreeChecked(with_escape);
+    BOOST_REQUIRE(escape_tree);
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, escape_tree->GetOutput()));
+
+    // Nor is the same leaf script under another leaf version.
+    std::vector<P2MRTreeLeaf> other_version{SingleKeyDilithiumLeaves(pubkey)};
+    other_version[0].leaf_version = 0xc2;
+    auto version_tree = BuildP2MRTreeChecked(other_version);
+    BOOST_REQUIRE(version_tree);
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, version_tree->GetOutput()));
+
+    // Receive destinations the wallet creates match the key in their leaf.
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
+    wallet->SetupDescriptorScriptPubKeyMans();
+
+    const auto received = CreateDilithiumP2MRReceive(*wallet, "receive");
+    BOOST_REQUIRE_MESSAGE(received, util::ErrorString(received).original);
+    const auto entry = GetP2MR(*wallet, received->id);
+    BOOST_REQUIRE(entry);
+    BOOST_REQUIRE_EQUAL(entry->tree.size(), 1U);
+    const auto policy = ParseP2MRDilithiumLeaf(CScript{entry->tree[0].script.begin(), entry->tree[0].script.end()});
+    BOOST_REQUIRE_EQUAL(policy.pubkeys.size(), 1U);
+    BOOST_CHECK(DilithiumPubKeyMatchesDestination(policy.pubkeys[0], received->dest));
+    BOOST_CHECK(!DilithiumPubKeyMatchesDestination(pubkey, received->dest));
+
+    const auto imported = ImportDilithiumKeyAsP2MR(*wallet, key, "import");
+    BOOST_REQUIRE_MESSAGE(imported, util::ErrorString(imported).original);
+    BOOST_CHECK(imported->dest == CTxDestination{single});
+}
+
 BOOST_FIXTURE_TEST_CASE(produce_signature_preserves_p2mr_witness_stack, BasicTestingSetup)
 {
     CKey key;
@@ -756,6 +1262,43 @@ BOOST_FIXTURE_TEST_CASE(produce_signature_preserves_p2mr_witness_stack, BasicTes
     BOOST_CHECK_MESSAGE(
         VerifyScript(tx_to.vin[0].scriptSig, script_pubkey, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
         ScriptErrorString(serror));
+}
+
+// A leaf of OP_2 <32-byte-push> is itself a witness v2 program. Signing it
+// used to re-enter SignP2MR over the same p2mr_spenddata.scripts map and
+// crash from stack exhaustion. It must fail to sign instead.
+BOOST_FIXTURE_TEST_CASE(produce_signature_rejects_p2mr_program_leaf, BasicTestingSetup)
+{
+    const std::vector<unsigned char> inner_program(32, 0xab);
+    const CScript leaf_script = CScript() << OP_2 << inner_program;
+    const std::vector<unsigned char> leaf_bytes{leaf_script.begin(), leaf_script.end()};
+
+    P2MRBuilder builder;
+    builder.Add(/*depth=*/0, leaf_bytes, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+    BOOST_REQUIRE(builder.IsValid());
+    BOOST_REQUIRE(builder.IsComplete());
+
+    const WitnessV2P2MR output = builder.GetOutput();
+    const CScript script_pubkey = GetScriptForDestination(output);
+    const CAmount amount = COIN;
+
+    FlatSigningProvider provider;
+    provider.p2mr_trees.emplace(output, builder);
+
+    CMutableTransaction tx_to;
+    tx_to.nVersion = 2;
+    tx_to.vin.emplace_back(COutPoint(uint256::ONE, 0));
+    tx_to.vout.emplace_back(amount - 1000, CScript() << OP_TRUE);
+
+    std::vector<CTxOut> spent_outputs;
+    spent_outputs.emplace_back(amount, script_pubkey);
+    PrecomputedTransactionData txdata;
+    txdata.Init(tx_to, std::move(spent_outputs), /*force=*/true);
+
+    SignatureData sigdata;
+    MutableTransactionSignatureCreator creator(tx_to, /*input_idx=*/0, amount, &txdata, SIGHASH_DEFAULT);
+    BOOST_CHECK(!ProduceSignature(provider, creator, script_pubkey, sigdata));
+    BOOST_CHECK(!sigdata.complete);
 }
 
 BOOST_FIXTURE_TEST_CASE(produce_signature_signs_dilithium_p2mr_leaf, BasicTestingSetup)

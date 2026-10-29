@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -316,6 +316,9 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "createp2mrspend", 3, "fee" },
     // Dilithium wallet RPCs
     { "importdilithiumkey", 2, "rescan" },
+    { "recoverdilithiumkeys", 0, "start" },
+    { "recoverdilithiumkeys", 1, "stop" },
+    { "recoverdilithiumkeys", 2, "internal" },
     { "signtransactionwithdilithium", 1, "prevtxs" },
     { "signtransactionwithdilithium", 3, "force_dilithium" },
 };

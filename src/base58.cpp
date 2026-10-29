@@ -1,10 +1,12 @@
-// Copyright (c) 2014-2022 The BTQ Core developers
+// Copyright (c) 2014-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <base58.h>
 
 #include <hash.h>
+#include <support/allocators/secure.h>
+#include <support/cleanse.h>
 #include <uint256.h>
 #include <util/strencodings.h>
 #include <util/string.h>
@@ -35,7 +37,8 @@ static const int8_t mapBase58[256] = {
     -1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,
 };
 
-[[nodiscard]] static bool DecodeBase58(const char* psz, std::vector<unsigned char>& vch, int max_ret_len)
+template <typename ByteVec>
+[[nodiscard]] static bool DecodeBase58(const char* psz, ByteVec& vch, int max_ret_len)
 {
     // Skip leading spaces.
     while (*psz && IsSpace(*psz))
@@ -48,9 +51,14 @@ static const int8_t mapBase58[256] = {
         if (zeroes > max_ret_len) return false;
         psz++;
     }
-    // Allocate enough space in big-endian base256 representation.
-    int size = strlen(psz) * 733 /1000 + 1; // log(58) / log(256), rounded up.
-    std::vector<unsigned char> b256(size);
+    // Cap the working buffer by the caller's output limit. Without this the
+    // allocation scales with strlen and can exceed the locked-pool arena
+    // (256 KiB) when the buffer uses secure_allocator.
+    size_t size = strlen(psz) * 733 / 1000 + 1; // log(58) / log(256), rounded up.
+    if (max_ret_len >= 0 && size > static_cast<size_t>(max_ret_len)) {
+        size = static_cast<size_t>(max_ret_len);
+    }
+    CKeyingMaterial b256(size);
     // Process the characters.
     static_assert(std::size(mapBase58) == 256, "mapBase58.size() should be 256"); // guarantee not out of range
     while (*psz && !IsSpace(*psz)) {
@@ -59,12 +67,13 @@ static const int8_t mapBase58[256] = {
         if (carry == -1)  // Invalid b58 character
             return false;
         int i = 0;
-        for (std::vector<unsigned char>::reverse_iterator it = b256.rbegin(); (carry != 0 || i < length) && (it != b256.rend()); ++it, ++i) {
+        for (CKeyingMaterial::reverse_iterator it = b256.rbegin(); (carry != 0 || i < length) && (it != b256.rend()); ++it, ++i) {
             carry += 58 * (*it);
             *it = carry % 256;
             carry /= 256;
         }
-        assert(carry == 0);
+        // Input would decode past max_ret_len (buffer was capped above).
+        if (carry != 0) return false;
         length = i;
         if (length + zeroes > max_ret_len) return false;
         psz++;
@@ -75,7 +84,7 @@ static const int8_t mapBase58[256] = {
     if (*psz != 0)
         return false;
     // Skip leading zeroes in b256.
-    std::vector<unsigned char>::iterator it = b256.begin() + (size - length);
+    CKeyingMaterial::iterator it = b256.begin() + (size - length);
     // Copy result into output vector.
     vch.reserve(zeroes + (b256.end() - it));
     vch.assign(zeroes, 0x00);
@@ -95,13 +104,13 @@ std::string EncodeBase58(Span<const unsigned char> input)
     }
     // Allocate enough space in big-endian base58 representation.
     int size = input.size() * 138 / 100 + 1; // log(256) / log(58), rounded up.
-    std::vector<unsigned char> b58(size);
+    CKeyingMaterial b58(size);
     // Process the bytes.
     while (input.size() > 0) {
         int carry = input[0];
         int i = 0;
         // Apply "b58 = b58 * 256 + ch".
-        for (std::vector<unsigned char>::reverse_iterator it = b58.rbegin(); (carry != 0 || i < length) && (it != b58.rend()); it++, i++) {
+        for (CKeyingMaterial::reverse_iterator it = b58.rbegin(); (carry != 0 || i < length) && (it != b58.rend()); it++, i++) {
             carry += 256 * (*it);
             *it = carry % 58;
             carry /= 58;
@@ -112,7 +121,7 @@ std::string EncodeBase58(Span<const unsigned char> input)
         input = input.subspan(1);
     }
     // Skip leading zeroes in base58 result.
-    std::vector<unsigned char>::iterator it = b58.begin() + (size - length);
+    CKeyingMaterial::iterator it = b58.begin() + (size - length);
     while (it != b58.end() && *it == 0)
         it++;
     // Translate the result into a string.
@@ -132,33 +141,61 @@ bool DecodeBase58(const std::string& str, std::vector<unsigned char>& vchRet, in
     return DecodeBase58(str.c_str(), vchRet, max_ret_len);
 }
 
+bool DecodeBase58(const std::string& str, CKeyingMaterial& vchRet, int max_ret_len)
+{
+    if (!ContainsNoNUL(str)) {
+        return false;
+    }
+    return DecodeBase58(str.c_str(), vchRet, max_ret_len);
+}
+
 std::string EncodeBase58Check(Span<const unsigned char> input)
 {
     // add 4-byte hash check to the end
-    std::vector<unsigned char> vch(input.begin(), input.end());
+    // Reserve so the checksum append does not allocate a second buffer.
+    CKeyingMaterial vch;
+    vch.reserve(input.size() + 4);
+    vch.assign(input.begin(), input.end());
     uint256 hash = Hash(vch);
     vch.insert(vch.end(), (unsigned char*)&hash, (unsigned char*)&hash + 4);
-    return EncodeBase58(vch);
+    std::string ret = EncodeBase58(vch);
+    memory_cleanse(hash.begin(), hash.size());
+    return ret;
 }
 
-[[nodiscard]] static bool DecodeBase58Check(const char* psz, std::vector<unsigned char>& vchRet, int max_ret_len)
+template <typename ByteVec>
+[[nodiscard]] static bool DecodeBase58Check(const char* psz, ByteVec& vchRet, int max_ret_len)
 {
     if (!DecodeBase58(psz, vchRet, max_ret_len > std::numeric_limits<int>::max() - 4 ? std::numeric_limits<int>::max() : max_ret_len + 4) ||
         (vchRet.size() < 4)) {
+        if (!vchRet.empty()) memory_cleanse(vchRet.data(), vchRet.size());
         vchRet.clear();
         return false;
     }
     // re-calculate the checksum, ensure it matches the included 4-byte checksum
     uint256 hash = Hash(Span{vchRet}.first(vchRet.size() - 4));
     if (memcmp(&hash, &vchRet[vchRet.size() - 4], 4) != 0) {
+        memory_cleanse(hash.begin(), hash.size());
+        memory_cleanse(vchRet.data(), vchRet.size());
         vchRet.clear();
         return false;
     }
+    memory_cleanse(hash.begin(), hash.size());
+    // Drop the checksum without leaving it in the vector's spare capacity.
+    memory_cleanse(vchRet.data() + vchRet.size() - 4, 4);
     vchRet.resize(vchRet.size() - 4);
     return true;
 }
 
 bool DecodeBase58Check(const std::string& str, std::vector<unsigned char>& vchRet, int max_ret)
+{
+    if (!ContainsNoNUL(str)) {
+        return false;
+    }
+    return DecodeBase58Check(str.c_str(), vchRet, max_ret);
+}
+
+bool DecodeBase58Check(const std::string& str, CKeyingMaterial& vchRet, int max_ret)
 {
     if (!ContainsNoNUL(str)) {
         return false;

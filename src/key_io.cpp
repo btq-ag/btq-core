@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2021 The BTQ Core developers
+// Copyright (c) 2014-2021 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -352,6 +352,9 @@ std::string EncodeSecret(const CKey& key)
 {
     assert(key.IsValid());
     std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    // Reserve before the secret is copied. insert then push_back(1) would
+    // otherwise reallocate and free the first buffer unwiped.
+    data.reserve(data.size() + key.size() + 1);
     data.insert(data.end(), key.begin(), key.end());
     if (key.IsCompressed()) {
         data.push_back(1);
@@ -365,7 +368,8 @@ std::string EncodeSecret(const CKey& key)
 CDilithiumKey DecodeDilithiumSecret(const std::string& str)
 {
     CDilithiumKey key;
-    std::vector<unsigned char> data;
+    // Locked so a realloc inside DecodeBase58Check wipes the previous copy.
+    CKeyingMaterial data;
     // The DecodeBase58Check `max_ret_len` argument caps how many bytes the
     // base58 decoder is willing to materialize. Dilithium2 secret keys are
     // 3872 bytes plus the SECRET_KEY base58 prefix, so the historical limit
@@ -379,20 +383,19 @@ CDilithiumKey DecodeDilithiumSecret(const std::string& str)
             key.Set(data.begin() + privkey_prefix.size(), data.begin() + privkey_prefix.size() + CDilithiumKey::GetKeySize());
         }
     }
-    if (!data.empty()) {
-        memory_cleanse(data.data(), data.size());
-    }
     return key;
 }
 
 std::string EncodeDilithiumSecret(const CDilithiumKey& key)
 {
     assert(key.IsValid());
-    std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    const std::vector<unsigned char>& prefix = Params().Base58Prefix(CChainParams::SECRET_KEY);
+    // Reserve so the secret is copied once into the locked buffer.
+    CKeyingMaterial data;
+    data.reserve(prefix.size() + key.size());
+    data.assign(prefix.begin(), prefix.end());
     data.insert(data.end(), key.begin(), key.end());
-    std::string ret = EncodeBase58Check(data);
-    memory_cleanse(data.data(), data.size());
-    return ret;
+    return EncodeBase58Check(data);
 }
 
 CExtPubKey DecodeExtPubKey(const std::string& str)

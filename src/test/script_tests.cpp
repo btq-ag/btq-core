@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2022 The BTQ Core developers
+// Copyright (c) 2011-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,6 +7,7 @@
 
 #include <common/system.h>
 #include <core_io.h>
+#include <crypto/dilithium_key.h>
 #include <key.h>
 #include <rpc/util.h>
 #include <script/script.h>
@@ -1479,6 +1480,12 @@ BOOST_AUTO_TEST_CASE(script_HasValidOps)
     BOOST_CHECK(!script.HasValidOps());
     script = ScriptFromHex("88acc0"); // Script with undefined opcode
     BOOST_CHECK(!script.HasValidOps());
+    script = ScriptFromHex("b9"); // OP_NOP10 is the pre-Taproot ceiling
+    BOOST_CHECK(script.HasValidOps());
+    script = ScriptFromHex("ba"); // OP_CHECKSIGADD
+    BOOST_CHECK(!script.HasValidOps());
+    script = ScriptFromHex("bf"); // OP_DILITHIUM_PUBKEY
+    BOOST_CHECK(!script.HasValidOps());
 }
 
 static CMutableTransaction TxFromHex(const std::string& str)
@@ -1682,6 +1689,69 @@ BOOST_AUTO_TEST_CASE(btqconsensus_verify_script_spent_outputs_required_err)
     BOOST_CHECK_EQUAL(err, btqconsensus_ERR_SPENT_OUTPUTS_REQUIRED);
 }
 
+BOOST_AUTO_TEST_CASE(btqconsensus_verify_script_p2mr_dilithium)
+{
+    CDilithiumKey key;
+    BOOST_REQUIRE(key.MakeNewKey());
+    const CScript leaf_script{CScript() << ToByteVector(key.GetPubKey()) << OP_CHECKSIGDILITHIUM};
+    const uint256 leaf_hash{ComputeTapleafHash(TAPROOT_LEAF_TAPSCRIPT, leaf_script)};
+    const CScript script_pubkey{CScript() << OP_2 << ToByteVector(leaf_hash)};
+    const std::vector<unsigned char> control{static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 1)};
+
+    const CTransaction credit_tx{BuildCreditingTransaction(script_pubkey, 1)};
+    CMutableTransaction spend{BuildSpendingTransaction(CScript(), CScriptWitness(), credit_tx)};
+
+    PrecomputedTransactionData txdata;
+    txdata.Init(spend, std::vector<CTxOut>{credit_tx.vout[0]}, /*force=*/true);
+    ScriptExecutionData execdata;
+    execdata.m_annex_init = true;
+    execdata.m_annex_present = false;
+    execdata.m_codeseparator_pos_init = true;
+    execdata.m_codeseparator_pos = 0xFFFFFFFF;
+    execdata.m_tapleaf_hash_init = true;
+    execdata.m_tapleaf_hash = leaf_hash;
+    uint256 sighash;
+    BOOST_REQUIRE(SignatureHashSchnorr(sighash, execdata, spend, 0, SIGHASH_ALL, SigVersion::P2MR_TAPSCRIPT, txdata, MissingDataBehavior::FAIL));
+    std::vector<unsigned char> sig;
+    BOOST_REQUIRE(key.Sign(sighash, sig));
+    sig.push_back(SIGHASH_ALL);
+
+    const auto verify = [&](const CMutableTransaction& tx, unsigned int flags, btqconsensus_error& err, CAmount utxo_value = 1, CAmount amount = 1, unsigned int spent_outputs_len = 1) {
+        CDataStream stream(SER_NETWORK, PROTOCOL_VERSION);
+        stream << tx;
+        const UTXO utxo{script_pubkey.data(), static_cast<unsigned int>(script_pubkey.size()), utxo_value};
+        return btqconsensus_verify_script_with_spent_outputs(script_pubkey.data(), script_pubkey.size(), amount, UCharCast(stream.data()), stream.size(), &utxo, spent_outputs_len, 0, flags, &err);
+    };
+    const unsigned int flags{btqconsensus_SCRIPT_FLAGS_VERIFY_P2SH | btqconsensus_SCRIPT_FLAGS_VERIFY_WITNESS |
+                             btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM | btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR |
+                             btqconsensus_SCRIPT_FLAGS_VERIFY_DILITHIUM_P2MR_ONLY};
+    btqconsensus_error err;
+
+    spend.vin[0].scriptWitness.stack = {sig, ToByteVector(leaf_script), control};
+    BOOST_CHECK_EQUAL(verify(spend, flags, err), 1);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_OK);
+
+    // A bad signature fails with P2MR, and passes without it (witness v2 is unencumbered then)
+    CMutableTransaction bad{spend};
+    bad.vin[0].scriptWitness.stack[0][0] ^= 1;
+    BOOST_CHECK_EQUAL(verify(bad, flags, err), 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_OK);
+    BOOST_CHECK_EQUAL(verify(bad, flags & ~btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR, err), 1);
+
+    // The sighash commits to the spent output's value
+    BOOST_CHECK_EQUAL(verify(spend, flags, err, /*utxo_value=*/2, /*amount=*/2), 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_OK);
+    BOOST_CHECK_EQUAL(verify(spend, flags, err, /*utxo_value=*/2, /*amount=*/1), 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_SPENT_OUTPUTS_MISMATCH);
+    BOOST_CHECK_EQUAL(verify(spend, flags, err, /*utxo_value=*/1, /*amount=*/1, /*spent_outputs_len=*/0), 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_SPENT_OUTPUTS_MISMATCH);
+
+    CDataStream stream(SER_NETWORK, PROTOCOL_VERSION);
+    stream << spend;
+    BOOST_CHECK_EQUAL(btqconsensus_verify_script_with_amount(script_pubkey.data(), script_pubkey.size(), credit_tx.vout[0].nValue, UCharCast(stream.data()), stream.size(), 0, flags, &err), 0);
+    BOOST_CHECK_EQUAL(err, btqconsensus_ERR_SPENT_OUTPUTS_REQUIRED);
+}
+
 #endif // defined(HAVE_CONSENSUS_LIB)
 
 //! Spend a depth-0 P2MR leaf. make_stack gets the signature by `key` and
@@ -1721,6 +1791,33 @@ static bool VerifyP2MRLeafSpend(const CScript& leaf, const CDilithiumKey& key,
 static constexpr unsigned int P2MR_BASE_FLAGS{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DILITHIUM |
                                               SCRIPT_VERIFY_P2MR | SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY | SCRIPT_VERIFY_NULLDUMMY};
 
+static void ExpectP2MRLeafError(const CScript& leaf, ScriptError expected)
+{
+    const uint256 leaf_hash{ComputeTapleafHash(TAPROOT_LEAF_TAPSCRIPT, leaf)};
+    const CScript script_pubkey{CScript() << OP_2 << ToByteVector(leaf_hash)};
+    const CTransaction credit_tx{BuildCreditingTransaction(script_pubkey, 1)};
+    CMutableTransaction spend{BuildSpendingTransaction(CScript(), CScriptWitness(), credit_tx)};
+    spend.vin[0].scriptWitness.stack.push_back(ToByteVector(leaf));
+    spend.vin[0].scriptWitness.stack.push_back({static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 1)});
+    PrecomputedTransactionData txdata;
+    txdata.Init(spend, std::vector<CTxOut>{credit_tx.vout[0]}, /*force=*/true);
+    ScriptError err{SCRIPT_ERR_OK};
+    BOOST_CHECK(!VerifyScript(spend.vin[0].scriptSig, script_pubkey, &spend.vin[0].scriptWitness, P2MR_BASE_FLAGS,
+                              MutableTransactionSignatureChecker(&spend, 0, credit_tx.vout[0].nValue, txdata, MissingDataBehavior::ASSERT_FAIL), &err));
+    BOOST_CHECK_EQUAL(err, expected);
+}
+
+BOOST_AUTO_TEST_CASE(p2mr_reserved_dilithium_pubkey_opcode)
+{
+    ExpectP2MRLeafError(CScript() << OP_DILITHIUM_PUBKEY, SCRIPT_ERR_BAD_OPCODE);
+    // Still real opcodes in a P2MR leaf. Empty stack is a stack error, not a bad opcode.
+    ExpectP2MRLeafError(CScript() << OP_CHECKSIGADD, SCRIPT_ERR_INVALID_STACK_OPERATION);
+    ExpectP2MRLeafError(CScript() << OP_CHECKSIGDILITHIUM, SCRIPT_ERR_INVALID_STACK_OPERATION);
+    ExpectP2MRLeafError(CScript() << OP_CHECKSIGDILITHIUMVERIFY, SCRIPT_ERR_INVALID_STACK_OPERATION);
+    ExpectP2MRLeafError(CScript() << OP_CHECKMULTISIGDILITHIUM, SCRIPT_ERR_INVALID_STACK_OPERATION);
+    ExpectP2MRLeafError(CScript() << OP_CHECKMULTISIGDILITHIUMVERIFY, SCRIPT_ERR_INVALID_STACK_OPERATION);
+}
+
 BOOST_AUTO_TEST_CASE(p2mr_dilithium_validation_weight)
 {
     CDilithiumKey key;
@@ -1738,7 +1835,7 @@ BOOST_AUTO_TEST_CASE(p2mr_dilithium_validation_weight)
     const unsigned int new_flags{P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS};
     ScriptError err;
 
-    // The witness (~3.75k bytes) buys ~3.8k of budget: two checks at 1400, seven at 500.
+    // The witness (~3.75k bytes) buys ~3.8k of budget: two checks at 1439, seven at 500.
     BOOST_CHECK(run(2, new_flags, err));
     BOOST_CHECK(!run(3, new_flags, err));
     BOOST_CHECK_EQUAL(err, SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT);
@@ -1773,6 +1870,7 @@ BOOST_AUTO_TEST_CASE(p2mr_dilithium_multisig_validation_weight)
 BOOST_AUTO_TEST_CASE(p2mr_sigop_count_saturates)
 {
     // 1000 sigops per bare OP_CHECKMULTISIGDILITHIUM; this many wraps to 704.
+    // The block sigop total does not use that count for a P2MR witness.
     const std::vector<unsigned char> bytes(4294968, OP_CHECKMULTISIGDILITHIUM);
     const CScript leaf(bytes.begin(), bytes.end());
     BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true), 704U);
@@ -1781,9 +1879,8 @@ BOOST_AUTO_TEST_CASE(p2mr_sigop_count_saturates)
     CScriptWitness witness;
     witness.stack = {ToByteVector(leaf), {static_cast<unsigned char>(TAPROOT_LEAF_TAPSCRIPT | 1)}};
     const CScript script_pubkey{CScript() << OP_2 << ToByteVector(uint256::ONE)};
-    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS), 704U);
-    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS),
-                      std::numeric_limits<unsigned int>::max());
+    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS), 0U);
+    BOOST_CHECK_EQUAL(CountWitnessSigOps(CScript(), script_pubkey, &witness, P2MR_BASE_FLAGS | SCRIPT_VERIFY_DILITHIUM_LIMITS), 0U);
 }
 
 static std::vector<unsigned int> AllConsensusFlags()
@@ -1814,8 +1911,9 @@ static std::vector<unsigned int> AllConsensusFlags()
 /** Precomputed list of all valid combinations of consensus-relevant script validation flags. */
 static const std::vector<unsigned int> ALL_CONSENSUS_FLAGS = AllConsensusFlags();
 
-// Dilithium reclaimed BIP342 OP_SUCCESS 0xbb–0xbf. Skip cases whose success or failure
-// executed scripts contain those opcodes (GetOp walk), plus known size-limit comment prefixes.
+// 0xbb-0xbe are Dilithium opcodes. 0xbf is reserved. None of them are BIP342
+// OP_SUCCESS. Skip cases whose success or failure executed scripts contain
+// those bytes (GetOp walk), plus known size-limit comment prefixes.
 static bool ScriptHasReclaimedDilithiumOpcode(const CScript& script)
 {
     CScript::const_iterator pc = script.begin();
@@ -1891,7 +1989,7 @@ static bool IsDilithiumReclaimedOpSuccessCase(const UniValue& test)
 {
     if (SideHasReclaimedDilithiumOpcode(test, "success")) return true;
     if (SideHasReclaimedDilithiumOpcode(test, "failure")) return true;
-    // Remainder of the known 11-case taproot set: GetOp does not see 0xbb–0xbf inside the
+    // Remainder of the known 11-case taproot set: GetOp does not see 0xbb-0xbf inside the
     // 520/521-byte pushes. These cases assume Bitcoin's 520-byte element limit (failure is 521);
     // BTQ allows 15000 so the failure path succeeds.
     if (test.exists("comment")) {

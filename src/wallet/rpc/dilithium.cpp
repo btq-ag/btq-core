@@ -26,6 +26,8 @@
 
 #include <univalue.h>
 
+#include <limits>
+
 namespace wallet {
 
 namespace {
@@ -187,13 +189,131 @@ RPCHelpMan importdilithiumkey()
     };
 }
 
+RPCHelpMan recoverdilithiumkeys()
+{
+    return RPCHelpMan{"recoverdilithiumkeys",
+        "\nDerive the Dilithium keys at the given index range of this wallet's deterministic\n"
+        "Dilithium key sequence and add any that are missing, each with its single-leaf\n"
+        "P2MR receive destination. Older wallets shared the sequence counter with ECDSA\n"
+        "address derivation, which left Dilithium keys at scattered indexes; this scans a\n"
+        "past or ahead range and recovers them. Descriptor wallets only.\n"
+        "Run rescanblockchain afterwards to find historical transactions to the recovered\n"
+        "addresses.\n",
+        {
+            {"start", RPCArg::Type::NUM, RPCArg::Optional::NO, "First sequence index to derive (inclusive)"},
+            {"stop", RPCArg::Type::NUM, RPCArg::Optional::NO, "Last sequence index to derive (inclusive)"},
+            {"internal", RPCArg::Type::BOOL, RPCArg::Default{false}, "Scan the internal (change) manager's sequence instead of the external one"},
+        },
+        RPCResult{
+            RPCResult::Type::ARR, "", "",
+            {
+                {RPCResult::Type::OBJ, "", "",
+                {
+                    {RPCResult::Type::NUM, "index", "Sequence index"},
+                    {RPCResult::Type::STR, "address", "The P2MR address for the key at this index"},
+                    {RPCResult::Type::STR, "p2mr_id", "Wallet-local P2MR metadata id"},
+                    {RPCResult::Type::BOOL, "recovered", "True if the key was missing and has been added, false if the wallet already had it"},
+                }},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("recoverdilithiumkeys", "0 49")
+            + HelpExampleRpc("recoverdilithiumkeys", "0, 49, true")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
+            if (!wallet) return UniValue::VNULL;
+
+            LOCK(wallet->cs_wallet);
+            EnsureWalletIsUnlocked(*wallet);
+
+            if (!wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "recoverdilithiumkeys requires a descriptor wallet");
+            }
+
+            const int64_t start{request.params[0].getInt<int64_t>()};
+            const int64_t stop{request.params[1].getInt<int64_t>()};
+            const bool internal{request.params[2].isNull() ? false : request.params[2].get_bool()};
+
+            constexpr int64_t MAX_RANGE{10000};
+            if (start < 0 || stop < start || stop > std::numeric_limits<int32_t>::max()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid index range");
+            }
+            if (stop - start + 1 > MAX_RANGE) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER,
+                    strprintf("Index range too large (at most %d indexes per call)", MAX_RANGE));
+            }
+
+            auto* desc = dynamic_cast<DescriptorScriptPubKeyMan*>(
+                wallet->GetScriptPubKeyMan(OutputType::LEGACY, internal));
+            if (!desc) {
+                throw JSONRPCError(RPC_WALLET_ERROR,
+                    internal ? "No internal descriptor manager available for Dilithium key derivation"
+                             : "No descriptor manager available for Dilithium key derivation");
+            }
+
+            UniValue result(UniValue::VARR);
+            for (int64_t index = start; index <= stop; ++index) {
+                auto key_res = desc->GetDilithiumKeyForIndex(static_cast<int32_t>(index));
+                if (!key_res) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(key_res).original);
+                }
+                const CKeyID keyid{key_res->GetPubKey().GetID()};
+                const bool known{WalletHaveDilithiumKey(*wallet, keyid)};
+
+                // Store the key (no-op when present) and create or reuse the
+                // canonical single-leaf P2MR tree and metadata, so the wallet
+                // matches these scripts from now on. Change keys stay out of
+                // the address book, like GetReservedDestination: an entry
+                // would make historical change look like incoming payments
+                // and break ScriptIsChange.
+                auto created = RecoverDilithiumKeyAsP2MR(*wallet, *desc, key_res.value(), /*add_to_address_book=*/!internal);
+                if (!created) {
+                    throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(created).original);
+                }
+
+                UniValue entry(UniValue::VOBJ);
+                entry.pushKV("index", index);
+                entry.pushKV("address", created->address);
+                entry.pushKV("p2mr_id", created->id);
+                entry.pushKV("recovered", !known);
+                result.push_back(entry);
+            }
+            return result;
+        },
+    };
+}
+
+/**
+ * Throw unless `pubkey` alone controls `dest`: only then does a message
+ * signature by the key prove control of the address.
+ */
+static void EnsureKeyControlsAddress(const CDilithiumPubKey& pubkey, const CTxDestination& dest, bool key_from_wallet)
+{
+    if (DilithiumPubKeyMatchesDestination(pubkey, dest)) return;
+    if ((std::holds_alternative<DilithiumPKHash>(dest) || std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) &&
+        !LegacyDilithiumBase58PaymentsAllowed()) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
+            "Dilithium key-hash addresses cannot hold spendable coins on this network. Use the key's P2MR address.");
+    }
+    if (key_from_wallet) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
+            "Address is not a single-key Dilithium P2MR address, so a message signature does not prove control of it.");
+    }
+    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, LegacyDilithiumBase58PaymentsAllowed()
+        ? "Dilithium public key does not match the address. The address must be the key's single-key P2MR receive address or its Dilithium key hash."
+        : "Dilithium public key does not match the address. The address must be the key's single-key P2MR receive address.");
+}
+
 RPCHelpMan signmessagewithdilithium()
 {
     return RPCHelpMan{"signmessagewithdilithium",
         "\nSign a message with a Dilithium private key.\n"
         "\nThe signature covers a domain-separated hash of the message, not the message\n"
         "bytes, so it can never be a valid transaction signature for the same key.\n"
-        "Signatures produced before this separation existed no longer verify.\n",
+        "Signatures produced before this separation existed no longer verify.\n"
+        "\nThe address must be one the key alone controls (see verifymessagewithdilithium).\n",
         {
             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Dilithium address to use for signing."},
             {"message", RPCArg::Type::STR, RPCArg::Optional::NO, "The message to create a signature of."},
@@ -260,6 +380,7 @@ RPCHelpMan signmessagewithdilithium()
             if (!key_found) {
                 throw JSONRPCError(RPC_WALLET_ERROR, "Dilithium key not found in wallet");
             }
+            EnsureKeyControlsAddress(dilithium_key.GetPubKey(), dest, /*key_from_wallet=*/true);
             
             // Domain-separated: signing a message must not be able to produce a
             // signature that spends the same key's coins. See util/message.h.
@@ -273,21 +394,52 @@ RPCHelpMan signmessagewithdilithium()
     };
 }
 
+static CDilithiumPubKey ParseDilithiumPubKeyParam(const UniValue& param)
+{
+    const auto bytes{TryParseHex<unsigned char>(param.get_str())};
+    if (!bytes || bytes->size() != CDilithiumPubKey::SIZE) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
+            strprintf("pubkey must be a %u-byte Dilithium public key in hex", CDilithiumPubKey::SIZE));
+    }
+    const CDilithiumPubKey pubkey{bytes->begin(), bytes->end()};
+    if (!pubkey.IsFullyValid()) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dilithium public key");
+    }
+    return pubkey;
+}
+
 /**
  * Shared body for the Dilithium message-verification RPCs.
  *
- * verifymessagewithdilithium takes (address, signature, message), mirroring the
- * inherited verifymessage. The deprecated verifydilithiumsignature takes
- * (message, address, signature). `usage` names the caller's own argument order
- * so a mis-ordered call gets told how to fix itself rather than just "not a
- * Dilithium address".
+ * verifymessagewithdilithium takes (address, signature, message, pubkey),
+ * mirroring the inherited verifymessage. The deprecated
+ * verifydilithiumsignature takes (message, address, signature, pubkey).
+ * `usage` names the caller's own argument order so a mis-ordered call gets
+ * told how to fix itself rather than just "not a Dilithium address".
  */
 static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
                                        const std::string& strAddress,
                                        const std::string& strSignature,
                                        const std::string& strMessage,
+                                       const UniValue& pubkey_param,
                                        const char* usage)
 {
+    // With the signer's public key no wallet is consulted, so a verifier
+    // never needs the signer's private key or wallet metadata.
+    if (!pubkey_param.isNull()) {
+        const CTxDestination dest = DecodeDestination(strAddress);
+        if (std::holds_alternative<CNoDestination>(dest)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
+                strprintf("Invalid address. Expected argument order: %s", usage));
+        }
+        const CDilithiumPubKey pubkey{ParseDilithiumPubKeyParam(pubkey_param)};
+        EnsureKeyControlsAddress(pubkey, dest, /*key_from_wallet=*/false);
+        if (!DecodeBase64(strSignature)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid signature encoding");
+        }
+        return DilithiumMessageVerify(pubkey, strMessage, strSignature);
+    }
+
     // Get the wallet to look up the Dilithium key
     std::shared_ptr<const CWallet> pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
@@ -308,6 +460,14 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
     } else if (std::holds_alternative<DilithiumWitnessV0KeyHash>(dest)) {
         DilithiumWitnessV0KeyHash witness_dest = std::get<DilithiumWitnessV0KeyHash>(dest);
         keyID = CKeyID(static_cast<uint160>(witness_dest));
+    } else if (std::holds_alternative<WitnessV2P2MR>(dest)) {
+        if (GetP2MRByDestination(*pwallet, dest)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
+                "Address is not a single-key Dilithium P2MR address, so a message signature does not prove control of it.");
+        }
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
+            "This wallet does not track that P2MR address. Pass the signer's Dilithium public key "
+            "(see getdilithiumpubkey) to verify without the signer's wallet.");
     } else {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
             strprintf("Address is not a Dilithium key address (use a Dilithium P2MR receive "
@@ -340,7 +500,9 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
     }
 
     if (!key_found) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Dilithium key not found in wallet for this address");
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "Dilithium key not found in wallet for this address. Pass the signer's Dilithium public key "
+            "to verify without the signer's wallet.");
     }
 
     // Get the public key from the Dilithium key
@@ -348,6 +510,7 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
     if (!dilithium_pubkey.IsValid()) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Invalid Dilithium public key");
     }
+    EnsureKeyControlsAddress(dilithium_pubkey, dest, /*key_from_wallet=*/true);
 
     if (!DecodeBase64(strSignature)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid signature encoding");
@@ -371,6 +534,7 @@ RPCHelpMan verifydilithiumsignature()
             {"message", RPCArg::Type::STR, RPCArg::Optional::NO, "The message that was signed."},
             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Dilithium address that signed the message."},
             {"signature", RPCArg::Type::STR, RPCArg::Optional::NO, "The signature to verify (base64 encoded)."},
+            {"pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "The signer's Dilithium public key (see getdilithiumpubkey). See verifymessagewithdilithium."},
         },
         RPCResult{
             RPCResult::Type::BOOL, "", "If the signature is verified or not."
@@ -385,7 +549,8 @@ RPCHelpMan verifydilithiumsignature()
                                           /*strAddress=*/request.params[1].get_str(),
                                           /*strSignature=*/request.params[2].get_str(),
                                           /*strMessage=*/request.params[0].get_str(),
-                                          "verifydilithiumsignature \"message\" \"address\" \"signature\"");
+                                          /*pubkey_param=*/request.params[3],
+                                          "verifydilithiumsignature \"message\" \"address\" \"signature\" ( \"pubkey\" )");
         },
     };
 }
@@ -395,11 +560,18 @@ RPCHelpMan verifymessagewithdilithium()
     return RPCHelpMan{"verifymessagewithdilithium",
         "\nVerify a message signed with a Dilithium private key.\n"
         "Argument order mirrors verifymessage. Replaces verifydilithiumsignature,\n"
-        "which took the same arguments in a different order and is deprecated.\n",
+        "which took the same arguments in a different order and is deprecated.\n"
+        "\nWithout pubkey, the key must be in this wallet. With pubkey, no wallet needs\n"
+        "to be loaded (the node still needs wallet support), and the signature is\n"
+        "checked against that key.\n"
+        "\nEither way the address must be one the key alone controls: its single-key\n"
+        "P2MR receive address, or its Dilithium key hash on a network that still\n"
+        "allows payments to those. Any other address is an error, not false.\n",
         {
             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Dilithium address that signed the message."},
             {"signature", RPCArg::Type::STR, RPCArg::Optional::NO, "The signature provided by the signer in base 64 encoding (see signmessagewithdilithium)."},
             {"message", RPCArg::Type::STR, RPCArg::Optional::NO, "The message that was signed."},
+            {"pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "The signer's Dilithium public key in hex (see getdilithiumpubkey)."},
         },
         RPCResult{
             RPCResult::Type::BOOL, "", "If the signature is verified or not."
@@ -411,8 +583,11 @@ RPCHelpMan verifymessagewithdilithium()
             + HelpExampleCli("signmessagewithdilithium", "\"myaddress\" \"my message\"") +
             "\nVerify the signature\n"
             + HelpExampleCli("verifymessagewithdilithium", "\"myaddress\" \"signature\" \"my message\"") +
+            "\nVerify without the signer's wallet\n"
+            + HelpExampleCli("verifymessagewithdilithium", "\"myaddress\" \"signature\" \"my message\" \"pubkeyhex\"") +
             "\nAs a JSON-RPC call\n"
             + HelpExampleRpc("verifymessagewithdilithium", "\"myaddress\", \"signature\", \"my message\"")
+            + HelpExampleRpc("verifymessagewithdilithium", "\"myaddress\", \"signature\", \"my message\", \"pubkeyhex\"")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
@@ -420,7 +595,8 @@ RPCHelpMan verifymessagewithdilithium()
                                           /*strAddress=*/request.params[0].get_str(),
                                           /*strSignature=*/request.params[1].get_str(),
                                           /*strMessage=*/request.params[2].get_str(),
-                                          "verifymessagewithdilithium \"address\" \"signature\" \"message\"");
+                                          /*pubkey_param=*/request.params[3],
+                                          "verifymessagewithdilithium \"address\" \"signature\" \"message\" ( \"pubkey\" )");
         },
     };
 }

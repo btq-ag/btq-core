@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The BTQ Core developers
+// Copyright (c) 2009-2021 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -154,6 +154,7 @@ std::string GetOpName(opcodetype opcode)
     case OP_CHECKSIGDILITHIUMVERIFY: return "OP_CHECKSIGDILITHIUMVERIFY";
     case OP_CHECKMULTISIGDILITHIUM : return "OP_CHECKMULTISIGDILITHIUM";
     case OP_CHECKMULTISIGDILITHIUMVERIFY: return "OP_CHECKMULTISIGDILITHIUMVERIFY";
+    // Reserved byte. Kept so disassembly does not rename 0xbf.
     case OP_DILITHIUM_PUBKEY       : return "OP_DILITHIUM_PUBKEY";
 
     case OP_INVALIDOPCODE          : return "OP_INVALIDOPCODE";
@@ -356,9 +357,8 @@ bool GetScriptOp(CScriptBase::const_iterator& pc, CScriptBase::const_iterator en
 
 bool IsOpSuccess(const opcodetype& opcode)
 {
-    // BTQ: Exclude Dilithium opcodes (0xbb-0xbf = 187-191) from OP_SUCCESSx range.
-    // Without this exclusion, any tapscript containing a Dilithium opcode would
-    // unconditionally succeed, making it anyone-can-spend.
+    // Dilithium opcodes occupy 0xbb-0xbe. 0xbf is reserved and must stay out of
+    // this range, or a P2MR leaf that contains it would succeed.
     return opcode == 80 || opcode == 98 || (opcode >= 126 && opcode <= 129) ||
            (opcode >= 131 && opcode <= 134) || (opcode >= 137 && opcode <= 138) ||
            (opcode >= 141 && opcode <= 142) || (opcode >= 149 && opcode <= 153) ||

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -181,13 +181,11 @@ private:
 
 public:
     P2MRBuilder& Add(int depth, Span<const unsigned char> script, int leaf_version, bool track = true);
-    P2MRBuilder& AddOmitted(int depth, const uint256& hash);
     P2MRBuilder& Finalize();
 
     bool IsValid() const { return m_valid; }
     bool IsComplete() const { return m_valid && (m_branch.size() == 0 || (m_branch.size() == 1 && m_branch[0].has_value())); }
     WitnessV2P2MR GetOutput();
-    static bool ValidDepths(const std::vector<int>& depths);
     P2MRSpendData GetSpendData() const;
     std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> GetTreeTuples() const;
     bool HasScripts() const { return !m_branch.empty(); }

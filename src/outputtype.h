@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -39,12 +39,6 @@ static constexpr auto OUTPUT_TYPES = std::array{
     OutputType::DILITHIUM_BECH32,
     OutputType::P2MR,
 };
-
-/** Output types whose spends are authorised by a Dilithium key rather than ECDSA/Schnorr. */
-constexpr bool IsQuantumSafeOutputType(OutputType type)
-{
-    return type == OutputType::P2MR || type == OutputType::DILITHIUM_LEGACY || type == OutputType::DILITHIUM_BECH32;
-}
 
 std::optional<OutputType> ParseOutputType(const std::string& str);
 const std::string& FormatOutputType(OutputType type);

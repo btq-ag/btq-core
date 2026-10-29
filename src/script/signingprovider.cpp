@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The BTQ Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -714,24 +714,6 @@ void P2MRBuilder::Insert(P2MRBuilder::NodeInfo&& node, int depth)
     }
 }
 
-/*static*/ bool P2MRBuilder::ValidDepths(const std::vector<int>& depths)
-{
-    std::vector<bool> branch;
-    for (int depth : depths) {
-        if (depth < 0 || (size_t)depth > P2MR_CONTROL_MAX_NODE_COUNT) return false;
-        if ((size_t)depth + 1 < branch.size()) return false;
-        while (branch.size() > (size_t)depth && branch[depth]) {
-            branch.pop_back();
-            if (depth == 0) return false;
-            --depth;
-        }
-        if (branch.size() <= (size_t)depth) branch.resize((size_t)depth + 1);
-        assert(!branch[depth]);
-        branch[depth] = true;
-    }
-    return branch.size() == 0 || (branch.size() == 1 && branch[0]);
-}
-
 P2MRBuilder& P2MRBuilder::Add(int depth, Span<const unsigned char> script, int leaf_version, bool track)
 {
     assert((leaf_version & ~TAPROOT_LEAF_MASK) == 0);
@@ -739,15 +721,6 @@ P2MRBuilder& P2MRBuilder::Add(int depth, Span<const unsigned char> script, int l
     NodeInfo node;
     node.hash = ComputeTapleafHash(leaf_version, script);
     if (track) node.leaves.emplace_back(LeafInfo{std::vector<unsigned char>(script.begin(), script.end()), leaf_version, {}});
-    Insert(std::move(node), depth);
-    return *this;
-}
-
-P2MRBuilder& P2MRBuilder::AddOmitted(int depth, const uint256& hash)
-{
-    if (!IsValid()) return *this;
-    NodeInfo node;
-    node.hash = hash;
     Insert(std::move(node), depth);
     return *this;
 }
@@ -802,3 +775,4 @@ std::vector<std::tuple<uint8_t, uint8_t, std::vector<unsigned char>>> P2MRBuilde
     }
     return tuples;
 }
+

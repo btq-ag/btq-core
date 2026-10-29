@@ -34,7 +34,7 @@ This document defines objectives, methodologies, checkpoints, risk areas, testin
 
 BTQ Core is a Bitcoin-derived full node, wallet, and network stack modified for post-quantum (PQ) cryptography, enlarged consensus and policy limits, and distinct chain identity. Relative to upstream Bitcoin Core, the fork compounds risk in four dimensions that must be audited together:
 
-1. **Cryptographic perimeter:** Dilithium integration (with Falcon and SPHINCS+ represented in consensus-facing structures), new script opcodes (`OP_CHECKSIGDILITHIUM`, multisig variants, `OP_DILITHIUM_PUBKEY`), and phased activation via `Consensus::SignatureAlgorithm`.
+1. **Cryptographic perimeter:** Dilithium integration (with Falcon and SPHINCS+ represented in consensus-facing structures), new script opcodes (`OP_CHECKSIGDILITHIUM` and multisig variants; `0xbf` is reserved and fails), and phased activation via `Consensus::SignatureAlgorithm`.
 2. **Resource scaling:** Current consensus headers define **8 MB** serialized block size and **8 MW** block weight (`src/consensus/consensus.h`), with policy soft caps near **7.6 MW** (`src/policy/policy.h`). PQ signatures and pubkeys are orders of magnitude larger than ECDSA, amplifying DoS, memory, disk, and propagation surfaces.
 3. **Phased rollout:** Roadmap phases (parameter changes, PPK infrastructure, future consensus activation) create **version skew** risk between miners, mempools, wallets, indexers, and alternate implementations.
 4. **Inherited Bitcoin attack surface:** Decades of subtle consensus, mempool, and wallet behavior remain; **upstream merge drift** can reintroduce fixed CVE classes or silently diverge fixes.
@@ -203,7 +203,7 @@ Each area below requires a **workpaper**: threat hypotheses, code references, te
 | Risk ID | Description | Review focus |
 |---------|-------------|--------------|
 | S-01 | `OP_CHECKSIGDILITHIUM` / VERIFY / multisig counting DoS | Repeated VERIFY loops (see functional tests) |
-| S-02 | `OP_DILITHIUM_PUBKEY` push size vs `MAX_SCRIPT_ELEMENT_SIZE` | Consensus vs policy limits |
+| S-02 | Reserved `0xbf` (former `OP_DILITHIUM_PUBKEY`) must fail verification and must not become OP_SUCCESS | `script/interpreter.cpp`, `IsOpSuccess` |
 | S-03 | Taproot/Segwit interplay with PQ witness versions | `script/interpreter.cpp`, flags in `policy.h` |
 | S-04 | Standardness vs consensus gap | Non-standard mempool txs mined in blocks |
 | S-05 | `btqconsensus` API surface for external bindings | `src/script/btqconsensus.h` |

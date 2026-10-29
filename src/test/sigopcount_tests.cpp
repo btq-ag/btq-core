@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2022 The BTQ Core developers
+// Copyright (c) 2012-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -326,12 +326,14 @@ static CScriptWitness MakeP2MRWitness(const CScript& leaf_script,
 
 BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
 {
-    // P2MR Dilithium leaves must count toward the block sigop limit via WitnessSigOps.
+    // P2MR leaves add nothing to the block sigop total. GetSigOpCount on the
+    // leaf script itself is unchanged.
     CMutableTransaction creationTx;
     CMutableTransaction spendingTx;
     CCoinsView coinsDummy;
     CCoinsViewCache coins(&coinsDummy);
     const uint32_t flags{SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_P2SH};
+    const uint32_t all_flags{flags | SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY | SCRIPT_VERIFY_DILITHIUM_LIMITS};
     const CScript scriptPubKey = MakeP2MRScriptPubKey();
 
     CDilithiumKey dilithium_key;
@@ -343,48 +345,50 @@ BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
         const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM;
         const CScriptWitness witness = MakeP2MRWitness(leaf, {/*args=*/{std::vector<unsigned char>{0x01}}});
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, witness);
-        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
-                          static_cast<int64_t>(DILITHIUM_SIGOP_COST));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, all_flags), 0);
         BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags & ~SCRIPT_VERIFY_WITNESS), 0);
+        BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true), static_cast<unsigned int>(DILITHIUM_SIGOP_COST));
     }
 
-    // OP_CHECKSIGDILITHIUMVERIFY counts the same as OP_CHECKSIGDILITHIUM.
+    // OP_CHECKSIGDILITHIUMVERIFY is the same.
     {
         const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUMVERIFY;
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
-        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
-                          static_cast<int64_t>(DILITHIUM_SIGOP_COST));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
     }
 
-    // Accurate Dilithium multisig: OP_2 ... OP_2 OP_CHECKMULTISIGDILITHIUM → 2 * cost.
+    // Threshold leaf: GetSigOpCount still charges every key. The block total does not.
     {
         const CScript leaf = CScript() << OP_2 << dilithium_pubkey << dilithium_pubkey << OP_2
                                        << OP_CHECKMULTISIGDILITHIUM;
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
-        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
-                          static_cast<int64_t>(2U * DILITHIUM_SIGOP_COST));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
         BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true), 2U * DILITHIUM_SIGOP_COST);
-        // Inaccurate path would charge MAX_PUBKEYS_PER_MULTISIG * cost — must not match that.
-        BOOST_CHECK(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags) !=
-                    static_cast<int64_t>(MAX_PUBKEYS_PER_MULTISIG * DILITHIUM_SIGOP_COST));
     }
 
-    // Annex present: still locate leaf at control_idx - 1 and count the same.
+    // Annex present.
     {
         const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM;
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{},
                  MakeP2MRWitness(leaf, {/*args=*/{std::vector<unsigned char>{0x01}}}, /*with_annex=*/true));
-        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
-                          static_cast<int64_t>(DILITHIUM_SIGOP_COST));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
     }
 
-    // ECDSA OP_CHECKSIG in a P2MR leaf counts via GetSigOpCount (1), matching P2WSH.
+    // OP_CHECKSIG counts on the leaf script. OP_CHECKSIGADD still counts as 0 there.
+    // Neither is added to the transaction cost.
     {
         CKey ecdsa_key;
         ecdsa_key.MakeNewKey(true);
         const CScript leaf = CScript() << ToByteVector(ecdsa_key.GetPubKey()) << OP_CHECKSIG;
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
-        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 1);
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
+        BOOST_CHECK_EQUAL(leaf.GetSigOpCount(true), 1U);
+
+        const CScript add_leaf = CScript() << OP_0 << ToByteVector(ecdsa_key.GetPubKey()) << OP_CHECKSIGADD;
+        BOOST_CHECK_EQUAL(add_leaf.GetSigOpCount(true), 0U);
+        BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(add_leaf));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, all_flags), 0);
     }
 
     // Mixed leaf: one Dilithium + one ECDSA.
@@ -394,8 +398,7 @@ BOOST_AUTO_TEST_CASE(p2mr_witness_v2_sigop_weighting)
         const CScript leaf = CScript() << dilithium_pubkey << OP_CHECKSIGDILITHIUM
                                        << ToByteVector(ecdsa_key.GetPubKey()) << OP_CHECKSIG;
         BuildTxs(spendingTx, coins, creationTx, scriptPubKey, CScript{}, MakeP2MRWitness(leaf));
-        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags),
-                          static_cast<int64_t>(DILITHIUM_SIGOP_COST + 1));
+        BOOST_CHECK_EQUAL(GetTransactionSigOpCost(CTransaction(spendingTx), coins, flags), 0);
     }
 
     // Too few witness elements: no script+control pair → 0.
