@@ -191,18 +191,15 @@ BOOST_AUTO_TEST_CASE(encode_decode_roundtrip_all_chains)
             CTxDestination decoded = DecodeDestination(encoded, err);
             const bool legacy_dilithium =
                 label == "P2DPKH" || label == "P2DSH" || label == "P2DWPKH" || label == "P2DWSH";
-            // Base58 Dilithium P2PKH/P2SH stay valid payment destinations on
-            // testnet while P2MR-only is unscheduled; witness-v0 Dilithium and
-            // post-activation Base58 Dilithium do not.
-            const bool legacy_base58_payments_allowed =
-                (label == "P2DPKH" || label == "P2DSH") && info.chain == ChainType::BTQTEST;
-            if (legacy_dilithium && !legacy_base58_payments_allowed) {
-                // Historical Dilithium destinations remain encodable/decodable for
-                // display, but are no longer valid payment destinations.
+            // Main, test, signet, and regtest all set nDilithiumP2MRHeight to 1.
+            // Legacy Dilithium templates still decode for display, but none of
+            // them is a payment destination. Witness-v0 Dilithium never is.
+            if (legacy_dilithium) {
                 BOOST_CHECK_MESSAGE(decoded.index() == dest.index(),
                     "Decoded variant index mismatch for " << label << " on " << info.name);
                 BOOST_CHECK_MESSAGE(!IsValidDestination(decoded),
-                    "Legacy Dilithium destination unexpectedly valid for payments: " << label);
+                    "Legacy Dilithium destination unexpectedly valid for payments: " << label
+                        << " on " << info.name);
             } else {
                 BOOST_CHECK_MESSAGE(IsValidDestination(decoded),
                     "Same-chain decode failed for " << label << " on " << info.name
@@ -283,16 +280,13 @@ BOOST_AUTO_TEST_CASE(cross_chain_rejection_all_chains)
 
             if (row.source_chain == target.chain) {
                 ++count_same_chain;
-                // Mirror encode_decode_roundtrip_all_chains: witness-v0 Dilithium
-                // is never a payment destination; Base58 Dilithium only while
-                // testnet keeps P2MR-only unscheduled.
+                // Same rule as encode_decode_roundtrip_all_chains: legacy
+                // Dilithium decodes, and is not a payment destination on any
+                // chain this branch ships.
                 const bool legacy_dilithium =
                     row.label == "P2DPKH" || row.label == "P2DSH" ||
                     row.label == "P2DWPKH" || row.label == "P2DWSH";
-                const bool legacy_base58_payments_allowed =
-                    (row.label == "P2DPKH" || row.label == "P2DSH") &&
-                    target.chain == ChainType::BTQTEST;
-                if (legacy_dilithium && !legacy_base58_payments_allowed) {
+                if (legacy_dilithium) {
                     BOOST_CHECK_MESSAGE(!valid,
                         "Legacy Dilithium destination unexpectedly valid for payments: "
                             << row.label << " on " << target.name

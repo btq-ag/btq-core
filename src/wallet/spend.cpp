@@ -1108,10 +1108,12 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
     OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend, &coin_control);
     // A locked wallet cannot derive a Dilithium change key, and funding
     // (fundrawtransaction, walletcreatefundedpsbt) never required unlocking.
-    // When P2MR change came from the automatic rule (a quantum-safe recipient
-    // or preselected quantum-safe inputs, nothing explicit), fall back to the
-    // classical choice and say so, instead of failing the funding. An explicit
-    // -changetype or change_type still fails if the wallet cannot mint it.
+    // When P2MR change came only from a quantum-safe recipient, fall back to
+    // the classical choice and say so: no quantum-safe coin is downgraded.
+    // When preselected quantum-safe inputs asked for it, fail instead. Change
+    // from those inputs must not land on an ECDSA script (Quarkslab HIGH-22),
+    // and a funded-but-unsigned transaction would carry it there. An explicit
+    // -changetype, change_type or change address still wins.
     if (change_type == OutputType::P2MR && wallet.IsLocked() &&
         !coin_control.m_change_type && !wallet.m_default_change_type) {
         std::vector<CRecipient> classical_recipients;
@@ -1122,6 +1124,10 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
                 continue;
             }
             classical_recipients.push_back(recipient);
+        }
+        if (std::get_if<CNoDestination>(&coin_control.destChange) &&
+            wallet.TransactionChangeType(std::nullopt, classical_recipients, &coin_control) == OutputType::P2MR) {
+            return util::Error{_("Spending quantum-safe inputs needs a P2MR change address, but the wallet is locked. Unlock the wallet, set a change address, or pass change_type.")};
         }
         change_type = wallet.TransactionChangeType(std::nullopt, classical_recipients);
         wallet.WalletLogPrintf("Wallet is locked; quantum-safe change needs an unlocked wallet. Using classical change. Unlock the wallet or pass change_type to control this.\n");
@@ -1298,8 +1304,11 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
             });
         if (selected_p2mr && wallet.IsLocked()) {
             // Deriving a Dilithium change key needs the unlocked wallet.
-            // Funding never required unlocking. Keep the change classical.
-            wallet.WalletLogPrintf("Wallet is locked; quantum-safe inputs get classical change. Unlock the wallet or pass change_type to control this.\n");
+            // Funding never required unlocking, but classical change from
+            // quantum-safe inputs is the HIGH-22 leak, so refuse rather than
+            // fall back. The caller can unlock, pass change_type, or set a
+            // change address.
+            return util::Error{_("Spending quantum-safe inputs needs a P2MR change address, but the wallet is locked. Unlock the wallet, set a change address, or pass change_type.")};
         } else if (selected_p2mr) {
             // Judge viability against the P2MR output, not the classical
             // prototype selection used. P2MR dust is higher and the future

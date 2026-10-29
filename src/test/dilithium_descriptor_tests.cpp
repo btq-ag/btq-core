@@ -128,18 +128,16 @@ BOOST_AUTO_TEST_CASE(dilithium_descriptor_expansion)
 
 BOOST_AUTO_TEST_CASE(dilithium_type_compatibility)
 {
-    // Test type compatibility checking
-    // This tests the logic we implemented in DescriptorScriptPubKeyMan
-    
-    // The compatibility check should be true for our special case
-    bool special_legacy_compatible = (OutputType::DILITHIUM_LEGACY != OutputType::LEGACY) &&
-                                     (OutputType::DILITHIUM_LEGACY == OutputType::DILITHIUM_LEGACY && OutputType::LEGACY == OutputType::LEGACY);
-    BOOST_CHECK(special_legacy_compatible);
-    
-    // Test Dilithium bech32 compatibility
-    bool special_bech32_compatible = (OutputType::DILITHIUM_BECH32 != OutputType::BECH32) &&
-                                     (OutputType::DILITHIUM_BECH32 == OutputType::DILITHIUM_BECH32 && OutputType::BECH32 == OutputType::BECH32);
-    BOOST_CHECK(special_bech32_compatible);
+    // The Dilithium output types are distinct from their classical
+    // counterparts and round-trip through the string parser.
+    BOOST_CHECK(OutputType::DILITHIUM_LEGACY != OutputType::LEGACY);
+    BOOST_CHECK(OutputType::DILITHIUM_BECH32 != OutputType::BECH32);
+    BOOST_CHECK(OutputType::P2MR != OutputType::BECH32M);
+    for (const OutputType type : {OutputType::DILITHIUM_LEGACY, OutputType::DILITHIUM_BECH32, OutputType::P2MR}) {
+        const auto parsed = ParseOutputType(FormatOutputType(type));
+        BOOST_REQUIRE(parsed);
+        BOOST_CHECK(*parsed == type);
+    }
 }
 
 BOOST_AUTO_TEST_CASE(dilithium_signature_sizes)

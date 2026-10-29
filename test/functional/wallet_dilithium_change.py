@@ -157,6 +157,53 @@ class WalletDilithiumChangeTest(BTQTestFramework):
         watch_change = node.decodepsbt(psbt["psbt"])["tx"]["vout"][psbt["changepos"]]
         assert_equal(watch_change["scriptPubKey"]["type"], "witness_v1_taproot")
 
+        self.log.info("A locked wallet refuses to fund classical change from P2MR inputs")
+        # Funding never needed the passphrase, but a P2MR change key is derived
+        # from it. Silently falling back to classical change would move the
+        # remainder of a quantum-safe coin onto an ECDSA script and sign it
+        # later, so funding has to fail instead.
+        node.createwallet(wallet_name="locked", descriptors=True, passphrase="pass")
+        locked = node.get_wallet_rpc("locked")
+        locked.walletpassphrase("pass", 60)
+        funding.sendtoaddress(locked.getnewdilithiumaddress()["address"], Decimal("5"))
+        locked_classical = locked.getnewaddress(address_type="bech32m")
+        funding.sendtoaddress(locked_classical, Decimal("3"))
+        self.generate(node, 1, sync_fun=self.no_op)
+        locked.walletlock()
+        classical_out = [{funding.getnewaddress(address_type="bech32m"): Decimal("4")}]
+        p2mr_utxo = next(u for u in locked.listunspent() if u["address"] != locked_classical)
+        classical_utxo = next(u for u in locked.listunspent() if u["address"] == locked_classical)
+        # Auto-selected: only the P2MR coin covers 4 BTQ.
+        assert_raises_rpc_error(
+            -4, "wallet is locked",
+            locked.walletcreatefundedpsbt, [], classical_out,
+        )
+        # Preselected P2MR input.
+        assert_raises_rpc_error(
+            -4, "wallet is locked",
+            locked.walletcreatefundedpsbt,
+            [{"txid": p2mr_utxo["txid"], "vout": p2mr_utxo["vout"]}], classical_out, 0, {"add_inputs": False},
+        )
+        # An explicit change_type or change address is the caller's decision.
+        funded = locked.walletcreatefundedpsbt([], classical_out, 0, {"change_type": "bech32m"})
+        explicit = node.decodepsbt(funded["psbt"])["tx"]["vout"][funded["changepos"]]
+        assert_equal(explicit["scriptPubKey"]["type"], "witness_v1_taproot")
+        funded = locked.walletcreatefundedpsbt([], classical_out, 0, {"changeAddress": locked.getrawchangeaddress("bech32")})
+        assert_equal(node.decodepsbt(funded["psbt"])["tx"]["vout"][funded["changepos"]]["scriptPubKey"]["type"], "witness_v0_keyhash")
+        # A P2MR recipient paid from a classical coin still falls back to
+        # classical change while locked: nothing quantum-safe is downgraded.
+        funded = locked.walletcreatefundedpsbt(
+            [{"txid": classical_utxo["txid"], "vout": classical_utxo["vout"]}],
+            [{sender.getnewdilithiumaddress()["address"]: Decimal("1")}], 0, {"add_inputs": False},
+        )
+        recipient_only = node.decodepsbt(funded["psbt"])["tx"]["vout"][funded["changepos"]]
+        assert recipient_only["scriptPubKey"]["type"] != "witness_v2_p2mr"
+        # Unlocked, the same funding gets P2MR change.
+        locked.walletpassphrase("pass", 60)
+        funded = locked.walletcreatefundedpsbt([], classical_out)
+        unlocked_change = node.decodepsbt(funded["psbt"])["tx"]["vout"][funded["changepos"]]
+        assert_equal(unlocked_change["scriptPubKey"]["type"], "witness_v2_p2mr")
+
         self.log.info("dilithium-legacy is refused where Dilithium spends must be P2MR")
         # Regtest activates DEPLOYMENT_DILITHIUM_P2MR at height 1, so a base58
         # Dilithium address is not a valid payment destination and the wallet
