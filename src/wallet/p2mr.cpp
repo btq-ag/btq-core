@@ -1124,62 +1124,40 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     }
     out.tx.vout.emplace_back(send_amount, GetScriptForDestination(to_dest));
 
-<<<<<<< HEAD
-    if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
-        if (change_dest) {
+    // Same bar as the post-selection swap in CreateTransaction: P2MR dust
+    // plus what spending the change later costs at the discard feerate.
+    const CTxOut change_prototype{0, target_spk};
+    const CFeeRate discard_feerate = GetDiscardRate(wallet);
+    CAmount min_viable_change = GetDustThreshold(change_prototype, discard_feerate);
+    const int change_spend_size = CalculateMaximumSignedInputSize(change_prototype, &wallet, /*coin_control=*/nullptr);
+    if (change_spend_size > 0) {
+        min_viable_change = std::max(min_viable_change, discard_feerate.GetFee(change_spend_size) + 1);
+    }
+    if (change_dest) {
+        if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
             out.change_dest = *change_dest;
-        } else {
-            // P2MR change is a new Dilithium key, derived from private key material.
-            if (wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) || wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
-                return util::Error{Untranslated("This wallet cannot derive a P2MR change address. Pass change_address.")};
-            }
-            if (wallet.IsLocked()) {
-                return util::Error{Untranslated("Error: Please enter the wallet passphrase with walletpassphrase first.")};
-            }
-            auto derived = wallet.GetNewChangeDestination(OutputType::P2MR);
-            if (!derived) return util::Error{util::ErrorString(derived)};
-            out.change_dest = *derived;
+            out.tx.vout.emplace_back(change, GetScriptForDestination(out.change_dest));
+            out.has_change = true;
+            out.change_amount = change;
         }
+    } else if (change > min_viable_change) {
+        // P2MR change is a new Dilithium key, derived from private key material.
+        if (wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) || wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
+            return util::Error{Untranslated("This wallet cannot derive a P2MR change address. Pass change_address.")};
+        }
+        if (wallet.IsLocked()) {
+            return util::Error{Untranslated("Error: Please enter the wallet passphrase with walletpassphrase first.")};
+        }
+        // Change from a P2MR spend stays quantum-safe. A bech32 change
+        // output would move the remainder onto an ECDSA script.
+        auto derived = wallet.GetNewChangeDestination(OutputType::P2MR);
+        if (!derived) return util::Error{util::ErrorString(derived)};
+        out.change_dest = *derived;
         out.tx.vout.emplace_back(change, GetScriptForDestination(out.change_dest));
         out.has_change = true;
         out.change_amount = change;
-=======
-    // Watch-only and blank wallets cannot derive a Dilithium change key.
-    // Keep the classical change they can already make (see TransactionChangeType).
-    const bool can_derive_p2mr = !wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) &&
-                                 !wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET);
-    if (!can_derive_p2mr) {
-        if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
-            auto change_dest = wallet.GetNewChangeDestination(OutputType::BECH32);
-            if (!change_dest) return util::Error{util::ErrorString(change_dest)};
-            out.tx.vout.emplace_back(change, GetScriptForDestination(*change_dest));
-            out.has_change = true;
-            out.change_amount = change;
-        }
-    } else {
-        // Same bar as the post-selection swap in CreateTransaction: P2MR dust
-        // plus what spending the change later costs at the discard feerate.
-        // The spent script stands in for the future change output. Both are
-        // a 34-byte witness program, and a fresh single-leaf spend costs at
-        // most what this entry's spend does.
-        const CTxOut change_prototype{0, target_spk};
-        const CFeeRate discard_feerate = GetDiscardRate(wallet);
-        CAmount min_viable_change = GetDustThreshold(change_prototype, discard_feerate);
-        const int change_spend_size = CalculateMaximumSignedInputSize(change_prototype, &wallet, /*coin_control=*/nullptr);
-        if (change_spend_size > 0) {
-            min_viable_change = std::max(min_viable_change, discard_feerate.GetFee(change_spend_size) + 1);
-        }
-        if (change > min_viable_change) {
-            // Change from a P2MR spend stays quantum-safe. A bech32 change
-            // output would move the remainder onto an ECDSA script.
-            auto change_dest = wallet.GetNewChangeDestination(OutputType::P2MR);
-            if (!change_dest) return util::Error{util::ErrorString(change_dest)};
-            out.tx.vout.emplace_back(change, GetScriptForDestination(*change_dest));
-            out.has_change = true;
-            out.change_amount = change;
-        }
->>>>>>> e4d2f1ba5 (wallet: return P2MR change when spending P2MR inputs)
     }
+
 
 
     out.p2mr_id = p2mr_id;
