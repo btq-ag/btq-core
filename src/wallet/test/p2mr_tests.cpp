@@ -20,6 +20,7 @@
 #include <util/strencodings.h>
 #include <util/vector.h>
 #include <validation.h>
+#include <wallet/coincontrol.h>
 #include <wallet/p2mr.h>
 #include <wallet/receive.h>
 #include <wallet/scriptpubkeyman.h>
@@ -601,6 +602,8 @@ BOOST_FIXTURE_TEST_CASE(fund_p2mr_rolls_back_on_funding_failure, BasicTestingSet
         BOOST_REQUIRE_EQUAL(metadata.size(), 1U);
         std::string value;
         BOOST_CHECK(wallet->GetP2MRMetadata(dest, std::get<1>(metadata.front()), value));
+    }
+}
 
 BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTestingSetup)
 {
@@ -1100,6 +1103,7 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_pays_given_change_address, TestChain10
         BOOST_REQUIRE(!wrong);
         BOOST_CHECK(util::ErrorString(wrong).original.find("change_address must be a P2MR address") != std::string::npos);
     }
+}
 
 namespace {
 // Every shipped chain, including testnet, is P2MR-only from height 1.

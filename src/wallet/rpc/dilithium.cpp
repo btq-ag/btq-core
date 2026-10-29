@@ -283,6 +283,7 @@ RPCHelpMan recoverdilithiumkeys()
             return result;
         },
     };
+}
 
 /**
  * Throw unless `pubkey` alone controls `dest`: only then does a message

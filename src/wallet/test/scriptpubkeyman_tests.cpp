@@ -23,6 +23,15 @@
 #include <boost/test/unit_test.hpp>
 
 namespace wallet {
+class DilithiumRescanTestAccess {
+public:
+    static bool AddToWalletIfInvolvingMe(CWallet& wallet, const CTransactionRef& tx, const SyncTxState& state, bool fUpdate, bool rescanning_old_block)
+        EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+    {
+        return wallet.AddToWalletIfInvolvingMe(tx, state, fUpdate, rescanning_old_block);
+    }
+};
+
 BOOST_FIXTURE_TEST_SUITE(scriptpubkeyman_tests, BasicTestingSetup)
 
 namespace {
@@ -328,7 +337,7 @@ BOOST_AUTO_TEST_CASE(descriptor_dilithium_index_independent_of_ecdsa)
         }
 
         // Ordinary arrival does not import a script the wallet cannot yet recognize.
-        BOOST_CHECK(!wallet.AddToWalletIfInvolvingMe(tx, TxStateInactive{}, /*fUpdate=*/true, /*rescanning_old_block=*/false));
+        BOOST_CHECK(!DilithiumRescanTestAccess::AddToWalletIfInvolvingMe(wallet, tx, TxStateInactive{}, /*fUpdate=*/true, /*rescanning_old_block=*/false));
         BOOST_CHECK(!wallet.GetWalletTx(tx->GetHash()));
         BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 0);
         {
@@ -337,7 +346,7 @@ BOOST_AUTO_TEST_CASE(descriptor_dilithium_index_independent_of_ecdsa)
             BOOST_CHECK_EQUAL(keyman->GetWalletDescriptor().next_index, 1);
         }
 
-        BOOST_CHECK(wallet.AddToWalletIfInvolvingMe(tx, TxStateInactive{}, /*fUpdate=*/true, /*rescanning_old_block=*/true));
+        BOOST_CHECK(DilithiumRescanTestAccess::AddToWalletIfInvolvingMe(wallet, tx, TxStateInactive{}, /*fUpdate=*/true, /*rescanning_old_block=*/true));
         BOOST_CHECK(wallet.GetWalletTx(tx->GetHash()));
         BOOST_CHECK(wallet.IsMine(*tx));
         BOOST_CHECK_EQUAL(keyman->GetDilithiumNextIndex(), 3);

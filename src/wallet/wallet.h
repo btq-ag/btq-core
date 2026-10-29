@@ -300,6 +300,7 @@ struct CRecipient
 };
 
 class WalletRescanReserver; //forward declarations for ScanForWalletTransactions/RescanFromTime
+class DilithiumRescanTestAccess;
 /**
  * A CWallet maintains a set of transactions and balances, and provides the ability to create new transactions.
  */
@@ -318,6 +319,7 @@ private:
     std::atomic<double> m_scanning_progress{0};
     friend class WalletRescanReserver;
     friend class ReserveDestination;
+    friend class DilithiumRescanTestAccess;
 
     //! the current wallet version: clients below this version are not able to load the wallet
     int nWalletVersion GUARDED_BY(cs_wallet){FEATURE_BASE};
