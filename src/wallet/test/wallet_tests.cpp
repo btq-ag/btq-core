@@ -690,11 +690,11 @@ BOOST_FIXTURE_TEST_CASE(importwallet_tolerates_empty_tokens, WalletTestingSetup)
     CDilithiumKey recovered;
     BOOST_REQUIRE(spk_man->GetDilithiumKey(dilithium_keyid, recovered));
     BOOST_CHECK(recovered == dilithium_key);
-    const auto* entry = wallet->FindAddressBookEntry(PKHash(keyid));
-    BOOST_REQUIRE(entry);
-    BOOST_CHECK_EQUAL(entry->GetLabel(), "spaced");
     {
         LOCK(wallet->cs_wallet);
+        const auto* entry = wallet->FindAddressBookEntry(PKHash(keyid));
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "spaced");
         const auto p2mr_entries = ListP2MR(*wallet);
         BOOST_REQUIRE_EQUAL(p2mr_entries.size(), 1U);
         BOOST_CHECK_EQUAL(p2mr_entries[0].label, "dspaced");

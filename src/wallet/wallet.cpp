@@ -3965,7 +3965,12 @@ LegacyScriptPubKeyMan* CWallet::GetOrCreateLegacyScriptPubKeyMan()
 void CWallet::AddScriptPubKeyMan(const uint256& id, std::unique_ptr<ScriptPubKeyMan> spkm_man)
 {
     const auto& spkm = m_spk_managers[id] = std::move(spkm_man);
-    m_ismine_cache.clear();
+    {
+        // Wallet setup and load reach here without cs_wallet; the cache is
+        // guarded by it. Recursive, so callers that hold it are fine.
+        LOCK(cs_wallet);
+        m_ismine_cache.clear();
+    }
 
     // Update birth time if needed
     FirstKeyTimeChanged(spkm.get(), spkm->GetTimeFirstKey());

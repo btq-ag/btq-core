@@ -95,19 +95,23 @@ def check_smart_estimates(node, fees_seen):
     """Call estimatesmartfee and verify that the estimates meet certain invariants."""
 
     delta = 1.0e-6  # account for rounding error
-    last_feerate = float(max(fees_seen))
     all_smart_estimates = [node.estimatesmartfee(i) for i in range(1, 26)]
     mempoolMinFee = node.getmempoolinfo()["mempoolminfee"]
     minRelaytxFee = node.getmempoolinfo()["minrelaytxfee"]
+    # estimatesmartfee is clamped up to the relay floor. test_feerate_mempoolminfee
+    # sets that floor to 3x the short-target estimate, which can sit above every
+    # fee this test broadcast. The ceiling has to allow the clamp.
+    feerate_ceiling = max(max(fees_seen), float(mempoolMinFee), float(minRelaytxFee))
+    last_feerate = feerate_ceiling
     for i, e in enumerate(all_smart_estimates):  # estimate is for i+1
         feerate = float(e["feerate"])
         assert_greater_than(feerate, 0)
         assert_greater_than_or_equal(feerate, float(mempoolMinFee))
         assert_greater_than_or_equal(feerate, float(minRelaytxFee))
 
-        if feerate + delta < min(fees_seen) or feerate - delta > max(fees_seen):
+        if feerate + delta < min(fees_seen) or feerate - delta > feerate_ceiling:
             raise AssertionError(
-                f"Estimated fee ({feerate}) out of range ({min(fees_seen)},{max(fees_seen)})"
+                f"Estimated fee ({feerate}) out of range ({min(fees_seen)},{feerate_ceiling})"
             )
         if feerate - delta > last_feerate:
             raise AssertionError(

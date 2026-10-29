@@ -67,7 +67,7 @@ BOOST_AUTO_TEST_CASE(BlockPolicyEstimates)
     // empty blocks before its scheduled confirmation block. This retains the
     // exact original fee-band assertions rather than relaxing their bounds.
     constexpr int TIME_SCALE{10};
-    auto mine_epoch = [&](const std::vector<CTransactionRef>& transactions, int epoch) {
+    auto mine_epoch = [&](const std::vector<CTransactionRef>& transactions, int epoch) EXCLUSIVE_LOCKS_REQUIRED(mpool.cs) {
         const std::vector<CTransactionRef> empty;
         for (int offset = 1; offset < TIME_SCALE; ++offset) {
             mpool.removeForBlock(empty, (epoch - 1) * TIME_SCALE + offset);
@@ -365,6 +365,7 @@ BOOST_AUTO_TEST_CASE(ShortTargetSeparatesSlowConfirmations)
 namespace {
 void AddFeeTx(CTxMemPool& pool, CMutableTransaction& tx, TestMemPoolEntryHelper& entry,
               CAmount fee, unsigned int height, uint32_t& unique, std::vector<CTransactionRef>* keep)
+    EXCLUSIVE_LOCKS_REQUIRED(pool.cs, cs_main)
 {
     tx.vin[0].prevout.n = ++unique;
     pool.addUnchecked(entry.Fee(fee).Time(Now<NodeSeconds>()).Height(height).FromTx(tx));
@@ -372,6 +373,7 @@ void AddFeeTx(CTxMemPool& pool, CMutableTransaction& tx, TestMemPoolEntryHelper&
 }
 
 void Mine(CTxMemPool& pool, const std::vector<CTransactionRef>& txs, unsigned int height)
+    EXCLUSIVE_LOCKS_REQUIRED(pool.cs)
 {
     pool.removeForBlock(txs, height);
 }
@@ -426,14 +428,14 @@ BOOST_AUTO_TEST_CASE(UnminedRemovalFollowsScale)
     uint32_t unique{0};
     unsigned int tip{0};
 
-    auto confirm_cohort = [&](CAmount fee, int count) {
+    auto confirm_cohort = [&](CAmount fee, int count) EXCLUSIVE_LOCKS_REQUIRED(pool.cs, cs_main) {
         std::vector<CTransactionRef> block;
         for (int i = 0; i < count; ++i) {
             AddFeeTx(pool, tx, entry, fee, tip, unique, &block);
         }
         Mine(pool, block, ++tip);
     };
-    auto remove_after = [&](CAmount fee, unsigned int blocks_later, int count) {
+    auto remove_after = [&](CAmount fee, unsigned int blocks_later, int count) EXCLUSIVE_LOCKS_REQUIRED(pool.cs, cs_main) {
         std::vector<CTransactionRef> held;
         const unsigned int entry_height{tip};
         for (int i = 0; i < count; ++i) {
@@ -488,14 +490,14 @@ BOOST_AUTO_TEST_CASE(UnminedRemovalMediumIgnoresPartialPeriod)
     unsigned int tip{0};
     const CAmount fee{5000};
 
-    auto confirm_cohort = [&](int count) {
+    auto confirm_cohort = [&](int count) EXCLUSIVE_LOCKS_REQUIRED(pool.cs, cs_main) {
         std::vector<CTransactionRef> block;
         for (int i = 0; i < count; ++i) {
             AddFeeTx(pool, tx, entry, fee, tip, unique, &block);
         }
         Mine(pool, block, ++tip);
     };
-    auto remove_after = [&](unsigned int blocks_later, int count) {
+    auto remove_after = [&](unsigned int blocks_later, int count) EXCLUSIVE_LOCKS_REQUIRED(pool.cs, cs_main) {
         std::vector<CTransactionRef> held;
         const unsigned int entry_height{tip};
         for (int i = 0; i < count; ++i) {

@@ -359,23 +359,22 @@ RPCHelpMan signmessagewithdilithium()
             CDilithiumKey dilithium_key;
             
             bool key_found = false;
-    auto spk_mans = wallet->GetAllScriptPubKeyMans();
-    for (auto& spk_man : spk_mans) {
-        DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
-        if (desc_spk_man) {
-            if (desc_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
-                key_found = true;
-                break;
+            for (auto& spk_man : wallet->GetAllScriptPubKeyMans()) {
+                if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+                    // The descriptor getter reads its key maps under cs_desc_man
+                    // and does not take it itself; the legacy one locks internally.
+                    LOCK(desc_spk_man->cs_desc_man);
+                    if (desc_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
+                        key_found = true;
+                        break;
+                    }
+                } else if (auto* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
+                    if (legacy_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
+                        key_found = true;
+                        break;
+                    }
+                }
             }
-        }
-        LegacyScriptPubKeyMan* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man);
-        if (legacy_spk_man) {
-            if (legacy_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
-                key_found = true;
-                break;
-            }
-        }
-    }
             
             if (!key_found) {
                 throw JSONRPCError(RPC_WALLET_ERROR, "Dilithium key not found in wallet");
@@ -479,19 +478,16 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
     bool key_found = false;
 
     // Try all script pub key managers (both legacy and descriptor)
-    auto spk_mans = pwallet->GetAllScriptPubKeyMans();
-    for (auto& spk_man : spk_mans) {
-        // Try descriptor wallet first
-        DescriptorScriptPubKeyMan* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
-        if (desc_spk_man) {
+    for (auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
+        if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+            // Same as signmessagewithdilithium: the descriptor getter needs
+            // cs_desc_man held by the caller.
+            LOCK(desc_spk_man->cs_desc_man);
             if (desc_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
                 key_found = true;
                 break;
             }
-        }
-        // Try legacy wallet
-        LegacyScriptPubKeyMan* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man);
-        if (legacy_spk_man) {
+        } else if (auto* legacy_spk_man = dynamic_cast<LegacyScriptPubKeyMan*>(spk_man)) {
             if (legacy_spk_man->GetDilithiumKey(keyID, dilithium_key)) {
                 key_found = true;
                 break;

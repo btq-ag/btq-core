@@ -961,7 +961,10 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_change_stays_p2mr, TestChain100Setup)
     const CAmount dust_gate{546};
 
     // One confirmed output on a fresh OP_TRUE P2MR entry.
-    const auto fund = [&](CWallet& wallet, CAmount amount) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet) {
+    // Callers hold cs_wallet already; the analysis cannot match a shared_ptr
+    // deref at the call site against this parameter, so re-lock (recursive).
+    const auto fund = [&](CWallet& wallet, CAmount amount) {
+        LOCK(wallet.cs_wallet);
         wallet.SetLastBlockProcessed(tip->nHeight, tip->GetBlockHash());
         auto created = CreateP2MR(wallet, MakeOpTrueTree(), "change-source", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
         BOOST_REQUIRE(created);

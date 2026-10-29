@@ -146,29 +146,45 @@ BOOST_AUTO_TEST_CASE(key_io_invalid)
     }
 }
 
-// Mining-pool coinbase address (testnet Dilithium Base58 P2PKH). While
-// DEPLOYMENT_DILITHIUM_P2MR is unscheduled on testnet these remain valid
-// payment destinations so validateaddress / Miningcore keep working.
-BOOST_AUTO_TEST_CASE(key_io_testnet_legacy_dilithium_base58_still_valid)
+// Mining-pool coinbase address (testnet Dilithium Base58 P2PKH). This branch's
+// testnet sets nDilithiumP2MRHeight to 1, so the address still decodes but is
+// not a payment destination. It becomes one only while that height is the
+// unscheduled sentinel.
+BOOST_AUTO_TEST_CASE(key_io_legacy_dilithium_base58_follows_p2mr_height)
 {
-    SelectParams(ChainType::BTQTEST);
-
-    // Live Testnet-BTQ-Mining-Pool coinbase address.
+    // Testnet and regtest share the Dilithium base58 version bytes, so this
+    // string decodes on both.
     const std::string pool_addr = "nSUTw4YKuND8kNFad9TyWBXCKouru85oGa";
-    std::string error;
-    const CTxDestination dest = DecodeDestination(pool_addr, error);
-    BOOST_CHECK_MESSAGE(error.empty(), "decode error for pool address: " + error);
-    BOOST_CHECK(std::holds_alternative<DilithiumPKHash>(dest));
-    BOOST_CHECK_MESSAGE(IsValidDestination(dest),
-                        "testnet legacy Dilithium Base58 must remain a valid payment destination");
-    BOOST_CHECK_EQUAL(EncodeDestination(dest), pool_addr);
 
-    // Same form on regtest (P2MR-only from height 1) must not be a payment destination.
+    SelectParams(ChainType::BTQTEST);
+    std::string error;
+    const CTxDestination test_dest = DecodeDestination(pool_addr, error);
+    BOOST_CHECK_MESSAGE(error.empty(), "decode error for pool address: " + error);
+    BOOST_CHECK(std::holds_alternative<DilithiumPKHash>(test_dest));
+    BOOST_CHECK_MESSAGE(!IsValidDestination(test_dest),
+                        "testnet legacy Dilithium Base58 is not a payment destination once P2MR-only is active");
+    BOOST_CHECK_EQUAL(EncodeDestination(test_dest), pool_addr);
+
+    // Regtest can still reproduce a chain where the deployment is absent.
+    gArgs.ForceSetArg("-testactivationheight", "dilithium_p2mr@2147483647");
     SelectParams(ChainType::BTQREGTEST);
-    CDilithiumKey key;
-    BOOST_REQUIRE(key.MakeNewKey());
-    const DilithiumPKHash regtest_pkh{key.GetPubKey()};
-    BOOST_CHECK(!IsValidDestination(regtest_pkh));
+    error.clear();
+    const CTxDestination allowed = DecodeDestination(pool_addr, error);
+    BOOST_CHECK_MESSAGE(error.empty(), "decode error on unscheduled regtest: " + error);
+    BOOST_CHECK(std::holds_alternative<DilithiumPKHash>(allowed));
+    BOOST_CHECK_MESSAGE(IsValidDestination(allowed),
+                        "legacy Dilithium Base58 must be a payment destination while P2MR-only is unscheduled");
+    BOOST_CHECK_EQUAL(EncodeDestination(allowed), pool_addr);
+
+    gArgs.LockSettings([](common::Settings& settings) {
+        settings.forced_settings.erase("testactivationheight");
+    });
+    SelectParams(ChainType::BTQREGTEST);
+    error.clear();
+    const CTxDestination regtest_dest = DecodeDestination(pool_addr, error);
+    BOOST_CHECK(error.empty());
+    BOOST_CHECK(std::holds_alternative<DilithiumPKHash>(regtest_dest));
+    BOOST_CHECK(!IsValidDestination(regtest_dest));
 
     SelectParams(ChainType::BTQMAIN);
 }

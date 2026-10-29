@@ -588,7 +588,7 @@ BOOST_AUTO_TEST_CASE(descriptor_dilithium_needs_one_private_key)
     };
     const auto xprv = [&](uint8_t fill) { return EncodeExtKey(ext_key(fill)); };
     const auto xpub = [&](uint8_t fill) { return EncodeExtPubKey(ext_key(fill).Neuter()); };
-    const auto add = [&](const std::string& desc_str, size_t expected_keys) {
+    const auto add = [&](const std::string& desc_str, size_t expected_keys) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet) {
         FlatSigningProvider keys;
         std::string error;
         auto parsed = Parse(desc_str, keys, error, /*require_checksum=*/false);
