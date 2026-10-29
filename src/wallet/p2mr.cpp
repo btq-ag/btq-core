@@ -923,6 +923,7 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
             out.reused = true;
             return out;
         }
+        out.reused = true;
         return out;
     }
 
@@ -1150,15 +1151,8 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     }
     out.tx.vout.emplace_back(send_amount, GetScriptForDestination(to_dest));
 
-    // Same bar as the post-selection swap in CreateTransaction: P2MR dust
-    // plus what spending the change later costs at the discard feerate.
-    const CTxOut change_prototype{0, target_spk};
-    const CFeeRate discard_feerate = GetDiscardRate(wallet);
-    CAmount min_viable_change = GetDustThreshold(change_prototype, discard_feerate);
-    const int change_spend_size = CalculateMaximumSignedInputSize(change_prototype, &wallet, /*coin_control=*/nullptr);
-    if (change_spend_size > 0) {
-        min_viable_change = std::max(min_viable_change, discard_feerate.GetFee(change_spend_size) + 1);
-    }
+    // createp2mrspend uses the fixed dust gate (HIGH-13). CreateTransaction's
+    // post-selection swap applies the discard-feerate viability bar (HIGH-22).
     if (change_dest) {
         if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
             out.change_dest = *change_dest;
@@ -1166,7 +1160,7 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
             out.has_change = true;
             out.change_amount = change;
         }
-    } else if (change > min_viable_change) {
+    } else if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
         // P2MR change is a new Dilithium key, derived from private key material.
         if (wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) || wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
             return util::Error{Untranslated("This wallet cannot derive a P2MR change address. Pass change_address.")};

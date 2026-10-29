@@ -3231,12 +3231,14 @@ bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, co
 
 bool CWallet::EraseP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, const std::string& id)
 {
-    const std::string full_id = std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id;
-    if (!batch.EraseAddressReceiveRequest(dest, full_id)) return false;
-    const auto it = m_address_book.find(dest);
-    if (it != m_address_book.end()) {
-        it->second.receive_requests.erase(full_id);
+    // Drop the p2mrmeta row (LOW-19) and any leftover rrp2mr: receive-request
+    // copy so FundP2MR rollback cannot leave an orphaned tree (INFO-15).
+    if (!batch.EraseP2MRMetadata(dest, id)) return false;
+    if (auto dest_it = m_p2mr_metadata.find(dest); dest_it != m_p2mr_metadata.end()) {
+        dest_it->second.erase(id);
+        if (dest_it->second.empty()) m_p2mr_metadata.erase(dest_it);
     }
+    EraseAddressReceiveRequest(batch, dest, std::string(P2MR_RECEIVE_REQUEST_PREFIX) + id);
     // A spendable hit stays cached. Leaving it makes DelAddressBook refuse
     // to drop the destination this call just created.
     m_ismine_cache.erase(GetScriptForDestination(dest));

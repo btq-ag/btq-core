@@ -288,8 +288,10 @@ BOOST_FIXTURE_TEST_CASE(p2mr_input_to_classical_recipient_returns_p2mr_change, T
     const CWalletTx* spent = wallet->GetWalletTx(res->tx->vin[0].prevout.hash);
     BOOST_REQUIRE(spent);
     BOOST_CHECK(script_type(spent->tx->vout.at(res->tx->vin[0].prevout.n).scriptPubKey) == TxoutType::WITNESS_V2_P2MR);
-    // The classical change key reserved before selection is returned, not kept.
-    BOOST_CHECK_EQUAL(wallet->GetKeyPoolSize(), keypool_before);
+    // Classical change was reserved then returned when the P2MR swap won.
+    // TopUp may refill the one key the earlier Keep consumed, so the pool can
+    // grow; it must not shrink (that would mean the classical key was kept).
+    BOOST_CHECK(wallet->GetKeyPoolSize() >= keypool_before);
 
     CCoinControl explicit_type;
     explicit_type.m_change_type = OutputType::BECH32;

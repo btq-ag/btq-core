@@ -1320,6 +1320,13 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
                 // quantum-safe balance.
                 change_amount = 0;
             } else {
+                // Hand the classical reservation back before minting P2MR
+                // change. Descriptor ReturnDestination only undoes the most
+                // recent next_index; minting must not run first.
+                if (!reserved_script.empty()) {
+                    reservedest.ReturnDestination();
+                    reserved_script.clear();
+                }
                 ReserveDestination p2mr_reservedest(&wallet, OutputType::P2MR);
                 auto p2mr_dest = p2mr_reservedest.GetReservedDestination(true);
                 if (!p2mr_dest) {
@@ -1335,6 +1342,7 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
                 if (change_amount - fee_delta >= p2mr_min_viable) {
                     scriptChange = p2mr_script;
                     change_amount -= fee_delta;
+                    p2mr_reservedest.KeepDestination();
                 } else {
                     // Sub-viable for P2MR: drop to fees rather than leave it
                     // classical. The minted key stays internal and unused.
