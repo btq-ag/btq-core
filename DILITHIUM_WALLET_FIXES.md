@@ -220,3 +220,17 @@ This fix enables **immediate testing** of Dilithium post-quantum signatures in t
 
 The key insight was that **the code was already there** - it just needed the artificial restrictions removed and the key ID handling fixed.
 
+**Title**: OP_CHECKSIGDILITHIUM accepts only ML-DSA-44, not ML-DSA-87
+
+**Description**:
+Wallets that used ML-DSA-87 (FIPS 204 Level 5) before the ML-DSA-44
+migration have P2MR addresses with locked funds. Attempting to spend
+returns `Non-canonical DER signature` because the opcode hardcodes
+ML-DSA-44 signature size (2,420 B) and rejects ML-DSA-87 signatures
+(4,627 B) via the ECDSA DER fallback.
+
+**Expected**: Clear error message like "unsupported Dilithium level"
+or polymorphic `OP_CHECKSIGDILITHIUM` that infers level from pubkey size.
+
+**Impact**: External wallets following the docs literally can create
+unspendable addresses.
