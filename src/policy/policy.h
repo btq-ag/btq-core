@@ -32,8 +32,9 @@ static constexpr int32_t MAX_STANDARD_TX_WEIGHT{400'000};
 static constexpr unsigned int MIN_STANDARD_TX_NONWITNESS_SIZE{65};
 /** Maximum number of signature check operations in an IsStandard() P2SH script */
 static constexpr unsigned int MAX_P2SH_SIGOPS{15};
-/** The maximum number of sigops we're willing to relay/mine in a single tx */
-static constexpr unsigned int MAX_STANDARD_TX_SIGOPS_COST{MAX_BLOCK_SIGOPS_COST/5};
+/** The maximum number of sigops we're willing to relay/mine in a single tx.
+ *  20% of the post-activation block budget. The pre-activation block limit stays MAX_BLOCK_SIGOPS_COST. */
+static constexpr unsigned int MAX_STANDARD_TX_SIGOPS_COST{MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS/5};
 /** Default for -incrementalrelayfee, which sets the minimum feerate increase for mempool limiting or replacement **/
 static constexpr unsigned int DEFAULT_INCREMENTAL_RELAY_FEE{1000};
 /** Default for -bytespersigop */
