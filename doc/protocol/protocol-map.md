@@ -6,7 +6,7 @@ where it is defined. Use it to check a stated rule against the code.
 | Protocol rule | Value or mechanism | Where it lives |
 |---|---|---|
 | Signature scheme | ML-DSA-44 / Dilithium2; 1,312-byte public key, 2,560-byte secret key, 2,420-byte raw signature | `src/crypto/dilithium_wrapper.h`; `src/crypto/dilithium/` |
-| Block capacity and witness scale | 8 MB serialized block cap; 8 MW block-weight cap; witness scale factor 16 | `src/consensus/consensus.h` |
+| Block capacity and witness scale | 8 MB serialized block cap; 8 MW block-weight cap; witness scale factor 16. Why those values: `doc/protocol/block-capacity.md` | `src/consensus/consensus.h` |
 | Monetary policy and timing | 60-second target spacing; 5 BTQ initial subsidy; 2,100,000-block halving interval; 21 million BTQ cap; 100-block coinbase maturity | `src/kernel/chainparams.cpp` |
 | Difficulty adjustment | Bitcoin retarget before activation; LWMA after the height-gated activation, with a 144-block averaging window. Activation at height 1 in the mainnet parameter set, so no mainnet block retargets the Bitcoin way; block 300,000 on the public testnet. The window history of released binaries is recorded in `doc/protocol/historical-validation.md` | `src/pow.cpp`; `src/consensus/params.h`; `src/kernel/chainparams.cpp` |
 | Script element and transaction limits | 15,000-byte maximum script element, in every script version. 100,000-byte maximum script and 201-opcode limit, in legacy and witness-v0 only: a P2MR leaf is subject to neither, except that `OP_CHECKMULTISIGDILITHIUM` still charges its key count against the 201. 400,000-weight-unit standard transaction limit | `src/script/script.h`; `src/script/interpreter.cpp`; `src/policy/policy.h` |

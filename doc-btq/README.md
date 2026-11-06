@@ -13,7 +13,7 @@ BTQ is a post-quantum POW cryptocurrency designed for the post-quantum era. It m
 
 ### Roadmap Phases
 
-- **Phase 1** (v0.1.0): Consensus parameter adjustments, weight normalization (`WITNESS_SCALE_FACTOR=16`)
+- **Phase 1** (v0.1.0): Consensus parameter adjustments. v0.1.0 removed the witness discount (weight equalled serialized size). `WITNESS_SCALE_FACTOR=16` was set later, in PR #23
 - **Phase 2** (v1.1.0): Dilithium wallet + script primitives (hardened HD paths; no xpub/non-hardened derivation)
 - **Phase 3** (current): Dilithium opcodes consensus-active from `nDilithiumHeight` (default height 1 on all networks)
 
