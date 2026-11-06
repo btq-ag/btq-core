@@ -225,6 +225,129 @@ BOOST_FIXTURE_TEST_CASE(create_allows_only_wallet_spendable_dilithium_leaves_by_
     BOOST_REQUIRE(allowed);
 }
 
+enum class P2MRBookPrior { Absent, Labelled, Change };
+
+static void ExpectRolledBackBook(CWallet& wallet, const CTxDestination& dest, P2MRBookPrior prior, bool reloaded)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    BOOST_CHECK(wallet.ListP2MRMetadata().empty());
+    // A change entry has no rows, so a reload cannot bring it back.
+    const bool expect_absent = prior == P2MRBookPrior::Absent || (reloaded && prior == P2MRBookPrior::Change);
+    if (expect_absent) {
+        BOOST_CHECK(!wallet.FindAddressBookEntry(dest, /*allow_change=*/true));
+        return;
+    }
+    if (prior == P2MRBookPrior::Labelled) {
+        const auto* entry = wallet.FindAddressBookEntry(dest);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "pre-existing");
+        BOOST_CHECK(entry->purpose == AddressPurpose::SEND);
+        return;
+    }
+    const auto* entry = wallet.FindAddressBookEntry(dest, /*allow_change=*/true);
+    BOOST_REQUIRE(entry);
+    BOOST_CHECK(entry->IsChange());
+    BOOST_CHECK(!entry->purpose);
+    BOOST_CHECK(!wallet.FindAddressBookEntry(dest));
+}
+
+BOOST_FIXTURE_TEST_CASE(create_p2mr_rolls_back_address_book_on_db_write_failure, BasicTestingSetup)
+{
+    const auto leaves = MakeOpTrueTree();
+    auto builder = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(builder);
+    const CTxDestination dest = builder->GetOutput();
+    const std::string address = EncodeDestination(dest);
+
+    struct FailCase {
+        const char* type;
+        const char* error;
+        bool throws;
+        bool flag_remains;
+    };
+    // flags: SetWalletFlagWithDB throws before any metadata row.
+    // purpose / name: SetAddressBook returns false after a partial update.
+    // p2mrmeta: the metadata row fails after the address book (and the flag) landed.
+    const FailCase fails[] = {
+        {"flags", "SetWalletFlagWithDB: writing wallet flags failed", true, false},
+        {"purpose", "failed to set P2MR address book entry", false, false},
+        {"name", "failed to set P2MR address book entry", false, false},
+        {"p2mrmeta", "failed to persist P2MR metadata", false, true},
+    };
+    const P2MRBookPrior priors[] = {P2MRBookPrior::Absent, P2MRBookPrior::Labelled, P2MRBookPrior::Change};
+    const auto prior_name = [](P2MRBookPrior prior) {
+        switch (prior) {
+        case P2MRBookPrior::Absent: return "absent";
+        case P2MRBookPrior::Labelled: return "labelled";
+        case P2MRBookPrior::Change: return "change";
+        }
+        return "";
+    };
+
+    for (const FailCase& fail : fails) {
+        for (const P2MRBookPrior prior : priors) {
+            const std::string where = std::string(fail.type) + "/" + prior_name(prior);
+            auto wallet = MakeP2MRTestWallet(*m_node.chain);
+            {
+                LOCK(wallet->cs_wallet);
+                if (prior == P2MRBookPrior::Labelled) {
+                    BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
+                } else if (prior == P2MRBookPrior::Change) {
+                    wallet->m_address_book[dest];
+                }
+                GetMockableDatabase(*wallet).FailNextWrites(fail.type);
+                if (fail.throws) {
+                    bool threw = false;
+                    try {
+                        auto created = CreateP2MR(*wallet, leaves, "db-fail", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+                        BOOST_CHECK_MESSAGE(!created, where);
+                    } catch (const std::runtime_error& e) {
+                        threw = true;
+                        BOOST_CHECK_MESSAGE(std::string(e.what()) == fail.error, where + " threw: " + e.what());
+                    }
+                    BOOST_CHECK_MESSAGE(threw, where + " did not throw");
+                } else {
+                    auto created = CreateP2MR(*wallet, leaves, "db-fail", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+                    BOOST_REQUIRE_MESSAGE(!created, where);
+                    BOOST_CHECK_MESSAGE(util::ErrorString(created).original == fail.error, where + " error: " + util::ErrorString(created).original);
+                }
+                BOOST_CHECK_MESSAGE(GetMockableDatabase(*wallet).m_write_fault.remaining == 0, where + " fault was not hit");
+                BOOST_CHECK_EQUAL(wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA), fail.flag_remains);
+                ExpectRolledBackBook(*wallet, dest, prior, /*reloaded=*/false);
+            }
+            MockableData records = GetMockableDatabase(*wallet).m_records;
+            auto reloaded = std::make_unique<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+            BOOST_CHECK_EQUAL(reloaded->LoadWallet(), DBErrors::LOAD_OK);
+            LOCK(reloaded->cs_wallet);
+            BOOST_CHECK_EQUAL(reloaded->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA), fail.flag_remains);
+            ExpectRolledBackBook(*reloaded, dest, prior, /*reloaded=*/true);
+        }
+    }
+
+    // Both name writes fail: the create, then the restore. The error keeps
+    // the original failure and says the rollback failed too. Memory is the
+    // captured label because SetAddressBook updates it before the name write.
+    {
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        {
+            LOCK(wallet->cs_wallet);
+            BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
+            GetMockableDatabase(*wallet).FailNextWrites("name", 2);
+            auto created = CreateP2MR(*wallet, leaves, "db-fail", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+            BOOST_REQUIRE(!created);
+            const std::string msg = util::ErrorString(created).original;
+            BOOST_CHECK(msg.find("failed to set P2MR address book entry") == 0);
+            BOOST_CHECK(msg.find("failed to roll back address book entry for " + address) != std::string::npos);
+            ExpectRolledBackBook(*wallet, dest, P2MRBookPrior::Labelled, /*reloaded=*/false);
+        }
+        MockableData records = GetMockableDatabase(*wallet).m_records;
+        auto reloaded = std::make_unique<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+        BOOST_CHECK_EQUAL(reloaded->LoadWallet(), DBErrors::LOAD_OK);
+        LOCK(reloaded->cs_wallet);
+        ExpectRolledBackBook(*reloaded, dest, P2MRBookPrior::Labelled, /*reloaded=*/true);
+    }
+}
+
 BOOST_FIXTURE_TEST_CASE(create_allows_threshold_accumulator_with_one_cosigner_key, BasicTestingSetup)
 {
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());

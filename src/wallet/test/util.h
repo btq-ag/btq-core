@@ -9,6 +9,7 @@
 #include <wallet/db.h>
 
 #include <memory>
+#include <string>
 
 class ArgsManager;
 class CChain;
@@ -52,6 +53,13 @@ CTxDestination getNewDestination(CWallet& w, OutputType output_type);
 
 using MockableData = std::map<SerializeData, SerializeData, std::less<>>;
 
+// Fail the next `remaining` writes whose serialized key starts with record
+// type (`name`, `purpose`, `flags`, `p2mrmeta`). Shared by every batch.
+struct MockableWriteFault {
+    std::string type;
+    int remaining{0};
+};
+
 class MockableCursor: public DatabaseCursor
 {
 public:
@@ -70,6 +78,7 @@ class MockableBatch : public DatabaseBatch
 {
 private:
     MockableData& m_records;
+    MockableWriteFault& m_write_fault;
     bool m_pass;
 
     bool ReadKey(DataStream&& key, DataStream& value) override;
@@ -79,7 +88,8 @@ private:
     bool ErasePrefix(Span<const std::byte> prefix) override;
 
 public:
-    explicit MockableBatch(MockableData& records, bool pass) : m_records(records), m_pass(pass) {}
+    explicit MockableBatch(MockableData& records, MockableWriteFault& write_fault, bool pass)
+        : m_records(records), m_write_fault(write_fault), m_pass(pass) {}
     ~MockableBatch() {}
 
     void Flush() override {}
@@ -104,8 +114,14 @@ class MockableDatabase : public WalletDatabase
 public:
     MockableData m_records;
     bool m_pass{true};
+    MockableWriteFault m_write_fault;
 
     MockableDatabase(MockableData records = {}) : WalletDatabase(), m_records(records) {}
+    void FailNextWrites(std::string type, int count = 1)
+    {
+        m_write_fault.type = std::move(type);
+        m_write_fault.remaining = count;
+    }
     ~MockableDatabase() {};
 
     void Open() override {}
@@ -122,7 +138,7 @@ public:
 
     std::string Filename() override { return "mockable"; }
     std::string Format() override { return "mock"; }
-    std::unique_ptr<DatabaseBatch> MakeBatch(bool flush_on_close = true) override { return std::make_unique<MockableBatch>(m_records, m_pass); }
+    std::unique_ptr<DatabaseBatch> MakeBatch(bool flush_on_close = true) override { return std::make_unique<MockableBatch>(m_records, m_write_fault, m_pass); }
 };
 
 std::unique_ptr<WalletDatabase> CreateMockableWalletDatabase(MockableData records = {});
