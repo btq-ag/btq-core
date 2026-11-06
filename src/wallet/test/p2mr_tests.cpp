@@ -225,6 +225,56 @@ BOOST_FIXTURE_TEST_CASE(create_allows_only_wallet_spendable_dilithium_leaves_by_
     BOOST_REQUIRE(allowed);
 }
 
+BOOST_FIXTURE_TEST_CASE(create_p2mr_rolls_back_address_book_when_a_write_fails, BasicTestingSetup)
+{
+    const std::vector<P2MRTreeLeaf> leaves{{0, TAPROOT_LEAF_TAPSCRIPT, {OP_TRUE}}};
+    struct ClearFail {
+        ~ClearFail() { SetWalletWriteFailForTest(0); }
+    } clear_fail;
+
+    const auto dest_of = [&] {
+        auto built = BuildP2MRTreeChecked(leaves);
+        BOOST_REQUIRE(built);
+        return CTxDestination{built->GetOutput()};
+    };
+    const CTxDestination dest = dest_of();
+
+    const auto book_label = [&](CWallet& wallet) -> std::optional<std::string> {
+        const auto* entry = wallet.FindAddressBookEntry(dest, /*allow_change=*/true);
+        if (!entry) return std::nullopt;
+        return entry->GetLabel();
+    };
+
+    {
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        BOOST_REQUIRE(wallet->SetAddressBook(dest, "keep", AddressPurpose::RECEIVE));
+        SetWalletWriteFailForTest(4);
+        auto failed = CreateP2MR(*wallet, leaves, "replaced", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_CHECK(!failed);
+        BOOST_CHECK(book_label(*wallet) == std::optional<std::string>{"keep"});
+    }
+    {
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        SetWalletWriteFailForTest(1);
+        auto failed = CreateP2MR(*wallet, leaves, "new", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_CHECK(!failed);
+        BOOST_CHECK(!book_label(*wallet));
+        SetWalletWriteFailForTest(2);
+        failed = CreateP2MR(*wallet, leaves, "new", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_CHECK(!failed);
+        BOOST_CHECK(!book_label(*wallet));
+    }
+    {
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(wallet->cs_wallet);
+        SetWalletWriteFailForTest(3);
+        BOOST_CHECK_THROW(CreateP2MR(*wallet, leaves, "new", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true), std::runtime_error);
+        BOOST_CHECK(!book_label(*wallet));
+    }
+}
+
 BOOST_FIXTURE_TEST_CASE(create_allows_threshold_accumulator_with_one_cosigner_key, BasicTestingSetup)
 {
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
