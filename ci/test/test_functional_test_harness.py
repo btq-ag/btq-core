@@ -2,7 +2,7 @@
 # Copyright (c) 2026 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Regression checks for failures that must not be reported as green CI."""
+"""Regression checks for the functional runner. The known-failure allowlist is gone."""
 
 from contextlib import redirect_stdout
 import importlib.util
