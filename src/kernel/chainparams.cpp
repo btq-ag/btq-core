@@ -199,7 +199,9 @@ public:
         // Same rules as mainnet. This testnet is the new chain, so the raised
         // sigop limit and Dilithium validation weight start at height 1.
         consensus.nDilithiumLimitsHeight = 1;
-        consensus.fPowAllowMinDifficultyBlocks = false;
+        // Testnet min-difficulty rule. Turning this off stalls a public testnet
+        // once a block is slower than the target. Mainnet stays off.
+        consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
         consensus.nMinerConfirmationWindow = 20160;

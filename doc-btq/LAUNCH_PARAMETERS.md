@@ -36,7 +36,7 @@ Subsidy in `GetBlockSubsidy` is 5 BTQ, halved every 2,100,000 blocks. The nomina
 | HRP | `tbtq`, Dilithium `tdbt` |
 | LWMA | height 1, window 144 |
 | Dilithium and P2MR | height 1 |
-| Min difficulty | off |
+| Min difficulty | on |
 | DNS seeds | none yet |
 
 `71746e74` is not `0c120a08`. `vSeeds` is empty so this binary does not dial `testnet-seed1.bitcoinquantum.com` or `testnet-seed2.bitcoinquantum.com`.
