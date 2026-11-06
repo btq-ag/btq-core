@@ -108,6 +108,10 @@ static constexpr bool DEFAULT_FIXEDSEEDS{true};
 static const size_t DEFAULT_MAXRECEIVEBUFFER = 5 * 1000;
 static const size_t DEFAULT_MAXSENDBUFFER    = 1 * 1000;
 
+/** v2 is on by default. BIP324 stays for classical traffic privacy. The
+ *  handshake is X-only ECDH, not post-quantum. HKDF salt is
+ *  "btq_v2_shared_secret" plus BTQ network magic (mainnet f1b2a3d4).
+ */
 static constexpr bool DEFAULT_V2_TRANSPORT{true};
 
 typedef int64_t NodeId;
