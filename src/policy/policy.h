@@ -42,9 +42,9 @@ static constexpr unsigned int DEFAULT_BYTES_PER_SIGOP{20};
 static constexpr bool DEFAULT_PERMIT_BAREMULTISIG{true};
 /** The maximum number of witness stack items in a standard P2WSH script */
 static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEMS{100};
-/** The maximum size in bytes of each witness stack item in a standard P2WSH script */
+/** The maximum size in bytes of each witness stack item in a standard P2WSH script. See doc/protocol/script-resource-limits.md. */
 static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEM_SIZE{MAX_SCRIPT_ELEMENT_SIZE};
-/** The maximum size in bytes of each witness stack item in a standard BIP 342 script (Taproot, leaf version 0xc0) */
+/** The maximum size in bytes of each witness stack item in a standard BIP 342 script (Taproot, leaf version 0xc0). See doc/protocol/script-resource-limits.md. */
 static constexpr unsigned int MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE{MAX_SCRIPT_ELEMENT_SIZE};
 /** The maximum size in bytes of a standard witnessScript */
 static constexpr unsigned int MAX_STANDARD_P2WSH_SCRIPT_SIZE{65536};
