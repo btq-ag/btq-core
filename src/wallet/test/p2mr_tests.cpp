@@ -8,6 +8,7 @@
 #include <key.h>
 #include <key_io.h>
 #include <policy/policy.h>
+#include <psbt.h>
 #include <primitives/transaction.h>
 #include <script/dilithium_leaf.h>
 #include <script/interpreter.h>
@@ -1642,6 +1643,40 @@ BOOST_FIXTURE_TEST_CASE(build_signing_provider_exports_descriptor_xonly_p2mr_lea
     BOOST_CHECK_MESSAGE(
         VerifyScript(tx_to.vin[0].scriptSig, created.script_pub_key, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
         ScriptErrorString(serror));
+}
+
+BOOST_FIXTURE_TEST_CASE(import_p2mr_outputs_from_psbt_checks_the_program, BasicTestingSetup)
+{
+    const std::vector<P2MRTreeLeaf> leaves{{0, TAPROOT_LEAF_TAPSCRIPT, {OP_TRUE}}};
+    auto built = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(built);
+    const CTxDestination dest{built->GetOutput()};
+
+    CMutableTransaction mtx;
+    mtx.nVersion = 2;
+    mtx.vout.emplace_back(0, GetScriptForDestination(dest));
+    PartiallySignedTransaction psbt(mtx);
+    psbt.outputs[0].m_p2mr_tree = built->GetTreeTuples();
+
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    auto imported = ImportP2MROutputsFromPSBT(*wallet, psbt);
+    BOOST_REQUIRE(imported);
+    BOOST_REQUIRE_EQUAL(imported->size(), 1U);
+    BOOST_CHECK(imported->front().dest == dest);
+    BOOST_CHECK(GetP2MRByScript(*wallet, GetScriptForDestination(dest)));
+
+    PartiallySignedTransaction again(mtx);
+    again.outputs[0].m_p2mr_tree = built->GetTreeTuples();
+    auto duplicate = ImportP2MROutputsFromPSBT(*wallet, again);
+    BOOST_REQUIRE(duplicate);
+    BOOST_CHECK(duplicate->front().reused);
+
+    mtx.vout[0].scriptPubKey = GetScriptForDestination(WitnessV2P2MR{uint256::ONE});
+    PartiallySignedTransaction wrong(mtx);
+    wrong.outputs[0].m_p2mr_tree = built->GetTreeTuples();
+    auto rejected = ImportP2MROutputsFromPSBT(*wallet, wrong);
+    BOOST_CHECK(!rejected);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
