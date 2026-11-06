@@ -1,0 +1,65 @@
+# Copyright (c) 2026 The BTQ Core developers
+# Distributed under the MIT software license, see the accompanying
+# file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#
+# Container jobs from ci/test/00_setup_env_*.sh. Each one sets FILE_ENV and
+# calls ci/test_run_all.sh, which builds the image named in that script and
+# runs the tests inside it. GitHub's Ubuntu runners already have Docker.
+# Do not set DANGER_RUN_CI_ON_HOST: ci.yml sets it for the native macOS and
+# Windows jobs, and that flag skips the container.
+
+name: sanitizers
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: sanitizers-${{ github.workflow }}-${{ github.event_name != 'pull_request' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ASan + LSan + UBSan
+            file_env: ./ci/test/00_setup_env_native_asan.sh
+          - name: fuzz
+            file_env: ./ci/test/00_setup_env_native_fuzz.sh
+          - name: TSan
+            file_env: ./ci/test/00_setup_env_native_tsan.sh
+
+    env:
+      FILE_ENV: ${{ matrix.file_env }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: CI script
+        run: ./ci/test_run_all.sh
+
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # git-subtree-check.sh and the lint commit range need history.
+          fetch-depth: 0
+
+      # The lint image is debian:bookworm (ci/lint_imagefile), which is still
+      # in the archive. No TTY on the runner, so this drops -t from the
+      # command in test/lint/README.md. The entrypoint still runs the linters.
+      - name: Lint
+        run: |
+          DOCKER_BUILDKIT=1 docker build -t btq-linter --file "./ci/lint_imagefile" ./
+          docker run --rm -v "$PWD":/btq btq-linter
