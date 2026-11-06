@@ -143,4 +143,21 @@ BOOST_AUTO_TEST_CASE(headers_sync_state)
     BOOST_CHECK(result.success);
 }
 
+BOOST_AUTO_TEST_CASE(anti_dos_work_threshold_boundaries)
+{
+    const arith_uint256 proof{1};
+    const arith_uint256 deep{1000};
+
+    // Buffer is 144 proofs. A tip below that saturates at zero.
+    BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{100}, proof, arith_uint256{0}) == arith_uint256{0});
+    // 1000 - 144.
+    BOOST_CHECK(AntiDoSWorkThreshold(deep, proof, arith_uint256{0}) == arith_uint256{856});
+    // A heavier tip proof widens the buffer in work, not in a fixed day count.
+    BOOST_CHECK(AntiDoSWorkThreshold(deep, arith_uint256{2}, arith_uint256{0}) == arith_uint256{712});
+    // The chain floor wins when the near-tip value is under it.
+    BOOST_CHECK(AntiDoSWorkThreshold(deep, proof, arith_uint256{900}) == arith_uint256{900});
+    // No tip: callers pass the floor as both sides. Equal to the floor.
+    BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{0}, proof, arith_uint256{50}) == arith_uint256{50});
+}
+
 BOOST_AUTO_TEST_SUITE_END()

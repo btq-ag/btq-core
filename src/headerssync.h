@@ -275,4 +275,19 @@ private:
     State m_download_state{State::PRESYNC};
 };
 
+// Fork depth, in blocks of the tip's own proof, inside which a header is not
+// treated as a low-work announcement. Same 144 as Bitcoin Core 26.0. BTQ's
+// 60-second spacing is not a reason to widen it: the bound is blocks of work.
+static constexpr int ANTI_DOS_FORK_DEPTH_BUFFER{144};
+
+// tip_work and tip_proof are the active tip. minimum_chain_work is the chain
+// floor. A tip with less work than the buffer saturates at zero, then the
+// floor wins if it is higher.
+inline arith_uint256 AntiDoSWorkThreshold(const arith_uint256& tip_work, const arith_uint256& tip_proof, const arith_uint256& minimum_chain_work)
+{
+    const arith_uint256 buffer = ANTI_DOS_FORK_DEPTH_BUFFER * tip_proof;
+    const arith_uint256 near_tip = tip_work - std::min(buffer, tip_work);
+    return std::max(near_tip, minimum_chain_work);
+}
+
 #endif // BTQ_HEADERSSYNC_H
