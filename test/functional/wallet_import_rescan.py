@@ -21,6 +21,7 @@ happened previously.
 
 from test_framework.test_framework import BTQTestFramework
 from test_framework.address import AddressType
+from test_framework.blocktools import TIMESTAMP_WINDOW
 from test_framework.util import (
     assert_equal,
     set_node_times,
@@ -134,9 +135,6 @@ IMPORT_VARIANTS = [Variant(*variants) for variants in itertools.product(Call, Da
 # track of expected balances and transactions.
 ImportNode = collections.namedtuple("ImportNode", "prune rescan")
 IMPORT_NODES = [ImportNode(*fields) for fields in itertools.product((False, True), repeat=2)]
-
-# Match TIMESTAMP_WINDOW in src/chain.h: BTQ allows 15 minutes of clock skew.
-TIMESTAMP_WINDOW = 15 * 60
 
 AMOUNT_DUST = 0.00000546
 
