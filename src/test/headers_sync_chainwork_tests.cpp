@@ -148,16 +148,36 @@ BOOST_AUTO_TEST_CASE(anti_dos_work_threshold_boundaries)
     const arith_uint256 proof{1};
     const arith_uint256 deep{1000};
 
-    // Buffer is 144 proofs. A tip below that saturates at zero.
+    // Buffer is 144 proofs. A tip below that saturates at zero, including the
+    // point where the buffer equals the tip, and the next proof does not.
     BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{100}, proof, arith_uint256{0}) == arith_uint256{0});
+    BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{144}, proof, arith_uint256{0}) == arith_uint256{0});
+    BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{145}, proof, arith_uint256{0}) == arith_uint256{1});
     // 1000 - 144.
     BOOST_CHECK(AntiDoSWorkThreshold(deep, proof, arith_uint256{0}) == arith_uint256{856});
     // A heavier tip proof widens the buffer in work, not in a fixed day count.
     BOOST_CHECK(AntiDoSWorkThreshold(deep, arith_uint256{2}, arith_uint256{0}) == arith_uint256{712});
     // The chain floor wins when the near-tip value is under it.
     BOOST_CHECK(AntiDoSWorkThreshold(deep, proof, arith_uint256{900}) == arith_uint256{900});
-    // No tip: callers pass the floor as both sides. Equal to the floor.
+    BOOST_CHECK(AntiDoSWorkThreshold(deep, proof, arith_uint256{856}) == arith_uint256{856});
+    // No tip is zero work. The subtract saturates and the floor is the result.
     BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{0}, proof, arith_uint256{50}) == arith_uint256{50});
+
+    // Same chainwork, two real difficulties. The threshold has to follow the
+    // tip's own proof, which is what GetBlockProof returns for that tip.
+    CBlockIndex regtest_tip;
+    regtest_tip.nBits = 0x207fffff;
+    CBlockIndex mainnet_tip;
+    mainnet_tip.nBits = 0x1e0377ae;
+    const arith_uint256 regtest_proof{GetBlockProof(regtest_tip)};
+    const arith_uint256 mainnet_proof{GetBlockProof(mainnet_tip)};
+    BOOST_CHECK(regtest_proof == arith_uint256{2});
+    BOOST_CHECK(mainnet_proof > regtest_proof);
+    const arith_uint256 tip_work{mainnet_proof * 200};
+    const arith_uint256 from_regtest{AntiDoSWorkThreshold(tip_work, regtest_proof, arith_uint256{0})};
+    const arith_uint256 from_mainnet{AntiDoSWorkThreshold(tip_work, mainnet_proof, arith_uint256{0})};
+    BOOST_CHECK(from_mainnet < from_regtest);
+    BOOST_CHECK(from_regtest - from_mainnet == (mainnet_proof - regtest_proof) * ANTI_DOS_FORK_DEPTH_BUFFER);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -193,6 +193,7 @@ BASE_SCRIPTS = [
     'feature_reindex.py',
     'feature_unsupported_utxo_db.py',
     'p2p_dos_header_tree.py',
+    'p2p_low_work_headers.py',
     'feature_release_compatibility.py --descriptors',
     'feature_release_compatibility.py --legacy-wallet',
     'rpc_psbt_nowallet.py',

@@ -14,6 +14,7 @@
 #include <util/bitdeque.h>
 #include <util/hasher.h>
 
+#include <algorithm>
 #include <deque>
 #include <vector>
 
