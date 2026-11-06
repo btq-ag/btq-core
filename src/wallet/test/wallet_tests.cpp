@@ -25,6 +25,7 @@
 #include <test/util/setup_common.h>
 #include <util/message.h>
 #include <util/strencodings.h>
+#include <util/vector.h>
 #include <util/translation.h>
 #include <validation.h>
 #include <validationinterface.h>
@@ -631,6 +632,261 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_p2mr_commitment_mismatch
         request.params.setArray();
         request.params.push_back(backup_file);
         BOOST_CHECK_THROW(wallet::importwallet().HandleRequest(request), UniValue);
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+    }
+}
+
+static P2MRTreeLeaf ScriptLeaf(uint8_t depth, const CScript& script)
+{
+    return {depth, TAPROOT_LEAF_TAPSCRIPT, {script.begin(), script.end()}};
+}
+
+static void CheckDumpedLeaves(const std::vector<P2MRTreeLeaf>& got, const std::vector<P2MRTreeLeaf>& expected)
+{
+    BOOST_REQUIRE_EQUAL(got.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        BOOST_CHECK_EQUAL(got[i].depth, expected[i].depth);
+        BOOST_CHECK_EQUAL(got[i].leaf_version, expected[i].leaf_version);
+        BOOST_CHECK(got[i].script == expected[i].script);
+    }
+}
+
+static const P2MREntry* FindP2MRAddress(const std::vector<P2MREntry>& entries, const std::string& address)
+{
+    for (const auto& entry : entries) {
+        if (entry.address == address) return &entry;
+    }
+    return nullptr;
+}
+
+BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_plain_hybrid_and_multileaf, WalletTestingSetup)
+{
+    const fs::path backup_file_path = m_args.GetDataDirNet() / "p2mr-shapes.backup";
+    const std::string backup_file = fs::PathToString(backup_file_path);
+    SetMockTime(1'600'000'000);
+
+    CDilithiumKey key_a;
+    CDilithiumKey key_b;
+    BOOST_REQUIRE(key_a.MakeNewKey());
+    BOOST_REQUIRE(key_b.MakeNewKey());
+    CKey ecdsa;
+    ecdsa.MakeNewKey(/*fCompressedIn=*/true);
+    const XOnlyPubKey xonly{ecdsa.GetPubKey()};
+    const CKeyID ecdsa_id = ecdsa.GetPubKey().GetID();
+
+    const std::vector<P2MRTreeLeaf> plain = SingleKeyDilithiumLeaves(key_a.GetPubKey());
+    const CScript hybrid_script = CScript() << ToByteVector(key_a.GetPubKey()) << OP_CHECKSIGDILITHIUMVERIFY << ToByteVector(xonly) << OP_CHECKSIG;
+    const std::vector<P2MRTreeLeaf> hybrid{ScriptLeaf(0, hybrid_script)};
+    const CScript leaf_a = CScript() << ToByteVector(key_a.GetPubKey()) << OP_CHECKSIGDILITHIUM;
+    const CScript leaf_b = CScript() << ToByteVector(key_b.GetPubKey()) << OP_CHECKSIGDILITHIUM;
+    const std::vector<P2MRTreeLeaf> multi{ScriptLeaf(1, leaf_a), ScriptLeaf(1, leaf_b)};
+
+    std::string plain_address;
+    std::string hybrid_address;
+    std::string multi_address;
+    uint256 hybrid_root;
+    uint256 multi_root;
+
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->GetOrCreateLegacyScriptPubKeyMan();
+        AddWallet(context, wallet);
+        {
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            LOCK(wallet->cs_wallet);
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+            auto plain_created = ImportDilithiumKeyAsP2MR(*wallet, key_a, "plain");
+            BOOST_REQUIRE(plain_created);
+            plain_address = plain_created->address;
+            BOOST_REQUIRE(ImportDilithiumKeyAsP2MR(*wallet, key_b, "other-plain"));
+            LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+            BOOST_REQUIRE(spk_man);
+            {
+                LOCK(spk_man->cs_KeyStore);
+                spk_man->mapKeyMetadata[CKeyID{key_a.GetPubKey().GetID()}].nCreateTime = 1'600'000'000;
+                spk_man->mapKeyMetadata[CKeyID{key_b.GetPubKey().GetID()}].nCreateTime = 1'600'000'000;
+                spk_man->mapKeyMetadata[ecdsa_id].nCreateTime = 1'600'000'000;
+                BOOST_REQUIRE(spk_man->AddKeyPubKey(ecdsa, ecdsa.GetPubKey()));
+            }
+            auto hybrid_created = CreateP2MR(*wallet, hybrid, "hybrid", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+            BOOST_REQUIRE(hybrid_created);
+            hybrid_address = hybrid_created->address;
+            hybrid_root = hybrid_created->merkle_root;
+            auto multi_created = CreateP2MR(*wallet, multi, "multi");
+            BOOST_REQUIRE(multi_created);
+            multi_address = multi_created->address;
+            multi_root = multi_created->merkle_root;
+            BOOST_CHECK(plain_address != hybrid_address);
+            BOOST_CHECK(hybrid_address != multi_address);
+        }
+
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+        wallet::dumpwallet().HandleRequest(request);
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+    }
+
+    {
+        std::ifstream dump_file{backup_file_path};
+        BOOST_REQUIRE(dump_file.is_open());
+        const std::string dump_contents{std::istreambuf_iterator<char>{dump_file}, std::istreambuf_iterator<char>{}};
+        BOOST_CHECK(dump_contents.find(plain_address) != std::string::npos);
+        BOOST_CHECK(dump_contents.find(hybrid_address) != std::string::npos);
+        BOOST_CHECK(dump_contents.find(multi_address) != std::string::npos);
+        BOOST_CHECK(dump_contents.find(EncodeSecret(ecdsa)) != std::string::npos);
+    }
+
+    MockableData imported_records;
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->SetupLegacyScriptPubKeyMan();
+        AddWallet(context, wallet);
+        {
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            LOCK(wallet->cs_wallet);
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+        }
+
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+        wallet::importwallet().HandleRequest(request);
+        // Importing the same dump again must not fork a second copy of a tree.
+        wallet::importwallet().HandleRequest(request);
+
+        {
+            LOCK(wallet->cs_wallet);
+            const auto entries = ListP2MR(*wallet);
+            const P2MREntry* plain_entry = FindP2MRAddress(entries, plain_address);
+            const P2MREntry* hybrid_entry = FindP2MRAddress(entries, hybrid_address);
+            const P2MREntry* multi_entry = FindP2MRAddress(entries, multi_address);
+            BOOST_REQUIRE(plain_entry && hybrid_entry && multi_entry);
+            BOOST_CHECK(hybrid_entry->merkle_root == hybrid_root);
+            BOOST_CHECK(multi_entry->merkle_root == multi_root);
+            CheckDumpedLeaves(plain_entry->tree, plain);
+            CheckDumpedLeaves(hybrid_entry->tree, hybrid);
+            CheckDumpedLeaves(multi_entry->tree, multi);
+            BOOST_CHECK_EQUAL(plain_entry->label, "plain");
+            BOOST_CHECK_EQUAL(hybrid_entry->label, "hybrid");
+            BOOST_CHECK_EQUAL(multi_entry->label, "multi");
+            // Two canonical single-leaf addresses plus hybrid and multi.
+            BOOST_CHECK_EQUAL(entries.size(), 4U);
+            BOOST_CHECK_EQUAL(wallet->IsMine(plain_entry->script_pub_key), ISMINE_SPENDABLE);
+            BOOST_CHECK_EQUAL(wallet->IsMine(multi_entry->script_pub_key), ISMINE_SPENDABLE);
+            BOOST_CHECK_EQUAL(wallet->IsMine(hybrid_entry->script_pub_key), ISMINE_WATCH_ONLY);
+            LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
+            BOOST_REQUIRE(spk_man);
+            CKey recovered_ecdsa;
+            BOOST_CHECK(spk_man->GetKey(ecdsa_id, recovered_ecdsa));
+        }
+        imported_records = GetMockableDatabase(*wallet).m_records;
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+    }
+
+    {
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(imported_records));
+        BOOST_CHECK_EQUAL(wallet->LoadWallet(), DBErrors::LOAD_OK);
+        LOCK(wallet->cs_wallet);
+        const auto entries = ListP2MR(*wallet);
+        const P2MREntry* hybrid_entry = FindP2MRAddress(entries, hybrid_address);
+        const P2MREntry* multi_entry = FindP2MRAddress(entries, multi_address);
+        BOOST_REQUIRE(hybrid_entry && multi_entry);
+        BOOST_CHECK(hybrid_entry->merkle_root == hybrid_root);
+        CheckDumpedLeaves(hybrid_entry->tree, hybrid);
+        CheckDumpedLeaves(multi_entry->tree, multi);
+        BOOST_CHECK_EQUAL(entries.size(), 4U);
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(importwallet_rejects_bad_p2mr_without_partial_write, WalletTestingSetup)
+{
+    const fs::path backup_file_path = m_args.GetDataDirNet() / "p2mr-bad-program.backup";
+    const std::string backup_file = fs::PathToString(backup_file_path);
+
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->GetOrCreateLegacyScriptPubKeyMan();
+        AddWallet(context, wallet);
+        {
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            LOCK(wallet->cs_wallet);
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+            P2MRTreeLeaf leaf;
+            leaf.depth = 0;
+            leaf.leaf_version = TAPROOT_LEAF_TAPSCRIPT;
+            leaf.script = {OP_TRUE};
+            BOOST_REQUIRE(CreateP2MR(*wallet, {leaf}, "vault", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true));
+        }
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+        wallet::dumpwallet().HandleRequest(request);
+        RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
+    }
+
+    {
+        std::ifstream dump_file{backup_file_path};
+        BOOST_REQUIRE(dump_file.is_open());
+        std::string dump_contents{std::istreambuf_iterator<char>{dump_file}, std::istreambuf_iterator<char>{}};
+        const auto rec = dump_contents.find("p2mr ");
+        BOOST_REQUIRE(rec != std::string::npos);
+        const auto time_sp = dump_contents.find(' ', rec + 5);
+        const auto hex_start = time_sp + 1;
+        const auto hex_end = dump_contents.find(' ', hex_start);
+        BOOST_REQUIRE(hex_end != std::string::npos);
+        const std::string hex = dump_contents.substr(hex_start, hex_end - hex_start);
+        const auto raw = ParseHex(hex);
+        UniValue meta;
+        BOOST_REQUIRE(meta.read(std::string(raw.begin(), raw.end())) && meta.isObject());
+        UniValue patched(UniValue::VOBJ);
+        for (const std::string& key : meta.getKeys()) {
+            if (key == "merkle_root") {
+                patched.pushKV(key, std::string(64, '0'));
+            } else {
+                patched.pushKV(key, meta[key]);
+            }
+        }
+        dump_contents.replace(hex_start, hex.size(), HexStr(patched.write()));
+        std::ofstream mutated{backup_file_path, std::ios::trunc};
+        mutated << dump_contents;
+    }
+
+    {
+        WalletContext context;
+        context.args = &m_args;
+        const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
+        wallet->SetupLegacyScriptPubKeyMan();
+        AddWallet(context, wallet);
+        {
+            LOCK(Assert(m_node.chainman)->GetMutex());
+            LOCK(wallet->cs_wallet);
+            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
+            P2MRTreeLeaf leaf;
+            leaf.depth = 0;
+            leaf.leaf_version = TAPROOT_LEAF_TAPSCRIPT;
+            leaf.script = {OP_2};
+            auto kept = CreateP2MR(*wallet, {leaf}, "keep-me", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+            BOOST_REQUIRE(kept);
+        }
+        JSONRPCRequest request;
+        request.context = &context;
+        request.params.setArray();
+        request.params.push_back(backup_file);
+        BOOST_CHECK_THROW(wallet::importwallet().HandleRequest(request), UniValue);
+        LOCK(wallet->cs_wallet);
+        const auto entries = ListP2MR(*wallet);
+        BOOST_REQUIRE_EQUAL(entries.size(), 1U);
+        BOOST_CHECK_EQUAL(entries[0].label, "keep-me");
         RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
     }
 }

@@ -14,6 +14,7 @@
 #include <util/translation.h>
 #include <util/vector.h>
 #include <wallet/coincontrol.h>
+#include <wallet/p2mr.h>
 #include <wallet/feebumper.h>
 #include <wallet/fees.h>
 #include <wallet/rpc/util.h>
@@ -1577,7 +1578,7 @@ RPCHelpMan walletprocesspsbt()
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
-    const std::shared_ptr<const CWallet> pwallet = GetWalletForJSONRPCRequest(request);
+    const std::shared_ptr<CWallet> pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
 
     const CWallet& wallet{*pwallet};
@@ -1602,6 +1603,16 @@ RPCHelpMan walletprocesspsbt()
     bool complete = true;
 
     if (sign) EnsureWalletIsUnlocked(*pwallet);
+
+    {
+        LOCK(pwallet->cs_wallet);
+        // Trees are checked against the output program before any write.
+        // Storing one does not mark the wallet as holding the leaf keys.
+        auto imported = ImportP2MROutputsFromPSBT(*pwallet, psbtx);
+        if (!imported) {
+            throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(imported).original);
+        }
+    }
 
     const TransactionError err{wallet.FillPSBT(psbtx, complete, nHashType, sign, bip32derivs, nullptr, finalize)};
     if (err != TransactionError::OK) {
