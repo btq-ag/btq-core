@@ -112,11 +112,11 @@ low on this list carry more consensus weight per line than most of the top:
 as the additions: it is where activation heights diverge, and where BTQ turns on
 at height 1 what upstream turns on at a fork height.
 
-Two shell scripts at the repository root (`test_dilithium_wallet.sh`,
-`test_dilithium_sendmany.sh`, +721 between them) match the Dilithium filter but
-are not production code. They are known-defective and tracked in
-[#107](https://github.com/btq-ag/btq-core/issues/107) — they delete `~/.btq/regtest`
-without opt-in. Do not run them against a datadir you care about.
+Two shell scripts (`scripts/test_dilithium_wallet.sh`,
+`scripts/test_dilithium_sendmany.sh`) match the Dilithium filter but
+are not production code. They use a temporary datadir from `mktemp -d`
+and delete that directory on exit. See
+[#107](https://github.com/btq-ag/btq-core/issues/107).
 
 ## What is deliberately not on the list
 

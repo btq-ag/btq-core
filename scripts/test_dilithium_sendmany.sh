@@ -5,14 +5,22 @@
 
 set -e
 
-BTQD="$(pwd)/src/btqd"
-BTQCLI="$(pwd)/src/btq-cli"
+# Binaries live in src/ after a normal build. Resolve from the repo root
+# (parent of scripts/) so the caller's cwd does not matter.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BTQD="$ROOT/src/btqd"
+BTQCLI="$ROOT/src/btq-cli"
+if [ ! -x "$BTQD" ] || [ ! -x "$BTQCLI" ]; then
+    echo "Error: Cannot find btqd and btq-cli in $ROOT/src"
+    echo "Build them, then run scripts/test_dilithium_sendmany.sh"
+    exit 1
+fi
 WALLET="test_dilithium_sendmany"
 
 # Run against a throwaway datadir, never the user's default ~/.btq.
 # Every $BTQD/$BTQCLI call below routes through $NETWORK, so setting it here
 # isolates the whole script. Removed on exit, including on failure.
-BTQ_TEST_DATADIR="$(mktemp -d "${TMPDIR:-/tmp}/btq-sendmany-test.XXXXXX")"
+BTQ_TEST_DATADIR="$(mktemp -d "${TMPDIR:-/tmp}/btq-sendmany-test.XXXXXX")" || exit 1
 NETWORK="-regtest -datadir=$BTQ_TEST_DATADIR"
 
 cleanup() {
@@ -21,6 +29,77 @@ cleanup() {
     rm -rf "$BTQ_TEST_DATADIR"
 }
 trap cleanup EXIT
+
+# Query JSON from btq-cli. Numbers stay as the original token so amounts
+# keep their decimals.
+#   jsonq get <dotted.path>          scalar; bool prints true/false; empty if missing
+#   jsonq len                        length of a list, else 0
+#   jsonq contains <value>           exit 0 if a list contains value, else 1
+#   jsonq count-true <key>           objects whose key is JSON true
+#   jsonq count-script-suffix <suf>  scriptPubKey values ending in suf
+jsonq() {
+    python3 -c '
+import json, sys
+
+mode = sys.argv[1]
+arg = sys.argv[2] if len(sys.argv) > 2 else ""
+raw = sys.stdin.read()
+
+def empty_result():
+    if mode in ("len", "count-true", "count-script-suffix"):
+        print(0)
+    sys.exit(0 if mode != "contains" else 1)
+
+if not raw.strip():
+    empty_result()
+
+try:
+    data = json.loads(raw, parse_float=str, parse_int=str)
+except json.JSONDecodeError:
+    empty_result()
+
+def emit(cur):
+    if isinstance(cur, bool):
+        print("true" if cur else "false")
+    elif cur is None:
+        print("null")
+    else:
+        print(cur)
+
+if mode == "get":
+    cur = data
+    try:
+        for part in arg.split("."):
+            if part == "":
+                continue
+            if isinstance(cur, list):
+                cur = cur[int(part)]
+            elif isinstance(cur, dict):
+                cur = cur[part]
+            else:
+                sys.exit(0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        sys.exit(0)
+    emit(cur)
+elif mode == "len":
+    print(len(data) if isinstance(data, list) else 0)
+elif mode == "contains":
+    sys.exit(0 if isinstance(data, list) and arg in data else 1)
+elif mode == "count-true":
+    if not isinstance(data, list):
+        print(0)
+    else:
+        print(sum(1 for item in data if isinstance(item, dict) and item.get(arg) is True))
+elif mode == "count-script-suffix":
+    if not isinstance(data, list):
+        print(0)
+    else:
+        print(sum(1 for item in data if isinstance(item, dict) and str(item.get("scriptPubKey", "")).endswith(arg)))
+else:
+    sys.stderr.write("jsonq: unknown mode %s\n" % mode)
+    sys.exit(2)
+' "$1" "${2-}"
+}
 
 echo "=========================================="
 echo "Testing sendmany with Dilithium Addresses"
@@ -59,15 +138,15 @@ echo "✓ Pool address: $POOL_ADDR"
 
 # Check if it's Dilithium
 ADDR_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET" getaddressinfo "$POOL_ADDR")
-IS_DILITHIUM=$(echo "$ADDR_INFO" | grep -o '"isdilithium": true' || echo "")
-if [ -z "$IS_DILITHIUM" ]; then
+IS_DILITHIUM=$(printf '%s' "$ADDR_INFO" | jsonq get isdilithium)
+if [ "$IS_DILITHIUM" != "true" ]; then
     echo -e "${RED}✗ ERROR: Address is not Dilithium!${NC}"
     exit 1
 fi
 echo "✓ Confirmed Dilithium address"
 
 # Get scriptPubKey
-SCRIPT_PUBKEY=$(echo "$ADDR_INFO" | grep '"scriptPubKey"' | cut -d'"' -f4)
+SCRIPT_PUBKEY=$(printf '%s' "$ADDR_INFO" | jsonq get scriptPubKey)
 echo "✓ ScriptPubKey: $SCRIPT_PUBKEY"
 if [[ $SCRIPT_PUBKEY == *"bb" ]]; then
     echo -e "${GREEN}✓ Script ends with 'bb' (OP_CHECKSIGDILITHIUM)${NC}"
@@ -99,11 +178,12 @@ echo ""
 
 # Step 7: List UTXOs
 echo "Step 7: Checking UTXOs..."
-UTXO_COUNT=$($BTQCLI $NETWORK -rpcwallet="$WALLET" listunspent | grep -c '"spendable": true')
+UNSPENT_JSON=$($BTQCLI $NETWORK -rpcwallet="$WALLET" listunspent)
+UTXO_COUNT=$(printf '%s' "$UNSPENT_JSON" | jsonq count-true spendable)
 echo "✓ Spendable UTXOs: $UTXO_COUNT"
 
-# Check if UTXOs are Dilithium
-DILITHIUM_UTXO=$($BTQCLI $NETWORK -rpcwallet="$WALLET" listunspent | grep -c 'bb"' || echo "0")
+# Dilithium scriptPubKey ends in OP_CHECKSIGDILITHIUM (0xbb).
+DILITHIUM_UTXO=$(printf '%s' "$UNSPENT_JSON" | jsonq count-script-suffix bb)
 echo "✓ Dilithium UTXOs: $DILITHIUM_UTXO"
 echo ""
 
@@ -153,7 +233,8 @@ echo "Step 9: Verifying transactions..."
 for TXID in "$TX1" "$TX2" "$TX3"; do
     if [[ $TXID != *"error"* ]]; then
         TX_DETAILS=$($BTQCLI $NETWORK -rpcwallet="$WALLET" gettransaction "$TXID" 2>&1)
-        if [[ $TX_DETAILS == *"confirmations"* ]]; then
+        TX_CONFIRMATIONS=$(printf '%s' "$TX_DETAILS" | jsonq get confirmations)
+        if [ -n "$TX_CONFIRMATIONS" ]; then
             echo "✓ Transaction $TXID found in wallet"
         else
             echo -e "${RED}✗ Transaction $TXID not found!${NC}"
