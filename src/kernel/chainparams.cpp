@@ -216,9 +216,11 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
-        // One genesis proof, same bits as mainnet. 0x49d414 is GetBlockProof for 0x1e0377ae.
-        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000000000049d414");
-        consensus.defaultAssumeValid = uint256S("0x0000022f03b97f577d6dcd5b776f93bb69535c3c84f3e1d4d66c4fa81f45a133");
+        // Fresh chain. Zero until blocks exist.
+        // One header at nBits 0x1e0377ae is 0x49d414 of work. The node starts
+        // with an empty floor: IBD waits only while tip work is below it.
+        consensus.nMinimumChainWork = uint256{};
+        consensus.defaultAssumeValid = uint256{};
 
         // 0c120a08 stays on master, with the testnet that is running today.
         pchMessageStart[0] = 0x71;
