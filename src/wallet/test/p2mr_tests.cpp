@@ -366,6 +366,244 @@ BOOST_FIXTURE_TEST_CASE(restore_rejects_negative_created_at, BasicTestingSetup)
     BOOST_CHECK(!ValidateP2MRRestore(meta));
 }
 
+static P2MRTreeLeaf ScriptLeaf(uint8_t depth, const CScript& script)
+{
+    return {depth, TAPROOT_LEAF_TAPSCRIPT, {script.begin(), script.end()}};
+}
+
+static CScript SingleDilithiumLeaf(const CDilithiumPubKey& pubkey)
+{
+    return CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
+}
+
+// One tapscript leaf that checks a Dilithium key and an x-only key. The
+// address commits to that pairing. A single-leaf restore of either key is a
+// different program.
+static CScript HybridPairLeaf(const CDilithiumPubKey& pubkey, const XOnlyPubKey& xonly)
+{
+    return CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUMVERIFY << ToByteVector(xonly) << OP_CHECKSIG;
+}
+
+static UniValue RestoreMeta(const P2MRCreated& created, const std::vector<P2MRTreeLeaf>& leaves, const std::string& label)
+{
+    UniValue meta(UniValue::VOBJ);
+    meta.pushKV("address", created.address);
+    meta.pushKV("scriptPubKey", HexStr(created.script_pub_key));
+    meta.pushKV("merkle_root", HexStr(created.merkle_root));
+    meta.pushKV("created_at", int64_t{1'600'000'000});
+    meta.pushKV("label", label);
+    meta.pushKV("tree", P2MRTreeToUniValue(leaves));
+    return meta;
+}
+
+static void CheckLeaves(const std::vector<P2MRTreeLeaf>& got, const std::vector<P2MRTreeLeaf>& expected)
+{
+    BOOST_REQUIRE_EQUAL(got.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        BOOST_CHECK_EQUAL(got[i].depth, expected[i].depth);
+        BOOST_CHECK_EQUAL(got[i].leaf_version, expected[i].leaf_version);
+        BOOST_CHECK(got[i].script == expected[i].script);
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(restore_roundtrips_plain_hybrid_and_multileaf, BasicTestingSetup)
+{
+    CDilithiumKey key_a;
+    CDilithiumKey key_b;
+    BOOST_REQUIRE(key_a.MakeNewKey());
+    BOOST_REQUIRE(key_b.MakeNewKey());
+    CKey ecdsa;
+    ecdsa.MakeNewKey(/*fCompressedIn=*/true);
+    const XOnlyPubKey xonly{ecdsa.GetPubKey()};
+
+    const std::vector<P2MRTreeLeaf> plain = SingleKeyDilithiumLeaves(key_a.GetPubKey());
+    const std::vector<P2MRTreeLeaf> hybrid{ScriptLeaf(0, HybridPairLeaf(key_a.GetPubKey(), xonly))};
+    const std::vector<P2MRTreeLeaf> multi{
+        ScriptLeaf(1, SingleDilithiumLeaf(key_a.GetPubKey())),
+        ScriptLeaf(1, SingleDilithiumLeaf(key_b.GetPubKey())),
+    };
+
+    P2MRCreated plain_created;
+    P2MRCreated hybrid_created;
+    P2MRCreated multi_created;
+    {
+        auto source = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(source->cs_wallet);
+        source->SetupLegacyScriptPubKeyMan();
+        plain_created = *ImportDilithiumKeyAsP2MR(*source, key_a, "plain");
+        BOOST_REQUIRE(ImportDilithiumKeyAsP2MR(*source, key_b, "other-plain"));
+        auto* spk_man = source->GetLegacyScriptPubKeyMan();
+        BOOST_REQUIRE(spk_man);
+        {
+            LOCK(spk_man->cs_KeyStore);
+            BOOST_REQUIRE(spk_man->AddKeyPubKey(ecdsa, ecdsa.GetPubKey()));
+        }
+        auto hybrid_res = CreateP2MR(*source, hybrid, "hybrid", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(hybrid_res);
+        hybrid_created = *hybrid_res;
+        auto multi_res = CreateP2MR(*source, multi, "multi");
+        BOOST_REQUIRE(multi_res);
+        multi_created = *multi_res;
+        BOOST_CHECK(plain_created.address != hybrid_created.address);
+        BOOST_CHECK(plain_created.address != multi_created.address);
+        BOOST_CHECK(hybrid_created.address != multi_created.address);
+    }
+
+    const UniValue plain_meta = RestoreMeta(plain_created, plain, "plain");
+    const UniValue hybrid_meta = RestoreMeta(hybrid_created, hybrid, "hybrid");
+    const UniValue multi_meta = RestoreMeta(multi_created, multi, "multi");
+
+    auto restored_wallet = MakeP2MRTestWallet(*m_node.chain);
+    {
+        LOCK(restored_wallet->cs_wallet);
+        restored_wallet->SetupLegacyScriptPubKeyMan();
+        // Metadata alone is not a claim that this wallet holds the keys.
+        for (const auto& meta : {plain_meta, hybrid_meta, multi_meta}) {
+            BOOST_REQUIRE(RestoreP2MR(*restored_wallet, meta));
+        }
+        BOOST_CHECK_EQUAL(ListP2MR(*restored_wallet).size(), 3U);
+        for (const auto& created : {plain_created, hybrid_created, multi_created}) {
+            auto entry = GetP2MRByDestination(*restored_wallet, created.dest);
+            BOOST_REQUIRE(entry);
+            BOOST_CHECK_EQUAL(entry->address, created.address);
+            BOOST_CHECK(entry->merkle_root == created.merkle_root);
+            BOOST_CHECK_EQUAL(restored_wallet->IsMine(created.script_pub_key), ISMINE_WATCH_ONLY);
+        }
+
+        BOOST_REQUIRE(ImportDilithiumKeyAsP2MR(*restored_wallet, key_a, "plain"));
+        BOOST_REQUIRE(ImportDilithiumKeyAsP2MR(*restored_wallet, key_b, "other-plain"));
+        auto* spk_man = restored_wallet->GetLegacyScriptPubKeyMan();
+        BOOST_REQUIRE(spk_man);
+        {
+            LOCK(spk_man->cs_KeyStore);
+            BOOST_REQUIRE(spk_man->AddKeyPubKey(ecdsa, ecdsa.GetPubKey()));
+        }
+        // The canonical single-leaf for key_b is a fourth address. The three
+        // restored programs stay put.
+        BOOST_CHECK_EQUAL(ListP2MR(*restored_wallet).size(), 4U);
+        BOOST_CHECK_EQUAL(restored_wallet->IsMine(plain_created.script_pub_key), ISMINE_SPENDABLE);
+        BOOST_CHECK_EQUAL(restored_wallet->IsMine(multi_created.script_pub_key), ISMINE_SPENDABLE);
+        BOOST_CHECK_EQUAL(restored_wallet->IsMine(hybrid_created.script_pub_key), ISMINE_WATCH_ONLY);
+
+        auto plain_entry = GetP2MRByDestination(*restored_wallet, plain_created.dest);
+        auto hybrid_entry = GetP2MRByDestination(*restored_wallet, hybrid_created.dest);
+        auto multi_entry = GetP2MRByDestination(*restored_wallet, multi_created.dest);
+        BOOST_REQUIRE(plain_entry && hybrid_entry && multi_entry);
+        CheckLeaves(plain_entry->tree, plain);
+        CheckLeaves(hybrid_entry->tree, hybrid);
+        CheckLeaves(multi_entry->tree, multi);
+
+        // A second import of the same trees reuses the records.
+        BOOST_REQUIRE(RestoreP2MR(*restored_wallet, hybrid_meta));
+        BOOST_REQUIRE(RestoreP2MR(*restored_wallet, multi_meta));
+        BOOST_CHECK_EQUAL(ListP2MR(*restored_wallet).size(), 4U);
+    }
+
+    MockableData records = GetMockableDatabase(*restored_wallet).m_records;
+    auto reloaded = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+    BOOST_CHECK_EQUAL(reloaded->LoadWallet(), DBErrors::LOAD_OK);
+    LOCK(reloaded->cs_wallet);
+    auto plain_entry = GetP2MRByDestination(*reloaded, plain_created.dest);
+    auto hybrid_entry = GetP2MRByDestination(*reloaded, hybrid_created.dest);
+    auto multi_entry = GetP2MRByDestination(*reloaded, multi_created.dest);
+    BOOST_REQUIRE(plain_entry && hybrid_entry && multi_entry);
+    BOOST_CHECK_EQUAL(plain_entry->address, plain_created.address);
+    BOOST_CHECK(hybrid_entry->merkle_root == hybrid_created.merkle_root);
+    BOOST_CHECK(multi_entry->merkle_root == multi_created.merkle_root);
+    CheckLeaves(hybrid_entry->tree, hybrid);
+    CheckLeaves(multi_entry->tree, multi);
+    BOOST_CHECK_EQUAL(reloaded->IsMine(hybrid_created.script_pub_key), ISMINE_WATCH_ONLY);
+    BOOST_CHECK_EQUAL(reloaded->IsMine(plain_created.script_pub_key), ISMINE_SPENDABLE);
+}
+
+BOOST_FIXTURE_TEST_CASE(restore_rejects_bad_trees_without_writing, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+
+    const auto good_leaves = MakeOpTrueTree();
+    UniValue good(UniValue::VOBJ);
+    good.pushKV("tree", P2MRTreeToUniValue(good_leaves));
+    good.pushKV("label", "keep");
+    good.pushKV("created_at", int64_t{50});
+    auto kept = RestoreP2MR(*wallet, good);
+    BOOST_REQUIRE(kept);
+    const std::string kept_address = kept->address;
+
+    auto expect_rejected = [&](UniValue meta) {
+        BOOST_CHECK(!ValidateP2MRRestore(meta));
+        BOOST_CHECK(!RestoreP2MR(*wallet, meta));
+        BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+        BOOST_CHECK_EQUAL(ListP2MR(*wallet)[0].address, kept_address);
+    };
+
+    UniValue malformed(UniValue::VOBJ);
+    UniValue bad_leaf(UniValue::VOBJ);
+    bad_leaf.pushKV("depth", 0);
+    bad_leaf.pushKV("leaf_version", 192);
+    bad_leaf.pushKV("script", "zz");
+    UniValue bad_tree(UniValue::VARR);
+    bad_tree.push_back(bad_leaf);
+    malformed.pushKV("tree", bad_tree);
+    expect_rejected(malformed);
+
+    UniValue missing(UniValue::VOBJ);
+    missing.pushKV("label", "no-tree");
+    expect_rejected(missing);
+
+    UniValue incomplete(UniValue::VOBJ);
+    UniValue deep_leaf(UniValue::VOBJ);
+    deep_leaf.pushKV("depth", 1);
+    deep_leaf.pushKV("leaf_version", 192);
+    deep_leaf.pushKV("script", "51");
+    UniValue deep_tree(UniValue::VARR);
+    deep_tree.push_back(deep_leaf);
+    incomplete.pushKV("tree", deep_tree);
+    expect_rejected(incomplete);
+
+    UniValue oversized(UniValue::VOBJ);
+    UniValue many(UniValue::VARR);
+    for (size_t i = 0; i < P2MR_CONTROL_MAX_NODE_COUNT + 1; ++i) {
+        UniValue leaf(UniValue::VOBJ);
+        leaf.pushKV("depth", 1);
+        leaf.pushKV("leaf_version", 192);
+        leaf.pushKV("script", "51");
+        many.push_back(leaf);
+    }
+    oversized.pushKV("tree", many);
+    expect_rejected(oversized);
+
+    UniValue huge_script(UniValue::VOBJ);
+    UniValue huge_leaf(UniValue::VOBJ);
+    huge_leaf.pushKV("depth", 0);
+    huge_leaf.pushKV("leaf_version", 192);
+    huge_leaf.pushKV("script", std::string((MAX_SCRIPT_SIZE + 1) * 2, 'a'));
+    UniValue huge_tree(UniValue::VARR);
+    huge_tree.push_back(huge_leaf);
+    huge_script.pushKV("tree", huge_tree);
+    expect_rejected(huge_script);
+
+    UniValue wrong_program = good;
+    wrong_program.pushKV("merkle_root", std::string(64, '0'));
+    wrong_program.pushKV("address", "not-the-reconstructed-address");
+    expect_rejected(wrong_program);
+
+    // A later good import still lands, so the rejects did not stick the wallet.
+    UniValue second(UniValue::VOBJ);
+    second.pushKV("tree", P2MRTreeToUniValue({{/*depth=*/0, TAPROOT_LEAF_TAPSCRIPT, {OP_2}}}));
+    second.pushKV("created_at", int64_t{60});
+    auto second_created = RestoreP2MR(*wallet, second);
+    BOOST_REQUIRE(second_created);
+    const auto entries = ListP2MR(*wallet);
+    BOOST_CHECK_EQUAL(entries.size(), 2U);
+    bool kept_found = false;
+    for (const auto& entry : entries) {
+        if (entry.address == kept_address) kept_found = true;
+    }
+    BOOST_CHECK(kept_found);
+    BOOST_CHECK(second_created->address != kept_address);
+}
+
 BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_reordered_tree, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);
