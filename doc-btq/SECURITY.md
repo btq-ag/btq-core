@@ -142,9 +142,7 @@ Release binaries are not signed today. There is no `SHA256SUMS`, no
 
 Do not check downloads against `https://btqcore.org` or `https://btq.org`.
 Those domains are not this project's. Anyone who registers `btqcore.org` can
-serve whatever sums they want. `contrib/verify-binaries/verify.py` has no
-default host. With no `--host` it stops, because BTQ does not publish signed
-binary sums there. Do not pass those two names as `--host` either.
+serve whatever sums they want. This tree does not ship a binary verifier.
 
 - **Keep Updated**: Install security updates promptly
 - **Secure Setup**: Use proper firewall and access controls

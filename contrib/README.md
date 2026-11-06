@@ -32,12 +32,6 @@ Scripts and notes for Mac builds.
 Test and Verify Tools
 ---------------------
 
-### [Verify Binaries](/contrib/verify-binaries) ###
-
-`verify.py` checks published sums only when you pass `--host`. It has no
-default host. Release binaries are not signed today, and builder keys are
-not published. Do not use `https://btqcore.org` or `https://btq.org`.
-
 ### [TestGen](/contrib/testgen) ###
 Utilities to generate test vectors for the data-driven BTQ tests.
 
