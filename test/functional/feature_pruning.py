@@ -12,6 +12,7 @@ import os
 
 from test_framework.blocktools import (
     MIN_BLOCKS_TO_KEEP,
+    TIMESTAMP_WINDOW,
 )
 from test_framework.pruning import LargeBlockBuilder
 from test_framework.test_framework import BTQTestFramework
@@ -20,11 +21,6 @@ from test_framework.util import (
     assert_greater_than,
     assert_raises_rpc_error,
 )
-
-# Rescans start at the earliest block up to 15 minutes before a key timestamp, so
-# the manual prune RPC avoids pruning blocks in the same window to be
-# compatible with pruning based on key creation time.
-TIMESTAMP_WINDOW = 15 * 60
 
 def mine_large_blocks(node, n):
     # Use witness data to create 950k blocks within BTQ's weight limit.
@@ -285,6 +281,8 @@ class PruneTest(BTQTestFramework):
 
         def height(index):
             if use_timestamp:
+                # pruneblockchain subtracts TIMESTAMP_WINDOW, so adding it here
+                # selects the block at this height. Rescans use the same window.
                 return node.getblockheader(node.getblockhash(index))["time"] + TIMESTAMP_WINDOW
             else:
                 return index

@@ -135,8 +135,9 @@ class TransactionTimeRescanTest(BTQTestFramework):
 
         # for descriptor wallets, the test framework maps the importaddress RPC to the
         # importdescriptors RPC (with argument 'timestamp'='now'), which always rescans
-        # blocks of the past 2 hours, based on the current MTP timestamp; in order to avoid
-        # importing the last address (wo3), we advance the time further and generate 10 blocks
+        # blocks of the past 15 minutes (TIMESTAMP_WINDOW), based on the current MTP
+        # timestamp; in order to avoid importing the last address (wo3), we advance
+        # the time further and generate 10 blocks
         if self.options.descriptors:
             set_node_times(self.nodes, cur_time + ten_days + ten_days + ten_days + ten_days)
             self.generatetoaddress(minernode, 10, m1)
