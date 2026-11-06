@@ -2,7 +2,7 @@
 
 This branch is the mainnet line. `master` still builds the testnet that is running today. Do not start a public node from this branch until that is a deliberate launch.
 
-Both blocks use bits `0x1e0377ae`, version 1, one output of 5 BTQ, and the standard unspendable genesis pubkey. Mainnet `nMinimumChainWork` is one genesis proof, `0x49d414`. Testnet leaves it at zero until that chain has blocks.
+Both blocks use bits `0x1e0377ae`, version 1, one output of 5 BTQ, and the standard unspendable genesis pubkey. `nMinimumChainWork` is one genesis proof, `0x49d414`, on mainnet and on this testnet. The bits match, so the proof matches. Testnet assumevalid stays unset until that chain has depth.
 
 Subsidy in `GetBlockSubsidy` is 5 BTQ, halved every 2,100,000 blocks. The nominal cap before the halving shift drops sats is 21,000,000 BTQ. The whitepaper check is still open.
 
@@ -37,7 +37,7 @@ Subsidy in `GetBlockSubsidy` is 5 BTQ, halved every 2,100,000 blocks. The nomina
 | LWMA | height 1, window 144 |
 | Dilithium and P2MR | height 1 |
 | Min difficulty | on |
-| nMinimumChainWork | zero |
+| nMinimumChainWork | one genesis proof, `0x49d414` |
 | assumevalid | unset |
 | DNS seeds | none yet |
 

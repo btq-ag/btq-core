@@ -216,10 +216,11 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
-        // Fresh chain. Zero until blocks exist.
-        // One header at nBits 0x1e0377ae is 0x49d414 of work. The node starts
-        // with an empty floor: IBD waits only while tip work is below it.
-        consensus.nMinimumChainWork = uint256{};
+        // One header at nBits 0x1e0377ae is 0x49d414 of work. Same bits as
+        // mainnet, so the number matches. Zero would sit below that header
+        // and let a low-work fork count as a full chain.
+        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000000000049d414");
+        // No depth yet. Set this once the chain has some.
         consensus.defaultAssumeValid = uint256{};
 
         // 0c120a08 stays on master, with the testnet that is running today.
