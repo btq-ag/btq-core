@@ -137,7 +137,15 @@ is the fallback.
 
 ### For Users
 
-- **Verify Downloads**: Always check SHA256SUMS and GPG signatures
+Release binaries are not signed today. There is no `SHA256SUMS`, no
+`SHA256SUMS.asc`, and no `security-keys.txt`. Builder keys are not published.
+
+Do not check downloads against `https://btqcore.org` or `https://btq.org`.
+Those domains are not this project's. Anyone who registers `btqcore.org` can
+serve whatever sums they want. `contrib/verify-binaries/verify.py` has no
+default host. With no `--host` it stops, because BTQ does not publish signed
+binary sums there. Do not pass those two names as `--host` either.
+
 - **Keep Updated**: Install security updates promptly
 - **Secure Setup**: Use proper firewall and access controls
 - **Backup Wallets**: Maintain secure, encrypted backups
