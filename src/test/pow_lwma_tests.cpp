@@ -6,12 +6,21 @@
 #include <chain.h>
 #include <chainparams.h>
 #include <consensus/params.h>
+#include <crypto/sha256.h>
 #include <pow.h>
+#include <span.h>
+#include <test/data/lwma_testnet_activation_299855_300000.json.h>
 #include <test/util/setup_common.h>
+#include <univalue.h>
+#include <util/strencodings.h>
 
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/test/unit_test.hpp>
 
 #include <algorithm>
+#include <limits>
+#include <sstream>
+#include <string>
 #include <vector>
 
 namespace {
@@ -89,6 +98,27 @@ uint32_t ReferenceLwmaNextWork(const CBlockIndex* pindexLast, const CBlockHeader
     }
 
     return nextTarget.GetCompact();
+}
+
+// Explorer timestamps are "YYYY-MM-DDTHH:MM:SS.000Z". Strip the millis and
+// parse the form wallet::ParseISO8601DateTime already accepts.
+int64_t ExplorerUnixTime(std::string ts)
+{
+    const std::string milli = ".000Z";
+    BOOST_REQUIRE(ts.size() >= milli.size());
+    BOOST_REQUIRE(ts.compare(ts.size() - milli.size(), milli.size(), milli) == 0);
+    ts.replace(ts.size() - milli.size(), milli.size(), "Z");
+
+    static const boost::posix_time::ptime epoch = boost::posix_time::from_time_t(0);
+    static const std::locale loc(std::locale::classic(),
+        new boost::posix_time::time_input_facet("%Y-%m-%dT%H:%M:%SZ"));
+    std::istringstream iss(ts);
+    iss.imbue(loc);
+    boost::posix_time::ptime ptime(boost::date_time::not_a_date_time);
+    iss >> ptime;
+    BOOST_REQUIRE(!ptime.is_not_a_date_time());
+    BOOST_REQUIRE(epoch <= ptime);
+    return (ptime - epoch).total_seconds();
 }
 
 } // namespace
@@ -639,6 +669,100 @@ BOOST_AUTO_TEST_CASE(lwma_window_departure_cost_to_honest_miners)
                                         "to do that; re-read the comment above");
         }
     }
+}
+
+// Public explorer headers around the testnet LWMA activation height.
+// Calls GetNextWorkRequired for N=45 and N=144. This does not choose a
+// canonical chain and does not close #168.
+BOOST_AUTO_TEST_CASE(lwma_testnet_activation_window_split)
+{
+    const auto params = CreateChainParams(*m_node.args, ChainType::BTQTEST);
+    Consensus::Params consensus = params->GetConsensus();
+    // Same pow limit and spacing as the v0.4.2 testnet these headers were
+    // mined under. Local copies of the window and activation height below
+    // do not change chain params.
+    BOOST_REQUIRE(consensus.powLimit == uint256S("00000377ae000000000000000000000000000000000000000000000000000000"));
+    BOOST_REQUIRE_EQUAL(consensus.nPowTargetSpacing, 60);
+    BOOST_REQUIRE(!consensus.fPowNoRetargeting);
+
+    UniValue root;
+    BOOST_REQUIRE(root.read(json_tests::lwma_testnet_activation_299855_300000));
+    const UniValue& records = root["records"];
+    BOOST_REQUIRE(records.isArray());
+    BOOST_REQUIRE_EQUAL(records.size(), 146);
+
+    std::vector<CBlockHeader> headers;
+    headers.reserve(records.size());
+    for (size_t i = 0; i < records.size(); ++i) {
+        const UniValue& rec = records[i];
+        const int height = rec["height"].get_int();
+        BOOST_REQUIRE_EQUAL(height, 299855 + static_cast<int>(i));
+        BOOST_REQUIRE_EQUAL(rec["url"].get_str(), "https://explorer.bitcoinquantum.com/api/v1/block/" + std::to_string(height));
+
+        const std::string body = rec["body"].get_str();
+        unsigned char digest[CSHA256::OUTPUT_SIZE];
+        CSHA256().Write(reinterpret_cast<const unsigned char*>(body.data()), body.size()).Finalize(digest);
+        BOOST_REQUIRE_EQUAL(HexStr(Span<const unsigned char>{digest, CSHA256::OUTPUT_SIZE}), rec["sha256"].get_str());
+
+        UniValue block;
+        BOOST_REQUIRE(block.read(body));
+        BOOST_REQUIRE_EQUAL(block["height"].get_int(), height);
+
+        CBlockHeader header;
+        const int64_t version = block["version"].get_int64();
+        BOOST_REQUIRE(version >= std::numeric_limits<int32_t>::min());
+        BOOST_REQUIRE(version <= std::numeric_limits<int32_t>::max());
+        header.nVersion = static_cast<int32_t>(version);
+        header.hashPrevBlock = uint256S(block["prev_hash"].get_str());
+        header.hashMerkleRoot = uint256S(block["merkle_root"].get_str());
+        const int64_t unix_time = ExplorerUnixTime(block["timestamp"].get_str());
+        BOOST_REQUIRE(unix_time >= 0);
+        BOOST_REQUIRE(unix_time <= std::numeric_limits<uint32_t>::max());
+        header.nTime = static_cast<uint32_t>(unix_time);
+        const unsigned long bits = std::stoul(block["bits"].get_str(), nullptr, 16);
+        BOOST_REQUIRE(bits <= std::numeric_limits<uint32_t>::max());
+        header.nBits = static_cast<uint32_t>(bits);
+        const unsigned long nonce = std::stoul(block["nonce"].get_str(), nullptr, 10);
+        BOOST_REQUIRE(nonce <= std::numeric_limits<uint32_t>::max());
+        header.nNonce = static_cast<uint32_t>(nonce);
+
+        BOOST_REQUIRE_EQUAL(header.GetHash().ToString(), block["hash"].get_str());
+        if (!headers.empty()) {
+            BOOST_CHECK(header.hashPrevBlock == headers.back().GetHash());
+        }
+
+        arith_uint256 target;
+        bool negative = false;
+        bool overflow = false;
+        target.SetCompact(header.nBits, &negative, &overflow);
+        BOOST_CHECK(!negative);
+        BOOST_CHECK(!overflow);
+        BOOST_CHECK(target != 0);
+        BOOST_CHECK_EQUAL(target.GetCompact(), header.nBits);
+        BOOST_CHECK(CheckProofOfWork(header.GetHash(), header.nBits, consensus));
+
+        headers.push_back(header);
+    }
+
+    // Input is 299855..299999. Height 300000 is the following header.
+    std::vector<CBlockIndex> index(headers.size() - 1);
+    for (size_t i = 0; i < index.size(); ++i) {
+        index[i].pprev = i ? &index[i - 1] : nullptr;
+        index[i].nHeight = 299855 + static_cast<int>(i);
+        index[i].nTime = headers[i].nTime;
+        index[i].nBits = headers[i].nBits;
+    }
+    BOOST_REQUIRE_EQUAL(index.back().nHeight, 299999);
+    BOOST_CHECK_EQUAL(headers.back().nBits, 0x1c055bf4u);
+
+    CBlockHeader next;
+    next.nTime = index.back().nTime + static_cast<uint32_t>(consensus.nPowTargetSpacing);
+    consensus.nLWMAHeight = 300000;
+
+    consensus.nLWMAWindow = 45;
+    BOOST_CHECK_EQUAL(GetNextWorkRequired(&index.back(), &next, consensus), 0x1c04675du);
+    consensus.nLWMAWindow = 144;
+    BOOST_CHECK_EQUAL(GetNextWorkRequired(&index.back(), &next, consensus), 0x1c055bf4u);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
