@@ -9,6 +9,9 @@
  * network protocol versioning
  */
 
+//! Stays at 70016. Message magic is the chain check.
+//! NODE_BTQ_DILITHIUM is for crawlers and is not required.
+//! Requiring that bit would disconnect peers that predate it.
 static const int PROTOCOL_VERSION = 70016;
 
 //! initial proto version, to be increased after version/verack negotiation
