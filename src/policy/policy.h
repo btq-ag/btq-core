@@ -96,15 +96,10 @@ static constexpr unsigned int EXTRA_DESCENDANT_TX_SIZE_LIMIT{10000};
  * Note that this does not affect consensus validity; see GetBlockScriptFlags()
  * for that.
  */
-// SCRIPT_VERIFY_DILITHIUM is mandatory for *classification* once Dilithium is
-// active: CheckInputScripts retries failed STANDARD checks with
-// ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, and TX_CONSENSUS results Misbehave(100)
-// peers. Dilithium must survive that retry so that a policy-only failure of
-// SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY (e.g. testnet today, where
-// nDilithiumP2MRHeight = INT_MAX) is reported as TX_NOT_STANDARD rather than
-// being reclassified as a mandatory Dilithium/pubkeytype failure.
-// Block consensus still gates Dilithium via GetBlockScriptFlags /
-// DEPLOYMENT_DILITHIUM; this constant only affects mempool/P2P classification.
+// SCRIPT_VERIFY_DILITHIUM is in this always-on set, so standard checks carry
+// it. GetBlockScriptFlags turns it on for blocks only after
+// DEPLOYMENT_DILITHIUM. Mempool script failures are TX_NOT_STANDARD when the
+// caller passes policy_flags.
 static constexpr unsigned int MANDATORY_SCRIPT_VERIFY_FLAGS{SCRIPT_VERIFY_P2SH |
                                                              SCRIPT_VERIFY_DERSIG |
                                                              SCRIPT_VERIFY_NULLDUMMY |
@@ -121,11 +116,10 @@ static constexpr unsigned int MANDATORY_SCRIPT_VERIFY_FLAGS{SCRIPT_VERIFY_P2SH |
  * the additional (non-mandatory) rules here, to improve forwards and
  * backwards compatability.
  *
- * SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY stays non-mandatory on purpose: on networks
- * where the consensus height is not yet scheduled (testnet), upgraded nodes
- * must soft-reject legacy Dilithium spends from the mempool without banning
- * peers that still relay them (those spends remain consensus-valid in blocks
- * until nDilithiumP2MRHeight activates).
+ * SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY is a consensus rule once
+ * DEPLOYMENT_DILITHIUM_P2MR is active. It stays out of the always-on
+ * mandatory set because pre-activation blocks must not be rejected for it.
+ * Block validation turns it on through GetBlockScriptFlags.
  */
 static constexpr unsigned int STANDARD_SCRIPT_VERIFY_FLAGS{MANDATORY_SCRIPT_VERIFY_FLAGS |
                                                              SCRIPT_VERIFY_STRICTENC |

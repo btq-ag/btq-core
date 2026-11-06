@@ -83,8 +83,8 @@ BOOST_AUTO_TEST_CASE(dilithium_script_verification_flags)
 {
     // Test that Dilithium verification flags are properly set
     
-    // Dilithium is mandatory for classification (survives the NOT_MANDATORY
-    // retry). Block consensus remains height-gated via GetBlockScriptFlags.
+    // Dilithium is in the always-on mandatory set. Block consensus remains
+    // height-gated via GetBlockScriptFlags.
     BOOST_CHECK(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
     BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
 
