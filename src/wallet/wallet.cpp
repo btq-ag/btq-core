@@ -1795,7 +1795,7 @@ void CWallet::SetWalletFlagWithDB(WalletBatch& batch, uint64_t flag)
     // Disk first. Setting the in-memory bit before a failed write would make
     // guards like SetP2MRMetadata's IsWalletFlagSet check pass for the rest
     // of the session while the on-disk wallet never got the flag.
-    if (WalletWriteFailForTest() == 3 || !batch.WriteWalletFlags(m_wallet_flags | flag))
+    if (!batch.WriteWalletFlags(m_wallet_flags | flag))
         throw std::runtime_error(std::string(__func__) + ": writing wallet flags failed");
     m_wallet_flags |= flag;
 }
@@ -2656,34 +2656,15 @@ DBErrors CWallet::ZapSelectTx(std::vector<uint256>& vHashIn, std::vector<uint256
     return DBErrors::LOAD_OK;
 }
 
-namespace {
-std::atomic<int> g_wallet_write_fail{0};
-} // namespace
-
-void SetWalletWriteFailForTest(int which)
-{
-    g_wallet_write_fail.store(which);
-}
-
-int WalletWriteFailForTest()
-{
-    return g_wallet_write_fail.load();
-}
-
 bool CWallet::SetAddressBookWithDB(WalletBatch& batch, const CTxDestination& address, const std::string& strName, const std::optional<AddressPurpose>& new_purpose)
 {
     bool fUpdated = false;
     bool is_mine;
     std::optional<AddressPurpose> purpose;
-    const std::string dest_str = EncodeDestination(address);
-    bool had_entry = false;
-    CAddressBookData prior;
     {
         LOCK(cs_wallet);
         std::map<CTxDestination, CAddressBookData>::iterator mi = m_address_book.find(address);
-        had_entry = mi != m_address_book.end();
-        if (had_entry) prior = mi->second;
-        fUpdated = had_entry && !prior.IsChange();
+        fUpdated = (mi != m_address_book.end() && !mi->second.IsChange());
         m_address_book[address].SetLabel(strName);
         is_mine = IsMine(address) != ISMINE_NO;
         if (new_purpose) { /* update purpose only if requested */
@@ -2692,35 +2673,13 @@ bool CWallet::SetAddressBookWithDB(WalletBatch& batch, const CTxDestination& add
             purpose = m_address_book[address].purpose;
         }
     }
-    const auto rollback_memory = [&] {
-        LOCK(cs_wallet);
-        if (had_entry) m_address_book[address] = prior;
-        else m_address_book.erase(address);
-        const std::string old_label = had_entry ? prior.GetLabel() : "";
-        const std::optional<AddressPurpose> old_purpose = had_entry ? prior.purpose : std::nullopt;
-        NotifyAddressBookChanged(address, old_label, is_mine,
-                                 old_purpose.value_or(is_mine ? AddressPurpose::RECEIVE : AddressPurpose::SEND),
-                                 had_entry ? CT_UPDATED : CT_DELETED);
-    };
     // In very old wallets, address purpose may not be recorded so we derive it from IsMine
     NotifyAddressBookChanged(address, strName, is_mine,
                              purpose.value_or(is_mine ? AddressPurpose::RECEIVE : AddressPurpose::SEND),
                              (fUpdated ? CT_UPDATED : CT_NEW));
-    if (new_purpose && (WalletWriteFailForTest() == 1 || !batch.WritePurpose(dest_str, PurposeToString(*new_purpose)))) {
-        rollback_memory();
+    if (new_purpose && !batch.WritePurpose(EncodeDestination(address), PurposeToString(*new_purpose)))
         return false;
-    }
-    if (WalletWriteFailForTest() == 2 || !batch.WriteName(dest_str, strName)) {
-        // Purpose may already be the new value. Put the old one back. If that
-        // undo fails, memory is still the old entry and the purpose row may not be.
-        if (new_purpose) {
-            if (prior.purpose) batch.WritePurpose(dest_str, PurposeToString(*prior.purpose));
-            else batch.ErasePurpose(dest_str);
-        }
-        rollback_memory();
-        return false;
-    }
-    return true;
+    return batch.WriteName(EncodeDestination(address), strName);
 }
 
 bool CWallet::SetAddressBook(const CTxDestination& address, const std::string& strName, const std::optional<AddressPurpose>& purpose)
@@ -3256,7 +3215,7 @@ bool CWallet::SetP2MRMetadata(WalletBatch& batch, const CTxDestination& dest, co
     if (!IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA)) {
         SetWalletFlagWithDB(batch, WALLET_FLAG_P2MR_METADATA);
     }
-    if (WalletWriteFailForTest() == 4 || !batch.WriteP2MRMetadata(dest, id, value)) return false;
+    if (!batch.WriteP2MRMetadata(dest, id, value)) return false;
     // Older wallets stored this as a receive request under "rrp2mr:<id>"
     // (Quarks F2.17). Drop any such row, in the DB and in memory, so the
     // two copies cannot diverge. If the erase fails, take the new row back

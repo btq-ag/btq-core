@@ -88,12 +88,6 @@ struct WalletContext;
 //! by the shared pointer deleter.
 void UnloadWallet(std::shared_ptr<CWallet>&& wallet);
 
-// Test hook for CreateP2MR rollback. 0 is off. 1 fails the address-book
-// purpose write, 2 fails the name write, 3 throws on the P2MR wallet-flag
-// write, 4 fails the P2MR metadata row. Not a public RPC.
-void SetWalletWriteFailForTest(int which);
-int WalletWriteFailForTest();
-
 bool AddWallet(WalletContext& context, const std::shared_ptr<CWallet>& wallet);
 bool RemoveWallet(WalletContext& context, const std::shared_ptr<CWallet>& wallet, std::optional<bool> load_on_start, std::vector<bilingual_str>& warnings);
 bool RemoveWallet(WalletContext& context, const std::shared_ptr<CWallet>& wallet, std::optional<bool> load_on_start);

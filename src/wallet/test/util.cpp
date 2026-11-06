@@ -136,12 +136,30 @@ bool MockableBatch::ReadKey(DataStream&& key, DataStream& value)
     return true;
 }
 
+namespace {
+std::string MockableRecordType(const SerializeData& key)
+{
+    if (key.empty()) return {};
+    const size_t len = static_cast<unsigned char>(key[0]);
+    if (len >= 253 || key.size() < 1 + len) return {};
+    std::string type(len, '\0');
+    for (size_t i = 0; i < len; ++i) {
+        type[i] = static_cast<char>(static_cast<unsigned char>(key[1 + i]));
+    }
+    return type;
+}
+} // namespace
+
 bool MockableBatch::WriteKey(DataStream&& key, DataStream&& value, bool overwrite)
 {
     if (!m_pass) {
         return false;
     }
     SerializeData key_data{key.begin(), key.end()};
+    if (m_write_fault.remaining > 0 && MockableRecordType(key_data) == m_write_fault.type) {
+        --m_write_fault.remaining;
+        return false;
+    }
     SerializeData value_data{value.begin(), value.end()};
     auto [it, inserted] = m_records.emplace(key_data, value_data);
     if (!inserted && overwrite) { // Overwrite if requested
