@@ -117,9 +117,10 @@ static constexpr unsigned int MANDATORY_SCRIPT_VERIFY_FLAGS{SCRIPT_VERIFY_P2SH |
  * backwards compatability.
  *
  * SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY is a consensus rule once
- * DEPLOYMENT_DILITHIUM_P2MR is active. It stays out of the always-on
- * mandatory set because pre-activation blocks must not be rejected for it.
- * Block validation turns it on through GetBlockScriptFlags.
+ * DEPLOYMENT_DILITHIUM_P2MR is active. GetBlockScriptFlags turns it on
+ * for blocks only after that deployment, which is what keeps
+ * pre-activation blocks valid. It stays out of this always-on set.
+ * Membership here does not select the flags ConnectBlock uses.
  */
 static constexpr unsigned int STANDARD_SCRIPT_VERIFY_FLAGS{MANDATORY_SCRIPT_VERIFY_FLAGS |
                                                              SCRIPT_VERIFY_STRICTENC |

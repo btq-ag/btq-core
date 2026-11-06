@@ -38,8 +38,9 @@ BOOST_AUTO_TEST_CASE(standard_flags_include_p2mr_only_policy)
     BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY));
     BOOST_CHECK_EQUAL(SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY, (1U << 23));
 
-    // Dilithium stays in the always-on mandatory set. P2MR_ONLY stays out so
-    // pre-activation blocks are not rejected for it.
+    // Dilithium stays in the always-on mandatory set. P2MR_ONLY stays out.
+    // ConnectBlock uses GetBlockScriptFlags, which adds P2MR_ONLY only after
+    // DEPLOYMENT_DILITHIUM_P2MR.
     BOOST_CHECK(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
     BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
 
