@@ -286,7 +286,14 @@ bool IsP2MRLeafSpendable(const CWallet& wallet, const P2MRTreeLeaf& leaf)
 
 bool IsP2MREntryValid(const P2MREntry& entry)
 {
-    return std::holds_alternative<WitnessV2P2MR>(entry.dest) && BuildP2MRTreeChecked(entry.tree).has_value();
+    if (!std::holds_alternative<WitnessV2P2MR>(entry.dest)) return false;
+    // BuildP2MRTreeChecked finalizes. The built root has to equal the
+    // destination program. A tree that merely builds would make IsMine
+    // treat the coin as spendable, and the witness would not match.
+    // BuildP2MRSigningProvider applies the same check before it inserts.
+    auto builder = BuildP2MRTreeChecked(entry.tree);
+    if (!builder) return false;
+    return builder->GetOutput() == std::get<WitnessV2P2MR>(entry.dest);
 }
 
 bool IsP2MREntrySpendable(const CWallet& wallet, const P2MREntry& entry)

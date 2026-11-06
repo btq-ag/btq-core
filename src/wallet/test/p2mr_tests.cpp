@@ -645,6 +645,48 @@ BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTest
     BOOST_CHECK_EQUAL(wallet->IsMine(corrupt_script), ISMINE_NO);
 }
 
+// Metadata whose tree builds, but not to this destination. The leaf is
+// OP_TRUE, which the wallet treats as spendable when the roots match.
+// IsMine must be ISMINE_NO, and the signing provider must not carry a tree
+// for the destination.
+BOOST_FIXTURE_TEST_CASE(wallet_is_mine_rejects_p2mr_tree_that_does_not_match_destination, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+
+    P2MRBuilder dest_builder;
+    dest_builder.Add(/*depth=*/0, std::vector<unsigned char>{static_cast<unsigned char>(OP_0)}, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+    BOOST_REQUIRE(dest_builder.IsValid());
+    const CTxDestination dest = dest_builder.GetOutput();
+    const WitnessV2P2MR& output{std::get<WitnessV2P2MR>(dest)};
+    const CScript script = GetScriptForDestination(dest);
+
+    const auto other_leaves = MakeOpTrueTree();
+    auto other_tree = BuildP2MRTreeChecked(other_leaves);
+    BOOST_REQUIRE(other_tree);
+    BOOST_REQUIRE(!(other_tree->GetOutput() == output));
+
+    BOOST_REQUIRE(wallet->SetAddressBook(dest, "mismatch", AddressPurpose::RECEIVE));
+    UniValue meta(UniValue::VOBJ);
+    meta.pushKV("id", "mismatch");
+    meta.pushKV("address", EncodeDestination(dest));
+    meta.pushKV("scriptPubKey", HexStr(script));
+    meta.pushKV("merkle_root", "");
+    meta.pushKV("created_at", int64_t{1});
+    meta.pushKV("label", "mismatch");
+    meta.pushKV("state", "created");
+    meta.pushKV("tree", P2MRTreeToUniValue(other_leaves));
+
+    WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+    BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, dest, "mismatch", meta.write()));
+    BOOST_CHECK_EQUAL(wallet->IsMine(script), ISMINE_NO);
+
+    const FlatSigningProvider provider{BuildP2MRSigningProvider(*wallet, "mismatch")};
+    BOOST_CHECK_EQUAL(provider.p2mr_trees.count(output), 0U);
+    const FlatSigningProvider by_dest{BuildP2MRSigningProviderForDestination(*wallet, dest)};
+    BOOST_CHECK_EQUAL(by_dest.p2mr_trees.count(output), 0U);
+}
+
 BOOST_FIXTURE_TEST_CASE(wallet_is_mine_tracks_unowned_p2mr_metadata_as_watchonly, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);
