@@ -12,9 +12,11 @@
 #include <consensus/tx_check.h>
 #include <consensus/validation.h>
 #include <core_io.h>
+#include <crypto/dilithium_key.h>
 #include <key.h>
 #include <policy/policy.h>
 #include <policy/settings.h>
+#include <script/interpreter.h>
 #include <script/script.h>
 #include <script/script_error.h>
 #include <script/sign.h>
@@ -30,6 +32,7 @@
 #include <validation.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
@@ -39,6 +42,28 @@
 #include <univalue.h>
 
 typedef std::vector<unsigned char> valtype;
+
+// Same witness GetDustThreshold uses for witness version 2: depth-0 single-key
+// P2MR satisfaction (signature + hashtype, leaf script, control block).
+static constexpr size_t MinSingleKeyP2MRWitnessBytes()
+{
+    constexpr size_t sig_size = DilithiumConstants::SIGNATURE_SIZE + 1;
+    constexpr size_t leaf_script_size = sizeof(unsigned char) + sizeof(uint16_t) + CDilithiumPubKey::SIZE + sizeof(unsigned char);
+    constexpr size_t control_size = P2MR_CONTROL_BASE_SIZE;
+    constexpr size_t stack_elems = 3;
+    return GetSizeOfCompactSize(stack_elems)
+        + GetSizeOfCompactSize(sig_size) + sig_size
+        + GetSizeOfCompactSize(leaf_script_size) + leaf_script_size
+        + GetSizeOfCompactSize(control_size) + control_size;
+}
+
+// Non-witness input bytes at full weight, witness bytes divided by WITNESS_SCALE_FACTOR.
+static CAmount DustThresholdFromWitnessBytes(const CScript& script_pub_key, size_t witness_bytes, const CFeeRate& dust_relay_fee)
+{
+    const CTxOut txout{0, script_pub_key};
+    const size_t n_size = GetSerializeSize(txout) + 32 + 4 + 1 + (witness_bytes / WITNESS_SCALE_FACTOR) + 4;
+    return dust_relay_fee.GetFee(static_cast<uint32_t>(n_size));
+}
 
 static CFeeRate g_dust{DUST_RELAY_TX_FEE};
 static bool g_bare_multi{DEFAULT_PERMIT_BAREMULTISIG};
@@ -995,10 +1020,33 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
     // Check P2TR outputs dust threshold (Invalid xonly key ok!)
     CheckDustBoundary(CScript() << OP_1 << std::vector<unsigned char>(32, 0), 270);
 
-    // Check future Witness Program versions dust threshold (non-32-byte pushes are undefined for version 1)
+    // Future witness programs. Non-32-byte pushes are undefined for version 1.
+    // Version 2 is priced as a single-key P2MR spend. v1 and v3+ stay on the
+    // P2WPKH witness estimate, so their threshold stays 180.
     for (int op = OP_1; op <= OP_16; op += 1) {
-        CheckDustBoundary(CScript() << (opcodetype)op << std::vector<unsigned char>(2, 0), 180);
+        const CScript script = CScript() << (opcodetype)op << std::vector<unsigned char>(2, 0);
+        const CAmount expected = (op == OP_2)
+            ? DustThresholdFromWitnessBytes(script, MinSingleKeyP2MRWitnessBytes(), g_dust)
+            : 180;
+        CheckDustBoundary(script, expected);
     }
+}
+
+BOOST_AUTO_TEST_CASE(p2mr_dust_threshold_matches_single_key_witness)
+{
+    const CScript p2wpkh = CScript() << OP_0 << std::vector<unsigned char>(WITNESS_V0_KEYHASH_SIZE, 0);
+    const CScript p2wsh = CScript() << OP_0 << std::vector<unsigned char>(WITNESS_V0_SCRIPTHASH_SIZE, 0);
+    const CScript p2mr = CScript() << OP_2 << std::vector<unsigned char>(WITNESS_V2_P2MR_SIZE, 0);
+    const CAmount p2wpkh_dust = GetDustThreshold(CTxOut{0, p2wpkh}, g_dust);
+    const CAmount p2wsh_dust = GetDustThreshold(CTxOut{0, p2wsh}, g_dust);
+    const CAmount p2mr_dust = GetDustThreshold(CTxOut{0, p2mr}, g_dust);
+
+    // P2WSH is the same output size as P2MR, so this gap is the witness estimate.
+    BOOST_CHECK(p2mr_dust > p2wsh_dust);
+    BOOST_CHECK(p2mr_dust > p2wpkh_dust);
+    BOOST_CHECK_EQUAL(p2wpkh_dust, DustThresholdFromWitnessBytes(p2wpkh, 107, g_dust));
+    BOOST_CHECK_EQUAL(p2wsh_dust, DustThresholdFromWitnessBytes(p2wsh, 107, g_dust));
+    BOOST_CHECK_EQUAL(p2mr_dust, DustThresholdFromWitnessBytes(p2mr, MinSingleKeyP2MRWitnessBytes(), g_dust));
 }
 
 BOOST_AUTO_TEST_CASE(test_IsWitnessStandard_stack_item_size_limits)
