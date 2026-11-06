@@ -196,7 +196,7 @@ unexpected-witness, ContextualCheckBlock : unexpected witness data found
 ### Automated Test Script
 Run the complete workflow:
 ```bash
-./test_dilithium_wallet.sh
+./scripts/test_dilithium_wallet.sh
 ```
 
 **Test Coverage:**
@@ -349,7 +349,7 @@ Block mining (Phase 4) needs additional work for witness commitments, but this d
 - `src/script/interpreter.cpp` - Signature validation & auto-detection
 
 ### Test Infrastructure
-- `test_dilithium_wallet.sh` - Automated test script
+- `scripts/test_dilithium_wallet.sh` - Automated test script
 - `DILITHIUM_WALLET_FIXES.md` - Fix documentation
 - `PHASE6_COMPLETE_SUMMARY.md` - This document
 
