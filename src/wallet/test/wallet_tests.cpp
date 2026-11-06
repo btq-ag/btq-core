@@ -1622,8 +1622,8 @@ BOOST_FIXTURE_TEST_CASE(verifymessagewithdilithium_needs_only_the_public_key, Wa
                           rpc_error(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Dilithium public key"));
 
     {
-        // The secret is in the wallet, and the wallet is locked. The pubkey
-        // argument still verifies. Without it the secret cannot be loaded.
+        // The secret is in the wallet, and the wallet is locked. The leaf
+        // public key is enough; verify does not decrypt the secret.
         WalletContext context;
         context.args = &m_args;
         const auto locked = make_wallet();
@@ -1638,9 +1638,29 @@ BOOST_FIXTURE_TEST_CASE(verifymessagewithdilithium_needs_only_the_public_key, Wa
         AddWallet(context, locked);
         BOOST_CHECK(call(context, verify, {address, signature, message, pubkey_hex}).get_bool());
         BOOST_CHECK(!call(context, verify, {address, signature, message + "!", pubkey_hex}).get_bool());
-        BOOST_CHECK_EXCEPTION(call(context, verify, {address, signature, message}), UniValue,
-                              rpc_error(RPC_WALLET_ERROR, "Dilithium key not found in wallet"));
+        // The leaf still holds the public key after encryption. Verify does not unlock.
+        BOOST_CHECK(call(context, verify, {address, signature, message}).get_bool());
+        BOOST_CHECK(!call(context, verify, {address, signature, message + "!"}).get_bool());
         RemoveWallet(context, locked, /*load_on_start=*/std::nullopt);
+    }
+
+    {
+        // The tree is tracked and the private key was never imported.
+        WalletContext context;
+        context.args = &m_args;
+        const auto watcher = make_wallet();
+        {
+            LOCK(watcher->cs_wallet);
+            const auto created = CreateP2MR(*watcher, SingleKeyDilithiumLeaves(pubkey), "watch",
+                                            /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+            BOOST_REQUIRE(created);
+            BOOST_CHECK_EQUAL(created->address, address);
+            BOOST_CHECK(!WalletHaveDilithiumKey(*watcher, CKeyID{pubkey.GetID()}));
+        }
+        AddWallet(context, watcher);
+        BOOST_CHECK(call(context, verify, {address, signature, message}).get_bool());
+        BOOST_CHECK(!call(context, verify, {address, signature, message + "!"}).get_bool());
+        RemoveWallet(context, watcher, /*load_on_start=*/std::nullopt);
     }
 
     {

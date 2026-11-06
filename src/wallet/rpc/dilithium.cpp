@@ -447,6 +447,16 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
 
     // Decode the address to get the key ID
     CTxDestination dest = DecodeDestination(strAddress);
+    // A tracked single-key P2MR leaf already contains the public key. Verify
+    // with that and do not open the private key, including when the wallet is
+    // locked or does not hold the secret.
+    if (const auto leaf_pubkey = GetSingleDilithiumPubKeyForP2MR(*pwallet, dest)) {
+        EnsureKeyControlsAddress(*leaf_pubkey, dest, /*key_from_wallet=*/true);
+        if (!DecodeBase64(strSignature)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid signature encoding");
+        }
+        return DilithiumMessageVerify(*leaf_pubkey, strMessage, strSignature);
+    }
     // Prefer P2MR Dilithium receive addresses; historical DilithiumPKHash
     // destinations remain decodable for message verification even though
     // they are no longer valid payment destinations.
@@ -557,9 +567,11 @@ RPCHelpMan verifymessagewithdilithium()
         "\nVerify a message signed with a Dilithium private key.\n"
         "Argument order mirrors verifymessage. Replaces verifydilithiumsignature,\n"
         "which took the same arguments in a different order and is deprecated.\n"
-        "\nWithout pubkey, the key must be in this wallet. With pubkey, no wallet needs\n"
-        "to be loaded (the node still needs wallet support), and the signature is\n"
-        "checked against that key.\n"
+        "\nWithout pubkey, a single-key P2MR address this wallet tracks is checked from\n"
+        "the public key in its leaf, so the private key is not required. Any other\n"
+        "Dilithium address still needs that private key in this wallet. With pubkey,\n"
+        "no wallet needs to be loaded (the node still needs wallet support), and the\n"
+        "signature is checked against that key.\n"
         "\nEither way the address must be one the key alone controls: its single-key\n"
         "P2MR receive address, or its Dilithium key hash on a network that still\n"
         "allows payments to those. Any other address is an error, not false.\n",

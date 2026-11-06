@@ -500,6 +500,26 @@ std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, cons
     return *key_ids.begin();
 }
 
+std::optional<CDilithiumPubKey> GetSingleDilithiumPubKeyForP2MR(const CWallet& wallet, const CTxDestination& dest)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    const auto entry = GetP2MRByDestination(wallet, dest);
+    if (!entry) return std::nullopt;
+    const auto key_ids = GetP2MRDilithiumKeyIDs(entry->tree);
+    if (key_ids.size() != 1) return std::nullopt;
+
+    std::optional<CDilithiumPubKey> found;
+    for (const P2MRTreeLeaf& leaf : entry->tree) {
+        const P2MRDilithiumLeafPolicy policy = ParseP2MRDilithiumLeaf(CScript{leaf.script.begin(), leaf.script.end()});
+        for (const CDilithiumPubKey& pubkey : policy.pubkeys) {
+            if (CKeyID{pubkey.GetID()} != *key_ids.begin()) return std::nullopt;
+            if (found && *found != pubkey) return std::nullopt;
+            found = pubkey;
+        }
+    }
+    return found;
+}
+
 std::vector<P2MRTreeLeaf> SingleKeyDilithiumLeaves(const CDilithiumPubKey& pubkey)
 {
     const CScript leaf_script = CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;

@@ -139,6 +139,13 @@ std::optional<P2MREntry> GetP2MRByDestination(const CWallet& wallet, const CTxDe
  */
 std::optional<CKeyID> GetSingleDilithiumKeyIDForP2MR(const CWallet& wallet, const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
+/**
+ * The Dilithium public key embedded in a tracked P2MR whose tree names exactly
+ * one Dilithium key, when that key's bytes are in a leaf. Hash-only leaves
+ * return nullopt: the public key is not in the tree.
+ */
+std::optional<CDilithiumPubKey> GetSingleDilithiumPubKeyForP2MR(const CWallet& wallet, const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+
 /** The tree of the single-key P2MR receive destination for `pubkey`: one
  *  `<pubkey> OP_CHECKSIGDILITHIUM` tapscript leaf at depth 0. */
 std::vector<P2MRTreeLeaf> SingleKeyDilithiumLeaves(const CDilithiumPubKey& pubkey);

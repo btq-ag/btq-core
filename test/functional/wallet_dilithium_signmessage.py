@@ -131,6 +131,14 @@ class WalletDilithiumSignMessageTest(BTQTestFramework):
         # An explicit null pubkey takes the wallet path.
         assert wallet.verifymessagewithdilithium(address=created["address"], signature=proof, message=message, pubkey=None)
 
+        self.log.info("A wallet that only tracks the leaf verifies without the private key")
+        node.createwallet(wallet_name="leafonly", descriptors=True)
+        leafonly = node.get_wallet_rpc("leafonly")
+        entry = next(e for e in wallet.listp2mr() if e["address"] == created["address"])
+        leafonly.importp2mr([entry])
+        assert leafonly.verifymessagewithdilithium(created["address"], proof, message)
+        assert not leafonly.verifymessagewithdilithium(created["address"], proof, message + "!")
+
         self.log.info("A transaction signature is not a message proof, with or without its sighash byte")
         spent_pubkey = wallet.getdilithiumpubkey(first["p2mr_id"])["pubkeys"][0]["pubkey"]
         for tx_sig in (real_sig, real_sig[:-1]):
@@ -176,6 +184,7 @@ class WalletDilithiumSignMessageTest(BTQTestFramework):
             wallet.verifymessagewithdilithium, created["address"], proof, message, "zz",
         )
         wallet.encryptwallet("pass")
+        assert wallet.verifymessagewithdilithium(created["address"], proof, message)
         assert wallet.verifymessagewithdilithium(created["address"], proof, message, pubkey)
         assert not wallet.verifymessagewithdilithium(created["address"], proof, message + "!", pubkey)
         assert_raises_rpc_error(
