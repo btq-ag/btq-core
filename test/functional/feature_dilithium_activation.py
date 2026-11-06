@@ -90,6 +90,20 @@ class DilithiumActivationTest(BTQTestFramework):
             node.signtransactionwithdilithium,
             "00",
         )
+        # prevtxs used to be documented as Ignored and discarded. Passing it
+        # must fail instead of looking like the argument was applied.
+        assert_raises_rpc_error(
+            -8,
+            "prevtxs is not supported",
+            node.signtransactionwithdilithium,
+            "00",
+            [{
+                "txid": "11" * 32,
+                "vout": 0,
+                "scriptPubKey": "51",
+                "amount": Decimal("1"),
+            }],
+        )
 
         self.log.info('Spending Dilithium P2MR before activation must be rejected')
         spend_hex = self.sign_dilithium_p2mr_spend(

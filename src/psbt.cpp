@@ -492,6 +492,14 @@ bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& 
         out_sigdata->missing_sigs = sigdata.missing_sigs;
         out_sigdata->missing_redeem_script = sigdata.missing_redeem_script;
         out_sigdata->missing_witness_script = sigdata.missing_witness_script;
+        // Dilithium pubkey ids are hash160, same width as CKeyID. analyzepsbt
+        // only prints the legacy missing lists, so fold them in here.
+        for (const DilithiumPKHash& id : sigdata.missing_dilithium_pubkeys) {
+            out_sigdata->missing_pubkeys.emplace_back(CKeyID{static_cast<uint160>(id)});
+        }
+        for (const DilithiumPKHash& id : sigdata.missing_dilithium_sigs) {
+            out_sigdata->missing_sigs.emplace_back(CKeyID{static_cast<uint160>(id)});
+        }
     }
 
     return sig_complete;

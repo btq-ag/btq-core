@@ -767,7 +767,7 @@ RPCHelpMan signtransactionwithdilithium()
         "Use signp2mrtransaction for P2MR Dilithium spends.\n",
         {
             {"hexstring", RPCArg::Type::STR, RPCArg::Optional::NO, "The transaction hex string"},
-            {"prevtxs", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "Ignored",
+            {"prevtxs", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "Not supported. Passing previous transactions returns an error.",
                 {
                     {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
                         {
@@ -795,6 +795,12 @@ RPCHelpMan signtransactionwithdilithium()
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
+            // Reject a supplied prevtxs instead of accepting it and discarding it.
+            // Wiring it through Dilithium signing is a separate change; this RPC
+            // does not sign legacy Dilithium transactions anymore.
+            if (!request.params[1].isNull()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "prevtxs is not supported");
+            }
             throw JSONRPCError(RPC_METHOD_DEPRECATED,
                 "signtransactionwithdilithium is disabled: Dilithium opcodes are consensus-valid only in P2MR tapscript. Use signp2mrtransaction.");
         },
