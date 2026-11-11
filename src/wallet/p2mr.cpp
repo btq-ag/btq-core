@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <psbt.h>
 #include <wallet/p2mr.h>
 
 #include <core_io.h>
@@ -1030,6 +1031,55 @@ util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta)
     if (!validated) return util::Error{util::ErrorString(validated)};
     return CreateP2MR(wallet, validated->leaves, validated->label, /*add_to_address_book=*/true,
                       /*allow_trivial_leaves=*/true, validated->created_at);
+}
+
+util::Result<std::vector<P2MRCreated>> ImportP2MROutputsFromPSBT(CWallet& wallet, const PartiallySignedTransaction& psbt)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    if (psbt.tx->vout.size() != psbt.outputs.size()) {
+        return util::Error{Untranslated("PSBT output metadata does not match the transaction outputs")};
+    }
+    struct Pending {
+        std::vector<P2MRTreeLeaf> leaves;
+    };
+    std::vector<Pending> pending;
+    pending.reserve(psbt.outputs.size());
+    for (size_t i = 0; i < psbt.outputs.size(); ++i) {
+        const PSBTOutput& output = psbt.outputs[i];
+        if (output.m_p2mr_tree.empty()) continue;
+        int version{0};
+        std::vector<unsigned char> program;
+        if (!psbt.tx->vout[i].scriptPubKey.IsWitnessProgram(version, program) ||
+            version != 2 || program.size() != WitnessV2P2MR::SIZE) {
+            return util::Error{Untranslated("P2MR output metadata attached to a non-P2MR output")};
+        }
+        Pending row;
+        row.leaves.reserve(output.m_p2mr_tree.size());
+        for (const auto& [depth, leaf_ver, script] : output.m_p2mr_tree) {
+            row.leaves.push_back(P2MRTreeLeaf{depth, leaf_ver, script});
+        }
+        auto built = BuildP2MRTreeChecked(row.leaves);
+        if (!built) return util::Error{util::ErrorString(built)};
+        const WitnessV2P2MR tree_output = built->GetOutput();
+        const uint256 tree_program{std::vector<unsigned char>(tree_output.begin(), tree_output.end())};
+        if (tree_program != uint256{program}) {
+            return util::Error{Untranslated("Output P2MR tree does not match the output's witness program")};
+        }
+        if (!output.m_p2mr_merkle_root.IsNull() && output.m_p2mr_merkle_root != uint256{program}) {
+            return util::Error{Untranslated("Output P2MR merkle root does not match the output's witness program")};
+        }
+        pending.push_back(std::move(row));
+    }
+    std::vector<P2MRCreated> created;
+    created.reserve(pending.size());
+    for (const Pending& row : pending) {
+        UniValue meta(UniValue::VOBJ);
+        meta.pushKV("tree", P2MRTreeToUniValue(row.leaves));
+        auto restored = RestoreP2MR(wallet, meta);
+        if (!restored) return util::Error{util::ErrorString(restored)};
+        created.push_back(std::move(*restored));
+    }
+    return created;
 }
 
 util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
