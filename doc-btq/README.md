@@ -92,7 +92,7 @@ BTQ follows Bitcoin Core's development model with some adaptations for post-quan
 ## Documentation
 
 - [Release Process](releases/RELEASE_PROCESS.md)
-- [Security Policy](SECURITY.md)
+- [Security Policy](../SECURITY.md)
 - [Governance](GOVERNANCE.md)
 - [Testing Guide](testing/TESTING_GUIDE.md)
 - [Communication Policy](communication/COMMUNICATION.md)
