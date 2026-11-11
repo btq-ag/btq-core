@@ -1,3 +1,9 @@
+Current releases are not signed. There is no SHA256SUMS, no SHA256SUMS.asc,
+and no security-keys.txt. Builder keys are not published. Do not verify
+binaries against https://btqcore.org or https://btq.org. Those domains are
+not this project's. The steps below are a plan for a later process. You
+cannot run them against a published BTQ release today.
+
 📜 BTQ Release Roadmap (Phase 2: Dilithium Integration into PPK Infrastructure)
 Objectives
 
