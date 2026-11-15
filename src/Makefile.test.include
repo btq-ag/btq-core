@@ -25,7 +25,8 @@ JSON_TEST_FILES = \
   test/data/script_tests.json \
   test/data/sighash.json \
   test/data/tx_invalid.json \
-  test/data/tx_valid.json
+  test/data/tx_valid.json \
+  test/data/lwma_testnet_activation_299855_300000.json
 
 RAW_TEST_FILES = \
   test/data/asmap.raw
