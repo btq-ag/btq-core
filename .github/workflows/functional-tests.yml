@@ -2,9 +2,8 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #
-# Run the base functional suite (BASE_SCRIPTS) and independently validate
-# completion, test inventory and RPC coverage. Existing production
-# dependencies retain their explicit failure allowances.
+# Run the base functional suite (BASE_SCRIPTS). The runner's exit code
+# fails the job, including when --coverage does not complete.
 #
 # The slow tests in EXTENDED_SCRIPTS run in extended-functional-tests.yml,
 # on pushes to master, nightly, on manual dispatch, and on pull requests
@@ -74,16 +73,13 @@ jobs:
         run: make $MAKEJOBS
 
       - name: Run functional tests
-        # Preserve the log even on failure. The next step rejects unexpected
-        # failures, incomplete runs, missing variants and missing RPC coverage.
+        # Keep the log for the artifact. pipefail so a failing runner fails the step.
         run: |
           python3 ci/test/test_functional_test_harness.py
+          set -o pipefail
           test/functional/test_runner.py --ci --quiet --coverage --jobs 8 \
             --tmpdirprefix "$RUNNER_TEMP" --timeout-factor=4 \
-            2>&1 | tee "$RUNNER_TEMP/functional.log" || true
-
-      - name: Compare with known failures
-        run: python3 ci/test/check_known_failures.py --coverage "$RUNNER_TEMP/functional.log" test/functional/known_failures.txt
+            2>&1 | tee "$RUNNER_TEMP/functional.log"
 
       - name: Upload test_runner output
         if: always()
