@@ -199,7 +199,9 @@ public:
         // Same rules as mainnet. This testnet is the new chain, so the raised
         // sigop limit and Dilithium validation weight start at height 1.
         consensus.nDilithiumLimitsHeight = 1;
-        consensus.fPowAllowMinDifficultyBlocks = false;
+        // Testnet min-difficulty rule. Turning this off stalls a public testnet
+        // once a block is slower than the target. Mainnet stays off.
+        consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
         consensus.nMinerConfirmationWindow = 20160;
@@ -214,9 +216,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
-        // One genesis proof, same bits as mainnet. 0x49d414 is GetBlockProof for 0x1e0377ae.
+        // One header at nBits 0x1e0377ae is 0x49d414 of work. Same bits as
+        // mainnet, so the number matches. Zero would sit below that header
+        // and let a low-work fork count as a full chain.
         consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000000000049d414");
-        consensus.defaultAssumeValid = uint256S("0x0000022f03b97f577d6dcd5b776f93bb69535c3c84f3e1d4d66c4fa81f45a133");
+        // No depth yet. Set this once the chain has some.
+        consensus.defaultAssumeValid = uint256{};
 
         // 0c120a08 stays on master, with the testnet that is running today.
         pchMessageStart[0] = 0x71;
