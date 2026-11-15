@@ -21,16 +21,18 @@ CROSS="[X]"
 ARROW="-->"
 
 # Configuration
-# Detect if we're in the root directory or src directory
-if [ -f "./btqd" ]; then
-    BTQD="./btqd"
-    BTQCLI="./btq-cli"
-elif [ -f "./src/btqd" ]; then
-    BTQD="./src/btqd"
-    BTQCLI="./src/btq-cli"
+# Binaries live in src/ after a normal build. Resolve from the repo root
+# (parent of scripts/) so the caller's cwd does not matter.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -x "$ROOT/src/btqd" ] && [ -x "$ROOT/src/btq-cli" ]; then
+    BTQD="$ROOT/src/btqd"
+    BTQCLI="$ROOT/src/btq-cli"
+elif [ -x "$ROOT/btqd" ] && [ -x "$ROOT/btq-cli" ]; then
+    BTQD="$ROOT/btqd"
+    BTQCLI="$ROOT/btq-cli"
 else
-    echo "Error: Cannot find btqd binary"
-    echo "Please run this script from either the project root or the src directory"
+    echo "Error: Cannot find btqd and btq-cli"
+    echo "Build them in src/, then run scripts/test_dilithium_wallet.sh"
     exit 1
 fi
 
@@ -39,7 +41,7 @@ WALLET_NAME="dilithium_test_wallet"
 # Run against a throwaway datadir, never the user's default ~/.btq.
 # Every $BTQD/$BTQCLI call below routes through $NETWORK, so setting it here
 # isolates the whole script. Removed on exit, including on failure.
-BTQ_TEST_DATADIR="$(mktemp -d "${TMPDIR:-/tmp}/btq-dilithium-test.XXXXXX")"
+BTQ_TEST_DATADIR="$(mktemp -d "${TMPDIR:-/tmp}/btq-dilithium-test.XXXXXX")" || exit 1
 NETWORK="-regtest -datadir=$BTQ_TEST_DATADIR"
 
 cleanup() {
@@ -48,6 +50,77 @@ cleanup() {
     rm -rf "$BTQ_TEST_DATADIR"
 }
 trap cleanup EXIT
+
+# Query JSON from btq-cli. Numbers stay as the original token so amounts
+# keep their decimals. Never used on ~/.btq; callers pass RPC stdout.
+#   jsonq get <dotted.path>          scalar; bool prints true/false; empty if missing
+#   jsonq len                        length of a list, else 0
+#   jsonq contains <value>           exit 0 if a list contains value, else 1
+#   jsonq count-true <key>           objects whose key is JSON true
+#   jsonq count-script-suffix <suf>  scriptPubKey values ending in suf
+jsonq() {
+    python3 -c '
+import json, sys
+
+mode = sys.argv[1]
+arg = sys.argv[2] if len(sys.argv) > 2 else ""
+raw = sys.stdin.read()
+
+def empty_result():
+    if mode in ("len", "count-true", "count-script-suffix"):
+        print(0)
+    sys.exit(0 if mode != "contains" else 1)
+
+if not raw.strip():
+    empty_result()
+
+try:
+    data = json.loads(raw, parse_float=str, parse_int=str)
+except json.JSONDecodeError:
+    empty_result()
+
+def emit(cur):
+    if isinstance(cur, bool):
+        print("true" if cur else "false")
+    elif cur is None:
+        print("null")
+    else:
+        print(cur)
+
+if mode == "get":
+    cur = data
+    try:
+        for part in arg.split("."):
+            if part == "":
+                continue
+            if isinstance(cur, list):
+                cur = cur[int(part)]
+            elif isinstance(cur, dict):
+                cur = cur[part]
+            else:
+                sys.exit(0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        sys.exit(0)
+    emit(cur)
+elif mode == "len":
+    print(len(data) if isinstance(data, list) else 0)
+elif mode == "contains":
+    sys.exit(0 if isinstance(data, list) and arg in data else 1)
+elif mode == "count-true":
+    if not isinstance(data, list):
+        print(0)
+    else:
+        print(sum(1 for item in data if isinstance(item, dict) and item.get(arg) is True))
+elif mode == "count-script-suffix":
+    if not isinstance(data, list):
+        print(0)
+    else:
+        print(sum(1 for item in data if isinstance(item, dict) and str(item.get("scriptPubKey", "")).endswith(arg)))
+else:
+    sys.stderr.write("jsonq: unknown mode %s\n" % mode)
+    sys.exit(2)
+' "$1" "${2-}"
+}
 
 # Print header
 clear
@@ -64,7 +137,7 @@ echo -e "${DIM}Testing Dilithium2 (NIST PQC Standard - FIPS 204)${NC}"
 echo -e "${DIM}Signature Size: 2420 bytes | Public Key: 1312 bytes${NC}"
 echo ""
 
-# Step 1: Stop any running btqd
+# Step 1: Isolated datadir only. Do not stop or delete a node on ~/.btq.
 echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
 echo -e "${CYAN}│${NC} ${BOLD}Step 1/12:${NC} Preparing Test Environment                       ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
@@ -98,7 +171,7 @@ $BTQCLI $NETWORK createwallet "$WALLET_NAME" > /dev/null
 
 # Verify wallet type
 WALLET_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getwalletinfo)
-IS_DESCRIPTOR=$(echo "$WALLET_INFO" | grep -o '"descriptors": [^,]*' | grep -o '[^:]*$' | tr -d ' ')
+IS_DESCRIPTOR=$(printf '%s' "$WALLET_INFO" | jsonq get descriptors)
 
 if [ "$IS_DESCRIPTOR" = "true" ]; then
     echo -e "  ${GREEN}${CHECKMARK} Wallet created: ${BOLD}${WALLET_NAME}${NC}"
@@ -124,7 +197,7 @@ echo -e "${CYAN}┌────────────────────�
 echo -e "${CYAN}│${NC} ${BOLD}Step 4/12:${NC} Mining Blocks for Funding                        ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
 echo -e "  ${ARROW} Mining 101 blocks to Dilithium address..."
-BLOCKS=$($BTQCLI $NETWORK generatetoaddress 101 "$DILITHIUM_ADDR" 2>&1 | wc -l)
+BLOCKS=$($BTQCLI $NETWORK generatetoaddress 101 "$DILITHIUM_ADDR" | jsonq len)
 echo -e "  ${GREEN}${CHECKMARK} Mined ${BLOCKS} blocks${NC}"
 echo -e "  ${DIM}(101 blocks ensures coinbase maturity)${NC}"
 echo ""
@@ -138,9 +211,9 @@ BALANCE=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getbalance)
 echo -e "  ${GREEN}${CHECKMARK} Balance: ${BOLD}${BALANCE} BTQ${NC}"
 
 # Get first UTXO for transaction
-UTXO_TXID=$(echo "$UNSPENT" | grep -m1 '"txid"' | cut -d'"' -f4)
-UTXO_VOUT=$(echo "$UNSPENT" | grep -m1 '"vout"' | grep -o '[0-9]*')
-UTXO_AMOUNT=$(echo "$UNSPENT" | grep -m1 '"amount"' | grep -o '[0-9.]*' | tail -1)
+UTXO_TXID=$(printf '%s' "$UNSPENT" | jsonq get 0.txid)
+UTXO_VOUT=$(printf '%s' "$UNSPENT" | jsonq get 0.vout)
+UTXO_AMOUNT=$(printf '%s' "$UNSPENT" | jsonq get 0.amount)
 
 echo -e "  ${DIM}UTXO: ${UTXO_TXID:0:16}...${NC}"
 echo ""
@@ -207,8 +280,8 @@ echo -e "${CYAN}└────────────────────�
 
 # Sign transaction with Dilithium
 SIGNED_TX_JSON=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" signtransactionwithdilithium "$RAW_TX")
-SIGNED_TX=$(echo "$SIGNED_TX_JSON" | grep '"hex"' | cut -d'"' -f4)
-IS_COMPLETE=$(echo "$SIGNED_TX_JSON" | grep '"complete"' | grep -o 'true\|false')
+SIGNED_TX=$(printf '%s' "$SIGNED_TX_JSON" | jsonq get hex)
+IS_COMPLETE=$(printf '%s' "$SIGNED_TX_JSON" | jsonq get complete)
 
 if [ "$IS_COMPLETE" = "true" ]; then
     echo -e "  ${GREEN}${CHECKMARK} Transaction signed with Dilithium${NC}"
@@ -235,8 +308,7 @@ echo -e "  ${GREEN}${CHECKMARK} Transaction broadcast successful!${NC}"
 echo -e "  ${BOLD}TxID: ${MAGENTA}${TX_ID}${NC}"
 
 # Verify transaction is in mempool
-MEMPOOL_TX=$($BTQCLI $NETWORK getrawmempool | grep "$TX_ID" || true)
-if [ -n "$MEMPOOL_TX" ]; then
+if $BTQCLI $NETWORK getrawmempool | jsonq contains "$TX_ID"; then
     echo -e "  ${GREEN}${CHECKMARK} Transaction in mempool${NC}"
 else
     echo -e "  ${RED}${CROSS} Transaction not found in mempool${NC}"
@@ -248,30 +320,27 @@ echo -e "${CYAN}┌────────────────────�
 echo -e "${CYAN}│${NC} ${BOLD}Step 12/12:${NC} Mining Blocks for Confirmation                  ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
 echo -e "  ${ARROW} Mining 6 blocks with witness commitments..."
-MINE_RESULT=$($BTQCLI $NETWORK generatetoaddress 6 "$DILITHIUM_ADDR" 2>&1)
-if [ $? -eq 0 ]; then
-    BLOCKS_MINED=$(echo "$MINE_RESULT" | grep -c '"' || echo "6")
+if $BTQCLI $NETWORK generatetoaddress 6 "$DILITHIUM_ADDR" >/dev/null; then
     echo -e "  ${GREEN}${CHECKMARK} Mined 6 blocks successfully${NC}"
-    
+
     # Wait a moment for the chain to update
     sleep 1
-    
+
     # Verify the transaction is confirmed
     TX_INFO=$($BTQCLI $NETWORK getrawtransaction "$TX_ID" true 2>/dev/null || echo "")
     if [ -n "$TX_INFO" ]; then
-        CONFIRMATIONS=$(echo "$TX_INFO" | grep '"confirmations"' | grep -o '[0-9]*' | head -1 || echo "0")
-        if [ "$CONFIRMATIONS" -gt 0 ] 2>/dev/null; then
+        CONFIRMATIONS=$(printf '%s' "$TX_INFO" | jsonq get confirmations)
+        if [ "${CONFIRMATIONS:-0}" -gt 0 ] 2>/dev/null; then
             echo -e "  ${GREEN}${BOLD}${CHECKMARK} Transaction confirmed with ${CONFIRMATIONS} confirmations!${NC}"
         else
             # Fallback: check blockchain height vs mempool
-            MEMPOOL_CHECK=$($BTQCLI $NETWORK getrawmempool 2>/dev/null | grep "$TX_ID" || echo "")
-            if [ -z "$MEMPOOL_CHECK" ]; then
+            if $BTQCLI $NETWORK getrawmempool 2>/dev/null | jsonq contains "$TX_ID"; then
+                echo -e "  ${YELLOW}⚠ Transaction still in mempool${NC}"
+                CONFIRMATIONS=0
+            else
                 # Not in mempool, so it must be confirmed
                 CONFIRMATIONS=6
                 echo -e "  ${GREEN}${BOLD}${CHECKMARK} Transaction confirmed with 6+ confirmations!${NC}"
-            else
-                echo -e "  ${YELLOW}⚠ Transaction still in mempool${NC}"
-                CONFIRMATIONS=0
             fi
         fi
     else
@@ -293,25 +362,33 @@ FINAL_BALANCE=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getbalance 2>/dev/nul
 FINAL_WALLET_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getwalletinfo 2>/dev/null || echo "{}")
 BLOCKCHAIN_INFO=$($BTQCLI $NETWORK getblockchaininfo 2>/dev/null || echo "{}")
 
-# Extract detailed balance info (compatible grep without -P)
-UNCONFIRMED_BALANCE=$(echo "$FINAL_WALLET_INFO" | grep '"unconfirmed_balance"' | sed 's/.*: \([0-9.]*\).*/\1/' || echo "0.00000000")
-IMMATURE_BALANCE=$(echo "$FINAL_WALLET_INFO" | grep '"immature_balance"' | sed 's/.*: \([0-9.]*\).*/\1/' || echo "0.00000000")
-CHAIN_HEIGHT=$(echo "$BLOCKCHAIN_INFO" | grep '"blocks"' | grep -o '[0-9]*' | head -1 || echo "0")
-TX_COUNT=$(echo "$FINAL_WALLET_INFO" | grep '"txcount"' | grep -o '[0-9]*' | head -1 || echo "0")
+# Extract detailed balance info from the RPC JSON.
+UNCONFIRMED_BALANCE=$(printf '%s' "$FINAL_WALLET_INFO" | jsonq get unconfirmed_balance)
+UNCONFIRMED_BALANCE=${UNCONFIRMED_BALANCE:-0.00000000}
+IMMATURE_BALANCE=$(printf '%s' "$FINAL_WALLET_INFO" | jsonq get immature_balance)
+IMMATURE_BALANCE=${IMMATURE_BALANCE:-0.00000000}
+CHAIN_HEIGHT=$(printf '%s' "$BLOCKCHAIN_INFO" | jsonq get blocks)
+CHAIN_HEIGHT=${CHAIN_HEIGHT:-0}
+TX_COUNT=$(printf '%s' "$FINAL_WALLET_INFO" | jsonq get txcount)
+TX_COUNT=${TX_COUNT:-0}
 
 # Get UTXO breakdown
 UNSPENT_FINAL=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" listunspent || echo "[]")
-UTXO_COUNT=$(echo "$UNSPENT_FINAL" | grep -c '"txid"' || echo "0")
+UTXO_COUNT=$(printf '%s' "$UNSPENT_FINAL" | jsonq len)
 
 # Get detailed address information
 ADDRESS1_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getaddressinfo "$DILITHIUM_ADDR" 2>/dev/null || echo "{}")
 ADDRESS2_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getaddressinfo "$DILITHIUM_ADDR2" 2>/dev/null || echo "{}")
 
-# Extract isMine and isSolvable for addresses
-ADDR1_ISMINE=$(echo "$ADDRESS1_INFO" | grep '"ismine"' | grep -o 'true\|false' | head -1 || echo "unknown")
-ADDR1_SOLVABLE=$(echo "$ADDRESS1_INFO" | grep '"solvable"' | grep -o 'true\|false' | head -1 || echo "unknown")
-ADDR2_ISMINE=$(echo "$ADDRESS2_INFO" | grep '"ismine"' | grep -o 'true\|false' | head -1 || echo "unknown")
-ADDR2_SOLVABLE=$(echo "$ADDRESS2_INFO" | grep '"solvable"' | grep -o 'true\|false' | head -1 || echo "unknown")
+# Extract ismine and solvable for addresses
+ADDR1_ISMINE=$(printf '%s' "$ADDRESS1_INFO" | jsonq get ismine)
+ADDR1_ISMINE=${ADDR1_ISMINE:-unknown}
+ADDR1_SOLVABLE=$(printf '%s' "$ADDRESS1_INFO" | jsonq get solvable)
+ADDR1_SOLVABLE=${ADDR1_SOLVABLE:-unknown}
+ADDR2_ISMINE=$(printf '%s' "$ADDRESS2_INFO" | jsonq get ismine)
+ADDR2_ISMINE=${ADDR2_ISMINE:-unknown}
+ADDR2_SOLVABLE=$(printf '%s' "$ADDRESS2_INFO" | jsonq get solvable)
+ADDR2_SOLVABLE=${ADDR2_SOLVABLE:-unknown}
 
 # Show summary
 echo ""
@@ -432,28 +509,41 @@ echo ""
 echo -e "${BOLD}Total UTXOs:${NC} ${GREEN}${UTXO_COUNT}${NC}"
 echo ""
 
-# Parse and display each UTXO individually
+# Parse and display each UTXO individually. Fields come from python so a
+# descriptor or script that contains quotes cannot shift a cut field.
 UTXO_INDEX=1
-echo "$UNSPENT_FINAL" | python3 -c "
-import json, sys
+printf '%s' "$UNSPENT_FINAL" | python3 -c '
+import json, sys, base64
 try:
     utxos = json.load(sys.stdin)
-    for utxo in utxos:
-        print(json.dumps(utxo))
-except: pass
-" 2>/dev/null | while IFS= read -r utxo_json; do
-    # Extract UTXO fields
-    UTXO_TXID=$(echo "$utxo_json" | grep -o '"txid": "[^"]*"' | cut -d'"' -f4)
-    UTXO_VOUT=$(echo "$utxo_json" | grep -o '"vout": [0-9]*' | grep -o '[0-9]*')
-    UTXO_ADDRESS=$(echo "$utxo_json" | grep -o '"address": "[^"]*"' | cut -d'"' -f4)
-    UTXO_SCRIPTPUBKEY=$(echo "$utxo_json" | grep -o '"scriptPubKey": "[^"]*"' | cut -d'"' -f4)
-    UTXO_AMOUNT=$(echo "$utxo_json" | grep -o '"amount": [0-9.]*' | grep -o '[0-9.]*')
-    UTXO_CONFIRMATIONS=$(echo "$utxo_json" | grep -o '"confirmations": [0-9]*' | grep -o '[0-9]*')
-    UTXO_SPENDABLE=$(echo "$utxo_json" | grep -o '"spendable": [^,]*' | grep -o 'true\|false')
-    UTXO_SOLVABLE=$(echo "$utxo_json" | grep -o '"solvable": [^,]*' | grep -o 'true\|false')
-    UTXO_SAFE=$(echo "$utxo_json" | grep -o '"safe": [^,]*' | grep -o 'true\|false')
-    UTXO_PARENT_DESC=$(echo "$utxo_json" | grep -o '"parent_descs": \[[^]]*' | sed 's/"parent_descs": \["\(.*\)"/\1/' | head -1)
-    
+except Exception:
+    utxos = []
+
+def field(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, float):
+        return "%.8f" % v
+    if v is None:
+        return ""
+    return str(v)
+
+for utxo in utxos:
+    raw = base64.b64encode(json.dumps(utxo).encode()).decode()
+    print("\t".join([
+        str(utxo.get("txid") or ""),
+        field(utxo.get("vout")),
+        str(utxo.get("address") or ""),
+        field(utxo.get("amount")),
+        field(utxo.get("confirmations")),
+        field(utxo.get("spendable")),
+        field(utxo.get("solvable")),
+        field(utxo.get("safe")),
+        raw,
+    ]))
+' | while IFS=$'\t' read -r UTXO_TXID UTXO_VOUT UTXO_ADDRESS UTXO_AMOUNT UTXO_CONFIRMATIONS UTXO_SPENDABLE UTXO_SOLVABLE UTXO_SAFE UTXO_JSON_B64; do
+    UTXO_JSON=$(printf '%s' "$UTXO_JSON_B64" | base64 -d)
+
     # Display UTXO with nice formatting
     echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────┐${NC}"
     echo -e "${CYAN}│  UTXO #${UTXO_INDEX}                                                       ${NC}"
@@ -502,7 +592,7 @@ except: pass
     echo ""
     echo -e "${BOLD}${YELLOW}Complete JSON for UTXO #${UTXO_INDEX}:${NC}"
     echo -e "${DIM}----------------------------------------------------------------${NC}"
-    echo "$utxo_json" | python3 -m json.tool 2>/dev/null || echo "$utxo_json"
+    printf '%s\n' "$UTXO_JSON" | python3 -m json.tool 2>/dev/null || printf '%s\n' "$UTXO_JSON"
     echo ""
     
     UTXO_INDEX=$((UTXO_INDEX + 1))
