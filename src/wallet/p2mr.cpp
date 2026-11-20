@@ -33,6 +33,8 @@
 #include <algorithm>
 #include <optional>
 #include <set>
+#include <stdexcept>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -863,6 +865,70 @@ static bool RestoreAddressBookEntry(CWallet& wallet, const CTxDestination& dest,
     return ok;
 }
 
+// Append a rollback failure onto error. The original failure stays at the
+// front. RestoreAddressBookEntry's own exception is caught here so it cannot
+// replace the caller's error.
+static void NoteAddressBookRollback(CWallet& wallet, const CTxDestination& dest, const std::string& address,
+                                    const std::optional<CAddressBookData>& prior_entry, std::string& error)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    bool ok = false;
+    std::string rollback_error;
+    try {
+        ok = RestoreAddressBookEntry(wallet, dest, prior_entry);
+    } catch (const std::exception& ex) {
+        rollback_error = ex.what();
+    }
+    if (ok) return;
+    wallet.WalletLogPrintf("CreateP2MR: failed to fully roll back address book entry for %s\n", address);
+    error += "; failed to roll back address book entry for ";
+    error += address;
+    if (!rollback_error.empty()) {
+        error += ": ";
+        error += rollback_error;
+    }
+}
+
+// Snapshot the address book, write it when requested, then write metadata.
+// SetAddressBook updates memory and can store the purpose row before the name
+// write fails. SetWalletFlagWithDB throws when the flag row fails. Either
+// way, put the snapshot back and keep the original error. If that rollback
+// fails, append the rollback failure.
+static std::optional<bilingual_str> StoreP2MRRecord(CWallet& wallet, WalletBatch& batch, const P2MRCreated& out,
+                                                   const std::string& label, const std::string& metadata,
+                                                   bool write_address_book)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    std::optional<CAddressBookData> prior_entry;
+    if (write_address_book) {
+        if (const auto* existing = wallet.FindAddressBookEntry(out.dest, /*allow_change=*/true)) {
+            prior_entry = *existing;
+        }
+    }
+    const auto finish = [&](std::string error) {
+        if (write_address_book) {
+            NoteAddressBookRollback(wallet, out.dest, out.address, prior_entry, error);
+        }
+        return Untranslated(error);
+    };
+    try {
+        if (write_address_book && !wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
+            return finish("failed to set P2MR address book entry");
+        }
+        if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, metadata)) {
+            return finish("failed to persist P2MR metadata");
+        }
+    } catch (const std::exception& e) {
+        std::string error{e.what()};
+        if (write_address_book) {
+            NoteAddressBookRollback(wallet, out.dest, out.address, prior_entry, error);
+        }
+        if (error != e.what()) throw std::runtime_error(error);
+        throw;
+    }
+    return std::nullopt;
+}
+
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
@@ -911,14 +977,10 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
         const bool update_created_at = restored_created_at != entry.created_at;
         if (update_label || update_created_at) {
             const std::string restored_label = update_label ? label : entry.label;
-            if (update_label &&
-                !wallet.SetAddressBook(out.dest, restored_label, AddressPurpose::RECEIVE)) {
-                return util::Error{Untranslated("failed to set P2MR address book entry")};
-            }
             WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
             const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, restored_label, leaves, restored_created_at);
-            if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
-                return util::Error{Untranslated("failed to persist P2MR metadata")};
+            if (auto error = StoreP2MRRecord(wallet, batch, out, restored_label, meta.write(), update_label)) {
+                return util::Error{std::move(*error)};
             }
             out.reused = true;
             return out;
@@ -931,21 +993,8 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, label, leaves, ts);
 
     WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
-    // SetAddressBook overwrites any existing label for the destination, so
-    // snapshot the entry first: if the metadata write below fails, this call
-    // must not leave the user's label clobbered on the way out.
-    std::optional<CAddressBookData> prior_entry;
-    if (const auto* entry = wallet.FindAddressBookEntry(out.dest, /*allow_change=*/true)) {
-        prior_entry = *entry;
-    }
-    if (add_to_address_book && !wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
-        return util::Error{Untranslated("failed to set P2MR address book entry")};
-    }
-    if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
-        if (add_to_address_book && !RestoreAddressBookEntry(wallet, out.dest, prior_entry)) {
-            wallet.WalletLogPrintf("CreateP2MR: failed to fully roll back address book entry for %s\n", out.address);
-        }
-        return util::Error{Untranslated("failed to persist P2MR metadata")};
+    if (auto error = StoreP2MRRecord(wallet, batch, out, label, meta.write(), add_to_address_book)) {
+        return util::Error{std::move(*error)};
     }
     return out;
 }
