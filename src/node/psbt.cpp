@@ -8,6 +8,7 @@
 #include <node/psbt.h>
 #include <policy/policy.h>
 #include <policy/settings.h>
+#include <psbt_dilithium.h>
 #include <tinyformat.h>
 
 #include <numeric>
@@ -81,6 +82,46 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
                 }
             } else {
                 input_analysis.next = PSBTRole::FINALIZER;
+            }
+
+            // A recognised Dilithium leaf that the solver did not record still
+            // needs signatures. An unrecognised P2MR spend path has nothing an
+            // updater can infer from has_utxo alone, so name it. Do not
+            // SetInvalid: that drops the input list and reports creator.
+            const P2MRInputInfo p2mr = InspectP2MRInput(psbtx, i);
+            if (p2mr.status == P2MRInputStatus::UNSIGNED || p2mr.status == P2MRInputStatus::PARTIALLY_SIGNED) {
+                input_analysis.is_final = false;
+                if (input_analysis.missing_pubkeys.empty() && input_analysis.missing_redeem_script.IsNull() && input_analysis.missing_witness_script.IsNull()) {
+                    input_analysis.next = PSBTRole::SIGNER;
+                    if (input_analysis.missing_sigs.empty()) {
+                        const PSBTInput& raw = psbtx.inputs[i];
+                        for (const CDilithiumPubKey& pk : p2mr.policy.pubkeys) {
+                            const DilithiumPKHash id{pk};
+                            bool present = false;
+                            for (const auto& [keyid_leaf, pubkey_sig] : raw.m_p2mr_dilithium_script_sigs) {
+                                if (keyid_leaf.first == id && keyid_leaf.second == p2mr.leaf_hash && !pubkey_sig.second.empty()) {
+                                    present = true;
+                                    break;
+                                }
+                            }
+                            if (!present) {
+                                input_analysis.missing_sigs.emplace_back(CKeyID{static_cast<uint160>(id)});
+                            }
+                        }
+                    }
+                }
+            } else if (p2mr.status == P2MRInputStatus::FINALIZABLE) {
+                input_analysis.is_final = false;
+                input_analysis.next = PSBTRole::FINALIZER;
+            } else if (p2mr.status == P2MRInputStatus::UNKNOWN_LEAF &&
+                       input_analysis.has_utxo &&
+                       input_analysis.missing_pubkeys.empty() &&
+                       input_analysis.missing_sigs.empty() &&
+                       input_analysis.missing_redeem_script.IsNull() &&
+                       input_analysis.missing_witness_script.IsNull() &&
+                       result.error.empty()) {
+                input_analysis.is_final = false;
+                result.error = strprintf("Input %u spends a P2MR output but the spend path is not recognised (unknown_leaf)", i);
             }
         } else if (!utxo.IsNull()){
             input_analysis.is_final = true;
