@@ -45,7 +45,6 @@ bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid)
 
 namespace {
 constexpr const char* P2MR_STATE_CREATED{"created"};
-constexpr CAmount DEFAULT_P2MR_DUST_THRESHOLD{546};
 
 struct P2MRKeyRequirements {
     std::set<CKeyID> dilithium_key_ids;
@@ -1151,16 +1150,20 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     }
     out.tx.vout.emplace_back(send_amount, GetScriptForDestination(to_dest));
 
-    // createp2mrspend uses the fixed dust gate (HIGH-13). CreateTransaction's
-    // post-selection swap applies the discard-feerate viability bar (HIGH-22).
+    // Same gate CreateTransaction uses: an output below GetDustThreshold at
+    // the discard feerate is not relayed. A fixed 546 sat gate would now
+    // emit P2MR change the default node treats as dust.
+    const CAmount p2mr_dust = GetDustThreshold(
+        CTxOut{0, GetScriptForDestination(WitnessV2P2MR{uint256::ONE})},
+        GetDiscardRate(wallet));
     if (change_dest) {
-        if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
+        if (change > p2mr_dust) {
             out.change_dest = *change_dest;
             out.tx.vout.emplace_back(change, GetScriptForDestination(out.change_dest));
             out.has_change = true;
             out.change_amount = change;
         }
-    } else if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
+    } else if (change > p2mr_dust) {
         // P2MR change is a new Dilithium key, derived from private key material.
         if (wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) || wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
             return util::Error{Untranslated("This wallet cannot derive a P2MR change address. Pass change_address.")};

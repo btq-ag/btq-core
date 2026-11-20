@@ -21,6 +21,7 @@
 #include <util/vector.h>
 #include <validation.h>
 #include <wallet/coincontrol.h>
+#include <wallet/fees.h>
 #include <wallet/p2mr.h>
 #include <wallet/receive.h>
 #include <wallet/scriptpubkeyman.h>
@@ -958,7 +959,6 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_change_stays_p2mr, TestChain100Setup)
     const CTxDestination recipient{PKHash(recipient_key.GetPubKey())};
     const CAmount send{CENT};
     const CAmount fee{1000};
-    const CAmount dust_gate{546};
 
     // One confirmed output on a fresh OP_TRUE P2MR entry.
     // Callers hold cs_wallet already; the analysis cannot match a shared_ptr
@@ -992,6 +992,14 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_change_stays_p2mr, TestChain100Setup)
         }
         return wallet;
     };
+
+    const CAmount dust_gate = [&] {
+        auto wallet = make_wallet(false);
+        LOCK(wallet->cs_wallet);
+        return GetDustThreshold(
+            CTxOut{0, GetScriptForDestination(WitnessV2P2MR{uint256::ONE})},
+            GetDiscardRate(*wallet));
+    }();
 
     for (const bool descriptors : {true, false}) {
         BOOST_TEST_MESSAGE(strprintf("descriptors=%d", descriptors));

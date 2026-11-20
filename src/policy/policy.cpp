@@ -11,6 +11,7 @@
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
+#include <crypto/dilithium_key.h>
 #include <policy/feerate.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
@@ -21,7 +22,25 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
+
+// Serialized witness for the smallest single-key P2MR spend SignP2MR builds:
+// Dilithium signature plus the hashtype byte, the leaf
+// `<pubkey> OP_CHECKSIGDILITHIUM`, and a depth-0 control block (no merkle
+// nodes). Compact sizes are the same ones CScriptWitness serialization uses.
+static constexpr size_t MinSingleKeyP2MRWitnessBytes()
+{
+    constexpr size_t sig_size = DilithiumConstants::SIGNATURE_SIZE + 1;
+    // OP_PUSHDATA2, uint16 length, pubkey, OP_CHECKSIGDILITHIUM.
+    constexpr size_t leaf_script_size = sizeof(unsigned char) + sizeof(uint16_t) + CDilithiumPubKey::SIZE + sizeof(unsigned char);
+    constexpr size_t control_size = P2MR_CONTROL_BASE_SIZE;
+    constexpr size_t stack_elems = 3;
+    return GetSizeOfCompactSize(stack_elems)
+        + GetSizeOfCompactSize(sig_size) + sig_size
+        + GetSizeOfCompactSize(leaf_script_size) + leaf_script_size
+        + GetSizeOfCompactSize(control_size) + control_size;
+}
 
 CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
 {
@@ -51,10 +70,15 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     // satisfaction is lower (a single BIP340 signature) but this computation was
     // kept to not further reduce the dust level.
     // See discussion in https://github.com/bitcoin/bitcoin/pull/22779 for details.
+    // Witness version 2 is priced from that single-key P2MR spend. The witness
+    // is much larger than 107 bytes, so the P2WPKH figure underprices it.
+    // v0 and v1 stay on the 107-byte estimate. -dustrelayfee still sets the
+    // rate. No consensus constant changes.
     if (txout.scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
+        const size_t witness_bytes = witnessversion == 2 ? MinSingleKeyP2MRWitnessBytes() : 107;
         // sum the sizes of the parts of a transaction input
         // with witness discount applied to the script size (1/WITNESS_SCALE_FACTOR weight).
-        nSize += (32 + 4 + 1 + (107 / WITNESS_SCALE_FACTOR) + 4);
+        nSize += (32 + 4 + 1 + (witness_bytes / WITNESS_SCALE_FACTOR) + 4);
     } else {
         nSize += (32 + 4 + 1 + 107 + 4); // the 148 mentioned above
     }
