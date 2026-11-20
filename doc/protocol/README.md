@@ -6,6 +6,7 @@ the code moves.
 | File | What it holds |
 |---|---|
 | [`protocol-map.md`](protocol-map.md) | Each consensus rule and the area of the tree where it is defined. |
+| [`script-resource-limits.md`](script-resource-limits.md) | Script and block resource limits currently in the tree, including the ones left unchanged. |
 | [`pre-p2mr-script-templates.md`](pre-p2mr-script-templates.md) | The Dilithium script templates that predate the P2MR-only rule. Still present in public testnet history. |
 | [`historical-validation.md`](historical-validation.md) | Historical consensus paths retained for old testnet data, including witness-v0 Dilithium signing and the LWMA activation boundary. |
 

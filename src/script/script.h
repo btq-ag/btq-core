@@ -42,7 +42,7 @@ static constexpr unsigned int MAX_PUBKEYS_PER_MULTI_A = 999;
 // (multiple Dilithium2 signatures/keys plus script overhead).
 static const int MAX_SCRIPT_SIZE = 100000;
 
-// Maximum number of values on script interpreter stack
+// Maximum number of values on script interpreter stack. See doc/protocol/script-resource-limits.md.
 static const int MAX_STACK_SIZE = 1000;
 
 // Threshold for nLockTime: below this value it is interpreted as block number,
