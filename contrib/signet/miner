@@ -18,7 +18,7 @@ PATH_BASE_CONTRIB_SIGNET = os.path.abspath(os.path.dirname(os.path.realpath(__fi
 PATH_BASE_TEST_FUNCTIONAL = os.path.abspath(os.path.join(PATH_BASE_CONTRIB_SIGNET, "..", "..", "test", "functional"))
 sys.path.insert(0, PATH_BASE_TEST_FUNCTIONAL)
 
-from test_framework.blocktools import get_witness_script, script_BIP34_coinbase_height # noqa: E402
+from test_framework.blocktools import MAX_FUTURE_BLOCK_TIME, get_witness_script, script_BIP34_coinbase_height # noqa: E402
 from test_framework.messages import CBlock, CBlockHeader, COutPoint, CTransaction, CTxIn, CTxInWitness, CTxOut, from_binary, from_hex, ser_string, ser_uint256, tx_from_hex # noqa: E402
 from test_framework.psbt import PSBT, PSBTMap, PSBT_GLOBAL_UNSIGNED_TX, PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_SIGHASH_TYPE # noqa: E402
 from test_framework.script import CScriptOp # noqa: E402
@@ -369,8 +369,9 @@ def do_generate(args):
         mine_time = int(mine_time)
         action_time = int(action_time)
 
-        # can't mine a block 2h in the future; 1h55m for some safety
-        action_time = max(action_time, mine_time - 6900)
+        # Rejected if mine_time is more than MAX_FUTURE_BLOCK_TIME (15 min) ahead.
+        # Wait until 5 minutes inside that limit: 900 - 300 = 600.
+        action_time = max(action_time, mine_time - (MAX_FUTURE_BLOCK_TIME - 5 * 60))
 
         # ready to go? otherwise sleep and check for new block
         if now < action_time:
@@ -431,7 +432,11 @@ def do_generate(args):
         logging.info("Mined %s at height %d; next in %s (%s)", bstr, tmpl["height"], seconds_to_hms(next_delta), ("mine" if next_is_mine else "backup"))
         if r != "":
             logging.warning("submitblock returned %s for height %d hash %s", r, tmpl["height"], block.hash)
-        lastheader = block.hash
+            # Keep lastheader on the last accepted header so the next pass
+            # retries this one. Sleep so a rejected block does not grind in a loop.
+            time.sleep(1)
+        else:
+            lastheader = block.hash
 
 def do_calibrate(args):
     if args.nbits is not None and args.seconds is not None:
