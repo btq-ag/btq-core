@@ -108,6 +108,11 @@ static constexpr bool DEFAULT_FIXEDSEEDS{true};
 static const size_t DEFAULT_MAXRECEIVEBUFFER = 5 * 1000;
 static const size_t DEFAULT_MAXSENDBUFFER    = 1 * 1000;
 
+/** v2 is on by default. BIP324 stays for classical traffic privacy.
+ *  The handshake is ElligatorSwift ECDH over secp256k1, not post-quantum.
+ *  The HKDF salt is "btq_v2_shared_secret" plus this network's message
+ *  start (mainnet is f1b2a3d4).
+ */
 static constexpr bool DEFAULT_V2_TRANSPORT{true};
 
 typedef int64_t NodeId;
