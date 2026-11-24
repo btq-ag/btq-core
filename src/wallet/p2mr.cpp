@@ -1245,23 +1245,12 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     return out;
 }
 
-util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
-                                                  const CMutableTransaction& tx_in,
-                                                  const std::optional<std::string>& only_id)
+static P2MRSpendSigned SignP2MRInputs(CMutableTransaction tx,
+                                        const FlatSigningProvider& p2mr_provider,
+                                        const std::map<COutPoint, Coin>& coins)
 {
-    AssertLockHeld(wallet.cs_wallet);
     P2MRSpendSigned out;
-    out.tx = tx_in;
-
-    std::map<COutPoint, Coin> coins;
-    for (const CTxIn& txin : out.tx.vin) coins[txin.prevout];
-    wallet.chain().findCoins(coins);
-
-    FlatSigningProvider p2mr_provider = BuildP2MRSigningProvider(wallet, only_id);
-
-    // First let wallet sign any non-P2MR inputs (e.g. legacy/segwit change being consolidated).
-    std::map<int, bilingual_str> ignored_errors;
-    wallet.SignTransaction(out.tx, coins, SIGHASH_DEFAULT, ignored_errors);
+    out.tx = std::move(tx);
 
     std::vector<CTxOut> spent_outputs;
     spent_outputs.reserve(out.tx.vin.size());
@@ -1320,6 +1309,76 @@ util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
 
     out.complete = complete;
     return out;
+}
+
+util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
+                                                  const CMutableTransaction& tx_in,
+                                                  const std::optional<std::string>& only_id)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    CMutableTransaction tx = tx_in;
+
+    std::map<COutPoint, Coin> coins;
+    for (const CTxIn& txin : tx.vin) coins[txin.prevout];
+    wallet.chain().findCoins(coins);
+
+    FlatSigningProvider p2mr_provider = BuildP2MRSigningProvider(wallet, only_id);
+
+    // First let wallet sign any non-P2MR inputs (e.g. legacy/segwit change being consolidated).
+    std::map<int, bilingual_str> ignored_errors;
+    wallet.SignTransaction(tx, coins, SIGHASH_DEFAULT, ignored_errors);
+
+    return SignP2MRInputs(std::move(tx), p2mr_provider, coins);
+}
+
+P2MRSpendSigned SignP2MRTransactionOutsideLock(CWallet& wallet,
+                                               CMutableTransaction tx_in,
+                                               const std::optional<std::string>& only_id)
+{
+    FlatSigningProvider p2mr_provider;
+    std::map<COutPoint, Coin> coins;
+    std::vector<COutPoint> locked_by_us;
+    {
+        LOCK(wallet.cs_wallet);
+        for (const CTxIn& txin : tx_in.vin) coins[txin.prevout];
+        wallet.chain().findCoins(coins);
+        if (only_id) {
+            p2mr_provider = BuildP2MRSigningProvider(wallet, only_id);
+        } else {
+            // Only the destinations this transaction spends. A pool wallet can
+            // hold thousands of P2MR entries, and loading all of them stalls
+            // every other RPC behind cs_wallet.
+            std::set<WitnessV2P2MR> seen;
+            for (const auto& [outpoint, coin] : coins) {
+                if (coin.IsSpent()) continue;
+                CTxDestination dest;
+                if (!ExtractDestination(coin.out.scriptPubKey, dest) || !std::holds_alternative<WitnessV2P2MR>(dest)) continue;
+                if (!seen.insert(std::get<WitnessV2P2MR>(dest)).second) continue;
+                p2mr_provider.Merge(BuildP2MRSigningProviderForDestination(wallet, dest));
+            }
+        }
+
+        std::map<int, bilingual_str> ignored_errors;
+        wallet.SignTransaction(tx_in, coins, SIGHASH_DEFAULT, ignored_errors, /*sign_p2mr=*/false);
+        for (const CTxIn& txin : tx_in.vin) {
+            if (wallet.IsMine(txin.prevout) == ISMINE_NO || wallet.IsLockedCoin(txin.prevout)) continue;
+            wallet.LockCoin(txin.prevout);
+            locked_by_us.push_back(txin.prevout);
+        }
+    }
+
+    P2MRSpendSigned signed_tx;
+    try {
+        signed_tx = SignP2MRInputs(std::move(tx_in), p2mr_provider, coins);
+    } catch (...) {
+        LOCK(wallet.cs_wallet);
+        for (const COutPoint& outpoint : locked_by_us) wallet.UnlockCoin(outpoint);
+        throw;
+    }
+
+    LOCK(wallet.cs_wallet);
+    for (const COutPoint& outpoint : locked_by_us) wallet.UnlockCoin(outpoint);
+    return signed_tx;
 }
 
 P2MRMempoolAccept TestP2MRTransaction(CWallet& wallet, const CMutableTransaction& tx)

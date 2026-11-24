@@ -419,19 +419,15 @@ RPCHelpMan signp2mrtransaction()
                 throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
             }
 
-            LOCK(pwallet->cs_wallet);
             const std::optional<std::string> only_id = request.params[1].isNull()
                 ? std::nullopt
                 : std::optional<std::string>(request.params[1].get_str());
 
-            auto signed_res = SignP2MRTransaction(*pwallet, mtx, only_id);
-            if (!signed_res) {
-                throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(signed_res).original);
-            }
+            const P2MRSpendSigned signed_res = SignP2MRTransactionOutsideLock(*pwallet, std::move(mtx), only_id);
 
             UniValue out(UniValue::VOBJ);
-            out.pushKV("hex", EncodeHexTx(CTransaction(signed_res->tx)));
-            out.pushKV("complete", signed_res->complete);
+            out.pushKV("hex", EncodeHexTx(CTransaction(signed_res.tx)));
+            out.pushKV("complete", signed_res.complete);
             return out;
         },
     };

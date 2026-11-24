@@ -761,7 +761,7 @@ class WalletTest(BTQTestFramework):
                     "timestamp": "now",
                 },
             ])
-            coins = wo_wallet.listunspent(minconf=0)
+            coins = wo_wallet.listunspent(minconf=0, query_options={"fast": False})
             assert_equal(len(coins), 2)
             coin_a = next(c for c in coins if c["txid"] == txid_a)
             assert_equal(coin_a["parent_descs"][0], multi_a)

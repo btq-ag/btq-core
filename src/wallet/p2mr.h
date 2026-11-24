@@ -231,6 +231,15 @@ util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
                                                   const CMutableTransaction& tx_in,
                                                   const std::optional<std::string>& only_id) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
+/**
+ * Same result as SignP2MRTransaction, but the Dilithium signatures run without
+ * cs_wallet. Selected wallet inputs are locked for that window so a concurrent
+ * spend cannot take them.
+ */
+P2MRSpendSigned SignP2MRTransactionOutsideLock(CWallet& wallet,
+                                               CMutableTransaction tx_in,
+                                               const std::optional<std::string>& only_id);
+
 /** Dry-run mempool accept (no broadcast/relay). */
 P2MRMempoolAccept TestP2MRTransaction(CWallet& wallet, const CMutableTransaction& tx);
 

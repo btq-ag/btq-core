@@ -739,8 +739,9 @@ RPCHelpMan createdilithiummultisig()
 RPCHelpMan signtransactionwithdilithium()
 {
     return RPCHelpMan{"signtransactionwithdilithium",
-        "\nDEPRECATED: legacy Dilithium BASE/witness-v0 signing is consensus-invalid.\n"
-        "Use signp2mrtransaction for P2MR Dilithium spends.\n",
+        "\nSign a raw transaction's P2MR Dilithium inputs with this wallet.\n"
+        "Kept under the old name because the mining pool calls it. Legacy BASE\n"
+        "signing is not performed; inputs are signed as P2MR tapscript.\n",
         {
             {"hexstring", RPCArg::Type::STR, RPCArg::Optional::NO, "The transaction hex string"},
             {"prevtxs", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "Ignored",
@@ -771,8 +772,20 @@ RPCHelpMan signtransactionwithdilithium()
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
-            throw JSONRPCError(RPC_METHOD_DEPRECATED,
-                "signtransactionwithdilithium is disabled: Dilithium opcodes are consensus-valid only in P2MR tapscript. Use signp2mrtransaction.");
+            std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+            if (!pwallet) return UniValue::VNULL;
+            EnsureWalletIsUnlocked(*pwallet);
+
+            CMutableTransaction mtx;
+            if (!DecodeHexTx(mtx, request.params[0].get_str(), /*try_no_witness=*/true, /*try_witness=*/true)) {
+                throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
+            }
+
+            const P2MRSpendSigned signed_res = SignP2MRTransactionOutsideLock(*pwallet, std::move(mtx), std::nullopt);
+            UniValue result(UniValue::VOBJ);
+            result.pushKV("hex", EncodeHexTx(CTransaction(signed_res.tx)));
+            result.pushKV("complete", signed_res.complete);
+            return result;
         },
     };
 }

@@ -514,14 +514,26 @@ CoinsResult AvailableCoins(const CWallet& wallet,
                 continue;
             }
 
-            std::unique_ptr<SigningProvider> provider = wallet.GetSolvingProvider(output.scriptPubKey);
+            std::unique_ptr<SigningProvider> provider;
+            int input_bytes;
+            bool solvable;
+            bool spendable;
+            if (params.skip_input_size) {
+                // Listing only. A spendable output is one we have keys for;
+                // the signed size is not needed and is the slow part for Dilithium.
+                solvable = (mine & ISMINE_SPENDABLE) != ISMINE_NO;
+                input_bytes = solvable ? 0 : -1;
+                spendable = solvable || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && coinControl && coinControl->fAllowWatchOnly);
+            } else {
+                provider = wallet.GetSolvingProvider(output.scriptPubKey);
 
-            int input_bytes = CalculateMaximumSignedInputSize(output, COutPoint(), provider.get(), can_grind_r, coinControl);
-            input_bytes = ApplyTaprootKeyPathVsize(wallet, output.scriptPubKey, input_bytes);
-            // Because CalculateMaximumSignedInputSize infers a solvable descriptor to get the satisfaction size,
-            // it is safe to assume that this input is solvable if input_bytes is greater than -1.
-            bool solvable = input_bytes > -1;
-            bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO) || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && (coinControl && coinControl->fAllowWatchOnly && solvable));
+                input_bytes = CalculateMaximumSignedInputSize(output, COutPoint(), provider.get(), can_grind_r, coinControl);
+                input_bytes = ApplyTaprootKeyPathVsize(wallet, output.scriptPubKey, input_bytes);
+                // Because CalculateMaximumSignedInputSize infers a solvable descriptor to get the satisfaction size,
+                // it is safe to assume that this input is solvable if input_bytes is greater than -1.
+                solvable = input_bytes > -1;
+                spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO) || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && (coinControl && coinControl->fAllowWatchOnly && solvable));
+            }
 
             // Filter by spendable outputs only
             if (!spendable && params.only_spendable) continue;
@@ -535,7 +547,7 @@ CoinsResult AvailableCoins(const CWallet& wallet,
             // this from the redeemScript. If the output is not solvable, it will be classified
             // as a P2SH (legacy), since we have no way of knowing otherwise without the redeemScript
             bool is_from_p2sh{false};
-            if (type == TxoutType::SCRIPTHASH && solvable) {
+            if (type == TxoutType::SCRIPTHASH && solvable && provider) {
                 CScript script;
                 if (!provider->GetCScript(CScriptID(uint160(script_solutions[0])), script)) continue;
                 type = Solver(script, script_solutions);
@@ -1515,23 +1527,24 @@ util::Result<CreatedTransactionResult> CreateTransaction(
         return util::Error{_("Transaction amounts must not be negative")};
     }
 
-    LOCK(wallet.cs_wallet);
+    WAIT_LOCK(wallet.cs_wallet, wallet_lock);
 
-    auto res = CreateTransactionInternal(wallet, vecSend, change_pos, coin_control, sign);
+    // Select unsigned. Dilithium signing happens below, after this lock is dropped.
+    auto res = CreateTransactionInternal(wallet, vecSend, change_pos, coin_control, /*sign=*/false);
     TRACE4(coin_selection, normal_create_tx_internal, wallet.GetName().c_str(), bool(res),
            res ? res->fee : 0, res ? res->change_pos : 0);
     if (!res) return res;
-    const auto& txr_ungrouped = *res;
+    CreatedTransactionResult chosen = *res;
     // try with avoidpartialspends unless it's enabled already
-    if (txr_ungrouped.fee > 0 /* 0 means non-functional fee rate estimation */ && wallet.m_max_aps_fee > -1 && !coin_control.m_avoid_partial_spends) {
+    if (chosen.fee > 0 /* 0 means non-functional fee rate estimation */ && wallet.m_max_aps_fee > -1 && !coin_control.m_avoid_partial_spends) {
         TRACE1(coin_selection, attempting_aps_create_tx, wallet.GetName().c_str());
         CCoinControl tmp_cc = coin_control;
         tmp_cc.m_avoid_partial_spends = true;
 
         // Re-use the change destination from the first creation attempt to avoid skipping BIP44 indexes
-        const int ungrouped_change_pos = txr_ungrouped.change_pos;
+        const int ungrouped_change_pos = chosen.change_pos;
         if (ungrouped_change_pos != -1) {
-            ExtractDestination(txr_ungrouped.tx->vout[ungrouped_change_pos].scriptPubKey, tmp_cc.destChange);
+            ExtractDestination(chosen.tx->vout[ungrouped_change_pos].scriptPubKey, tmp_cc.destChange);
             // This pin comes from the wallet, not the user. The grouped pass
             // may select different inputs, so if it picks quantum-safe ones
             // the input-following change swap must still be allowed to replace
@@ -1539,18 +1552,60 @@ util::Result<CreatedTransactionResult> CreateTransaction(
             tmp_cc.m_change_reused_from_first_attempt = std::get_if<CNoDestination>(&coin_control.destChange) != nullptr;
         }
 
-        auto txr_grouped = CreateTransactionInternal(wallet, vecSend, change_pos, tmp_cc, sign);
+        auto txr_grouped = CreateTransactionInternal(wallet, vecSend, change_pos, tmp_cc, /*sign=*/false);
         // if fee of this alternative one is within the range of the max fee, we use this one
-        const bool use_aps{txr_grouped.has_value() ? (txr_grouped->fee <= txr_ungrouped.fee + wallet.m_max_aps_fee) : false};
+        const bool use_aps{txr_grouped.has_value() ? (txr_grouped->fee <= chosen.fee + wallet.m_max_aps_fee) : false};
         TRACE5(coin_selection, aps_create_tx_internal, wallet.GetName().c_str(), use_aps, txr_grouped.has_value(),
                txr_grouped.has_value() ? txr_grouped->fee : 0, txr_grouped.has_value() ? txr_grouped->change_pos : 0);
         if (txr_grouped) {
             wallet.WalletLogPrintf("Fee non-grouped = %lld, grouped = %lld, using %s\n",
-                txr_ungrouped.fee, txr_grouped->fee, use_aps ? "grouped" : "non-grouped");
-            if (use_aps) return txr_grouped;
+                chosen.fee, txr_grouped->fee, use_aps ? "grouped" : "non-grouped");
+            if (use_aps) chosen = *txr_grouped;
         }
     }
-    return res;
+    if (!sign) return chosen;
+
+    CMutableTransaction mtx{*chosen.tx};
+    std::map<COutPoint, Coin> coins;
+    FlatSigningProvider provider;
+    std::vector<COutPoint> locked_by_us;
+    for (const CTxIn& txin : mtx.vin) {
+        const CWalletTx* wtx = wallet.GetWalletTx(txin.prevout.hash);
+        if (!wtx || txin.prevout.n >= wtx->tx->vout.size()) {
+            for (const COutPoint& outpoint : locked_by_us) wallet.UnlockCoin(outpoint);
+            return util::Error{_("Signing transaction failed")};
+        }
+        const CTxOut& prevout = wtx->tx->vout[txin.prevout.n];
+        const int prev_height = wtx->state<TxStateConfirmed>() ? wtx->state<TxStateConfirmed>()->confirmed_block_height : 0;
+        coins.emplace(txin.prevout, Coin(prevout, prev_height, wtx->IsCoinBase()));
+        CTxDestination dest;
+        if (ExtractDestination(prevout.scriptPubKey, dest) && std::holds_alternative<WitnessV2P2MR>(dest)) {
+            provider.Merge(BuildP2MRSigningProviderForDestination(wallet, dest));
+        }
+        if (!wallet.IsLockedCoin(txin.prevout)) {
+            wallet.LockCoin(txin.prevout);
+            locked_by_us.push_back(txin.prevout);
+        }
+    }
+
+    std::map<int, bilingual_str> input_errors;
+    // Non-P2MR inputs are fast. P2MR signatures run without cs_wallet.
+    bool ok = wallet.SignTransaction(mtx, coins, SIGHASH_DEFAULT, input_errors, /*sign_p2mr=*/false);
+    if (!provider.p2mr_trees.empty()) {
+        try {
+            REVERSE_LOCK(wallet_lock);
+            ok = ::SignTransaction(mtx, &provider, coins, SIGHASH_DEFAULT, input_errors);
+        } catch (...) {
+            for (const COutPoint& outpoint : locked_by_us) wallet.UnlockCoin(outpoint);
+            throw;
+        }
+    }
+    for (const COutPoint& outpoint : locked_by_us) wallet.UnlockCoin(outpoint);
+    if (!ok) return util::Error{_("Signing transaction failed")};
+    if (GetTransactionWeight(CTransaction(mtx)) > MAX_STANDARD_TX_WEIGHT) {
+        return util::Error{_("Transaction too large")};
+    }
+    return CreatedTransactionResult(MakeTransactionRef(std::move(mtx)), chosen.fee, chosen.change_pos, chosen.fee_calc);
 }
 
 bool FundTransaction(CWallet& wallet, CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, bool lockUnspents, const std::set<int>& setSubtractFeeFromOutputs, CCoinControl coinControl)

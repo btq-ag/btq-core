@@ -139,6 +139,21 @@ BOOST_FIXTURE_TEST_CASE(wallet_duplicated_preset_inputs_test, TestChain100Setup)
     BOOST_CHECK(!res_tx.has_value());
 }
 
+BOOST_FIXTURE_TEST_CASE(skip_input_size_keeps_spendable_total, TestChain100Setup)
+{
+    CreateAndProcessBlock({}, GetScriptForRawPubKey(coinbaseKey.GetPubKey()));
+    auto wallet = CreateSyncedWallet(*m_node.chain, WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain()), coinbaseKey);
+
+    CoinFilterParams fast;
+    fast.skip_input_size = true;
+    LOCK(wallet->cs_wallet);
+    CoinsResult sized = AvailableCoins(*wallet);
+    CoinsResult skipped = AvailableCoins(*wallet, /*coinControl=*/nullptr, /*feerate=*/std::nullopt, fast);
+    BOOST_CHECK(skipped.Size() > 0);
+    BOOST_CHECK_EQUAL(sized.Size(), skipped.Size());
+    BOOST_CHECK_EQUAL(sized.GetTotalAmount(), skipped.GetTotalAmount());
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_FIXTURE_TEST_SUITE(descriptor_p2sh_segwit_tests, BasicTestingSetup)

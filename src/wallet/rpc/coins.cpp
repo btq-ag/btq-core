@@ -520,7 +520,8 @@ RPCHelpMan listunspent()
                             {"maximumAmount", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"unlimited"}, "Maximum value of each UTXO in " + CURRENCY_UNIT + ""},
                             {"maximumCount", RPCArg::Type::NUM, RPCArg::DefaultHint{"unlimited"}, "Maximum number of UTXOs"},
                             {"minimumSumAmount", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"unlimited"}, "Minimum sum value of all UTXOs in " + CURRENCY_UNIT + ""},
-                            {"include_immature_coinbase", RPCArg::Type::BOOL, RPCArg::Default{false}, "Include immature coinbase UTXOs"}
+                            {"include_immature_coinbase", RPCArg::Type::BOOL, RPCArg::Default{false}, "Include immature coinbase UTXOs"},
+                            {"fast", RPCArg::Type::BOOL, RPCArg::Default{true}, "Skip signed-size and descriptor fields (redeemScript, desc, parent_descs). This pool build defaults to true."}
                         },
                         RPCArgOptions{.oneline_description="query_options"}},
                 },
@@ -545,7 +546,7 @@ RPCHelpMan listunspent()
                             {RPCResult::Type::BOOL, "solvable", "Whether we know how to spend this output, ignoring the lack of keys"},
                             {RPCResult::Type::BOOL, "reused", /*optional=*/true, "(only present if avoid_reuse is set) Whether this output is reused/dirty (sent to an address that was previously spent from)"},
                             {RPCResult::Type::STR, "desc", /*optional=*/true, "(only when solvable) A descriptor for spending this output"},
-                            {RPCResult::Type::ARR, "parent_descs", /*optional=*/false, "List of parent descriptors for the scriptPubKey of this coin.", {
+                            {RPCResult::Type::ARR, "parent_descs", /*optional=*/true, "List of parent descriptors for the scriptPubKey of this coin. Omitted when fast is true.", {
                                 {RPCResult::Type::STR, "desc", "The descriptor string."},
                             }},
                             {RPCResult::Type::BOOL, "safe", "Whether this output is considered safe to spend. Unconfirmed transactions\n"
@@ -598,6 +599,7 @@ RPCHelpMan listunspent()
 
     CoinFilterParams filter_coins;
     filter_coins.min_amount = 0;
+    filter_coins.skip_input_size = true;
 
     if (!request.params[4].isNull()) {
         const UniValue& options = request.params[4].get_obj();
@@ -608,7 +610,8 @@ RPCHelpMan listunspent()
                 {"maximumAmount", UniValueType()},
                 {"minimumSumAmount", UniValueType()},
                 {"maximumCount", UniValueType(UniValue::VNUM)},
-                {"include_immature_coinbase", UniValueType(UniValue::VBOOL)}
+                {"include_immature_coinbase", UniValueType(UniValue::VBOOL)},
+                {"fast", UniValueType(UniValue::VBOOL)}
             },
             true, true);
 
@@ -626,6 +629,10 @@ RPCHelpMan listunspent()
 
         if (options.exists("include_immature_coinbase")) {
             filter_coins.include_immature_coinbase = options["include_immature_coinbase"].get_bool();
+        }
+
+        if (options.exists("fast")) {
+            filter_coins.skip_input_size = options["fast"].get_bool();
         }
     }
 
@@ -670,33 +677,35 @@ RPCHelpMan listunspent()
                 entry.pushKV("label", address_book_entry->GetLabel());
             }
 
-            std::unique_ptr<SigningProvider> provider = pwallet->GetSolvingProvider(scriptPubKey);
-            if (provider) {
-                if (scriptPubKey.IsPayToScriptHash()) {
-                    const CScriptID hash = ToScriptID(std::get<ScriptHash>(address));
-                    CScript redeemScript;
-                    if (provider->GetCScript(hash, redeemScript)) {
-                        entry.pushKV("redeemScript", HexStr(redeemScript));
-                        // Now check if the redeemScript is actually a P2WSH script
-                        CTxDestination witness_destination;
-                        if (redeemScript.IsPayToWitnessScriptHash()) {
-                            bool extracted = ExtractDestination(redeemScript, witness_destination);
-                            CHECK_NONFATAL(extracted);
-                            // Also return the witness script
-                            const WitnessV0ScriptHash& whash = std::get<WitnessV0ScriptHash>(witness_destination);
-                            CScriptID id{RIPEMD160(whash)};
-                            CScript witnessScript;
-                            if (provider->GetCScript(id, witnessScript)) {
-                                entry.pushKV("witnessScript", HexStr(witnessScript));
+            if (!filter_coins.skip_input_size) {
+                std::unique_ptr<SigningProvider> provider = pwallet->GetSolvingProvider(scriptPubKey);
+                if (provider) {
+                    if (scriptPubKey.IsPayToScriptHash()) {
+                        const CScriptID hash = ToScriptID(std::get<ScriptHash>(address));
+                        CScript redeemScript;
+                        if (provider->GetCScript(hash, redeemScript)) {
+                            entry.pushKV("redeemScript", HexStr(redeemScript));
+                            // Now check if the redeemScript is actually a P2WSH script
+                            CTxDestination witness_destination;
+                            if (redeemScript.IsPayToWitnessScriptHash()) {
+                                bool extracted = ExtractDestination(redeemScript, witness_destination);
+                                CHECK_NONFATAL(extracted);
+                                // Also return the witness script
+                                const WitnessV0ScriptHash& whash = std::get<WitnessV0ScriptHash>(witness_destination);
+                                CScriptID id{RIPEMD160(whash)};
+                                CScript witnessScript;
+                                if (provider->GetCScript(id, witnessScript)) {
+                                    entry.pushKV("witnessScript", HexStr(witnessScript));
+                                }
                             }
                         }
-                    }
-                } else if (scriptPubKey.IsPayToWitnessScriptHash()) {
-                    const WitnessV0ScriptHash& whash = std::get<WitnessV0ScriptHash>(address);
-                    CScriptID id{RIPEMD160(whash)};
-                    CScript witnessScript;
-                    if (provider->GetCScript(id, witnessScript)) {
-                        entry.pushKV("witnessScript", HexStr(witnessScript));
+                    } else if (scriptPubKey.IsPayToWitnessScriptHash()) {
+                        const WitnessV0ScriptHash& whash = std::get<WitnessV0ScriptHash>(address);
+                        CScriptID id{RIPEMD160(whash)};
+                        CScript witnessScript;
+                        if (provider->GetCScript(id, witnessScript)) {
+                            entry.pushKV("witnessScript", HexStr(witnessScript));
+                        }
                     }
                 }
             }
@@ -717,14 +726,16 @@ RPCHelpMan listunspent()
         }
         entry.pushKV("spendable", out.spendable);
         entry.pushKV("solvable", out.solvable);
-        if (out.solvable) {
-            std::unique_ptr<SigningProvider> provider = pwallet->GetSolvingProvider(scriptPubKey);
-            if (provider) {
-                auto descriptor = InferDescriptor(scriptPubKey, *provider);
-                entry.pushKV("desc", descriptor->ToString());
+        if (!filter_coins.skip_input_size) {
+            if (out.solvable) {
+                std::unique_ptr<SigningProvider> provider = pwallet->GetSolvingProvider(scriptPubKey);
+                if (provider) {
+                    auto descriptor = InferDescriptor(scriptPubKey, *provider);
+                    entry.pushKV("desc", descriptor->ToString());
+                }
             }
+            PushParentDescriptors(*pwallet, scriptPubKey, entry);
         }
-        PushParentDescriptors(*pwallet, scriptPubKey, entry);
         if (avoid_reuse) entry.pushKV("reused", reused);
         entry.pushKV("safe", out.safe);
         results.push_back(entry);
@@ -732,6 +743,71 @@ RPCHelpMan listunspent()
 
     return results;
 },
+    };
+}
+
+RPCHelpMan getunspentcount()
+{
+    return RPCHelpMan{
+        "getunspentcount",
+        "\nReturns how many spendable outputs the wallet has, and their total amount,\n"
+        "without building a listunspent record or calculating signed input sizes.\n",
+        {
+            {"minconf", RPCArg::Type::NUM, RPCArg::Default{1}, "The minimum confirmations to filter"},
+            {"maxconf", RPCArg::Type::NUM, RPCArg::Default{9999999}, "The maximum confirmations to filter"},
+            {"include_unsafe", RPCArg::Type::BOOL, RPCArg::Default{true}, "Include outputs that are not safe to spend"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::NUM, "count", "Number of spendable outputs"},
+                {RPCResult::Type::STR_AMOUNT, "amount", "Total amount of those outputs in " + CURRENCY_UNIT},
+            }
+        },
+        RPCExamples{
+            HelpExampleCli("getunspentcount", "")
+            + HelpExampleRpc("getunspentcount", "1, 9999999, true")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            const std::shared_ptr<const CWallet> pwallet = GetWalletForJSONRPCRequest(request);
+            if (!pwallet) return UniValue::VNULL;
+
+            int nMinDepth = 1;
+            if (!request.params[0].isNull()) {
+                nMinDepth = request.params[0].getInt<int>();
+            }
+            int nMaxDepth = 9999999;
+            if (!request.params[1].isNull()) {
+                nMaxDepth = request.params[1].getInt<int>();
+            }
+            bool include_unsafe = true;
+            if (!request.params[2].isNull()) {
+                include_unsafe = request.params[2].get_bool();
+            }
+
+            pwallet->BlockUntilSyncedToCurrentChain();
+
+            CCoinControl cctl;
+            cctl.m_avoid_address_reuse = false;
+            cctl.m_min_depth = nMinDepth;
+            cctl.m_max_depth = nMaxDepth;
+            cctl.m_include_unsafe_inputs = include_unsafe;
+            CoinFilterParams filter;
+            filter.min_amount = 0;
+            filter.skip_input_size = true;
+
+            CoinsResult coins;
+            {
+                LOCK(pwallet->cs_wallet);
+                coins = AvailableCoins(*pwallet, &cctl, /*feerate=*/std::nullopt, filter);
+            }
+
+            UniValue result(UniValue::VOBJ);
+            result.pushKV("count", int64_t(coins.Size()));
+            result.pushKV("amount", ValueFromAmount(coins.GetTotalAmount()));
+            return result;
+        },
     };
 }
 } // namespace wallet

@@ -83,10 +83,10 @@ class DilithiumActivationTest(BTQTestFramework):
         assert_equal(len(dil_utxos), 1)
         dest = node.getnewaddress()
 
-        self.log.info('Legacy signtransactionwithdilithium is disabled')
+        self.log.info('signtransactionwithdilithium signs P2MR and does not accept legacy hex')
         assert_raises_rpc_error(
-            -32,
-            "signtransactionwithdilithium is disabled",
+            -22,
+            "TX decode failed",
             node.signtransactionwithdilithium,
             "00",
         )

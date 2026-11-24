@@ -2195,7 +2195,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
     return SignTransaction(tx, coins, SIGHASH_DEFAULT, input_errors);
 }
 
-bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors) const
+bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, bilingual_str>& input_errors, bool sign_p2mr) const
 {
     AssertLockHeld(cs_wallet);
     // Try to sign with all ScriptPubKeyMans
@@ -2206,6 +2206,9 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
             return true;
         }
     }
+
+    // Caller signs P2MR after dropping cs_wallet. The signatures are the slow part.
+    if (!sign_p2mr) return false;
 
     // P2MR destinations are tracked outside ScriptPubKeyMans. Merge their
     // builders/keys and retry so ordinary send/fund paths can spend Dilithium

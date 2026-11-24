@@ -78,6 +78,10 @@ struct CoinFilterParams {
     bool include_immature_coinbase{false};
     // By default, skip locked UTXOs
     bool skip_locked{true};
+    // Pool listing only. Skip the signed-size and descriptor solve.
+    // Do not set this on a coin-selection path: input_bytes would be a dummy.
+    // shortcut: the wallet is still scanned output by output; add an unspent index if that scan dominates.
+    bool skip_input_size{false};
 };
 
 /**
