@@ -60,6 +60,15 @@ jobs:
       # in the archive. No TTY on the runner, so this drops -t from the
       # command in test/lint/README.md. The entrypoint still runs the linters.
       - name: Lint
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            merge_base=$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")
+            export COMMIT_RANGE="$merge_base..$PR_HEAD_SHA"
+          else
+            export COMMIT_RANGE=SKIP_EMPTY_NOT_A_PR
+          fi
           DOCKER_BUILDKIT=1 docker build -t btq-linter --file "./ci/lint_imagefile" ./
-          docker run --rm -v "$PWD":/btq btq-linter
+          docker run --rm --env COMMIT_RANGE -v "$PWD":/btq btq-linter

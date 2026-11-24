@@ -89,12 +89,16 @@ jobs:
         run: make $MAKEJOBS
 
       - name: Run functional tests
-        # Keep the log for the artifact. pipefail so a failing runner fails the step.
+        id: run-functional-tests
         run: |
           set -o pipefail
           test/functional/test_runner.py --ci --quiet --extended --coverage --jobs 8 \
             --tmpdirprefix "$RUNNER_TEMP" --timeout-factor=4 \
             2>&1 | tee "$RUNNER_TEMP/functional.log"
+
+      - name: Validate functional test results
+        if: ${{ !cancelled() && steps.run-functional-tests.outcome != 'skipped' }}
+        run: python3 ci/test/check_functional_test_results.py --extended --coverage "$RUNNER_TEMP/functional.log"
 
       - name: Upload test_runner output
         if: always()
