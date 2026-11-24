@@ -23,6 +23,8 @@
 # Takes about a minute. Run it after touching anything under
 # src/crypto/dilithium/ref/, and before a release.
 
+export LC_ALL=C
+
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
