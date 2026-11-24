@@ -994,6 +994,7 @@ public:
     //! Make a LegacyScriptPubKeyMan and set it for all types, internal, and external.
     void SetupLegacyScriptPubKeyMan();
 
+    RecursiveMutex& GetWalletMutex() const override LOCK_RETURNED(cs_wallet) { return cs_wallet; }
     bool WithEncryptionKey(std::function<bool (const CKeyingMaterial&)> cb) const override;
     bool HasEncryptionKeys() const override;
     bool HaveDilithiumKeyAnywhere(const CKeyID& keyid) const override;
