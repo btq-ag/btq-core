@@ -137,7 +137,11 @@ is the fallback.
 
 ### For Users
 
-- **Verify Downloads**: Always check SHA256SUMS and GPG signatures
+BTQ Core currently distributes unsigned release binaries. Use the
+[project download page](https://bitcoinquantum.com/download). Signed checksums
+and builder keys are unavailable. Treat checksums from `btqcore.org` and
+`btq.org` as unauthenticated. Both domains are outside the project's control.
+
 - **Keep Updated**: Install security updates promptly
 - **Secure Setup**: Use proper firewall and access controls
 - **Backup Wallets**: Maintain secure, encrypted backups
