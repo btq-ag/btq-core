@@ -1,0 +1,98 @@
+{
+  "extra_accepted": 1174,
+  "extra_rejected": 8,
+  "last_error": "error code: -26\nerror message:\nmempool min fee not met, 100000 < 100547\n",
+  "final": {
+    "loaded": true,
+    "size": 35674,
+    "bytes": 19513678,
+    "usage": 299999920,
+    "total_fee": 35.674,
+    "maxmempool": 300000000,
+    "mempoolminfee": 0.00183815,
+    "minrelaytxfee": 1e-05,
+    "incrementalrelayfee": 1e-05,
+    "unbroadcastcount": 35674,
+    "fullrbf": true
+  },
+  "samples": [
+    {
+      "accepted": 100,
+      "rejected": 0,
+      "size": 34600,
+      "usage": 291047056,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 200,
+      "rejected": 0,
+      "size": 34700,
+      "usage": 291880656,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 300,
+      "rejected": 0,
+      "size": 34800,
+      "usage": 292714256,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 400,
+      "rejected": 0,
+      "size": 34900,
+      "usage": 293547856,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 500,
+      "rejected": 0,
+      "size": 35000,
+      "usage": 294381456,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 600,
+      "rejected": 0,
+      "size": 35100,
+      "usage": 295215056,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 700,
+      "rejected": 0,
+      "size": 35200,
+      "usage": 296048656,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 800,
+      "rejected": 0,
+      "size": 35300,
+      "usage": 296882256,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 900,
+      "rejected": 0,
+      "size": 35400,
+      "usage": 297715856,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 1000,
+      "rejected": 0,
+      "size": 35500,
+      "usage": 298549456,
+      "fee": 1e-05
+    },
+    {
+      "accepted": 1100,
+      "rejected": 0,
+      "size": 35600,
+      "usage": 299383056,
+      "fee": 1e-05
+    }
+  ],
+  "rss": null
+}

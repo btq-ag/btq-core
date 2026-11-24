@@ -1,0 +1,69 @@
+{
+  "origin": {
+    "tx_sent": {
+      "inv": 2226,
+      "tx": 231780
+    },
+    "tx_recv": {
+      "getdata": 2226
+    },
+    "block_sent": {
+      "block": 77110,
+      "cmpctblock": 1200,
+      "headers": 103
+    },
+    "block_recv": {
+      "getdata": 58
+    }
+  },
+  "public": {
+    "tx_sent": {
+      "getdata": 742
+    },
+    "tx_recv": {
+      "inv": 742,
+      "tx": 77260
+    },
+    "block_sent": {},
+    "block_recv": {
+      "cmpctblock": 400
+    }
+  },
+  "private": {
+    "tx_sent": {
+      "getdata": 742
+    },
+    "tx_recv": {
+      "inv": 742,
+      "tx": 77260
+    },
+    "block_sent": {},
+    "block_recv": {
+      "cmpctblock": 400
+    }
+  },
+  "blocksonly": {
+    "tx_sent": {},
+    "tx_recv": {},
+    "block_sent": {
+      "getdata": 58
+    },
+    "block_recv": {
+      "block": 77110,
+      "headers": 103
+    }
+  },
+  "extra": {
+    "tx_sent": {
+      "getdata": 742
+    },
+    "tx_recv": {
+      "inv": 742,
+      "tx": 77260
+    },
+    "block_sent": {},
+    "block_recv": {
+      "cmpctblock": 400
+    }
+  }
+}

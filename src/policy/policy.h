@@ -25,8 +25,8 @@ static constexpr unsigned int DEFAULT_BLOCK_MAX_WEIGHT{7600000}; // 7.6 MW soft 
 /** Default for -blockmintxfee, which sets the minimum feerate for a transaction in blocks created by mining code **/
 static constexpr unsigned int DEFAULT_BLOCK_MIN_TX_FEE{1000};
 /** The maximum weight for transactions we're willing to relay/mine */
-// BTQ: 400K WU allows ~106 Dilithium inputs per consolidation tx
-// (each input: ~40 bytes non-witness * 16 + ~3,733 bytes witness = ~4,373 WU)
+// BTQ: 400K WU. A Dilithium5 P2MR input is about 7,900 WU
+// (41 non-witness bytes * 16 + ~7,233 witness bytes), so ~50 fit.
 static constexpr int32_t MAX_STANDARD_TX_WEIGHT{400'000};
 /** The minimum non-witness size for transactions we're willing to relay/mine: one larger than 64  */
 static constexpr unsigned int MIN_STANDARD_TX_NONWITNESS_SIZE{65};

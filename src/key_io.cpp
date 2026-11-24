@@ -354,8 +354,8 @@ CDilithiumKey DecodeDilithiumSecret(const std::string& str)
     CDilithiumKey key;
     std::vector<unsigned char> data;
     // The DecodeBase58Check `max_ret_len` argument caps how many bytes the
-    // base58 decoder is willing to materialize. Dilithium2 secret keys are
-    // 3872 bytes plus the SECRET_KEY base58 prefix, so the historical limit
+    // base58 decoder is willing to materialize. A Dilithium5 wallet secret is
+    // 7488 bytes plus the SECRET_KEY base58 prefix, so the historical limit
     // of 34 (sized for ECDSA: 32-byte key + 1 prefix + 1 compression flag)
     // silently truncated every Dilithium WIF and made round-trips fail.
     const size_t max_len = CDilithiumKey::GetKeySize() + Params().Base58Prefix(CChainParams::SECRET_KEY).size();

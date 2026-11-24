@@ -5,7 +5,7 @@ where it is defined. Use it to check a stated rule against the code.
 
 | Protocol rule | Value or mechanism | Where it lives |
 |---|---|---|
-| Signature scheme | ML-DSA-44 / Dilithium2; 1,312-byte public key, 2,560-byte secret key, 2,420-byte raw signature | `src/crypto/dilithium_wrapper.h`; `src/crypto/dilithium/` |
+| Signature scheme | ML-DSA-87 / Dilithium5; 2,592-byte public key, 4,896-byte secret key, 4,627-byte raw signature | `src/crypto/dilithium_wrapper.h`; `src/crypto/dilithium/` |
 | Block capacity and witness scale | 8 MB serialized block cap; 8 MW block-weight cap; witness scale factor 16 | `src/consensus/consensus.h` |
 | Monetary policy and timing | 60-second target spacing; 5 BTQ initial subsidy; 2,100,000-block halving interval; 21 million BTQ cap; 100-block coinbase maturity | `src/kernel/chainparams.cpp` |
 | Difficulty adjustment | Bitcoin retarget before activation; LWMA after the height-gated activation, with a 144-block averaging window. Activation at height 1 in the mainnet parameter set, so no mainnet block retargets the Bitcoin way; block 300,000 on the public testnet. The window history of released binaries is recorded in `doc/protocol/historical-validation.md` | `src/pow.cpp`; `src/consensus/params.h`; `src/kernel/chainparams.cpp` |

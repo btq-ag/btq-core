@@ -23,9 +23,8 @@
 #include <vector>
 
 // Maximum number of bytes pushable to the stack
-// Increased to 15000 to support post-quantum signatures and keys. The active
-// parameter set is Dilithium2 (signature 2420 bytes, public key 1312 bytes);
-// 15000 also leaves headroom for higher Dilithium levels and script overhead.
+// Increased to 15000 to support post-quantum signatures and keys. This branch
+// builds Dilithium5 (signature 4627 bytes, public key 2592 bytes).
 static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 15000;
 
 // Maximum number of non-push operations per script
@@ -39,7 +38,7 @@ static constexpr unsigned int MAX_PUBKEYS_PER_MULTI_A = 999;
 
 // Maximum script length in bytes
 // Increased to 100000 to support complex post-quantum multisig scripts
-// (multiple Dilithium2 signatures/keys plus script overhead).
+// (multiple Dilithium5 signatures/keys plus script overhead).
 static const int MAX_SCRIPT_SIZE = 100000;
 
 // Maximum number of values on script interpreter stack

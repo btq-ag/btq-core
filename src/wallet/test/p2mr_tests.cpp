@@ -1264,6 +1264,12 @@ BOOST_FIXTURE_TEST_CASE(produce_signature_signs_dilithium_p2mr_leaf, BasicTestin
 
     UpdateInput(tx_to.vin[0], sigdata);
     const CTransaction signed_tx{tx_to};
+    // One signed P2MR input has to relay and has to fit in a block.
+    const int32_t spend_weight{GetTransactionWeight(signed_tx)};
+    BOOST_CHECK_LE(spend_weight, MAX_STANDARD_TX_WEIGHT);
+    BOOST_CHECK_LE(spend_weight, static_cast<int32_t>(MAX_BLOCK_WEIGHT));
+    BOOST_CHECK_LE(::GetSerializeSize(signed_tx), static_cast<size_t>(MAX_BLOCK_SERIALIZED_SIZE));
+    BOOST_TEST_MESSAGE("p2mr spend weight " << spend_weight << " serialized " << ::GetSerializeSize(signed_tx));
     TransactionSignatureChecker checker(&signed_tx, /*nInIn=*/0, amount, txdata, MissingDataBehavior::FAIL);
     ScriptError serror{SCRIPT_ERR_OK};
     BOOST_CHECK_MESSAGE(
@@ -1554,6 +1560,46 @@ BOOST_FIXTURE_TEST_CASE(build_signing_provider_exports_descriptor_xonly_p2mr_lea
     BOOST_CHECK_MESSAGE(
         VerifyScript(tx_to.vin[0].scriptSig, created.script_pub_key, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
         ScriptErrorString(serror));
+}
+
+// The largest Dilithium script the wallet will build: 20-of-20 threshold.
+// The leaf is one witness item, but consensus sizes the pushes inside it, not
+// the leaf itself. The signatures are the items capped at MAX_SCRIPT_ELEMENT_SIZE.
+BOOST_AUTO_TEST_CASE(dilithium5_max_threshold_fits_standard_tx_and_block)
+{
+    const std::vector<unsigned char> raw(CDilithiumPubKey::SIZE, 0x11);
+    const CDilithiumPubKey pubkey(raw.begin(), raw.end());
+    const std::vector<CDilithiumPubKey> pubkeys(MAX_PUBKEYS_PER_MULTISIG, pubkey);
+    const CScript leaf = GetScriptForDilithiumThreshold(MAX_PUBKEYS_PER_MULTISIG, pubkeys);
+    BOOST_CHECK_LE(leaf.size(), static_cast<size_t>(MAX_SCRIPT_SIZE));
+
+    CScript::const_iterator it = leaf.begin();
+    opcodetype opcode;
+    std::vector<unsigned char> data;
+    while (leaf.GetOp(it, opcode, data)) {
+        BOOST_CHECK_LE(data.size(), MAX_SCRIPT_ELEMENT_SIZE);
+    }
+
+    CMutableTransaction tx;
+    tx.nVersion = 2;
+    tx.vin.resize(1);
+    tx.vin[0].prevout = COutPoint(uint256::ONE, 0);
+    tx.vout.emplace_back(COIN, CScript() << OP_TRUE);
+    auto& stack = tx.vin[0].scriptWitness.stack;
+    stack.resize(MAX_PUBKEYS_PER_MULTISIG + 2);
+    for (int i = 0; i < MAX_PUBKEYS_PER_MULTISIG; ++i) {
+        stack[i].assign(DilithiumConstants::SIGNATURE_SIZE + 1, 0);
+        BOOST_CHECK_LE(stack[i].size(), MAX_SCRIPT_ELEMENT_SIZE);
+    }
+    stack[MAX_PUBKEYS_PER_MULTISIG].assign(leaf.begin(), leaf.end());
+    stack[MAX_PUBKEYS_PER_MULTISIG + 1].assign(P2MR_CONTROL_BASE_SIZE, 0x01);
+
+    const CTransaction sized{tx};
+    const int32_t weight{GetTransactionWeight(sized)};
+    BOOST_CHECK_LE(weight, MAX_STANDARD_TX_WEIGHT);
+    BOOST_CHECK_LE(weight, static_cast<int32_t>(MAX_BLOCK_WEIGHT));
+    BOOST_CHECK_LE(::GetSerializeSize(sized), static_cast<size_t>(weight));
+    BOOST_TEST_MESSAGE("20-of-20 weight " << weight << " serialized " << ::GetSerializeSize(sized) << " leaf " << leaf.size());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

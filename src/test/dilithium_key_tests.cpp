@@ -46,8 +46,8 @@ BOOST_AUTO_TEST_CASE(dilithium_pubkey_derivation)
 
 BOOST_AUTO_TEST_CASE(dilithium_pubkey_isfullvalid_rejects_malformed)
 {
-    // Dilithium2 / ML-DSA-44 layout: rho(32) || t1(1280) == 1312.
-    BOOST_STATIC_ASSERT(CDilithiumPubKey::SIZE == 1312);
+    // Dilithium5 / ML-DSA-87 layout: rho(32) || t1(2560) == 2592.
+    BOOST_STATIC_ASSERT(CDilithiumPubKey::SIZE == 2592);
     constexpr size_t RHO_SIZE = 32;
 
     CDilithiumPubKey empty;

@@ -1,0 +1,67 @@
+{
+  "block": {
+    "nTx": 101,
+    "size": 733149,
+    "weight": 877344
+  },
+  "miss10": {
+    "kept_in_mempool": 90,
+    "b_height": 113,
+    "a_sent": {
+      "blocktxn": 73344,
+      "cmpctblock": 880,
+      "feefilter": 29,
+      "getheaders": 634,
+      "headers": 184,
+      "ping": 29,
+      "pong": 29,
+      "sendaddrv2": 33,
+      "sendcmpct": 30,
+      "verack": 33,
+      "version": 130,
+      "wtxidrelay": 33
+    },
+    "b_recv": {
+      "blocktxn": 73344,
+      "cmpctblock": 880,
+      "feefilter": 29,
+      "getheaders": 634,
+      "headers": 184,
+      "ping": 29,
+      "pong": 29,
+      "sendaddrv2": 33,
+      "sendcmpct": 30,
+      "verack": 33,
+      "version": 130,
+      "wtxidrelay": 33
+    }
+  },
+  "miss1": {
+    "kept_in_mempool": 100,
+    "b_height": 112,
+    "a_sent": {
+      "feefilter": 29,
+      "getheaders": 634,
+      "headers": 184,
+      "ping": 29,
+      "pong": 29,
+      "sendaddrv2": 33,
+      "sendcmpct": 30,
+      "verack": 33,
+      "version": 130,
+      "wtxidrelay": 33
+    },
+    "b_recv": {
+      "feefilter": 29,
+      "getheaders": 634,
+      "headers": 184,
+      "ping": 29,
+      "pong": 29,
+      "sendaddrv2": 33,
+      "sendcmpct": 30,
+      "verack": 33,
+      "version": 130,
+      "wtxidrelay": 33
+    }
+  }
+}

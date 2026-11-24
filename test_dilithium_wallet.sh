@@ -61,7 +61,7 @@ echo -e "${BOLD}${CYAN}                                                         
 echo -e "${BOLD}${CYAN}================================================================${NC}"
 echo ""
 echo -e "${DIM}Testing Dilithium2 (NIST PQC Standard - FIPS 204)${NC}"
-echo -e "${DIM}Signature Size: 2420 bytes | Public Key: 1312 bytes${NC}"
+echo -e "${DIM}Signature Size: 4627 bytes | Public Key: 2592 bytes${NC}"
 echo ""
 
 # Step 1: Stop any running btqd
@@ -374,8 +374,8 @@ printf "  ${BOLD}%-30s${NC} ${GREEN}%-30s${NC}\n" "Confirmations:" "${CONFIRMATI
 printf "  ${BOLD}%-30s${NC} ${BLUE}%-30s${NC}\n" "Transaction Size:" "${TX_SIZE} bytes"
 echo ""
 printf "  ${BOLD}%-30s${NC}\n" "Size Comparison:"
-printf "  ${DIM}  %-28s${NC} ${BLUE}%-30s${NC}\n" "Dilithium Signature:" "~2420 bytes"
-printf "  ${DIM}  %-28s${NC} ${BLUE}%-30s${NC}\n" "Dilithium Public Key:" "1312 bytes"
+printf "  ${DIM}  %-28s${NC} ${BLUE}%-30s${NC}\n" "Dilithium Signature:" "~4627 bytes"
+printf "  ${DIM}  %-28s${NC} ${BLUE}%-30s${NC}\n" "Dilithium Public Key:" "2592 bytes"
 printf "  ${DIM}  %-28s${NC} ${BLUE}%-30s${NC}\n" "Total Transaction:" "${TX_SIZE} bytes"
 printf "  ${DIM}  %-28s${NC} ${DIM}%-30s${NC}\n" "ECDSA Equivalent:" "~250 bytes"
 printf "  ${DIM}  %-28s${NC} ${YELLOW}%-30s${NC}\n" "Size Increase:" "~15x larger"

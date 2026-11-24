@@ -65,7 +65,7 @@ BOOST_AUTO_TEST_CASE(CanProvide)
 
 // PR #54 review: DeriveNewDilithiumChildKey must derive from the wallet HD seed,
 // not call MakeNewKey(). Compare via full CDilithiumKey identity (CPubKey only
-// stores 65 bytes and cannot represent 1312-byte Dilithium pubkeys faithfully).
+// stores 65 bytes and cannot represent a Dilithium public key faithfully).
 BOOST_AUTO_TEST_CASE(dilithium_hd_wallet_derivation_deterministic)
 {
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());

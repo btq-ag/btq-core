@@ -418,7 +418,7 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
     // With an explicit pubkey the signature verifies against it directly;
     // only the address binding is checked. Verification must not need the
     // signer's private key (Quarks F2.1): neither address form carries the
-    // 1312-byte pubkey, so a verifier who is not the signer supplies it here.
+    // Dilithium pubkey, so a verifier who is not the signer supplies it here.
     if (!pubkey_param.isNull()) {
         const std::string pubkey_hex = pubkey_param.get_str();
         if (!IsHex(pubkey_hex)) {

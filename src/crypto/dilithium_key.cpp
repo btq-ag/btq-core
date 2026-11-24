@@ -193,9 +193,9 @@ CPrivKey CDilithiumKey::Serialize() const
 // CDilithiumExtKey implementation
 //
 // The state is the 32-byte HD seed + BIP32 chaincode + position.
-// The 2560/1312-byte expanded keypair is regenerated from the seed every time
+// The 4896/2592-byte expanded keypair is regenerated from the seed every time
 // it is needed via `key.GenerateFromEntropy(seed)`. This avoids storing
-// 3872 redundant bytes per node and - critically - keeps the relationship
+// 7488 redundant bytes per node and - critically - keeps the relationship
 // between seed and (sk, pk) deterministic and verifiable.
 
 namespace {
@@ -219,7 +219,7 @@ bool CDilithiumExtKey::Derive(CDilithiumExtKey& out, unsigned int child_index) c
     //                   data = 0x00 || parent_seed (32B) || ser32(child_index))
     //   I_L (32B) -> child seed; I_R (32B) -> child chaincode.
     //
-    // We use the parent SEED (not the 2560-byte packed sk) as the parent
+    // We use the parent SEED (not the packed secret key) as the parent
     // material: seeds are stable, compact, and the durable source of truth.
     CHMAC_SHA512 hmac(chaincode.begin(), chaincode.size());
     const unsigned char zero_byte = 0x00;

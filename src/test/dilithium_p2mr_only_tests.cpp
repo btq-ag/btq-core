@@ -180,7 +180,8 @@ BOOST_AUTO_TEST_CASE(witness_v0_1312_pubkey_dilithium_path_gated)
         TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL), &err));
     BOOST_CHECK_EQUAL(err, SCRIPT_ERR_OK);
 
-    // Post-activation: size==1312 heuristic disabled; falls through to ECDSA/pubkeytype path.
+    // Post-activation: the Dilithium-sized witness key is no longer routed to
+    // OP_CHECKSIGDILITHIUM. It falls through to the ECDSA/pubkeytype path.
     err = SCRIPT_ERR_OK;
     BOOST_CHECK(!VerifyScript(
         CScript(), script_pubkey, &ctx.vin[0].scriptWitness, FlagsPostActivation(),

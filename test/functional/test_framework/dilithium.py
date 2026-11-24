@@ -2,7 +2,7 @@
 # Copyright (c) 2026 The BTQ Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Minimal CRYSTALS-Dilithium2 signing for the functional test framework.
+"""Minimal CRYSTALS-Dilithium5 signing for the functional test framework.
 
 There is no pure-Python Dilithium implementation available, so this module
 compiles the *same* pq-crystals reference sources that BTQ-Core links
@@ -16,8 +16,8 @@ Usage:
     if not dilithium_available():
         # skip the test
     k = DilithiumKey()            # random key (or DilithiumKey(seed=32 bytes))
-    pub = k.pubkey                # 1312-byte public key
-    sig = k.sign(sighash32)       # 2420-byte detached signature
+    pub = k.pubkey                # 2592-byte public key
+    sig = k.sign(sighash32)       # 4627-byte detached signature
 """
 
 import ctypes
@@ -26,12 +26,12 @@ import subprocess
 import tempfile
 import threading
 
-PUBLICKEYBYTES = 1312
-SECRETKEYBYTES = 2560
-SIGNATUREBYTES = 2420
+PUBLICKEYBYTES = 2592
+SECRETKEYBYTES = 4896
+SIGNATUREBYTES = 4627
 SEEDBYTES = 32
 
-_NS = "pqcrystals_dilithium2_ref_"
+_NS = "pqcrystals_dilithium5_ref_"
 _SOURCES = [
     "fips202.c", "ntt.c", "packing.c", "poly.c", "polyvec.c",
     "randombytes.c", "reduce.c", "rounding.c", "sign.c", "symmetric-shake.c",
@@ -55,14 +55,14 @@ def _build_shared_lib():
 
     cache_dir = os.path.join(tempfile.gettempdir(), "btq_dilithium_ctypes")
     os.makedirs(cache_dir, exist_ok=True)
-    out = os.path.join(cache_dir, "libbtqdilithium2_ref.so")
+    out = os.path.join(cache_dir, "libbtqdilithium5_ref.so")
 
     newest_src = max(os.path.getmtime(p) for p in src_paths)
     if os.path.exists(out) and os.path.getmtime(out) >= newest_src:
         return out
 
     cc = os.environ.get("CC", "cc")
-    cmd = [cc, "-O2", "-fPIC", "-shared", "-DDILITHIUM_MODE=2",
+    cmd = [cc, "-O2", "-fPIC", "-shared", "-DDILITHIUM_MODE=5",
            "-I", _REF_DIR, *src_paths, "-o", out]
     subprocess.run(cmd, check=True, capture_output=True, text=True)
     return out
@@ -110,7 +110,7 @@ def dilithium_available():
 
 
 class DilithiumKey:
-    """A Dilithium2 keypair, deterministically derived from a 32-byte seed."""
+    """A Dilithium5 keypair, deterministically derived from a 32-byte seed."""
 
     def __init__(self, seed=None):
         lib = _load()
@@ -127,7 +127,7 @@ class DilithiumKey:
         self._sk = sk.raw[:SECRETKEYBYTES]
 
     def sign(self, message):
-        """Return the 2420-byte detached signature over `message` (no context).
+        """Return the 4627-byte detached signature over `message` (no context).
 
         For a P2MR tapscript spend, `message` is the 32-byte BIP341 sighash
         (TaprootSignatureHash), not the legacy pre-segwit serializer.
