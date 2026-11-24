@@ -19,6 +19,7 @@ HEADER_ID_SUFFIX = '_H'
 
 EXCLUDE_FILES_WITH_PREFIX = ['contrib/devtools/btq-tidy',
                              'src/crypto/ctaes',
+                             'src/crypto/dilithium/ref/',  # Vendored reference implementation.
                              'src/leveldb',
                              'src/crc32c',
                              'src/secp256k1',

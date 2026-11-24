@@ -19,36 +19,23 @@ Tests the following security fixes:
 
 import struct
 
-from test_framework.blocktools import (
-    COINBASE_MATURITY,
-    create_block,
-    create_coinbase,
-    add_witness_commitment,
-)
+from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.messages import (
-    CBlock,
-    COIN,
     COutPoint,
     CTransaction,
     CTxIn,
     CTxInWitness,
     CTxOut,
     SEQUENCE_FINAL,
-    tx_from_hex,
 )
-from test_framework.p2p import P2PDataStore
 from test_framework.script import (
     CScript,
-    CScriptNum,
-    CScriptOp,
     DILITHIUM_SIGOP_COST,
-    LEAF_VERSION_TAPSCRIPT,
     OP_0,
     OP_1,
     OP_2,
     OP_3,
     OP_CHECKMULTISIG,
-    OP_CHECKMULTISIGVERIFY,
     OP_CHECKSIG,
     OP_CHECKSIGVERIFY,
     OP_CHECKSIGDILITHIUM,
@@ -60,7 +47,6 @@ from test_framework.script import (
     OP_DROP,
     OP_EQUALVERIFY,
     OP_HASH160,
-    OP_RETURN,
     OP_TRUE,
     taproot_construct,
 )
