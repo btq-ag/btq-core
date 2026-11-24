@@ -7,11 +7,8 @@
 
 #include <crypto/dilithium_key.h>
 
+#include <crypto/dilithium_wrapper.h>
 #include <hash.h>
-
-extern "C" {
-#include "dilithium_wrapper.h"
-}
 
 uint256 CDilithiumPubKey::GetHash() const
 {

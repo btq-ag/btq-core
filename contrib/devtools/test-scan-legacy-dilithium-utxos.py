@@ -18,6 +18,8 @@ import unittest
 _SPEC = importlib.util.spec_from_file_location(
     "scanner", os.path.join(os.path.dirname(os.path.realpath(__file__)),
                             "scan-legacy-dilithium-utxos.py"))
+if _SPEC is None or _SPEC.loader is None:
+    raise ImportError("Could not load scan-legacy-dilithium-utxos.py")
 scanner = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(scanner)
 
