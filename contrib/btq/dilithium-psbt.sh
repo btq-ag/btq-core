@@ -15,7 +15,8 @@
 # Commands print JSON or a PSBT/hex payload on stdout. Diagnostics go to stderr.
 # See doc/psbt.md ("Dilithium P2MR") for the equivalent raw btq-cli recipe.
 
-export LC_ALL=C
+# This script is intentionally locale dependent by not setting "export LC_ALL=C"
+# Preserve the caller's encoding for wallet names passed to Python.
 
 set -euo pipefail
 
