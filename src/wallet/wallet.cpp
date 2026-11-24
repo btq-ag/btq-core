@@ -3999,9 +3999,7 @@ bool CWallet::WithEncryptionKey(std::function<bool (const CKeyingMaterial&)> cb)
 
 bool CWallet::HaveDilithiumKeyAnywhere(const CKeyID& keyid) const
 {
-    // May run while a manager holds its own cs_desc_man (the Dilithium key
-    // generator skip-check); that re-lock is fine because cs_desc_man is
-    // recursive and generator calls are serialized under cs_wallet.
+    LOCK(cs_wallet);
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         if (auto* desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
             LOCK(desc_spk_man->cs_desc_man);
