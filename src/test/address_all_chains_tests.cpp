@@ -30,6 +30,7 @@
 #include <key_io.h>
 #include <script/script.h>
 #include <test/util/setup_common.h>
+#include <tinyformat.h>
 #include <uint256.h>
 #include <util/chaintype.h>
 #include <util/strencodings.h>
@@ -124,7 +125,7 @@ std::string ExpectedPrefix(const std::string& label, const ChainInfo& info)
 std::string PreviewAddr(const std::string& addr, size_t head = 36, size_t tail = 14)
 {
     if (addr.size() <= head + tail + 3) return addr;
-    return addr.substr(0, head) + "…(" + std::to_string(addr.size()) + " chars)…" + addr.substr(addr.size() - tail);
+    return strprintf("%s…(%u chars)…%s", addr.substr(0, head), addr.size(), addr.substr(addr.size() - tail));
 }
 
 std::string ErrSnippet(const std::string& err, size_t maxl = 160)

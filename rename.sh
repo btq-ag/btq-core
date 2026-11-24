@@ -1,7 +1,11 @@
-#!/bin/bash
+# shellcheck shell=bash
+# Run this maintenance script explicitly with Bash.
 
 # IMPORTANT: Make sure to backup your repository before running these commands
 # Example: cp -r btq-core btq-core-backup
+
+# This script is intentionally locale dependent by not setting "export LC_ALL=C"
+# Preserve the caller's locale rules for whole-word substitutions.
 
 # 1. First, let's find and rename all files with "btq" in their names
 # We'll start with a dry run to see what would be renamed

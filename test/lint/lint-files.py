@@ -176,6 +176,13 @@ def check_shebang_file_permissions(files_meta) -> int:
     for filename in filenames:
         file_meta = files_meta[filename]
         if file_meta.permissions != ALLOWED_PERMISSION_EXECUTABLES:
+            # These upstream Dilithium harnesses require Makefiles BTQ does not vendor.
+            if filename in {
+                "src/crypto/dilithium/runlcov.sh",
+                "src/crypto/dilithium/runtests.sh",
+            }:
+                continue
+
             # These file types are typically expected to be sourced and not executed directly
             if file_meta.full_extension in ["bash", "init", "openrc", "sh.in"]:
                 continue

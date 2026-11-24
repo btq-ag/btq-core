@@ -16,6 +16,7 @@ from subprocess import check_output, CalledProcessError
 
 
 EXCLUDED_DIRS = ["contrib/devtools/btq-tidy/",
+                 "src/crypto/dilithium/ref/",  # Vendored reference implementation.
                  "src/leveldb/",
                  "src/crc32c/",
                  "src/secp256k1/",
