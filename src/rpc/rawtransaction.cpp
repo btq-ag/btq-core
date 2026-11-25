@@ -1971,7 +1971,7 @@ static RPCHelpMan analyzepsbt()
                                 }},
                                 {RPCResult::Type::ARR, "signatures", /*optional=*/true, "",
                                 {
-                                    {RPCResult::Type::STR_HEX, "keyid", "Public key ID, hash160 of the public key, of a public key whose signature is missing"},
+                                    {RPCResult::Type::STR_HEX, "keyid", "Public key ID, hash160 of the public key, of a public key whose signature is missing. Dilithium P2MR inputs report the Dilithium pubkey id here."},
                                 }},
                                 {RPCResult::Type::STR_HEX, "redeemscript", /*optional=*/true, "Hash160 of the redeemScript that is missing"},
                                 {RPCResult::Type::STR_HEX, "witnessscript", /*optional=*/true, "SHA256 of the witnessScript that is missing"},
