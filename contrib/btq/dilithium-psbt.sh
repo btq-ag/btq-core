@@ -15,6 +15,9 @@
 # Commands print JSON or a PSBT/hex payload on stdout. Diagnostics go to stderr.
 # See doc/psbt.md ("Dilithium P2MR") for the equivalent raw btq-cli recipe.
 
+# This script is intentionally locale dependent by not setting "export LC_ALL=C"
+# Preserve the caller's encoding for wallet names passed to Python.
+
 set -euo pipefail
 
 usage() {
@@ -186,9 +189,8 @@ cmd_pubkey() {
     else
         created=$(wallet "$name" getnewdilithiumaddress)
     fi
-    local id address
+    local id
     id=$(printf '%s' "$created" | jget p2mr_id)
-    address=$(printf '%s' "$created" | jget address)
     pk=$(wallet "$name" getdilithiumpubkey "$id")
     need_python
     python3 -c '

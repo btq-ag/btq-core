@@ -14,7 +14,6 @@ from ast import (
     Constant,
     Div,
     FloorDiv,
-    FunctionDef,
     Module,
     Mult,
     Name,
@@ -122,26 +121,6 @@ def python_constants(path):
     return names
 
 
-def python_function_kw_default(path, function_name, kwarg_name):
-    tree = parse((REPO_ROOT / path).read_text(encoding="utf8"))
-    for statement in tree.body:
-        if not isinstance(statement, FunctionDef) or statement.name != function_name:
-            continue
-        for arg, default in zip(statement.args.kwonlyargs, statement.args.kw_defaults):
-            if arg.arg != kwarg_name:
-                continue
-            return eval_int_expr(default, {})
-    raise ValueError(f"could not find default for {function_name}({kwarg_name}) in {path}")
-
-
-def python_regex_int(path, pattern):
-    text = (REPO_ROOT / path).read_text(encoding="utf8")
-    match = re.search(pattern, text)
-    if not match:
-        raise ValueError(f"could not match {pattern!r} in {path}")
-    return int(match.group(1), 0)
-
-
 def python_magic_bytes():
     text = (REPO_ROOT / "test/functional/test_framework/p2p.py").read_text(encoding="utf8")
     match = re.search(r"MAGIC_BYTES\s*=\s*\{(?P<body>.*?)\n\}", text, re.DOTALL)
@@ -240,6 +219,22 @@ def main():
     )
     check_equal(
         errors,
+        "chain.h TIMESTAMP_WINDOW",
+        cpp_constant(
+            "src/chain.h",
+            "TIMESTAMP_WINDOW",
+            {"MAX_FUTURE_BLOCK_TIME": consensus["MAX_FUTURE_BLOCK_TIME"]},
+        ),
+        consensus["MAX_FUTURE_BLOCK_TIME"],
+    )
+    check_equal(
+        errors,
+        "blocktools.TIMESTAMP_WINDOW",
+        blocktools.get("TIMESTAMP_WINDOW", MISSING),
+        consensus["MAX_FUTURE_BLOCK_TIME"],
+    )
+    check_equal(
+        errors,
         "blocktools.COINBASE_MATURITY",
         blocktools.get("COINBASE_MATURITY", MISSING),
         consensus["COINBASE_MATURITY"],
@@ -250,18 +245,19 @@ def main():
         blocktools.get("TIME_GENESIS_BLOCK", MISSING),
         consensus["REGTEST_GENESIS_TIME"],
     )
-    check_equal(
-        errors,
-        "blocktools.create_coinbase nValue default",
-        python_function_kw_default("test/functional/test_framework/blocktools.py", "create_coinbase", "nValue"),
-        consensus["INITIAL_SUBSIDY_BTQ"],
-    )
-    check_equal(
-        errors,
-        "blocktools.create_coinbase halving interval",
-        python_regex_int("test/functional/test_framework/blocktools.py", r"halvings = int\(height / (\d+)\)"),
-        consensus["REGTEST_HALVING_INTERVAL"],
-    )
+    # Check the default payout using the same helper as the functional tests.
+    sys.path.insert(0, str(REPO_ROOT / "test/functional"))
+    from test_framework.blocktools import create_coinbase
+
+    initial_subsidy = consensus["INITIAL_SUBSIDY_BTQ"] * cpp_constant("src/consensus/amount.h", "COIN")
+    interval = consensus["REGTEST_HALVING_INTERVAL"]
+    for height in (interval - 1, interval, 2 * interval - 1, 2 * interval):
+        check_equal(
+            errors,
+            f"blocktools.create_coinbase default payout at height {height}",
+            create_coinbase(height).vout[0].nValue,
+            initial_subsidy >> (height // interval),
+        )
     check_equal(
         errors,
         "script.MAX_SCRIPT_ELEMENT_SIZE",
