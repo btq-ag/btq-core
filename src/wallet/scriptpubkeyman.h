@@ -43,6 +43,8 @@ public:
     virtual ~WalletStorage() = default;
     virtual std::string GetDisplayName() const = 0;
     virtual WalletDatabase& GetDatabase() const = 0;
+    //! Acquire before manager locks when an operation spans multiple managers.
+    virtual RecursiveMutex& GetWalletMutex() const = 0;
     virtual bool IsWalletFlagSet(uint64_t) const = 0;
     virtual void UnsetBlankWalletFlag(WalletBatch&) = 0;
     virtual bool CanSupportFeature(enum WalletFeature) const = 0;
@@ -54,6 +56,7 @@ public:
     //! Whether any of the wallet's key managers holds this Dilithium key.
     //! Key records do not say which manager derived them, so after a reload
     //! they land in an arbitrary manager and per-manager checks miss them.
+    //! Call without holding any manager mutex.
     virtual bool HaveDilithiumKeyAnywhere(const CKeyID& keyid) const = 0;
 };
 
@@ -642,9 +645,6 @@ private:
     // Override IsMine to handle Dilithium keys
     isminetype IsMine(const CScript& script) const override;
 
-    //! Body of GenerateNewDilithiumKey(), for callers that already hold cs_desc_man.
-    util::Result<CDilithiumPubKey> GenerateNewDilithiumKeyLocked() EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
-
     /** Next index in the Dilithium-only derivation sequence. Separate from
      *  m_wallet_descriptor.next_index, which ECDSA address derivation
      *  advances; sharing that counter left unscannable gaps in the Dilithium
@@ -653,7 +653,7 @@ private:
 
     //! Derive (without storing) the Dilithium key at an index of this
     //! manager's sequence. Needs the descriptor's private key material.
-    util::Result<CDilithiumKey> DeriveDilithiumKeyAtIndex(int32_t index) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
+    util::Result<CDilithiumKey> DeriveDilithiumKeyAtIndex(int32_t index) const EXCLUSIVE_LOCKS_REQUIRED(m_storage.GetWalletMutex(), cs_desc_man);
 
     //! Scripts derived for the restore scan, so a rescan does not re-derive
     //! the same index for every output. cache_end is the first index not cached.
@@ -718,11 +718,11 @@ public:
     void CommitDilithiumNextIndex(int32_t index) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
 
     // Dilithium key management
-    bool AddDilithiumKeyPubKey(const CDilithiumKey& key);
+    bool AddDilithiumKeyPubKey(const CDilithiumKey& key) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
     /** Lower this descriptor's birth time and persist it. Timestamp 1 means unknown. */
     void UpdateTimeFirstKey(int64_t nCreateTime);
-    bool LoadDilithiumKey(const CDilithiumKey& key);
-    bool LoadCryptedDilithiumKey(const CKeyID& keyid, const std::vector<unsigned char>& vchCryptedSecret, bool checksum_valid);
+    bool LoadDilithiumKey(const CDilithiumKey& key) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
+    bool LoadCryptedDilithiumKey(const CKeyID& keyid, const std::vector<unsigned char>& vchCryptedSecret, bool checksum_valid) EXCLUSIVE_LOCKS_REQUIRED(!cs_desc_man);
     bool GetDilithiumKey(const CKeyID& keyid, CDilithiumKey& key) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool HaveDilithiumKey(const CKeyID& keyid) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);
     bool HaveKeyByXOnly(const XOnlyPubKey& pubkey) const EXCLUSIVE_LOCKS_REQUIRED(cs_desc_man);

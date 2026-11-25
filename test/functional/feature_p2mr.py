@@ -22,7 +22,6 @@ BIP-level comprehensive test suite covering:
 
 from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.messages import (
-    COIN,
     COutPoint,
     CTransaction,
     CTxIn,
@@ -32,32 +31,23 @@ from test_framework.messages import (
 )
 from test_framework.script import (
     CScript,
-    CScriptOp,
-    LEAF_VERSION_TAPSCRIPT,
     OP_0,
     OP_1,
     OP_2,
-    OP_3,
     OP_CHECKMULTISIG,
-    OP_CHECKSIG,
     OP_CHECKSIGDILITHIUM,
     OP_CHECKSIGDILITHIUMVERIFY,
     OP_CHECKMULTISIGDILITHIUM,
     OP_CHECKMULTISIGDILITHIUMVERIFY,
     OP_DILITHIUM_PUBKEY,
     OP_DROP,
-    OP_DUP,
     OP_EQUAL,
-    OP_HASH160,
-    OP_RETURN,
     OP_TRUE,
-    TaggedHash,
     p2mr_construct,
     taproot_construct,
 )
 from test_framework.key import ECKey, compute_xonly_pubkey
 from test_framework.test_framework import BTQTestFramework
-from test_framework.util import assert_equal
 from test_framework.wallet import MiniWallet
 
 # ============================================================================
@@ -169,7 +159,8 @@ class P2MRTest(BTQTestFramework):
         print(sub('1b. P2MR and P2TR outputs are the same size'))
         print(why('P2MR should not increase UTXO set size compared to P2TR.'))
         print(how('Compare raw scriptPubKey sizes of P2MR and P2TR with identical leaf scripts.'))
-        pk = ECKey(); pk.generate()
+        pk = ECKey()
+        pk.generate()
         xo, _ = compute_xonly_pubkey(pk.get_bytes())
         tap = taproot_construct(xo, [("leaf", CScript([OP_TRUE]))])
         print(result_line('P2TR scriptPubKey size:', f'{len(bytes(tap.scriptPubKey))} bytes'))
@@ -249,7 +240,8 @@ class P2MRTest(BTQTestFramework):
         print(dot('0xbf is reserved. A leaf that executes it fails in both.'))
         print(dot(''))
 
-        pk = ECKey(); pk.generate()
+        pk = ECKey()
+        pk.generate()
         xo, _ = compute_xonly_pubkey(pk.get_bytes())
 
         opcodes = [
@@ -307,7 +299,8 @@ class P2MRTest(BTQTestFramework):
     # ================================================================
     def test_05_dilithium_error_messages(self):
         print(section('TEST 5 \u2014 Error Message Verification'))
-        pk = ECKey(); pk.generate()
+        pk = ECKey()
+        pk.generate()
         xo, _ = compute_xonly_pubkey(pk.get_bytes())
 
         print(sub('5a. P2TR must return exact error message'))
@@ -503,7 +496,8 @@ class P2MRTest(BTQTestFramework):
         print(sub('12c. P2MR control block is 32 bytes smaller than P2TR'))
         print(why('P2TR control block includes the 32-byte internal key. P2MR omits it (no key path).'))
         print(how('Build identical 2-leaf trees in P2TR and P2MR, compare control block sizes.'))
-        pk = ECKey(); pk.generate()
+        pk = ECKey()
+        pk.generate()
         xo, _ = compute_xonly_pubkey(pk.get_bytes())
         tap = taproot_construct(xo, [("a", CScript([OP_TRUE])), ("b", CScript([OP_DROP, OP_TRUE]))])
         tr_cb = 1 + 32 + len(tap.leaves["a"].merklebranch)

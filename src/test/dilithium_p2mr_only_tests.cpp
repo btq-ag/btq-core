@@ -38,12 +38,14 @@ BOOST_AUTO_TEST_CASE(standard_flags_include_p2mr_only_policy)
     BOOST_CHECK(!(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY));
     BOOST_CHECK_EQUAL(SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY, (1U << 23));
 
-    // Dilithium must be mandatory so the CheckInputScripts NOT_MANDATORY retry
-    // keeps it enabled when only P2MR_ONLY failed.
+    // Dilithium stays in the always-on mandatory set. P2MR_ONLY stays out.
+    // ConnectBlock uses GetBlockScriptFlags, which adds P2MR_ONLY only after
+    // DEPLOYMENT_DILITHIUM_P2MR.
     BOOST_CHECK(MANDATORY_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
     BOOST_CHECK(STANDARD_SCRIPT_VERIFY_FLAGS & SCRIPT_VERIFY_DILITHIUM);
 
-    // Simulated NOT_MANDATORY retry mask (validation.cpp CheckInputScripts).
+    // Complement of the non-mandatory bits. CheckInputScripts does not re-run
+    // under this mask.
     const uint32_t retry_flags =
         STANDARD_SCRIPT_VERIFY_FLAGS & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS;
     BOOST_CHECK_EQUAL(retry_flags, MANDATORY_SCRIPT_VERIFY_FLAGS);
@@ -258,12 +260,10 @@ BOOST_AUTO_TEST_CASE(legacy_dilithium_destinations_not_valid_payments)
 
 BOOST_AUTO_TEST_CASE(p2mr_only_policy_failure_survives_mandatory_retry)
 {
-    // Lock the testnet soft-reject invariant end-to-end at the script layer:
-    // a consensus-valid legacy Dilithium spend must fail STANDARD (P2MR_ONLY)
-    // but still verify under the NOT_MANDATORY retry mask (mandatory flags,
-    // which keep Dilithium and drop P2MR_ONLY). If Dilithium were also
-    // stripped on the retry, VerifyScript would fail for a different reason
-    // and CheckInputScripts would return TX_CONSENSUS → Misbehaving(100).
+    // Legacy Dilithium spend fails STANDARD, which includes P2MR_ONLY, and
+    // still verifies under the mandatory set, which keeps Dilithium and omits
+    // P2MR_ONLY. GetBlockScriptFlags adds P2MR_ONLY only after
+    // DEPLOYMENT_DILITHIUM_P2MR.
     CDilithiumKey key;
     BOOST_REQUIRE(key.MakeNewKey());
     const CDilithiumPubKey pubkey = key.GetPubKey();
@@ -297,8 +297,7 @@ BOOST_AUTO_TEST_CASE(p2mr_only_policy_failure_survives_mandatory_retry)
         TransactionSignatureChecker(&ctx, 0, amount, MissingDataBehavior::ASSERT_FAIL), &err));
     BOOST_CHECK_EQUAL(err, SCRIPT_ERR_OK);
 
-    // Negative control: clearing Dilithium on the retry (the old bug) fails
-    // for a non-P2MR_ONLY reason and would be misclassified as consensus.
+    // Clearing Dilithium as well fails for a reason other than P2MR_ONLY.
     err = SCRIPT_ERR_OK;
     BOOST_CHECK(!VerifyScript(
         ctx.vin[0].scriptSig, script_pubkey, nullptr,

@@ -8,6 +8,7 @@
 #include <headerssync.h>
 #include <pow.h>
 #include <test/util/setup_common.h>
+#include <util/time.h>
 #include <validation.h>
 #include <vector>
 
@@ -178,6 +179,26 @@ BOOST_AUTO_TEST_CASE(anti_dos_work_threshold_boundaries)
     const arith_uint256 from_mainnet{AntiDoSWorkThreshold(tip_work, mainnet_proof, arith_uint256{0})};
     BOOST_CHECK(from_mainnet < from_regtest);
     BOOST_CHECK(from_regtest - from_mainnet == (mainnet_proof - regtest_proof) * ANTI_DOS_FORK_DEPTH_BUFFER);
+}
+
+// chain_start MTP further ahead than MAX_FUTURE_BLOCK_TIME, so the second
+// count in the commitment cap is negative. It must clamp to 0. The old
+// conversion to uint64_t wrapped that into a huge cap.
+BOOST_AUTO_TEST_CASE(headers_sync_max_commitments_future_mtp)
+{
+    const int64_t now{1'700'000'000};
+    SetMockTime(now);
+
+    CBlockHeader header{Params().GenesisBlock()};
+    header.nTime = static_cast<uint32_t>(now + MAX_FUTURE_BLOCK_TIME + 24 * 60 * 60);
+    CBlockIndex chain_start{header};
+    BOOST_CHECK(chain_start.GetMedianTimePast() > now + MAX_FUTURE_BLOCK_TIME);
+
+    const arith_uint256 min_work{0};
+    const HeadersSyncState sync{0, Params().GetConsensus(), &chain_start, min_work};
+    BOOST_CHECK_EQUAL(sync.GetMaxCommitments(), uint64_t{0});
+
+    SetMockTime(0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
