@@ -303,9 +303,10 @@ enum ServiceFlags : uint64_t {
     // BIP process.
 
     // NODE_BTQ_DILITHIUM indicates a BTQ node that validates Dilithium
-    // signatures and P2MR (BIP360) witness v2 transactions. Advertised for
-    // chain identification / crawlers only; not required by
-    // GetDesirableServiceFlags. Bit 25 avoids the experimental full-RBF /
+    // signatures and P2MR (BIP360) witness v2 transactions. Message magic
+    // is the chain check. This bit is for crawlers and is not required by
+    // GetDesirableServiceFlags. Requiring it would disconnect peers that
+    // predate the bit. Bit 25 avoids the experimental full-RBF /
     // NODE_REPLACE_BY_FEE (NODE_FULL_RBF) allocation on bit 26 used by
     // Bitcoin Core lineage tooling.
     NODE_BTQ_DILITHIUM = (1 << 25),
