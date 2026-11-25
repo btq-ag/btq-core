@@ -37,10 +37,15 @@ jobs:
 
     env:
       FILE_ENV: ${{ matrix.file_env }}
+      CI_CONTAINER_NETWORK: btq-sanitizers
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Libevent's AI_ADDRCONFIG lookup needs a non-loopback IPv6 address.
+      - name: Create dual-stack test network
+        run: docker network create --ipv6 --subnet fd89:8ec9:6dd2::/64 "$CI_CONTAINER_NETWORK"
 
       - name: CI script
         run: ./ci/test_run_all.sh
