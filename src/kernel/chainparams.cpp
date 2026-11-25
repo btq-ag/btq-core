@@ -209,6 +209,8 @@ public:
         // CheckInputScripts would Misbehave peers that relay still-consensus-
         // valid legacy Dilithium spends (see policy.h).
         consensus.nDilithiumP2MRHeight = opts.dilithium_p2mr_height.value_or(std::numeric_limits<int>::max());
+        // Testnet min-difficulty rule. Turning this off stalls a public testnet
+        // once a block is slower than the target. Mainnet stays off.
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
