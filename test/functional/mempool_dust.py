@@ -5,6 +5,7 @@
 """Test dust limit mempool policy (`-dustrelayfee` parameter)"""
 from decimal import Decimal
 
+from test_framework.dilithium import PUBLICKEYBYTES, SIGNATUREBYTES
 from test_framework.messages import (
     COIN,
     CTxOut,
@@ -12,6 +13,8 @@ from test_framework.messages import (
 )
 from test_framework.script import (
     CScript,
+    OP_0,
+    OP_1,
     OP_RETURN,
     OP_TRUE,
 )
@@ -38,6 +41,33 @@ from test_framework.wallet_util import generate_keypair
 DUST_RELAY_TX_FEE = 3000  # default setting [sat/kvB]
 
 
+def _compact_size(n: int) -> int:
+    if n < 253:
+        return 1
+    if n <= 0xFFFF:
+        return 3
+    if n <= 0xFFFFFFFF:
+        return 5
+    return 9
+
+
+def _min_single_key_p2mr_witness_bytes() -> int:
+    """Match MinSingleKeyP2MRWitnessBytes in src/policy/policy.cpp."""
+    sig_size = SIGNATUREBYTES + 1
+    # OP_PUSHDATA2, uint16 length, pubkey, OP_CHECKSIGDILITHIUM.
+    leaf_script_size = 1 + 2 + PUBLICKEYBYTES + 1
+    control_size = 1  # P2MR_CONTROL_BASE_SIZE, depth-0 control block
+    return (_compact_size(3) + _compact_size(sig_size) + sig_size
+            + _compact_size(leaf_script_size) + leaf_script_size
+            + _compact_size(control_size) + control_size)
+
+
+def _witness_version(script: CScript) -> int:
+    if script[0] == OP_0:
+        return 0
+    return int(script[0]) - int(OP_1) + 1
+
+
 class DustRelayFeeTest(BTQTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
@@ -49,7 +79,13 @@ class DustRelayFeeTest(BTQTestFramework):
             dust_threshold = 0
         else:
             tx_size = len(CTxOut(nValue=0, scriptPubKey=output_script).serialize())
-            tx_size += 41 + 107 // WITNESS_SCALE_FACTOR if output_script.IsWitnessProgram() else 148
+            if output_script.IsWitnessProgram():
+                # v2 is priced from a single-key P2MR witness. v0 and v1 stay
+                # on the 107-byte estimate. See GetDustThreshold.
+                witness_bytes = _min_single_key_p2mr_witness_bytes() if _witness_version(output_script) == 2 else 107
+                tx_size += 32 + 4 + 1 + witness_bytes // WITNESS_SCALE_FACTOR + 4
+            else:
+                tx_size += 148
             dust_threshold = int(get_fee(tx_size, dust_relay_fee) * COIN)
         self.log.info(f"-> Test {type_desc} output (size {len(output_script)}, limit {dust_threshold})")
 
@@ -87,7 +123,7 @@ class DustRelayFeeTest(BTQTestFramework):
             (script_to_p2wsh_script(CScript([OP_TRUE])),       "P2WSH"),
             (output_key_to_p2tr_script(pubkey[1:]),            "P2TR"),
             # witness programs for segwitv2+ can be between 2 and 40 bytes
-            (program_to_witness_script(2,  b'\x66' * 2),       "P2?? (future witness version 2)"),
+            (program_to_witness_script(2,  b'\x66' * 2),       "witness v2 (single-key P2MR dust)"),
             (program_to_witness_script(16, b'\x77' * 40),      "P2?? (future witness version 16)"),
             # largest possible output script considered standard
             (keys_to_multisig_script([uncompressed_pubkey]*3), "bare multisig (m-of-3)"),
