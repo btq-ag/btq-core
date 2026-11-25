@@ -12,15 +12,18 @@
 #include <test/data/lwma_testnet_activation_299855_300000.json.h>
 #include <test/util/setup_common.h>
 #include <univalue.h>
+#include <tinyformat.h>
 #include <util/strencodings.h>
 
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/test/unit_test.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <limits>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -697,7 +700,7 @@ BOOST_AUTO_TEST_CASE(lwma_testnet_activation_window_split)
         const UniValue& rec = records[i];
         const int height = rec["height"].getInt<int>();
         BOOST_REQUIRE_EQUAL(height, 299855 + static_cast<int>(i));
-        BOOST_REQUIRE_EQUAL(rec["url"].get_str(), "https://explorer.bitcoinquantum.com/api/v1/block/" + std::to_string(height));
+        BOOST_REQUIRE_EQUAL(rec["url"].get_str(), strprintf("https://explorer.bitcoinquantum.com/api/v1/block/%d", height));
 
         const std::string body = rec["body"].get_str();
         unsigned char digest[CSHA256::OUTPUT_SIZE];
@@ -719,12 +722,14 @@ BOOST_AUTO_TEST_CASE(lwma_testnet_activation_window_split)
         BOOST_REQUIRE(unix_time >= 0);
         BOOST_REQUIRE(unix_time <= std::numeric_limits<uint32_t>::max());
         header.nTime = static_cast<uint32_t>(unix_time);
-        const unsigned long bits = std::stoul(block["bits"].get_str(), nullptr, 16);
-        BOOST_REQUIRE(bits <= std::numeric_limits<uint32_t>::max());
-        header.nBits = static_cast<uint32_t>(bits);
-        const unsigned long nonce = std::stoul(block["nonce"].get_str(), nullptr, 10);
-        BOOST_REQUIRE(nonce <= std::numeric_limits<uint32_t>::max());
-        header.nNonce = static_cast<uint32_t>(nonce);
+        uint32_t bits = 0;
+        const std::string bits_str = block["bits"].get_str();
+        const auto [bits_end, bits_ec] = std::from_chars(bits_str.data(), bits_str.data() + bits_str.size(), bits, 16);
+        BOOST_REQUIRE(bits_ec == std::errc{} && bits_end == bits_str.data() + bits_str.size());
+        header.nBits = bits;
+        const auto nonce = ToIntegral<uint32_t>(block["nonce"].get_str());
+        BOOST_REQUIRE(nonce);
+        header.nNonce = *nonce;
 
         BOOST_REQUIRE_EQUAL(header.GetHash().ToString(), block["hash"].get_str());
         if (!headers.empty()) {
