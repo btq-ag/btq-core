@@ -24,7 +24,7 @@
 #include <vector>
 
 class CCoinControl;
-class PartiallySignedTransaction;
+struct PartiallySignedTransaction;
 class UniValue;
 
 namespace wallet {
