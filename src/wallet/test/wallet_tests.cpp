@@ -40,6 +40,7 @@
 #include <univalue.h>
 
 #include <fstream>
+#include <utility>
 
 using node::MAX_BLOCKFILE_SIZE;
 
@@ -347,6 +348,15 @@ BOOST_FIXTURE_TEST_CASE(importwallet_rescan, TestChain100Setup)
     }
 }
 
+static void SetWalletLastBlockProcessed(CWallet& wallet, const ChainstateManager& chainman)
+{
+    const auto [height, hash] = WITH_LOCK(chainman.GetMutex(),
+        const CBlockIndex* tip = Assert(chainman.ActiveTip());
+        return std::make_pair(tip->nHeight, tip->GetBlockHash()));
+    LOCK(wallet.cs_wallet);
+    wallet.SetLastBlockProcessed(height, hash);
+}
+
 BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, WalletTestingSetup)
 {
     const int64_t key_time = WITH_LOCK(Assert(m_node.chainman)->GetMutex(), return m_node.chainman->ActiveChain().Tip()->GetBlockTimeMax());
@@ -371,9 +381,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, Walle
             BOOST_REQUIRE(spk_man->AddDilithiumKeyPubKey(key));
             BOOST_REQUIRE(wallet->SetAddressBook(destination, "dilithium backup", AddressPurpose::RECEIVE));
             AddWallet(context, wallet);
-            LOCK(Assert(m_node.chainman)->GetMutex());
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
         }
+        SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
 
         JSONRPCRequest request;
         request.context = &context;
@@ -404,11 +413,7 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_dilithium_keys, Walle
         request.params.setArray();
         request.params.push_back(backup_file);
         AddWallet(context, wallet);
-        {
-            LOCK(Assert(m_node.chainman)->GetMutex());
-            LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
-        }
+        SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
 
         wallet::importwallet().HandleRequest(request);
         RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
@@ -439,10 +444,9 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_p2mr_metadata, Wallet
         const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
         wallet->GetOrCreateLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
+        SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
             SetMockTime(1'600'000'000);
             P2MRTreeLeaf leaf;
             leaf.depth = 0;
@@ -476,11 +480,7 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_p2mr_metadata, Wallet
         const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
         wallet->SetupLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
-        {
-            LOCK(Assert(m_node.chainman)->GetMutex());
-            LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
-        }
+        SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
 
         JSONRPCRequest request;
         request.context = &context;
@@ -488,12 +488,14 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_p2mr_metadata, Wallet
         request.params.push_back(backup_file);
         wallet::importwallet().HandleRequest(request);
 
-        LOCK(wallet->cs_wallet);
-        const auto entries = ListP2MR(*wallet);
-        BOOST_REQUIRE_EQUAL(entries.size(), 1U);
-        BOOST_CHECK_EQUAL(entries[0].address, original_address);
-        BOOST_CHECK_EQUAL(entries[0].label, "custom vault");
-        BOOST_CHECK_EQUAL(entries[0].created_at, 1'600'000'000);
+        {
+            LOCK(wallet->cs_wallet);
+            const auto entries = ListP2MR(*wallet);
+            BOOST_REQUIRE_EQUAL(entries.size(), 1U);
+            BOOST_CHECK_EQUAL(entries[0].address, original_address);
+            BOOST_CHECK_EQUAL(entries[0].label, "custom vault");
+            BOOST_CHECK_EQUAL(entries[0].created_at, 1'600'000'000);
+        }
         RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);
     }
 }
@@ -509,10 +511,9 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_truncated_p2mr_dump, Wal
         const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
         wallet->GetOrCreateLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
+        SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
             P2MRTreeLeaf leaf;
             leaf.depth = 0;
             leaf.leaf_version = TAPROOT_LEAF_TAPSCRIPT;
@@ -544,11 +545,7 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_truncated_p2mr_dump, Wal
         const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
         wallet->SetupLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
-        {
-            LOCK(Assert(m_node.chainman)->GetMutex());
-            LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
-        }
+        SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
         JSONRPCRequest request;
         request.context = &context;
         request.params.setArray();
@@ -569,10 +566,9 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_p2mr_commitment_mismatch
         const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
         wallet->GetOrCreateLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
+        SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
             LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
             P2MRTreeLeaf leaf;
             leaf.depth = 0;
             leaf.leaf_version = TAPROOT_LEAF_TAPSCRIPT;
@@ -621,11 +617,7 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_rejects_p2mr_commitment_mismatch
         const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
         wallet->SetupLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
-        {
-            LOCK(Assert(m_node.chainman)->GetMutex());
-            LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
-        }
+        SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
         JSONRPCRequest request;
         request.context = &context;
         request.params.setArray();
@@ -672,11 +664,7 @@ BOOST_FIXTURE_TEST_CASE(importwallet_tolerates_empty_tokens, WalletTestingSetup)
     request.params.setArray();
     request.params.push_back(fs::PathToString(dump_path));
     AddWallet(context, wallet);
-    {
-        LOCK(Assert(m_node.chainman)->GetMutex());
-        LOCK(wallet->cs_wallet);
-        wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
-    }
+    SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
 
     wallet::importwallet().HandleRequest(request);
     RemoveWallet(context, wallet, /* load_on_start= */ std::nullopt);

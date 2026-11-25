@@ -29,6 +29,8 @@ from test_framework.wallet import MiniWallet
 
 MAX_FILE_AGE = 60
 SECONDS_PER_HOUR = 60 * 60
+# Default dust threshold for the MiniWallet's P2TR outputs.
+MIN_CHANGE = Decimal("0.00000270")
 
 def small_txpuzzle_randfee(
     wallet, from_node, conflist, unconflist, amount, min_fee, fee_increment, batch_reqs
@@ -46,18 +48,19 @@ def small_txpuzzle_randfee(
     rand_fee = float(fee_increment) * (1.1892 ** random.randint(0, 28))
     # Total fee ranges from min_fee to min_fee + 127*fee_increment
     fee = min_fee - fee_increment + satoshi_round(rand_fee)
+    required = amount + fee + MIN_CHANGE
     utxos_to_spend = []
     total_in = Decimal("0.00000000")
-    while total_in <= (amount + fee) and len(conflist) > 0:
+    while total_in < required and len(conflist) > 0:
         t = conflist.pop(0)
         total_in += t["value"]
         utxos_to_spend.append(t)
-    while total_in <= (amount + fee) and len(unconflist) > 0:
+    while total_in < required and len(unconflist) > 0:
         t = unconflist.pop(0)
         total_in += t["value"]
         utxos_to_spend.append(t)
-    if total_in <= amount + fee:
-        raise RuntimeError(f"Insufficient funds: need {amount + fee}, have {total_in}")
+    if total_in < required:
+        raise RuntimeError(f"Insufficient funds: need {required}, have {total_in}")
     tx = wallet.create_self_transfer_multi(
         utxos_to_spend=utxos_to_spend,
         fee_per_output=0,
@@ -186,7 +189,8 @@ class EstimateFeeTest(BTQTestFramework):
                 tx_kbytes = tx_bytes / 1000.0
                 self.fees_per_kb.append(float(fee) / tx_kbytes)
             for node in self.nodes:
-                node.batch(batch_sendtx_reqs)
+                for response in node.batch(batch_sendtx_reqs):
+                    assert_equal(response.get("error"), None)
             self.sync_mempools(wait=0.1)
             mined = mining_node.getblock(self.generate(mining_node, 1)[0], True)["tx"]
             # update which txouts are confirmed
@@ -287,7 +291,8 @@ class EstimateFeeTest(BTQTestFramework):
                 txs.append(tx)
             batch_send_tx = [node.sendrawtransaction.get_request(tx["hex"]) for tx in txs]
             for n in self.nodes:
-                n.batch(batch_send_tx)
+                for response in n.batch(batch_send_tx):
+                    assert_equal(response.get("error"), None)
             # Mine the transactions on another node
             self.sync_mempools(wait=0.1, nodes=[node, miner])
             for txid in txids_to_replace:
