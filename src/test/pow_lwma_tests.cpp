@@ -695,7 +695,7 @@ BOOST_AUTO_TEST_CASE(lwma_testnet_activation_window_split)
     headers.reserve(records.size());
     for (size_t i = 0; i < records.size(); ++i) {
         const UniValue& rec = records[i];
-        const int height = rec["height"].get_int();
+        const int height = rec["height"].getInt<int>();
         BOOST_REQUIRE_EQUAL(height, 299855 + static_cast<int>(i));
         BOOST_REQUIRE_EQUAL(rec["url"].get_str(), "https://explorer.bitcoinquantum.com/api/v1/block/" + std::to_string(height));
 
@@ -706,10 +706,10 @@ BOOST_AUTO_TEST_CASE(lwma_testnet_activation_window_split)
 
         UniValue block;
         BOOST_REQUIRE(block.read(body));
-        BOOST_REQUIRE_EQUAL(block["height"].get_int(), height);
+        BOOST_REQUIRE_EQUAL(block["height"].getInt<int>(), height);
 
         CBlockHeader header;
-        const int64_t version = block["version"].get_int64();
+        const int64_t version = block["version"].getInt<int64_t>();
         BOOST_REQUIRE(version >= std::numeric_limits<int32_t>::min());
         BOOST_REQUIRE(version <= std::numeric_limits<int32_t>::max());
         header.nVersion = static_cast<int32_t>(version);
