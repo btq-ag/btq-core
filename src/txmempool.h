@@ -327,7 +327,10 @@ protected:
 
 public:
 
-    static const int ROLLING_FEE_HALFLIFE = 60 * 60 * 12; // public only for testing
+    // Wall-clock halflife. Core's 12h is 72 blocks at 10-minute spacing.
+    // At 60-second target spacing that window is 72 minutes.
+    // Public only for testing.
+    static const int ROLLING_FEE_HALFLIFE = 72 * 60;
 
     typedef boost::multi_index_container<
         CTxMemPoolEntry,

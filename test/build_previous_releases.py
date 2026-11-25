@@ -10,6 +10,7 @@ normal BTQ autotools, compiler, Boost, libevent, BDB and SQLite dependencies.
 
 import argparse
 import hashlib
+from importlib import import_module
 import json
 from pathlib import Path
 import shutil
@@ -19,7 +20,7 @@ import tarfile
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).parent / "functional"))
-from test_framework.previous_releases import RELEASES
+RELEASES = import_module("test_framework.previous_releases").RELEASES
 
 
 def install_binaries(output, tag, source, *, commit):
@@ -49,7 +50,7 @@ def main():
     repo = Path(__file__).resolve().parents[1]
     manifest = {}
     for tag, (commit, _) in RELEASES.items():
-        actual = subprocess.check_output(["git", "rev-parse", f"{tag}^{{commit}}"], cwd=repo, text=True).strip()
+        actual = subprocess.check_output(["git", "rev-parse", f"{tag}^{{commit}}"], cwd=repo, text=True, encoding="utf8").strip()
         assert actual == commit, f"fetch and verify the official pinned {tag} tag first"
         source = output / tag / "source"
         source.mkdir(parents=True, exist_ok=False)

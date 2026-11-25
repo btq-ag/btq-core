@@ -1,7 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Test script for sendmany with Dilithium addresses on regtest
 # This will verify that the sendmany fix works correctly
+
+export LC_ALL=C
 
 set -e
 
@@ -21,10 +23,10 @@ WALLET="test_dilithium_sendmany"
 # Every $BTQD/$BTQCLI call below routes through $NETWORK, so setting it here
 # isolates the whole script. Removed on exit, including on failure.
 BTQ_TEST_DATADIR="$(mktemp -d "${TMPDIR:-/tmp}/btq-sendmany-test.XXXXXX")" || exit 1
-NETWORK="-regtest -datadir=$BTQ_TEST_DATADIR"
+NETWORK=(-regtest "-datadir=$BTQ_TEST_DATADIR")
 
 cleanup() {
-    "$BTQCLI" $NETWORK stop >/dev/null 2>&1 || true
+    "$BTQCLI" "${NETWORK[@]}" stop >/dev/null 2>&1 || true
     sleep 1
     rm -rf "$BTQ_TEST_DATADIR"
 }
@@ -109,7 +111,6 @@ echo ""
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Step 1: Confirm the throwaway datadir
@@ -120,24 +121,24 @@ echo ""
 
 # Step 2: Start daemon
 echo "Step 2: Starting btqd in regtest mode..."
-$BTQD $NETWORK -daemon -debug=rpc
+"$BTQD" "${NETWORK[@]}" -daemon -debug=rpc
 sleep 3
 echo "✓ Daemon started"
 echo ""
 
 # Step 3: Create test wallet
 echo "Step 3: Creating test wallet..."
-$BTQCLI $NETWORK createwallet "$WALLET" false false "" false true true
+"$BTQCLI" "${NETWORK[@]}" createwallet "$WALLET" false false "" false true true
 echo "✓ Wallet created: $WALLET"
 echo ""
 
 # Step 4: Generate Dilithium address (pool address)
 echo "Step 4: Generating Dilithium pool address..."
-POOL_ADDR=$($BTQCLI $NETWORK -rpcwallet="$WALLET" getnewdilithiumaddress)
+POOL_ADDR=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" getnewdilithiumaddress)
 echo "✓ Pool address: $POOL_ADDR"
 
 # Check if it's Dilithium
-ADDR_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET" getaddressinfo "$POOL_ADDR")
+ADDR_INFO=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" getaddressinfo "$POOL_ADDR")
 IS_DILITHIUM=$(printf '%s' "$ADDR_INFO" | jsonq get isdilithium)
 if [ "$IS_DILITHIUM" != "true" ]; then
     echo -e "${RED}✗ ERROR: Address is not Dilithium!${NC}"
@@ -158,19 +159,19 @@ echo ""
 
 # Step 5: Mine blocks to pool address
 echo "Step 5: Mining 110 blocks to pool address..."
-$BTQCLI $NETWORK -rpcwallet="$WALLET" generatetoaddress 110 "$POOL_ADDR" > /dev/null
+"$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" generatetoaddress 110 "$POOL_ADDR" > /dev/null
 echo "✓ Mined 110 blocks"
 
 # Check balance
-BALANCE=$($BTQCLI $NETWORK -rpcwallet="$WALLET" getbalance)
+BALANCE=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" getbalance)
 echo "✓ Pool balance: $BALANCE BTQ"
 echo ""
 
 # Step 6: Generate recipient addresses (miners)
 echo "Step 6: Generating miner addresses..."
-MINER1=$($BTQCLI $NETWORK -rpcwallet="$WALLET" getnewaddress "" "legacy")
-MINER2=$($BTQCLI $NETWORK -rpcwallet="$WALLET" getnewaddress "" "legacy")
-MINER3=$($BTQCLI $NETWORK -rpcwallet="$WALLET" getnewdilithiumaddress)
+MINER1=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" getnewaddress "" "legacy")
+MINER2=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" getnewaddress "" "legacy")
+MINER3=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" getnewdilithiumaddress)
 echo "✓ Miner 1 (regular): $MINER1"
 echo "✓ Miner 2 (regular): $MINER2"
 echo "✓ Miner 3 (Dilithium): $MINER3"
@@ -178,7 +179,7 @@ echo ""
 
 # Step 7: List UTXOs
 echo "Step 7: Checking UTXOs..."
-UNSPENT_JSON=$($BTQCLI $NETWORK -rpcwallet="$WALLET" listunspent)
+UNSPENT_JSON=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" listunspent)
 UTXO_COUNT=$(printf '%s' "$UNSPENT_JSON" | jsonq count-true spendable)
 echo "✓ Spendable UTXOs: $UTXO_COUNT"
 
@@ -194,14 +195,14 @@ echo "========================================"
 echo ""
 
 echo "Test 1: Sending to 2 regular addresses..."
-TX1=$($BTQCLI $NETWORK -rpcwallet="$WALLET" sendmany "" "{\"$MINER1\":1.0,\"$MINER2\":2.0}" 2>&1)
+TX1=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" sendmany "" "{\"$MINER1\":1.0,\"$MINER2\":2.0}" 2>&1)
 if [[ $TX1 == *"error"* ]] || [[ $TX1 == *"Insufficient"* ]]; then
     echo -e "${RED}✗ FAILED: $TX1${NC}"
     echo ""
     echo "Debugging info:"
-    echo "Balance: $($BTQCLI $NETWORK -rpcwallet="$WALLET" getbalance)"
+    echo "Balance: $("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" getbalance)"
     echo "Listunspent:"
-    $BTQCLI $NETWORK -rpcwallet="$WALLET" listunspent | head -30
+    "$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" listunspent | head -30
     exit 1
 else
     echo -e "${GREEN}✓ SUCCESS: $TX1${NC}"
@@ -209,7 +210,7 @@ fi
 echo ""
 
 echo "Test 2: Sending to 1 Dilithium address..."
-TX2=$($BTQCLI $NETWORK -rpcwallet="$WALLET" sendmany "" "{\"$MINER3\":0.5}" 2>&1)
+TX2=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" sendmany "" "{\"$MINER3\":0.5}" 2>&1)
 if [[ $TX2 == *"error"* ]] || [[ $TX2 == *"Insufficient"* ]]; then
     echo -e "${RED}✗ FAILED: $TX2${NC}"
     exit 1
@@ -219,7 +220,7 @@ fi
 echo ""
 
 echo "Test 3: Sending to mixed addresses (2 regular + 1 Dilithium)..."
-TX3=$($BTQCLI $NETWORK -rpcwallet="$WALLET" sendmany "" "{\"$MINER1\":0.1,\"$MINER2\":0.2,\"$MINER3\":0.3}" 2>&1)
+TX3=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" sendmany "" "{\"$MINER1\":0.1,\"$MINER2\":0.2,\"$MINER3\":0.3}" 2>&1)
 if [[ $TX3 == *"error"* ]] || [[ $TX3 == *"Insufficient"* ]]; then
     echo -e "${RED}✗ FAILED: $TX3${NC}"
     exit 1
@@ -232,7 +233,7 @@ echo ""
 echo "Step 9: Verifying transactions..."
 for TXID in "$TX1" "$TX2" "$TX3"; do
     if [[ $TXID != *"error"* ]]; then
-        TX_DETAILS=$($BTQCLI $NETWORK -rpcwallet="$WALLET" gettransaction "$TXID" 2>&1)
+        TX_DETAILS=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" gettransaction "$TXID" 2>&1)
         TX_CONFIRMATIONS=$(printf '%s' "$TX_DETAILS" | jsonq get confirmations)
         if [ -n "$TX_CONFIRMATIONS" ]; then
             echo "✓ Transaction $TXID found in wallet"
@@ -245,26 +246,26 @@ echo ""
 
 # Step 10: Mine a block to confirm
 echo "Step 10: Mining block to confirm transactions..."
-$BTQCLI $NETWORK -rpcwallet="$WALLET" generatetoaddress 1 "$POOL_ADDR" > /dev/null
+"$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" generatetoaddress 1 "$POOL_ADDR" > /dev/null
 echo "✓ Block mined"
 echo ""
 
 # Step 11: Check final balances
 echo "Step 11: Checking final balances..."
-FINAL_BALANCE=$($BTQCLI $NETWORK -rpcwallet="$WALLET" getbalance)
+FINAL_BALANCE=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" getbalance)
 echo "Pool final balance: $FINAL_BALANCE BTQ"
 
 echo ""
 echo "Miner balances:"
 for ADDR in "$MINER1" "$MINER2" "$MINER3"; do
-    BAL=$($BTQCLI $NETWORK -rpcwallet="$WALLET" getreceivedbyaddress "$ADDR" 0)
+    BAL=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET" getreceivedbyaddress "$ADDR" 0)
     echo "  $ADDR: $BAL BTQ"
 done
 echo ""
 
 # Cleanup
 echo "Cleanup: Stopping daemon..."
-$BTQCLI $NETWORK stop
+"$BTQCLI" "${NETWORK[@]}" stop
 sleep 2
 
 echo ""

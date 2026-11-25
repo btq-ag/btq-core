@@ -14,6 +14,8 @@
 # Usage: testnet_dilithium_psbt_proof.sh <btq-cli invocation...>
 #   e.g. testnet_dilithium_psbt_proof.sh src/btq-cli -testnet -rpcport=18355 ...
 
+export LC_ALL=C
+
 set -euo pipefail
 
 if [ "$#" -lt 1 ]; then

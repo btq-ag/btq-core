@@ -93,7 +93,7 @@ def check_unit_tests_are_registered():
 
     missing = []
     for test_file in unit_test_files:
-        makefile_path = test_file.removeprefix("src/")
+        makefile_path = Path(test_file).relative_to("src").as_posix()
         if makefile_path not in test_makefile:
             missing.append(test_file)
 

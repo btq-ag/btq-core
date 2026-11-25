@@ -56,6 +56,9 @@ MAX_BLOCK_SIGOPS_WEIGHT_DILITHIUM_LIMITS = 160000
 TIME_GENESIS_BLOCK = 1771804800
 
 MAX_FUTURE_BLOCK_TIME = 15 * 60
+# src/chain.h sets TIMESTAMP_WINDOW equal to MAX_FUTURE_BLOCK_TIME.
+# Wallet rescan and manual prune both look this far behind a timestamp.
+TIMESTAMP_WINDOW = MAX_FUTURE_BLOCK_TIME
 
 # Coinbase transaction outputs can only be spent after this number of new blocks (network rule)
 COINBASE_MATURITY = 100

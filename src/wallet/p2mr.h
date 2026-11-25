@@ -23,6 +23,7 @@
 #include <vector>
 
 class CCoinControl;
+class PartiallySignedTransaction;
 class UniValue;
 
 namespace wallet {
@@ -174,6 +175,11 @@ util::Result<void> ValidateP2MRRestore(const UniValue& meta);
  *  address / scriptPubKey / merkle_root to match before writing. Trivial
  *  leaves are allowed because this is a restore. */
 util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+
+/** Store P2MR output trees carried on a PSBT. Each tree is checked against
+ *  that output's witness program before anything is written. A metadata
+ *  record is not treated as proof the wallet holds the keys. */
+util::Result<std::vector<P2MRCreated>> ImportP2MROutputsFromPSBT(CWallet& wallet, const PartiallySignedTransaction& psbt) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /**
  * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR

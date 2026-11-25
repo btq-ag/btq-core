@@ -2,6 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <algorithm>
+
 #include <headerssync.h>
 #include <logging.h>
 #include <pow.h>
@@ -41,7 +43,14 @@ HeadersSyncState::HeadersSyncState(NodeId id, const Consensus::Params& consensus
     // exceeds this bound, because it's not possible for a consensus-valid
     // chain to be longer than this (at the current time -- in the future we
     // could try again, if necessary, to sync a longer chain).
-    m_max_commitments = 6*(Ticks<std::chrono::seconds>(NodeClock::now() - NodeSeconds{std::chrono::seconds{chain_start->GetMedianTimePast()}}) + MAX_FUTURE_BLOCK_TIME) / HEADER_COMMITMENT_PERIOD;
+    // (now - MTP) is negative when chain_start's median time is ahead of our
+    // clock. Adding MAX_FUTURE_BLOCK_TIME does not always make it positive.
+    // Clamp before the uint64_t conversion, or the per-peer cap wraps to a
+    // huge value and the memory bound is off.
+    const int64_t seconds_since_start{
+        Ticks<std::chrono::seconds>(NodeClock::now() - NodeSeconds{std::chrono::seconds{chain_start->GetMedianTimePast()}})
+        + MAX_FUTURE_BLOCK_TIME};
+    m_max_commitments = 6 * static_cast<uint64_t>(std::max<int64_t>(0, seconds_since_start)) / HEADER_COMMITMENT_PERIOD;
 
     LogPrint(BCLog::NET, "Initial headers sync started with peer=%d: height=%i, max_commitments=%i, min_work=%s\n", m_id, m_current_height, m_max_commitments, m_minimum_required_work.ToString());
 }

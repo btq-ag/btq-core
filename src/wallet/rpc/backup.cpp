@@ -553,7 +553,8 @@ RPCHelpMan importwallet()
     return RPCHelpMan{"importwallet",
                 "\nImports keys from a wallet dump file (see dumpwallet). Requires a new wallet backup to include imported keys.\n"
                 "Dilithium keys are imported as P2MR receive destinations. P2MR metadata lines (p2mr <time> <hexjson>)\n"
-                "restore custom trees that cannot be rebuilt from a key alone.\n"
+                "restore custom trees, including hybrid and multi-leaf trees, that a key or seed alone cannot rebuild.\n"
+                "Seed-only recovery does not rebuild hybrid or multi-leaf trees.\n"
                 "Note: Blockchain and Mempool will be rescanned after a successful import. Use \"getwalletinfo\" to query the scanning progress.\n"
                 "Note: This command is only compatible with legacy wallets. Descriptor wallets should use importp2mr.\n",
                 {
@@ -857,7 +858,8 @@ RPCHelpMan dumpwallet()
     return RPCHelpMan{"dumpwallet",
                 "\nDumps all wallet keys in a human-readable format to a server-side file. This does not allow overwriting existing files.\n"
                 "Imported scripts are included in the dumpfile, but corresponding BIP173 addresses, etc. may not be added automatically by importwallet.\n"
-                "P2MR metadata (custom multi-leaf trees) is written as p2mr records and restored by importwallet.\n"
+                "P2MR metadata (plain, hybrid, and multi-leaf trees) is written as p2mr records and restored by importwallet.\n"
+                "A hybrid leaf pairs a Dilithium key with an x-only key. Seed-only recovery does not rebuild hybrid or multi-leaf trees.\n"
                 "Descriptor wallets cannot use dumpwallet; use listp2mr / importp2mr or backupwallet.\n"
                 "Note that if your wallet contains keys which are not derived from your HD seed (e.g. imported keys), these are not covered by\n"
                 "only backing up the seed itself, and must be backed up too (e.g. ensure you back up the whole dumpfile).\n"
