@@ -896,6 +896,18 @@ static void NoteAddressBookRollback(CWallet& wallet, const CTxDestination& dest,
     }
 }
 
+// clang does not carry EXCLUSIVE_LOCKS_REQUIRED into a lambda.
+static bilingual_str FinishStoreP2MRRecord(CWallet& wallet, const P2MRCreated& out,
+                                           const std::optional<CAddressBookData>& prior_entry,
+                                           bool write_address_book, std::string error)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    if (write_address_book) {
+        NoteAddressBookRollback(wallet, out.dest, out.address, prior_entry, error);
+    }
+    return Untranslated(error);
+}
+
 // Snapshot the address book, write it when requested, then write metadata.
 // SetAddressBook updates memory and can store the purpose row before the name
 // write fails. SetWalletFlagWithDB throws when the flag row fails. Either
@@ -912,25 +924,19 @@ static std::optional<bilingual_str> StoreP2MRRecord(CWallet& wallet, WalletBatch
             prior_entry = *existing;
         }
     }
-    const auto finish = [&](std::string error) {
-        if (write_address_book) {
-            NoteAddressBookRollback(wallet, out.dest, out.address, prior_entry, error);
-        }
-        return Untranslated(error);
-    };
     try {
         if (write_address_book && !wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
-            return finish("failed to set P2MR address book entry");
+            return FinishStoreP2MRRecord(wallet, out, prior_entry, write_address_book,
+                                         "failed to set P2MR address book entry");
         }
         if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, metadata)) {
-            return finish("failed to persist P2MR metadata");
+            return FinishStoreP2MRRecord(wallet, out, prior_entry, write_address_book,
+                                         "failed to persist P2MR metadata");
         }
     } catch (const std::exception& e) {
-        std::string error{e.what()};
-        if (write_address_book) {
-            NoteAddressBookRollback(wallet, out.dest, out.address, prior_entry, error);
-        }
-        if (error != e.what()) throw std::runtime_error(error);
+        const bilingual_str error = FinishStoreP2MRRecord(wallet, out, prior_entry, write_address_book,
+                                                          std::string{e.what()});
+        if (error.original != e.what()) throw std::runtime_error(error.original);
         throw;
     }
     return std::nullopt;
