@@ -1736,7 +1736,7 @@ BOOST_AUTO_TEST_CASE(btqconsensus_verify_script_p2mr_dilithium)
     bad.vin[0].scriptWitness.stack[0][0] ^= 1;
     BOOST_CHECK_EQUAL(verify(bad, flags, err), 0);
     BOOST_CHECK_EQUAL(err, btqconsensus_ERR_OK);
-    BOOST_CHECK_EQUAL(verify(bad, flags & ~btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR, err), 1);
+    BOOST_CHECK_EQUAL(verify(bad, flags & ~static_cast<unsigned int>(btqconsensus_SCRIPT_FLAGS_VERIFY_P2MR), err), 1);
 
     // The sighash commits to the spent output's value
     BOOST_CHECK_EQUAL(verify(spend, flags, err, /*utxo_value=*/2, /*amount=*/2), 0);

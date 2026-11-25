@@ -99,7 +99,8 @@ BOOST_AUTO_TEST_CASE(chainparams_dilithium_limits)
     // with mainnet, signet, and regtest. The published #297 default left
     // testnet unscheduled; that is the legacy testnet, not this one.
     for (const ChainType chain : {ChainType::BTQMAIN, ChainType::BTQTEST, ChainType::BTQREGTEST, ChainType::BTQSIGNET}) {
-        const auto& consensus{CreateChainParams(*m_node.args, chain)->GetConsensus()};
+        const auto params{CreateChainParams(*m_node.args, chain)};
+        const auto& consensus{params->GetConsensus()};
         BOOST_CHECK_EQUAL(consensus.nDilithiumLimitsHeight, 1);
         BOOST_CHECK_EQUAL(consensus.MaxBlockSigOpsCost(0), MAX_BLOCK_SIGOPS_COST);
         BOOST_CHECK_EQUAL(consensus.MaxBlockSigOpsCost(1), MAX_BLOCK_SIGOPS_COST_DILITHIUM_LIMITS);

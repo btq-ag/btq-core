@@ -95,11 +95,8 @@ jobs:
       - name: Compile and run tests
         run: |
           # Run tests on the commits selected above.
-          # Use clang++, because it is a bit faster and uses less memory than g++
-          # Functional tests are not run here yet: many still fail on master
-          # (#104), so they would make this job fail on every PR. Add
-          # `&& ./test/functional/test_runner.py -j $(( $(nproc) * 2 ))` back
-          # after `make check`, inside the braces, when #104 is fixed.
+          # Use clang++, because it is a bit faster and uses less memory than g++.
+          # Functional tests run here too. The allowlist of known failures is gone.
           if [ -z "$TEST_COMMITS" ]; then
             echo "::notice::no commits to test before the PR head"
             exit 0
@@ -111,7 +108,7 @@ jobs:
             git clean -qffdx
             git checkout -q "$commit"
             echo "Running test-one-commit on $(git log -1)"
-            { ./autogen.sh && CC=clang CXX=clang++ ./configure && make clean && make -j "$(nproc)" check; } || exit 1
+            { ./autogen.sh && CC=clang CXX=clang++ ./configure && make clean && make -j "$(nproc)" check && ./test/functional/test_runner.py -j $(( $(nproc) * 2 )); } || exit 1
           done
 
   macos-native-x86_64:

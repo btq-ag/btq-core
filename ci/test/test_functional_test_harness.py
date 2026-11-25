@@ -13,43 +13,65 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import check_known_failures as checker
+import check_functional_test_results as checker
 
 
 class FunctionalHarnessTest(unittest.TestCase):
-    def check_log(self, rows, *, footer=True, completed=True, coverage=False, known=""):
+    def check_log(self, rows, *, footer=True, aggregate="Passed", completed=True, coverage=False, footer_output="", runner_output=""):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "run.log"
-            failures = Path(directory) / "known.txt"
-            log.write_text("TEST | STATUS | DURATION\n" + rows + ("ALL | Failed | 1 s\n" if footer else "") + ("Functional test runner completed.\n" if completed else ""))
-            failures.write_text(known)
-            argv = ["checker", str(log), str(failures)] + (["--coverage"] if coverage else [])
-            with patch.object(sys, "argv", argv), patch.object(checker, "expected_base_tests", return_value={"a.py", "b.py"}), redirect_stdout(io.StringIO()):
+            log.write_text(
+                runner_output + "TEST | STATUS | DURATION\n" + rows
+                + (f"ALL | {aggregate} | 1 s (accumulated)\nRuntime: 1 s\n" if footer else "")
+                + footer_output
+                + ("Functional test runner completed.\n" if completed else "")
+            )
+            argv = ["checker", str(log)] + (["--coverage"] if coverage else [])
+            expected = {"a.py", "a.py --variant"}
+            with patch.object(sys, "argv", argv), patch.object(checker, "expected_base_tests", return_value=expected), redirect_stdout(io.StringIO()):
                 return checker.main()
 
-    def test_completed_known_failure(self):
-        self.assertEqual(self.check_log("a.py | Passed | 1 s\nb.py | Failed | 1 s\n", known="b.py\n"), 0)
+    def test_completed_suite_with_rpc_coverage(self):
+        self.assertEqual(self.check_log(
+            "a.py | ✓ Passed | 1 s\na.py --variant | ○ Skipped | 1 s\n",
+            coverage=True, footer_output="All RPC commands covered.\n",
+        ), 0)
 
-    def test_new_failure(self):
-        self.assertEqual(self.check_log("a.py | Passed | 1 s\nb.py | Failed | 1 s\n"), 1)
+    def test_failed_test(self):
+        self.assertEqual(self.check_log(
+            "a.py | Passed | 1 s\na.py --variant | Failed | 1 s\n",
+            aggregate="Failed",
+        ), 1)
+
+    def test_inconsistent_aggregate_status(self):
+        rows = "a.py | Passed | 1 s\na.py --variant | Passed | 1 s\n"
+        for aggregate in ("Failed", "Skipped"):
+            with self.subTest(aggregate=aggregate):
+                self.assertEqual(self.check_log(rows, aggregate=aggregate), 1)
 
     def test_truncated_table(self):
-        self.assertEqual(self.check_log("a.py | Passed | 1 s\nb.py | Passed | 1 s\n", footer=False), 1)
+        self.assertEqual(self.check_log("a.py | Passed | 1 s\na.py --variant | Passed | 1 s\n", footer=False), 1)
 
     def test_missing_variant(self):
         self.assertEqual(self.check_log("a.py | Passed | 1 s\n"), 1)
 
     def test_duplicate_variant(self):
-        self.assertEqual(self.check_log("a.py | Passed | 1 s\na.py | Passed | 1 s\nb.py | Passed | 1 s\n"), 1)
+        self.assertEqual(self.check_log("a.py | Passed | 1 s\na.py --variant | Passed | 1 s\na.py --variant | Passed | 1 s\n"), 1)
+
+    def test_unexpected_variant(self):
+        self.assertEqual(self.check_log("a.py | Passed | 1 s\na.py --variant | Passed | 1 s\na.py --extra | Passed | 1 s\n"), 1)
 
     def test_all_skipped(self):
-        self.assertEqual(self.check_log("a.py | Skipped | 1 s\nb.py | Skipped | 1 s\n"), 1)
+        self.assertEqual(self.check_log("a.py | Skipped | 1 s\na.py --variant | Skipped | 1 s\n"), 1)
 
     def test_exception_after_table(self):
-        self.assertEqual(self.check_log("a.py | Passed | 1 s\nb.py | Passed | 1 s\n", completed=False), 1)
+        self.assertEqual(self.check_log("a.py | Passed | 1 s\na.py --variant | Passed | 1 s\n", completed=False), 1)
 
     def test_missing_rpc_coverage(self):
-        self.assertEqual(self.check_log("a.py | Passed | 1 s\nb.py | Passed | 1 s\n", coverage=True), 1)
+        self.assertEqual(self.check_log(
+            "a.py | Passed | 1 s\na.py --variant | Passed | 1 s\n",
+            coverage=True, runner_output="All RPC commands covered.\n",
+        ), 1)
 
     def test_authoritative_rpc_reference_includes_wallet_commands(self):
         path = Path(__file__).resolve().parents[2] / "test/functional/test_runner.py"

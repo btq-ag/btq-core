@@ -1,3 +1,8 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+/* Define before any system header so <unistd.h> declares syscall(). */
+#define _GNU_SOURCE
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -10,7 +15,6 @@
 #include <fcntl.h>
 #include <errno.h>
 #ifdef __linux__
-#define _GNU_SOURCE
 #include <unistd.h>
 #include <sys/syscall.h>
 #else
