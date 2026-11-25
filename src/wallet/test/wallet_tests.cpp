@@ -686,9 +686,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_plain_hybrid_and_mult
         wallet->GetOrCreateLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
+            SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
             LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
             auto plain_created = ImportDilithiumKeyAsP2MR(*wallet, key_a, "plain");
             BOOST_REQUIRE(plain_created);
             plain_address = plain_created->address;
@@ -739,11 +738,7 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_plain_hybrid_and_mult
         const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase());
         wallet->SetupLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
-        {
-            LOCK(Assert(m_node.chainman)->GetMutex());
-            LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
-        }
+        SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
 
         JSONRPCRequest request;
         request.context = &context;
@@ -809,9 +804,8 @@ BOOST_FIXTURE_TEST_CASE(importwallet_rejects_bad_p2mr_without_partial_write, Wal
         wallet->GetOrCreateLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
+            SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
             LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
             P2MRTreeLeaf leaf;
             leaf.depth = 0;
             leaf.leaf_version = TAPROOT_LEAF_TAPSCRIPT;
@@ -860,9 +854,8 @@ BOOST_FIXTURE_TEST_CASE(importwallet_rejects_bad_p2mr_without_partial_write, Wal
         wallet->SetupLegacyScriptPubKeyMan();
         AddWallet(context, wallet);
         {
-            LOCK(Assert(m_node.chainman)->GetMutex());
+            SetWalletLastBlockProcessed(*wallet, *Assert(m_node.chainman));
             LOCK(wallet->cs_wallet);
-            wallet->SetLastBlockProcessed(m_node.chainman->ActiveChain().Height(), m_node.chainman->ActiveChain().Tip()->GetBlockHash());
             P2MRTreeLeaf leaf;
             leaf.depth = 0;
             leaf.leaf_version = TAPROOT_LEAF_TAPSCRIPT;
