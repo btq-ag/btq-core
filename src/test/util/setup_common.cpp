@@ -46,7 +46,6 @@
 #include <test/util/net.h>
 #include <test/util/random.h>
 #include <test/util/txmempool.h>
-#include <util/time.h>
 #include <txdb.h>
 #include <txmempool.h>
 #include <util/chaintype.h>

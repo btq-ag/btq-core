@@ -20,7 +20,6 @@ from .script import (
     sha256,
     taproot_construct,
 )
-from .util import assert_equal
 from test_framework.script_util import (
     keyhash_to_p2pkh_script,
     program_to_witness_script,

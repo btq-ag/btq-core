@@ -151,7 +151,8 @@ int64_t GetTransactionSigOpCost(const CTransaction& tx, const CCoinsViewCache& i
     // before dilithium_limits keep the wrapping product.
     const bool widen{(flags & SCRIPT_VERIFY_DILITHIUM_LIMITS) != 0};
     const auto scale = [widen](unsigned int count) -> int64_t {
-        return widen ? int64_t{count} * WITNESS_SCALE_FACTOR : int64_t{count * WITNESS_SCALE_FACTOR};
+        const int64_t scaled{int64_t{count} * WITNESS_SCALE_FACTOR};
+        return widen ? scaled : static_cast<uint32_t>(scaled);
     };
 
     int64_t nSigOps = scale(GetLegacySigOpCount(tx));

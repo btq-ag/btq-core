@@ -16,6 +16,7 @@
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <script/script.h>
+#include <tinyformat.h>
 #include <uint256.h>
 #include <util/chaintype.h>
 #include <util/strencodings.h>
@@ -25,6 +26,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <type_traits>
 #include <climits>
 
@@ -583,21 +585,21 @@ void MineGenesisBlock(CBlock &genesis)
             best = c;
             n = 1;
             
-            printf("%s %s %s nonce=%u\n", genesis.GetHash().GetHex().c_str(), hashTarget.GetHex().c_str(),
-                   best.GetHex().c_str(), genesis.nNonce); 
+            tfm::format(std::cout, "%s %s %s nonce=%u\n", genesis.GetHash().GetHex(), hashTarget.GetHex(),
+                        best.GetHex(), genesis.nNonce);
         }
         
         ++genesis.nNonce;
         if (genesis.nNonce == 0) { 
             ++genesis.nTime; 
-            printf("Nonce wrapped, incremented time to %u\n", genesis.nTime);
+            tfm::format(std::cout, "Nonce wrapped, incremented time to %u\n", genesis.nTime);
         }
     }
     
-    printf("\n*** FOUND GENESIS BLOCK ***\n");
-    printf("Nonce: %u\n", genesis.nNonce);
-    printf("Time: %u\n", genesis.nTime);
-    printf("Hash: %s\n", genesis.GetHash().GetHex().c_str());
-    printf("Merkle Root: %s\n", genesis.hashMerkleRoot.GetHex().c_str());
-    printf("Converting genesis hash to string: %s\n", genesis.ToString().c_str()); 
+    tfm::format(std::cout, "\n*** FOUND GENESIS BLOCK ***\n");
+    tfm::format(std::cout, "Nonce: %u\n", genesis.nNonce);
+    tfm::format(std::cout, "Time: %u\n", genesis.nTime);
+    tfm::format(std::cout, "Hash: %s\n", genesis.GetHash().GetHex());
+    tfm::format(std::cout, "Merkle Root: %s\n", genesis.hashMerkleRoot.GetHex());
+    tfm::format(std::cout, "Converting genesis hash to string: %s\n", genesis.ToString());
 }

@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <consensus/amount.h>
+#include <crypto/dilithium_key.h>
 #include <pubkey.h>
 #include <test/fuzz/util.h>
 #include <test/util/script.h>
@@ -197,11 +198,32 @@ CTxDestination ConsumeTxDestination(FuzzedDataProvider& fuzzed_data_provider) no
             tx_destination = WitnessV1Taproot{XOnlyPubKey{ConsumeUInt256(fuzzed_data_provider)}};
         },
         [&] {
+            tx_destination = WitnessV2P2MR{ConsumeUInt256(fuzzed_data_provider)};
+        },
+        [&] {
             std::vector<unsigned char> program{ConsumeRandomLengthByteVector(fuzzed_data_provider, /*max_length=*/40)};
             if (program.size() < 2) {
                 program = {0, 0};
             }
-            tx_destination = WitnessUnknown{fuzzed_data_provider.ConsumeIntegralInRange<unsigned int>(2, 16), program};
+            // A version 2 program of this size decodes as P2MR.
+            const unsigned int min_version{program.size() == WitnessV2P2MR::SIZE ? 3U : 2U};
+            tx_destination = WitnessUnknown{fuzzed_data_provider.ConsumeIntegralInRange<unsigned int>(min_version, 16), program};
+        },
+        [&] {
+            const auto bytes{ConsumeFixedLengthByteVector(fuzzed_data_provider, CDilithiumPubKey::SIZE)};
+            tx_destination = DilithiumPubKeyDestination{CDilithiumPubKey{bytes.begin(), bytes.end()}};
+        },
+        [&] {
+            tx_destination = DilithiumPKHash{ConsumeUInt160(fuzzed_data_provider)};
+        },
+        [&] {
+            tx_destination = DilithiumScriptHash{ConsumeUInt160(fuzzed_data_provider)};
+        },
+        [&] {
+            tx_destination = DilithiumWitnessV0KeyHash{ConsumeUInt160(fuzzed_data_provider)};
+        },
+        [&] {
+            tx_destination = DilithiumWitnessV0ScriptHash{ConsumeUInt256(fuzzed_data_provider)};
         })};
     Assert(call_size == std::variant_size_v<CTxDestination>);
     return tx_destination;

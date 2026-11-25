@@ -19,9 +19,9 @@
 #   JOBS=2          parallel make jobs (default 2; safer on WSL than -j$(nproc))
 #   BUILD_LOG=...   log file for --background (default: .quick-test-build.log)
 
-set -euo pipefail
-
 export LC_ALL=C
+
+set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRCDIR="$ROOT/src"
@@ -164,7 +164,7 @@ run_functional_tests() {
     [[ -x "$BTQD" ]] || { echo "Missing $BTQD (run without --no-build)" >&2; exit 1; }
     [[ -x "$BTQ_CLI" ]] || { echo "Missing $BTQ_CLI (run without --no-build)" >&2; exit 1; }
     cd "$FUNCTIONAL_DIR"
-    local entry args
+    local entry
     for entry in "${FUNCTIONAL_TESTS[@]}"; do
         # shellcheck disable=SC2086
         set -- $entry
