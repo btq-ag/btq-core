@@ -7,6 +7,9 @@
 # (#194 merged a narrowing conversion in a braced initializer that only
 # test each commit, the one other clang build, reported; fixed in #304).
 # Same configure flags as build-and-address-tests.yml.
+#
+# configure.ac adds -Werror=thread-safety when the compiler accepts it, so
+# this job fails on thread-safety warnings (#306). -Wthread-safety stays on.
 
 name: clang-build
 
@@ -60,6 +63,9 @@ jobs:
       - name: Configure
         run: |
           ./autogen.sh
+          # Do not pass CXXFLAGS here. An override skips configure's warning
+          # set, including -Wthread-safety. -Werror=thread-safety is added
+          # for clang in configure.ac.
           ./configure \
             --disable-bench \
             --disable-fuzz \
