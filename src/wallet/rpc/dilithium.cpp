@@ -198,7 +198,10 @@ RPCHelpMan recoverdilithiumkeys()
         "address derivation, which left Dilithium keys at scattered indexes; this scans a\n"
         "past or ahead range and recovers them. Descriptor wallets only.\n"
         "Run rescanblockchain afterwards to find historical transactions to the recovered\n"
-        "addresses.\n",
+        "addresses.\n"
+        "Seed-only recovery does not rebuild hybrid or multi-leaf trees. A hybrid leaf\n"
+        "pairs a Dilithium key with an x-only key, and that pairing is part of the tree.\n"
+        "Restore those addresses with importp2mr or importwallet.\n",
         {
             {"start", RPCArg::Type::NUM, RPCArg::Optional::NO, "First sequence index to derive (inclusive)"},
             {"stop", RPCArg::Type::NUM, RPCArg::Optional::NO, "Last sequence index to derive (inclusive)"},
