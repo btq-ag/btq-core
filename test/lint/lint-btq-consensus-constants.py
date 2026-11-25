@@ -219,6 +219,22 @@ def main():
     )
     check_equal(
         errors,
+        "chain.h TIMESTAMP_WINDOW",
+        cpp_constant(
+            "src/chain.h",
+            "TIMESTAMP_WINDOW",
+            {"MAX_FUTURE_BLOCK_TIME": consensus["MAX_FUTURE_BLOCK_TIME"]},
+        ),
+        consensus["MAX_FUTURE_BLOCK_TIME"],
+    )
+    check_equal(
+        errors,
+        "blocktools.TIMESTAMP_WINDOW",
+        blocktools.get("TIMESTAMP_WINDOW", MISSING),
+        consensus["MAX_FUTURE_BLOCK_TIME"],
+    )
+    check_equal(
+        errors,
         "blocktools.COINBASE_MATURITY",
         blocktools.get("COINBASE_MATURITY", MISSING),
         consensus["COINBASE_MATURITY"],

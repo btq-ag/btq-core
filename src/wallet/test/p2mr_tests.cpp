@@ -8,6 +8,7 @@
 #include <key.h>
 #include <key_io.h>
 #include <policy/policy.h>
+#include <psbt.h>
 #include <primitives/transaction.h>
 #include <script/dilithium_leaf.h>
 #include <script/interpreter.h>
@@ -21,6 +22,7 @@
 #include <util/vector.h>
 #include <validation.h>
 #include <wallet/coincontrol.h>
+#include <wallet/fees.h>
 #include <wallet/p2mr.h>
 #include <wallet/receive.h>
 #include <wallet/scriptpubkeyman.h>
@@ -225,6 +227,129 @@ BOOST_FIXTURE_TEST_CASE(create_allows_only_wallet_spendable_dilithium_leaves_by_
     BOOST_REQUIRE(allowed);
 }
 
+enum class P2MRBookPrior { Absent, Labelled, Change };
+
+static void ExpectRolledBackBook(CWallet& wallet, const CTxDestination& dest, P2MRBookPrior prior, bool reloaded)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    BOOST_CHECK(wallet.ListP2MRMetadata().empty());
+    // A change entry has no rows, so a reload cannot bring it back.
+    const bool expect_absent = prior == P2MRBookPrior::Absent || (reloaded && prior == P2MRBookPrior::Change);
+    if (expect_absent) {
+        BOOST_CHECK(!wallet.FindAddressBookEntry(dest, /*allow_change=*/true));
+        return;
+    }
+    if (prior == P2MRBookPrior::Labelled) {
+        const auto* entry = wallet.FindAddressBookEntry(dest);
+        BOOST_REQUIRE(entry);
+        BOOST_CHECK_EQUAL(entry->GetLabel(), "pre-existing");
+        BOOST_CHECK(entry->purpose == AddressPurpose::SEND);
+        return;
+    }
+    const auto* entry = wallet.FindAddressBookEntry(dest, /*allow_change=*/true);
+    BOOST_REQUIRE(entry);
+    BOOST_CHECK(entry->IsChange());
+    BOOST_CHECK(!entry->purpose);
+    BOOST_CHECK(!wallet.FindAddressBookEntry(dest));
+}
+
+BOOST_FIXTURE_TEST_CASE(create_p2mr_rolls_back_address_book_on_db_write_failure, BasicTestingSetup)
+{
+    const auto leaves = MakeOpTrueTree();
+    auto builder = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(builder);
+    const CTxDestination dest = builder->GetOutput();
+    const std::string address = EncodeDestination(dest);
+
+    struct FailCase {
+        const char* type;
+        const char* error;
+        bool throws;
+        bool flag_remains;
+    };
+    // flags: SetWalletFlagWithDB throws before any metadata row.
+    // purpose / name: SetAddressBook returns false after a partial update.
+    // p2mrmeta: the metadata row fails after the address book (and the flag) landed.
+    const FailCase fails[] = {
+        {"flags", "SetWalletFlagWithDB: writing wallet flags failed", true, false},
+        {"purpose", "failed to set P2MR address book entry", false, false},
+        {"name", "failed to set P2MR address book entry", false, false},
+        {"p2mrmeta", "failed to persist P2MR metadata", false, true},
+    };
+    const P2MRBookPrior priors[] = {P2MRBookPrior::Absent, P2MRBookPrior::Labelled, P2MRBookPrior::Change};
+    const auto prior_name = [](P2MRBookPrior prior) {
+        switch (prior) {
+        case P2MRBookPrior::Absent: return "absent";
+        case P2MRBookPrior::Labelled: return "labelled";
+        case P2MRBookPrior::Change: return "change";
+        }
+        return "";
+    };
+
+    for (const FailCase& fail : fails) {
+        for (const P2MRBookPrior prior : priors) {
+            const std::string where = std::string(fail.type) + "/" + prior_name(prior);
+            auto wallet = MakeP2MRTestWallet(*m_node.chain);
+            {
+                LOCK(wallet->cs_wallet);
+                if (prior == P2MRBookPrior::Labelled) {
+                    BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
+                } else if (prior == P2MRBookPrior::Change) {
+                    wallet->m_address_book[dest];
+                }
+                GetMockableDatabase(*wallet).FailNextWrites(fail.type);
+                if (fail.throws) {
+                    bool threw = false;
+                    try {
+                        auto created = CreateP2MR(*wallet, leaves, "db-fail", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+                        BOOST_CHECK_MESSAGE(!created, where);
+                    } catch (const std::runtime_error& e) {
+                        threw = true;
+                        BOOST_CHECK_MESSAGE(std::string(e.what()) == fail.error, where + " threw: " + e.what());
+                    }
+                    BOOST_CHECK_MESSAGE(threw, where + " did not throw");
+                } else {
+                    auto created = CreateP2MR(*wallet, leaves, "db-fail", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+                    BOOST_REQUIRE_MESSAGE(!created, where);
+                    BOOST_CHECK_MESSAGE(util::ErrorString(created).original == fail.error, where + " error: " + util::ErrorString(created).original);
+                }
+                BOOST_CHECK_MESSAGE(GetMockableDatabase(*wallet).m_write_fault.remaining == 0, where + " fault was not hit");
+                BOOST_CHECK_EQUAL(wallet->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA), fail.flag_remains);
+                ExpectRolledBackBook(*wallet, dest, prior, /*reloaded=*/false);
+            }
+            MockableData records = GetMockableDatabase(*wallet).m_records;
+            auto reloaded = std::make_unique<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+            BOOST_CHECK_EQUAL(reloaded->LoadWallet(), DBErrors::LOAD_OK);
+            LOCK(reloaded->cs_wallet);
+            BOOST_CHECK_EQUAL(reloaded->IsWalletFlagSet(WALLET_FLAG_P2MR_METADATA), fail.flag_remains);
+            ExpectRolledBackBook(*reloaded, dest, prior, /*reloaded=*/true);
+        }
+    }
+
+    // Both name writes fail: the create, then the restore. The error keeps
+    // the original failure and says the rollback failed too. Memory is the
+    // captured label because SetAddressBook updates it before the name write.
+    {
+        auto wallet = MakeP2MRTestWallet(*m_node.chain);
+        {
+            LOCK(wallet->cs_wallet);
+            BOOST_REQUIRE(wallet->SetAddressBook(dest, "pre-existing", AddressPurpose::SEND));
+            GetMockableDatabase(*wallet).FailNextWrites("name", 2);
+            auto created = CreateP2MR(*wallet, leaves, "db-fail", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+            BOOST_REQUIRE(!created);
+            const std::string msg = util::ErrorString(created).original;
+            BOOST_CHECK(msg.find("failed to set P2MR address book entry") == 0);
+            BOOST_CHECK(msg.find("failed to roll back address book entry for " + address) != std::string::npos);
+            ExpectRolledBackBook(*wallet, dest, P2MRBookPrior::Labelled, /*reloaded=*/false);
+        }
+        MockableData records = GetMockableDatabase(*wallet).m_records;
+        auto reloaded = std::make_unique<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+        BOOST_CHECK_EQUAL(reloaded->LoadWallet(), DBErrors::LOAD_OK);
+        LOCK(reloaded->cs_wallet);
+        ExpectRolledBackBook(*reloaded, dest, P2MRBookPrior::Labelled, /*reloaded=*/true);
+    }
+}
+
 BOOST_FIXTURE_TEST_CASE(create_allows_threshold_accumulator_with_one_cosigner_key, BasicTestingSetup)
 {
     CWallet wallet(m_node.chain.get(), "", CreateMockableWalletDatabase());
@@ -363,6 +488,244 @@ BOOST_FIXTURE_TEST_CASE(restore_rejects_negative_created_at, BasicTestingSetup)
     meta.pushKV("tree", P2MRTreeToUniValue(MakeOpTrueTree()));
     meta.pushKV("created_at", int64_t{-1});
     BOOST_CHECK(!ValidateP2MRRestore(meta));
+}
+
+static P2MRTreeLeaf ScriptLeaf(uint8_t depth, const CScript& script)
+{
+    return {depth, TAPROOT_LEAF_TAPSCRIPT, {script.begin(), script.end()}};
+}
+
+static CScript SingleDilithiumLeaf(const CDilithiumPubKey& pubkey)
+{
+    return CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUM;
+}
+
+// One tapscript leaf that checks a Dilithium key and an x-only key. The
+// address commits to that pairing. A single-leaf restore of either key is a
+// different program.
+static CScript HybridPairLeaf(const CDilithiumPubKey& pubkey, const XOnlyPubKey& xonly)
+{
+    return CScript() << ToByteVector(pubkey) << OP_CHECKSIGDILITHIUMVERIFY << ToByteVector(xonly) << OP_CHECKSIG;
+}
+
+static UniValue RestoreMeta(const P2MRCreated& created, const std::vector<P2MRTreeLeaf>& leaves, const std::string& label)
+{
+    UniValue meta(UniValue::VOBJ);
+    meta.pushKV("address", created.address);
+    meta.pushKV("scriptPubKey", HexStr(created.script_pub_key));
+    meta.pushKV("merkle_root", HexStr(created.merkle_root));
+    meta.pushKV("created_at", int64_t{1'600'000'000});
+    meta.pushKV("label", label);
+    meta.pushKV("tree", P2MRTreeToUniValue(leaves));
+    return meta;
+}
+
+static void CheckLeaves(const std::vector<P2MRTreeLeaf>& got, const std::vector<P2MRTreeLeaf>& expected)
+{
+    BOOST_REQUIRE_EQUAL(got.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        BOOST_CHECK_EQUAL(got[i].depth, expected[i].depth);
+        BOOST_CHECK_EQUAL(got[i].leaf_version, expected[i].leaf_version);
+        BOOST_CHECK(got[i].script == expected[i].script);
+    }
+}
+
+BOOST_FIXTURE_TEST_CASE(restore_roundtrips_plain_hybrid_and_multileaf, BasicTestingSetup)
+{
+    CDilithiumKey key_a;
+    CDilithiumKey key_b;
+    BOOST_REQUIRE(key_a.MakeNewKey());
+    BOOST_REQUIRE(key_b.MakeNewKey());
+    CKey ecdsa;
+    ecdsa.MakeNewKey(/*fCompressedIn=*/true);
+    const XOnlyPubKey xonly{ecdsa.GetPubKey()};
+
+    const std::vector<P2MRTreeLeaf> plain = SingleKeyDilithiumLeaves(key_a.GetPubKey());
+    const std::vector<P2MRTreeLeaf> hybrid{ScriptLeaf(0, HybridPairLeaf(key_a.GetPubKey(), xonly))};
+    const std::vector<P2MRTreeLeaf> multi{
+        ScriptLeaf(1, SingleDilithiumLeaf(key_a.GetPubKey())),
+        ScriptLeaf(1, SingleDilithiumLeaf(key_b.GetPubKey())),
+    };
+
+    P2MRCreated plain_created;
+    P2MRCreated hybrid_created;
+    P2MRCreated multi_created;
+    {
+        auto source = MakeP2MRTestWallet(*m_node.chain);
+        LOCK(source->cs_wallet);
+        source->SetupLegacyScriptPubKeyMan();
+        plain_created = *ImportDilithiumKeyAsP2MR(*source, key_a, "plain");
+        BOOST_REQUIRE(ImportDilithiumKeyAsP2MR(*source, key_b, "other-plain"));
+        auto* spk_man = source->GetLegacyScriptPubKeyMan();
+        BOOST_REQUIRE(spk_man);
+        {
+            LOCK(spk_man->cs_KeyStore);
+            BOOST_REQUIRE(spk_man->AddKeyPubKey(ecdsa, ecdsa.GetPubKey()));
+        }
+        auto hybrid_res = CreateP2MR(*source, hybrid, "hybrid", /*add_to_address_book=*/true, /*allow_trivial_leaves=*/true);
+        BOOST_REQUIRE(hybrid_res);
+        hybrid_created = *hybrid_res;
+        auto multi_res = CreateP2MR(*source, multi, "multi");
+        BOOST_REQUIRE(multi_res);
+        multi_created = *multi_res;
+        BOOST_CHECK(plain_created.address != hybrid_created.address);
+        BOOST_CHECK(plain_created.address != multi_created.address);
+        BOOST_CHECK(hybrid_created.address != multi_created.address);
+    }
+
+    const UniValue plain_meta = RestoreMeta(plain_created, plain, "plain");
+    const UniValue hybrid_meta = RestoreMeta(hybrid_created, hybrid, "hybrid");
+    const UniValue multi_meta = RestoreMeta(multi_created, multi, "multi");
+
+    auto restored_wallet = MakeP2MRTestWallet(*m_node.chain);
+    {
+        LOCK(restored_wallet->cs_wallet);
+        restored_wallet->SetupLegacyScriptPubKeyMan();
+        // Metadata alone is not a claim that this wallet holds the keys.
+        for (const auto& meta : {plain_meta, hybrid_meta, multi_meta}) {
+            BOOST_REQUIRE(RestoreP2MR(*restored_wallet, meta));
+        }
+        BOOST_CHECK_EQUAL(ListP2MR(*restored_wallet).size(), 3U);
+        for (const auto& created : {plain_created, hybrid_created, multi_created}) {
+            auto entry = GetP2MRByDestination(*restored_wallet, created.dest);
+            BOOST_REQUIRE(entry);
+            BOOST_CHECK_EQUAL(entry->address, created.address);
+            BOOST_CHECK(entry->merkle_root == created.merkle_root);
+            BOOST_CHECK_EQUAL(restored_wallet->IsMine(created.script_pub_key), ISMINE_WATCH_ONLY);
+        }
+
+        BOOST_REQUIRE(ImportDilithiumKeyAsP2MR(*restored_wallet, key_a, "plain"));
+        BOOST_REQUIRE(ImportDilithiumKeyAsP2MR(*restored_wallet, key_b, "other-plain"));
+        auto* spk_man = restored_wallet->GetLegacyScriptPubKeyMan();
+        BOOST_REQUIRE(spk_man);
+        {
+            LOCK(spk_man->cs_KeyStore);
+            BOOST_REQUIRE(spk_man->AddKeyPubKey(ecdsa, ecdsa.GetPubKey()));
+        }
+        // The canonical single-leaf for key_b is a fourth address. The three
+        // restored programs stay put.
+        BOOST_CHECK_EQUAL(ListP2MR(*restored_wallet).size(), 4U);
+        BOOST_CHECK_EQUAL(restored_wallet->IsMine(plain_created.script_pub_key), ISMINE_SPENDABLE);
+        BOOST_CHECK_EQUAL(restored_wallet->IsMine(multi_created.script_pub_key), ISMINE_SPENDABLE);
+        BOOST_CHECK_EQUAL(restored_wallet->IsMine(hybrid_created.script_pub_key), ISMINE_WATCH_ONLY);
+
+        auto plain_entry = GetP2MRByDestination(*restored_wallet, plain_created.dest);
+        auto hybrid_entry = GetP2MRByDestination(*restored_wallet, hybrid_created.dest);
+        auto multi_entry = GetP2MRByDestination(*restored_wallet, multi_created.dest);
+        BOOST_REQUIRE(plain_entry && hybrid_entry && multi_entry);
+        CheckLeaves(plain_entry->tree, plain);
+        CheckLeaves(hybrid_entry->tree, hybrid);
+        CheckLeaves(multi_entry->tree, multi);
+
+        // A second import of the same trees reuses the records.
+        BOOST_REQUIRE(RestoreP2MR(*restored_wallet, hybrid_meta));
+        BOOST_REQUIRE(RestoreP2MR(*restored_wallet, multi_meta));
+        BOOST_CHECK_EQUAL(ListP2MR(*restored_wallet).size(), 4U);
+    }
+
+    MockableData records = GetMockableDatabase(*restored_wallet).m_records;
+    auto reloaded = std::make_shared<CWallet>(m_node.chain.get(), "", CreateMockableWalletDatabase(records));
+    BOOST_CHECK_EQUAL(reloaded->LoadWallet(), DBErrors::LOAD_OK);
+    LOCK(reloaded->cs_wallet);
+    auto plain_entry = GetP2MRByDestination(*reloaded, plain_created.dest);
+    auto hybrid_entry = GetP2MRByDestination(*reloaded, hybrid_created.dest);
+    auto multi_entry = GetP2MRByDestination(*reloaded, multi_created.dest);
+    BOOST_REQUIRE(plain_entry && hybrid_entry && multi_entry);
+    BOOST_CHECK_EQUAL(plain_entry->address, plain_created.address);
+    BOOST_CHECK(hybrid_entry->merkle_root == hybrid_created.merkle_root);
+    BOOST_CHECK(multi_entry->merkle_root == multi_created.merkle_root);
+    CheckLeaves(hybrid_entry->tree, hybrid);
+    CheckLeaves(multi_entry->tree, multi);
+    BOOST_CHECK_EQUAL(reloaded->IsMine(hybrid_created.script_pub_key), ISMINE_WATCH_ONLY);
+    BOOST_CHECK_EQUAL(reloaded->IsMine(plain_created.script_pub_key), ISMINE_SPENDABLE);
+}
+
+BOOST_FIXTURE_TEST_CASE(restore_rejects_bad_trees_without_writing, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+
+    const auto good_leaves = MakeOpTrueTree();
+    UniValue good(UniValue::VOBJ);
+    good.pushKV("tree", P2MRTreeToUniValue(good_leaves));
+    good.pushKV("label", "keep");
+    good.pushKV("created_at", int64_t{50});
+    auto kept = RestoreP2MR(*wallet, good);
+    BOOST_REQUIRE(kept);
+    const std::string kept_address = kept->address;
+
+    auto expect_rejected = [&](UniValue meta) {
+        BOOST_CHECK(!ValidateP2MRRestore(meta));
+        BOOST_CHECK(!RestoreP2MR(*wallet, meta));
+        BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
+        BOOST_CHECK_EQUAL(ListP2MR(*wallet)[0].address, kept_address);
+    };
+
+    UniValue malformed(UniValue::VOBJ);
+    UniValue bad_leaf(UniValue::VOBJ);
+    bad_leaf.pushKV("depth", 0);
+    bad_leaf.pushKV("leaf_version", 192);
+    bad_leaf.pushKV("script", "zz");
+    UniValue bad_tree(UniValue::VARR);
+    bad_tree.push_back(bad_leaf);
+    malformed.pushKV("tree", bad_tree);
+    expect_rejected(malformed);
+
+    UniValue missing(UniValue::VOBJ);
+    missing.pushKV("label", "no-tree");
+    expect_rejected(missing);
+
+    UniValue incomplete(UniValue::VOBJ);
+    UniValue deep_leaf(UniValue::VOBJ);
+    deep_leaf.pushKV("depth", 1);
+    deep_leaf.pushKV("leaf_version", 192);
+    deep_leaf.pushKV("script", "51");
+    UniValue deep_tree(UniValue::VARR);
+    deep_tree.push_back(deep_leaf);
+    incomplete.pushKV("tree", deep_tree);
+    expect_rejected(incomplete);
+
+    UniValue oversized(UniValue::VOBJ);
+    UniValue many(UniValue::VARR);
+    for (size_t i = 0; i < P2MR_CONTROL_MAX_NODE_COUNT + 1; ++i) {
+        UniValue leaf(UniValue::VOBJ);
+        leaf.pushKV("depth", 1);
+        leaf.pushKV("leaf_version", 192);
+        leaf.pushKV("script", "51");
+        many.push_back(leaf);
+    }
+    oversized.pushKV("tree", many);
+    expect_rejected(oversized);
+
+    UniValue huge_script(UniValue::VOBJ);
+    UniValue huge_leaf(UniValue::VOBJ);
+    huge_leaf.pushKV("depth", 0);
+    huge_leaf.pushKV("leaf_version", 192);
+    huge_leaf.pushKV("script", std::string((MAX_SCRIPT_SIZE + 1) * 2, 'a'));
+    UniValue huge_tree(UniValue::VARR);
+    huge_tree.push_back(huge_leaf);
+    huge_script.pushKV("tree", huge_tree);
+    expect_rejected(huge_script);
+
+    UniValue wrong_program = good;
+    wrong_program.pushKV("merkle_root", std::string(64, '0'));
+    wrong_program.pushKV("address", "not-the-reconstructed-address");
+    expect_rejected(wrong_program);
+
+    // A later good import still lands, so the rejects did not stick the wallet.
+    UniValue second(UniValue::VOBJ);
+    second.pushKV("tree", P2MRTreeToUniValue({{/*depth=*/0, TAPROOT_LEAF_TAPSCRIPT, {OP_2}}}));
+    second.pushKV("created_at", int64_t{60});
+    auto second_created = RestoreP2MR(*wallet, second);
+    BOOST_REQUIRE(second_created);
+    const auto entries = ListP2MR(*wallet);
+    BOOST_CHECK_EQUAL(entries.size(), 2U);
+    bool kept_found = false;
+    for (const auto& entry : entries) {
+        if (entry.address == kept_address) kept_found = true;
+    }
+    BOOST_CHECK(kept_found);
+    BOOST_CHECK(second_created->address != kept_address);
 }
 
 BOOST_FIXTURE_TEST_CASE(create_is_idempotent_for_reordered_tree, BasicTestingSetup)
@@ -643,6 +1006,48 @@ BOOST_FIXTURE_TEST_CASE(wallet_is_mine_recognizes_valid_p2mr_metadata, BasicTest
     WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
     BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, corrupt_dest, "corrupt", corrupt_meta.write()));
     BOOST_CHECK_EQUAL(wallet->IsMine(corrupt_script), ISMINE_NO);
+}
+
+// Metadata whose tree builds, but not to this destination. The leaf is
+// OP_TRUE, which the wallet treats as spendable when the roots match.
+// IsMine must be ISMINE_NO, and the signing provider must not carry a tree
+// for the destination.
+BOOST_FIXTURE_TEST_CASE(wallet_is_mine_rejects_p2mr_tree_that_does_not_match_destination, BasicTestingSetup)
+{
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+
+    P2MRBuilder dest_builder;
+    dest_builder.Add(/*depth=*/0, std::vector<unsigned char>{static_cast<unsigned char>(OP_0)}, TAPROOT_LEAF_TAPSCRIPT).Finalize();
+    BOOST_REQUIRE(dest_builder.IsValid());
+    const CTxDestination dest = dest_builder.GetOutput();
+    const WitnessV2P2MR& output{std::get<WitnessV2P2MR>(dest)};
+    const CScript script = GetScriptForDestination(dest);
+
+    const auto other_leaves = MakeOpTrueTree();
+    auto other_tree = BuildP2MRTreeChecked(other_leaves);
+    BOOST_REQUIRE(other_tree);
+    BOOST_REQUIRE(!(other_tree->GetOutput() == output));
+
+    BOOST_REQUIRE(wallet->SetAddressBook(dest, "mismatch", AddressPurpose::RECEIVE));
+    UniValue meta(UniValue::VOBJ);
+    meta.pushKV("id", "mismatch");
+    meta.pushKV("address", EncodeDestination(dest));
+    meta.pushKV("scriptPubKey", HexStr(script));
+    meta.pushKV("merkle_root", "");
+    meta.pushKV("created_at", int64_t{1});
+    meta.pushKV("label", "mismatch");
+    meta.pushKV("state", "created");
+    meta.pushKV("tree", P2MRTreeToUniValue(other_leaves));
+
+    WalletBatch batch(wallet->GetDatabase(), /*fFlushOnClose=*/false);
+    BOOST_REQUIRE(wallet->SetP2MRMetadata(batch, dest, "mismatch", meta.write()));
+    BOOST_CHECK_EQUAL(wallet->IsMine(script), ISMINE_NO);
+
+    const FlatSigningProvider provider{BuildP2MRSigningProvider(*wallet, "mismatch")};
+    BOOST_CHECK_EQUAL(provider.p2mr_trees.count(output), 0U);
+    const FlatSigningProvider by_dest{BuildP2MRSigningProviderForDestination(*wallet, dest)};
+    BOOST_CHECK_EQUAL(by_dest.p2mr_trees.count(output), 0U);
 }
 
 BOOST_FIXTURE_TEST_CASE(wallet_is_mine_tracks_unowned_p2mr_metadata_as_watchonly, BasicTestingSetup)
@@ -958,7 +1363,6 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_change_stays_p2mr, TestChain100Setup)
     const CTxDestination recipient{PKHash(recipient_key.GetPubKey())};
     const CAmount send{CENT};
     const CAmount fee{1000};
-    const CAmount dust_gate{546};
 
     // One confirmed output on a fresh OP_TRUE P2MR entry.
     // Callers hold cs_wallet already; the analysis cannot match a shared_ptr
@@ -992,6 +1396,14 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_spend_change_stays_p2mr, TestChain100Setup)
         }
         return wallet;
     };
+
+    const CAmount dust_gate = [&] {
+        auto wallet = make_wallet(false);
+        LOCK(wallet->cs_wallet);
+        return GetDustThreshold(
+            CTxOut{0, GetScriptForDestination(WitnessV2P2MR{uint256::ONE})},
+            GetDiscardRate(*wallet));
+    }();
 
     for (const bool descriptors : {true, false}) {
         BOOST_TEST_MESSAGE(strprintf("descriptors=%d", descriptors));
@@ -1642,6 +2054,40 @@ BOOST_FIXTURE_TEST_CASE(build_signing_provider_exports_descriptor_xonly_p2mr_lea
     BOOST_CHECK_MESSAGE(
         VerifyScript(tx_to.vin[0].scriptSig, created.script_pub_key, &tx_to.vin[0].scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror),
         ScriptErrorString(serror));
+}
+
+BOOST_FIXTURE_TEST_CASE(import_p2mr_outputs_from_psbt_checks_the_program, BasicTestingSetup)
+{
+    const std::vector<P2MRTreeLeaf> leaves{{0, TAPROOT_LEAF_TAPSCRIPT, {OP_TRUE}}};
+    auto built = BuildP2MRTreeChecked(leaves);
+    BOOST_REQUIRE(built);
+    const CTxDestination dest{built->GetOutput()};
+
+    CMutableTransaction mtx;
+    mtx.nVersion = 2;
+    mtx.vout.emplace_back(0, GetScriptForDestination(dest));
+    PartiallySignedTransaction psbt(mtx);
+    psbt.outputs[0].m_p2mr_tree = built->GetTreeTuples();
+
+    auto wallet = MakeP2MRTestWallet(*m_node.chain);
+    LOCK(wallet->cs_wallet);
+    auto imported = ImportP2MROutputsFromPSBT(*wallet, psbt);
+    BOOST_REQUIRE(imported);
+    BOOST_REQUIRE_EQUAL(imported->size(), 1U);
+    BOOST_CHECK(imported->front().dest == dest);
+    BOOST_CHECK(GetP2MRByScript(*wallet, GetScriptForDestination(dest)));
+
+    PartiallySignedTransaction again(mtx);
+    again.outputs[0].m_p2mr_tree = built->GetTreeTuples();
+    auto duplicate = ImportP2MROutputsFromPSBT(*wallet, again);
+    BOOST_REQUIRE(duplicate);
+    BOOST_CHECK(duplicate->front().reused);
+
+    mtx.vout[0].scriptPubKey = GetScriptForDestination(WitnessV2P2MR{uint256::ONE});
+    PartiallySignedTransaction wrong(mtx);
+    wrong.outputs[0].m_p2mr_tree = built->GetTreeTuples();
+    auto rejected = ImportP2MROutputsFromPSBT(*wallet, wrong);
+    BOOST_CHECK(!rejected);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

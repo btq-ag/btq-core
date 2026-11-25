@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <psbt.h>
 #include <wallet/p2mr.h>
 
 #include <core_io.h>
@@ -33,6 +34,8 @@
 #include <algorithm>
 #include <optional>
 #include <set>
+#include <stdexcept>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -45,7 +48,6 @@ bool WalletHaveDilithiumKey(const CWallet& wallet, const CKeyID& keyid)
 
 namespace {
 constexpr const char* P2MR_STATE_CREATED{"created"};
-constexpr CAmount DEFAULT_P2MR_DUST_THRESHOLD{546};
 
 struct P2MRKeyRequirements {
     std::set<CKeyID> dilithium_key_ids;
@@ -286,7 +288,14 @@ bool IsP2MRLeafSpendable(const CWallet& wallet, const P2MRTreeLeaf& leaf)
 
 bool IsP2MREntryValid(const P2MREntry& entry)
 {
-    return std::holds_alternative<WitnessV2P2MR>(entry.dest) && BuildP2MRTreeChecked(entry.tree).has_value();
+    if (!std::holds_alternative<WitnessV2P2MR>(entry.dest)) return false;
+    // BuildP2MRTreeChecked finalizes. The built root has to equal the
+    // destination program. A tree that merely builds would make IsMine
+    // treat the coin as spendable, and the witness would not match.
+    // BuildP2MRSigningProvider applies the same check before it inserts.
+    auto builder = BuildP2MRTreeChecked(entry.tree);
+    if (!builder) return false;
+    return builder->GetOutput() == std::get<WitnessV2P2MR>(entry.dest);
 }
 
 bool IsP2MREntrySpendable(const CWallet& wallet, const P2MREntry& entry)
@@ -863,6 +872,70 @@ static bool RestoreAddressBookEntry(CWallet& wallet, const CTxDestination& dest,
     return ok;
 }
 
+// Append a rollback failure onto error. The original failure stays at the
+// front. RestoreAddressBookEntry's own exception is caught here so it cannot
+// replace the caller's error.
+static void NoteAddressBookRollback(CWallet& wallet, const CTxDestination& dest, const std::string& address,
+                                    const std::optional<CAddressBookData>& prior_entry, std::string& error)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    bool ok = false;
+    std::string rollback_error;
+    try {
+        ok = RestoreAddressBookEntry(wallet, dest, prior_entry);
+    } catch (const std::exception& ex) {
+        rollback_error = ex.what();
+    }
+    if (ok) return;
+    wallet.WalletLogPrintf("CreateP2MR: failed to fully roll back address book entry for %s\n", address);
+    error += "; failed to roll back address book entry for ";
+    error += address;
+    if (!rollback_error.empty()) {
+        error += ": ";
+        error += rollback_error;
+    }
+}
+
+// Snapshot the address book, write it when requested, then write metadata.
+// SetAddressBook updates memory and can store the purpose row before the name
+// write fails. SetWalletFlagWithDB throws when the flag row fails. Either
+// way, put the snapshot back and keep the original error. If that rollback
+// fails, append the rollback failure.
+static std::optional<bilingual_str> StoreP2MRRecord(CWallet& wallet, WalletBatch& batch, const P2MRCreated& out,
+                                                   const std::string& label, const std::string& metadata,
+                                                   bool write_address_book)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    std::optional<CAddressBookData> prior_entry;
+    if (write_address_book) {
+        if (const auto* existing = wallet.FindAddressBookEntry(out.dest, /*allow_change=*/true)) {
+            prior_entry = *existing;
+        }
+    }
+    const auto finish = [&](std::string error) {
+        if (write_address_book) {
+            NoteAddressBookRollback(wallet, out.dest, out.address, prior_entry, error);
+        }
+        return Untranslated(error);
+    };
+    try {
+        if (write_address_book && !wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
+            return finish("failed to set P2MR address book entry");
+        }
+        if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, metadata)) {
+            return finish("failed to persist P2MR metadata");
+        }
+    } catch (const std::exception& e) {
+        std::string error{e.what()};
+        if (write_address_book) {
+            NoteAddressBookRollback(wallet, out.dest, out.address, prior_entry, error);
+        }
+        if (error != e.what()) throw std::runtime_error(error);
+        throw;
+    }
+    return std::nullopt;
+}
+
 util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
                                      const std::vector<P2MRTreeLeaf>& leaves,
                                      const std::string& label,
@@ -911,14 +984,10 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
         const bool update_created_at = restored_created_at != entry.created_at;
         if (update_label || update_created_at) {
             const std::string restored_label = update_label ? label : entry.label;
-            if (update_label &&
-                !wallet.SetAddressBook(out.dest, restored_label, AddressPurpose::RECEIVE)) {
-                return util::Error{Untranslated("failed to set P2MR address book entry")};
-            }
             WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
             const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, restored_label, leaves, restored_created_at);
-            if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
-                return util::Error{Untranslated("failed to persist P2MR metadata")};
+            if (auto error = StoreP2MRRecord(wallet, batch, out, restored_label, meta.write(), update_label)) {
+                return util::Error{std::move(*error)};
             }
             out.reused = true;
             return out;
@@ -931,21 +1000,8 @@ util::Result<P2MRCreated> CreateP2MR(CWallet& wallet,
     const UniValue meta = BuildMetadataJSON(out.id, out.address, out.script_pub_key, out.merkle_root, label, leaves, ts);
 
     WalletBatch batch(wallet.GetDatabase(), /*fFlushOnClose=*/false);
-    // SetAddressBook overwrites any existing label for the destination, so
-    // snapshot the entry first: if the metadata write below fails, this call
-    // must not leave the user's label clobbered on the way out.
-    std::optional<CAddressBookData> prior_entry;
-    if (const auto* entry = wallet.FindAddressBookEntry(out.dest, /*allow_change=*/true)) {
-        prior_entry = *entry;
-    }
-    if (add_to_address_book && !wallet.SetAddressBook(out.dest, label, AddressPurpose::RECEIVE)) {
-        return util::Error{Untranslated("failed to set P2MR address book entry")};
-    }
-    if (!wallet.SetP2MRMetadata(batch, out.dest, out.id, meta.write())) {
-        if (add_to_address_book && !RestoreAddressBookEntry(wallet, out.dest, prior_entry)) {
-            wallet.WalletLogPrintf("CreateP2MR: failed to fully roll back address book entry for %s\n", out.address);
-        }
-        return util::Error{Untranslated("failed to persist P2MR metadata")};
+    if (auto error = StoreP2MRRecord(wallet, batch, out, label, meta.write(), add_to_address_book)) {
+        return util::Error{std::move(*error)};
     }
     return out;
 }
@@ -1030,6 +1086,55 @@ util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta)
     if (!validated) return util::Error{util::ErrorString(validated)};
     return CreateP2MR(wallet, validated->leaves, validated->label, /*add_to_address_book=*/true,
                       /*allow_trivial_leaves=*/true, validated->created_at);
+}
+
+util::Result<std::vector<P2MRCreated>> ImportP2MROutputsFromPSBT(CWallet& wallet, const PartiallySignedTransaction& psbt)
+{
+    AssertLockHeld(wallet.cs_wallet);
+    if (psbt.tx->vout.size() != psbt.outputs.size()) {
+        return util::Error{Untranslated("PSBT output metadata does not match the transaction outputs")};
+    }
+    struct Pending {
+        std::vector<P2MRTreeLeaf> leaves;
+    };
+    std::vector<Pending> pending;
+    pending.reserve(psbt.outputs.size());
+    for (size_t i = 0; i < psbt.outputs.size(); ++i) {
+        const PSBTOutput& output = psbt.outputs[i];
+        if (output.m_p2mr_tree.empty()) continue;
+        int version{0};
+        std::vector<unsigned char> program;
+        if (!psbt.tx->vout[i].scriptPubKey.IsWitnessProgram(version, program) ||
+            version != 2 || program.size() != WitnessV2P2MR::SIZE) {
+            return util::Error{Untranslated("P2MR output metadata attached to a non-P2MR output")};
+        }
+        Pending row;
+        row.leaves.reserve(output.m_p2mr_tree.size());
+        for (const auto& [depth, leaf_ver, script] : output.m_p2mr_tree) {
+            row.leaves.push_back(P2MRTreeLeaf{depth, leaf_ver, script});
+        }
+        auto built = BuildP2MRTreeChecked(row.leaves);
+        if (!built) return util::Error{util::ErrorString(built)};
+        const WitnessV2P2MR tree_output = built->GetOutput();
+        const uint256 tree_program{std::vector<unsigned char>(tree_output.begin(), tree_output.end())};
+        if (tree_program != uint256{program}) {
+            return util::Error{Untranslated("Output P2MR tree does not match the output's witness program")};
+        }
+        if (!output.m_p2mr_merkle_root.IsNull() && output.m_p2mr_merkle_root != uint256{program}) {
+            return util::Error{Untranslated("Output P2MR merkle root does not match the output's witness program")};
+        }
+        pending.push_back(std::move(row));
+    }
+    std::vector<P2MRCreated> created;
+    created.reserve(pending.size());
+    for (const Pending& row : pending) {
+        UniValue meta(UniValue::VOBJ);
+        meta.pushKV("tree", P2MRTreeToUniValue(row.leaves));
+        auto restored = RestoreP2MR(wallet, meta);
+        if (!restored) return util::Error{util::ErrorString(restored)};
+        created.push_back(std::move(*restored));
+    }
+    return created;
 }
 
 util::Result<P2MRFunded> FundP2MR(CWallet& wallet,
@@ -1151,16 +1256,20 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     }
     out.tx.vout.emplace_back(send_amount, GetScriptForDestination(to_dest));
 
-    // createp2mrspend uses the fixed dust gate (HIGH-13). CreateTransaction's
-    // post-selection swap applies the discard-feerate viability bar (HIGH-22).
+    // Same gate CreateTransaction uses: an output below GetDustThreshold at
+    // the discard feerate is not relayed. A fixed 546 sat gate would now
+    // emit P2MR change the default node treats as dust.
+    const CAmount p2mr_dust = GetDustThreshold(
+        CTxOut{0, GetScriptForDestination(WitnessV2P2MR{uint256::ONE})},
+        GetDiscardRate(wallet));
     if (change_dest) {
-        if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
+        if (change > p2mr_dust) {
             out.change_dest = *change_dest;
             out.tx.vout.emplace_back(change, GetScriptForDestination(out.change_dest));
             out.has_change = true;
             out.change_amount = change;
         }
-    } else if (change > DEFAULT_P2MR_DUST_THRESHOLD) {
+    } else if (change > p2mr_dust) {
         // P2MR change is a new Dilithium key, derived from private key material.
         if (wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) || wallet.IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
             return util::Error{Untranslated("This wallet cannot derive a P2MR change address. Pass change_address.")};

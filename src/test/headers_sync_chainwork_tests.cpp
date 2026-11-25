@@ -8,6 +8,7 @@
 #include <headerssync.h>
 #include <pow.h>
 #include <test/util/setup_common.h>
+#include <util/time.h>
 #include <validation.h>
 #include <vector>
 
@@ -141,6 +142,63 @@ BOOST_AUTO_TEST_CASE(headers_sync_state)
     // Nevertheless, no validation errors should have been detected with the
     // chain:
     BOOST_CHECK(result.success);
+}
+
+BOOST_AUTO_TEST_CASE(anti_dos_work_threshold_boundaries)
+{
+    const arith_uint256 proof{1};
+    const arith_uint256 deep{1000};
+
+    // Buffer is 144 proofs. A tip below that saturates at zero, including the
+    // point where the buffer equals the tip, and the next proof does not.
+    BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{100}, proof, arith_uint256{0}) == arith_uint256{0});
+    BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{144}, proof, arith_uint256{0}) == arith_uint256{0});
+    BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{145}, proof, arith_uint256{0}) == arith_uint256{1});
+    // 1000 - 144.
+    BOOST_CHECK(AntiDoSWorkThreshold(deep, proof, arith_uint256{0}) == arith_uint256{856});
+    // A heavier tip proof widens the buffer in work, not in a fixed day count.
+    BOOST_CHECK(AntiDoSWorkThreshold(deep, arith_uint256{2}, arith_uint256{0}) == arith_uint256{712});
+    // The chain floor wins when the near-tip value is under it.
+    BOOST_CHECK(AntiDoSWorkThreshold(deep, proof, arith_uint256{900}) == arith_uint256{900});
+    BOOST_CHECK(AntiDoSWorkThreshold(deep, proof, arith_uint256{856}) == arith_uint256{856});
+    // No tip is zero work. The subtract saturates and the floor is the result.
+    BOOST_CHECK(AntiDoSWorkThreshold(arith_uint256{0}, proof, arith_uint256{50}) == arith_uint256{50});
+
+    // Same chainwork, two real difficulties. The threshold has to follow the
+    // tip's own proof, which is what GetBlockProof returns for that tip.
+    CBlockIndex regtest_tip;
+    regtest_tip.nBits = 0x207fffff;
+    CBlockIndex mainnet_tip;
+    mainnet_tip.nBits = 0x1e0377ae;
+    const arith_uint256 regtest_proof{GetBlockProof(regtest_tip)};
+    const arith_uint256 mainnet_proof{GetBlockProof(mainnet_tip)};
+    BOOST_CHECK(regtest_proof == arith_uint256{2});
+    BOOST_CHECK(mainnet_proof > regtest_proof);
+    const arith_uint256 tip_work{mainnet_proof * 200};
+    const arith_uint256 from_regtest{AntiDoSWorkThreshold(tip_work, regtest_proof, arith_uint256{0})};
+    const arith_uint256 from_mainnet{AntiDoSWorkThreshold(tip_work, mainnet_proof, arith_uint256{0})};
+    BOOST_CHECK(from_mainnet < from_regtest);
+    BOOST_CHECK(from_regtest - from_mainnet == (mainnet_proof - regtest_proof) * ANTI_DOS_FORK_DEPTH_BUFFER);
+}
+
+// chain_start MTP further ahead than MAX_FUTURE_BLOCK_TIME, so the second
+// count in the commitment cap is negative. It must clamp to 0. The old
+// conversion to uint64_t wrapped that into a huge cap.
+BOOST_AUTO_TEST_CASE(headers_sync_max_commitments_future_mtp)
+{
+    const int64_t now{1'700'000'000};
+    SetMockTime(now);
+
+    CBlockHeader header{Params().GenesisBlock()};
+    header.nTime = static_cast<uint32_t>(now + MAX_FUTURE_BLOCK_TIME + 24 * 60 * 60);
+    CBlockIndex chain_start{header};
+    BOOST_CHECK(chain_start.GetMedianTimePast() > now + MAX_FUTURE_BLOCK_TIME);
+
+    const arith_uint256 min_work{0};
+    const HeadersSyncState sync{0, Params().GetConsensus(), &chain_start, min_work};
+    BOOST_CHECK_EQUAL(sync.GetMaxCommitments(), uint64_t{0});
+
+    SetMockTime(0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

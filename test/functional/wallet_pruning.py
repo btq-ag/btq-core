@@ -8,9 +8,15 @@
 from test_framework.util import assert_equal, assert_raises_rpc_error
 from test_framework.blocktools import (
     COINBASE_MATURITY,
+    TIMESTAMP_WINDOW,
 )
 from test_framework.pruning import LargeBlockBuilder
 from test_framework.test_framework import BTQTestFramework
+
+# nPowTargetSpacing is 60s. mine_large_blocks stamps one interval per block
+# and leaves mocktime one interval past the last block. That mocktime is the
+# key timestamp importwallet subtracts TIMESTAMP_WINDOW from.
+BLOCK_INTERVAL = 60
 
 
 class WalletPruningTest(BTQTestFramework):
@@ -40,7 +46,7 @@ class WalletPruningTest(BTQTestFramework):
         # Set mocktime to accept all future blocks
         for i in self.nodes:
             if i.running:
-                i.setmocktime(self.nTime + 600 * n)
+                i.setmocktime(self.nTime + BLOCK_INTERVAL * n)
         for _ in range(n):
             block = self.large_block_builder.build(node, previousblockhash=previousblockhash, ntime=self.nTime, height=height)
             block.solve()
@@ -51,9 +57,9 @@ class WalletPruningTest(BTQTestFramework):
             previousblockhash = block.sha256
             height += 1
 
-            # Simulate 10 minutes of work time per block
-            # Important for matching a timestamp with a block +- some window
-            self.nTime += 600
+            # One target interval per block. Key time (mocktime) stays one
+            # interval ahead of the birth block.
+            self.nTime += BLOCK_INTERVAL
         self.sync_all()
 
     def test_wallet_import_pruned(self, wallet_name):
@@ -83,10 +89,12 @@ class WalletPruningTest(BTQTestFramework):
         # Verify that the block at wallet's birthheight is not available at the pruned node
         assert_raises_rpc_error(-1, "Block not available (pruned data)", self.nodes[1].getblock, self.nodes[1].getblockhash(wallet_birthheight))
 
-        # Make sure wallet cannot be imported because of missing blocks
-        # BTQ's timestamp window is 15 minutes. With 10-minute blocks and
-        # mocktime one block ahead, the earliest required block is the birth block.
-        assert_raises_rpc_error(-4, f"Pruned blocks from height {wallet_birthheight} required to import keys. Use RPC call getblockchaininfo to determine your pruned height.", self.nodes[1].importwallet, self.nodes[0].datadir_path / wallet_file)
+        # importwallet asks for the first block at key_time - TIMESTAMP_WINDOW.
+        # key_time is mocktime, one BLOCK_INTERVAL after the birth block, so
+        # the window reaches (TIMESTAMP_WINDOW - BLOCK_INTERVAL) seconds
+        # before that block. 900 - 60 = 840, and 840 / 60 = 14.
+        required_height = wallet_birthheight - (TIMESTAMP_WINDOW - BLOCK_INTERVAL) // BLOCK_INTERVAL
+        assert_raises_rpc_error(-4, f"Pruned blocks from height {required_height} required to import keys. Use RPC call getblockchaininfo to determine your pruned height.", self.nodes[1].importwallet, self.nodes[0].datadir_path / wallet_file)
         self.log.info("- Done")
 
     def get_birthheight(self, wallet_file):

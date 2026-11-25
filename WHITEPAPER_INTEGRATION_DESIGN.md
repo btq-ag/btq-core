@@ -849,7 +849,7 @@ Implement Phase 6 (RPC & User Interface) to expose Dilithium functionality via R
 
 **Supporting Infrastructure:**
 
-`test_dilithium_wallet.sh` — Automated test script:
+`scripts/test_dilithium_wallet.sh`: Automated test script:
 - Wallet creation
 - Address generation
 - Mining to Dilithium addresses
@@ -861,7 +861,7 @@ Implement Phase 6 (RPC & User Interface) to expose Dilithium functionality via R
 - `src/wallet/rpc/dilithium.cpp` — New RPC implementations
 - `src/wallet/scriptpubkeyman.cpp` — Key storage fixes
 - `src/script/interpreter.cpp` — Signature validation & auto-detection
-- `test_dilithium_wallet.sh` — Automated testing
+- `scripts/test_dilithium_wallet.sh`: Automated testing
 - `DILITHIUM_WALLET_FIXES.md` — Fix documentation
 - `PHASE6_COMPLETE_SUMMARY.md` — Implementation summary
 
@@ -2082,7 +2082,7 @@ Several files mentioned in PHASE6_COMPLETE_SUMMARY.md were not fully examined:
 
 - `src/wallet/rpc/dilithium.cpp` (Phase 6 RPC implementations)
 - `src/script/interpreter.cpp` (specific line numbers for Dilithium logic)
-- `test_dilithium_wallet.sh` (automated test script)
+- `scripts/test_dilithium_wallet.sh` (automated test script)
 
 **Follow-up Required:**
 - Read complete implementation files to extract:
@@ -2094,7 +2094,7 @@ Several files mentioned in PHASE6_COMPLETE_SUMMARY.md were not fully examined:
 ```bash
 cat src/wallet/rpc/dilithium.cpp
 cat src/script/interpreter.cpp | grep -A 20 "CHECKSIGDILITHIUM"
-cat test_dilithium_wallet.sh
+cat scripts/test_dilithium_wallet.sh
 ```
 
 ---
