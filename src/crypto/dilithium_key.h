@@ -5,6 +5,7 @@
 #ifndef BTQ_CRYPTO_DILITHIUM_KEY_H
 #define BTQ_CRYPTO_DILITHIUM_KEY_H
 
+#include <crypto/dilithium_wrapper.h>
 #include <serialize.h>
 #include <support/allocators/secure.h>
 #include <support/cleanse.h>
@@ -33,11 +34,6 @@ inline bool TimingSafeEqual(const unsigned char* a, const unsigned char* b, size
     return result == 0;
 }
 } // namespace dilithium_internal
-
-// Forward declarations for Dilithium C API
-extern "C" {
-#include "dilithium_wrapper.h"
-}
 
 /** Size constants for different Dilithium variants */
 namespace DilithiumConstants {

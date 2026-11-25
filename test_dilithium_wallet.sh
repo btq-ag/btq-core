@@ -1,8 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Dilithium Wallet Full Workflow Test Script
 # Tests all Phase 6 RPC commands with both legacy and descriptor wallets
 
 # Note: Don't use set -e because we want to continue even if some stats fail
+
+export LC_ALL=C
 
 # Colors for output
 RED='\033[0;31m'
@@ -40,10 +42,10 @@ WALLET_NAME="dilithium_test_wallet"
 # Every $BTQD/$BTQCLI call below routes through $NETWORK, so setting it here
 # isolates the whole script. Removed on exit, including on failure.
 BTQ_TEST_DATADIR="$(mktemp -d "${TMPDIR:-/tmp}/btq-dilithium-test.XXXXXX")"
-NETWORK="-regtest -datadir=$BTQ_TEST_DATADIR"
+NETWORK=(-regtest "-datadir=$BTQ_TEST_DATADIR")
 
 cleanup() {
-    "$BTQCLI" $NETWORK stop >/dev/null 2>&1 || true
+    "$BTQCLI" "${NETWORK[@]}" stop >/dev/null 2>&1 || true
     sleep 1
     rm -rf "$BTQ_TEST_DATADIR"
 }
@@ -72,17 +74,17 @@ echo -e "  ${ARROW} Using isolated datadir: ${BTQ_TEST_DATADIR}"
 
 # Step 3: Start btqd in regtest mode
 echo -e "  ${ARROW} Starting btqd in regtest mode..."
-$BTQD $NETWORK -daemon -txindex=1
+"$BTQD" "${NETWORK[@]}" -daemon -txindex=1
 sleep 3
 
 # Wait for btqd to be ready
 echo -e "  ${ARROW} Waiting for btqd to be ready..."
 for i in {1..10}; do
-    if $BTQCLI $NETWORK getblockchaininfo &>/dev/null; then
+    if "$BTQCLI" "${NETWORK[@]}" getblockchaininfo &>/dev/null; then
         echo -e "  ${GREEN}${CHECKMARK} BTQ Core daemon ready${NC}"
         break
     fi
-    if [ $i -eq 10 ]; then
+    if [ "$i" -eq 10 ]; then
         echo -e "  ${RED}${CROSS} Failed to start btqd${NC}"
         exit 1
     fi
@@ -94,10 +96,10 @@ echo ""
 echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
 echo -e "${CYAN}│${NC} ${BOLD}Step 2/12:${NC} Creating Quantum-Safe Wallet                     ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
-$BTQCLI $NETWORK createwallet "$WALLET_NAME" > /dev/null
+"$BTQCLI" "${NETWORK[@]}" createwallet "$WALLET_NAME" > /dev/null
 
 # Verify wallet type
-WALLET_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getwalletinfo)
+WALLET_INFO=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" getwalletinfo)
 IS_DESCRIPTOR=$(echo "$WALLET_INFO" | grep -o '"descriptors": [^,]*' | grep -o '[^:]*$' | tr -d ' ')
 
 if [ "$IS_DESCRIPTOR" = "true" ]; then
@@ -113,7 +115,7 @@ echo ""
 echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
 echo -e "${CYAN}│${NC} ${BOLD}Step 3/12:${NC} Generating Dilithium Address                     ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
-DILITHIUM_ADDR=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getnewdilithiumaddress)
+DILITHIUM_ADDR=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" getnewdilithiumaddress)
 echo -e "  ${GREEN}${CHECKMARK} Address generated${NC}"
 echo -e "  ${BOLD}${BLUE}${DILITHIUM_ADDR}${NC}"
 echo -e "  ${DIM}Format: Legacy P2PKH with OP_CHECKSIGDILITHIUM${NC}"
@@ -124,7 +126,7 @@ echo -e "${CYAN}┌────────────────────�
 echo -e "${CYAN}│${NC} ${BOLD}Step 4/12:${NC} Mining Blocks for Funding                        ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
 echo -e "  ${ARROW} Mining 101 blocks to Dilithium address..."
-BLOCKS=$($BTQCLI $NETWORK generatetoaddress 101 "$DILITHIUM_ADDR" 2>&1 | wc -l)
+BLOCKS=$("$BTQCLI" "${NETWORK[@]}" generatetoaddress 101 "$DILITHIUM_ADDR" 2>&1 | wc -l)
 echo -e "  ${GREEN}${CHECKMARK} Mined ${BLOCKS} blocks${NC}"
 echo -e "  ${DIM}(101 blocks ensures coinbase maturity)${NC}"
 echo ""
@@ -133,8 +135,8 @@ echo ""
 echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
 echo -e "${CYAN}│${NC} ${BOLD}Step 5/12:${NC} Verifying Wallet Balance                         ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
-UNSPENT=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" listunspent)
-BALANCE=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getbalance)
+UNSPENT=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" listunspent)
+BALANCE=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" getbalance)
 echo -e "  ${GREEN}${CHECKMARK} Balance: ${BOLD}${BALANCE} BTQ${NC}"
 
 # Get first UTXO for transaction
@@ -151,7 +153,7 @@ echo -e "${CYAN}│${NC} ${BOLD}Step 6/12:${NC} Signing Message with Dilithium  
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
 MESSAGE="Hello Dilithium! This is a test message."
 echo -e "  ${ARROW} Message: ${DIM}\"${MESSAGE}\"${NC}"
-SIGNATURE=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" signmessagewithdilithium "$DILITHIUM_ADDR" "$MESSAGE")
+SIGNATURE=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" signmessagewithdilithium "$DILITHIUM_ADDR" "$MESSAGE")
 SIG_LENGTH=${#SIGNATURE}
 SIG_BYTES=$((SIG_LENGTH * 3 / 4))  # Base64 to bytes approximation
 echo -e "  ${GREEN}${CHECKMARK} Message signed successfully${NC}"
@@ -163,7 +165,7 @@ echo ""
 echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
 echo -e "${CYAN}│${NC} ${BOLD}Step 7/12:${NC} Verifying Dilithium Signature                    ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
-VERIFY_RESULT=$($BTQCLI $NETWORK verifydilithiumsignature "$MESSAGE" "$DILITHIUM_ADDR" "$SIGNATURE")
+VERIFY_RESULT=$("$BTQCLI" "${NETWORK[@]}" verifydilithiumsignature "$MESSAGE" "$DILITHIUM_ADDR" "$SIGNATURE")
 if [ "$VERIFY_RESULT" = "true" ]; then
     echo -e "  ${GREEN}${BOLD}${CHECKMARK} SIGNATURE VALID${NC}"
     echo -e "  ${DIM}Post-quantum cryptographic verification successful${NC}"
@@ -177,7 +179,7 @@ echo ""
 echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
 echo -e "${CYAN}│${NC} ${BOLD}Step 8/12:${NC} Creating Second Dilithium Address                ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
-DILITHIUM_ADDR2=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getnewdilithiumaddress)
+DILITHIUM_ADDR2=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" getnewdilithiumaddress)
 echo -e "  ${GREEN}${CHECKMARK} Recipient address generated${NC}"
 echo -e "  ${BOLD}${BLUE}${DILITHIUM_ADDR2}${NC}"
 echo ""
@@ -194,7 +196,7 @@ echo -e "  ${ARROW} From:    ${DIM}${DILITHIUM_ADDR:0:24}...${NC}"
 echo -e "  ${ARROW} To:      ${DIM}${DILITHIUM_ADDR2:0:24}...${NC}"
 
 # Create raw transaction
-RAW_TX=$($BTQCLI $NETWORK createrawtransaction \
+RAW_TX=$("$BTQCLI" "${NETWORK[@]}" createrawtransaction \
     '[{"txid":"'"$UTXO_TXID"'","vout":'"$UTXO_VOUT"'}]' \
     '{"'"$DILITHIUM_ADDR2"'":'"$SEND_AMOUNT"'}')
 
@@ -206,7 +208,7 @@ echo -e "${CYAN}│${NC} ${BOLD}Step 10/12:${NC} Signing with Dilithium Private 
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
 
 # Sign transaction with Dilithium
-SIGNED_TX_JSON=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" signtransactionwithdilithium "$RAW_TX")
+SIGNED_TX_JSON=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" signtransactionwithdilithium "$RAW_TX")
 SIGNED_TX=$(echo "$SIGNED_TX_JSON" | grep '"hex"' | cut -d'"' -f4)
 IS_COMPLETE=$(echo "$SIGNED_TX_JSON" | grep '"complete"' | grep -o 'true\|false')
 
@@ -230,12 +232,12 @@ echo -e "  ${ARROW} Transaction size: ${BOLD}${TX_SIZE} bytes${NC} ${DIM}(vs ~25
 echo -e "  ${ARROW} Broadcasting to network..."
 
 # Set maxfeerate to 0 to disable fee checks for testing
-TX_ID=$($BTQCLI $NETWORK sendrawtransaction "$SIGNED_TX" 0)
+TX_ID=$("$BTQCLI" "${NETWORK[@]}" sendrawtransaction "$SIGNED_TX" 0)
 echo -e "  ${GREEN}${CHECKMARK} Transaction broadcast successful!${NC}"
 echo -e "  ${BOLD}TxID: ${MAGENTA}${TX_ID}${NC}"
 
 # Verify transaction is in mempool
-MEMPOOL_TX=$($BTQCLI $NETWORK getrawmempool | grep "$TX_ID" || true)
+MEMPOOL_TX=$("$BTQCLI" "${NETWORK[@]}" getrawmempool | grep "$TX_ID" || true)
 if [ -n "$MEMPOOL_TX" ]; then
     echo -e "  ${GREEN}${CHECKMARK} Transaction in mempool${NC}"
 else
@@ -248,23 +250,21 @@ echo -e "${CYAN}┌────────────────────�
 echo -e "${CYAN}│${NC} ${BOLD}Step 12/12:${NC} Mining Blocks for Confirmation                  ${CYAN}│${NC}"
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
 echo -e "  ${ARROW} Mining 6 blocks with witness commitments..."
-MINE_RESULT=$($BTQCLI $NETWORK generatetoaddress 6 "$DILITHIUM_ADDR" 2>&1)
-if [ $? -eq 0 ]; then
-    BLOCKS_MINED=$(echo "$MINE_RESULT" | grep -c '"' || echo "6")
+if "$BTQCLI" "${NETWORK[@]}" generatetoaddress 6 "$DILITHIUM_ADDR" >/dev/null 2>&1; then
     echo -e "  ${GREEN}${CHECKMARK} Mined 6 blocks successfully${NC}"
     
     # Wait a moment for the chain to update
     sleep 1
     
     # Verify the transaction is confirmed
-    TX_INFO=$($BTQCLI $NETWORK getrawtransaction "$TX_ID" true 2>/dev/null || echo "")
+    TX_INFO=$("$BTQCLI" "${NETWORK[@]}" getrawtransaction "$TX_ID" true 2>/dev/null || echo "")
     if [ -n "$TX_INFO" ]; then
         CONFIRMATIONS=$(echo "$TX_INFO" | grep '"confirmations"' | grep -o '[0-9]*' | head -1 || echo "0")
         if [ "$CONFIRMATIONS" -gt 0 ] 2>/dev/null; then
             echo -e "  ${GREEN}${BOLD}${CHECKMARK} Transaction confirmed with ${CONFIRMATIONS} confirmations!${NC}"
         else
             # Fallback: check blockchain height vs mempool
-            MEMPOOL_CHECK=$($BTQCLI $NETWORK getrawmempool 2>/dev/null | grep "$TX_ID" || echo "")
+            MEMPOOL_CHECK=$("$BTQCLI" "${NETWORK[@]}" getrawmempool 2>/dev/null | grep "$TX_ID" || echo "")
             if [ -z "$MEMPOOL_CHECK" ]; then
                 # Not in mempool, so it must be confirmed
                 CONFIRMATIONS=6
@@ -289,9 +289,9 @@ echo ""
 echo -e "${DIM}Collecting statistics...${NC}"
 
 # Collect final statistics
-FINAL_BALANCE=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getbalance 2>/dev/null || echo "0.00000000")
-FINAL_WALLET_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getwalletinfo 2>/dev/null || echo "{}")
-BLOCKCHAIN_INFO=$($BTQCLI $NETWORK getblockchaininfo 2>/dev/null || echo "{}")
+FINAL_BALANCE=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" getbalance 2>/dev/null || echo "0.00000000")
+FINAL_WALLET_INFO=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" getwalletinfo 2>/dev/null || echo "{}")
+BLOCKCHAIN_INFO=$("$BTQCLI" "${NETWORK[@]}" getblockchaininfo 2>/dev/null || echo "{}")
 
 # Extract detailed balance info (compatible grep without -P)
 UNCONFIRMED_BALANCE=$(echo "$FINAL_WALLET_INFO" | grep '"unconfirmed_balance"' | sed 's/.*: \([0-9.]*\).*/\1/' || echo "0.00000000")
@@ -300,12 +300,12 @@ CHAIN_HEIGHT=$(echo "$BLOCKCHAIN_INFO" | grep '"blocks"' | grep -o '[0-9]*' | he
 TX_COUNT=$(echo "$FINAL_WALLET_INFO" | grep '"txcount"' | grep -o '[0-9]*' | head -1 || echo "0")
 
 # Get UTXO breakdown
-UNSPENT_FINAL=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" listunspent || echo "[]")
+UNSPENT_FINAL=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" listunspent || echo "[]")
 UTXO_COUNT=$(echo "$UNSPENT_FINAL" | grep -c '"txid"' || echo "0")
 
 # Get detailed address information
-ADDRESS1_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getaddressinfo "$DILITHIUM_ADDR" 2>/dev/null || echo "{}")
-ADDRESS2_INFO=$($BTQCLI $NETWORK -rpcwallet="$WALLET_NAME" getaddressinfo "$DILITHIUM_ADDR2" 2>/dev/null || echo "{}")
+ADDRESS1_INFO=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" getaddressinfo "$DILITHIUM_ADDR" 2>/dev/null || echo "{}")
+ADDRESS2_INFO=$("$BTQCLI" "${NETWORK[@]}" -rpcwallet="$WALLET_NAME" getaddressinfo "$DILITHIUM_ADDR2" 2>/dev/null || echo "{}")
 
 # Extract isMine and isSolvable for addresses
 ADDR1_ISMINE=$(echo "$ADDRESS1_INFO" | grep '"ismine"' | grep -o 'true\|false' | head -1 || echo "unknown")
@@ -446,13 +446,11 @@ except: pass
     UTXO_TXID=$(echo "$utxo_json" | grep -o '"txid": "[^"]*"' | cut -d'"' -f4)
     UTXO_VOUT=$(echo "$utxo_json" | grep -o '"vout": [0-9]*' | grep -o '[0-9]*')
     UTXO_ADDRESS=$(echo "$utxo_json" | grep -o '"address": "[^"]*"' | cut -d'"' -f4)
-    UTXO_SCRIPTPUBKEY=$(echo "$utxo_json" | grep -o '"scriptPubKey": "[^"]*"' | cut -d'"' -f4)
     UTXO_AMOUNT=$(echo "$utxo_json" | grep -o '"amount": [0-9.]*' | grep -o '[0-9.]*')
     UTXO_CONFIRMATIONS=$(echo "$utxo_json" | grep -o '"confirmations": [0-9]*' | grep -o '[0-9]*')
     UTXO_SPENDABLE=$(echo "$utxo_json" | grep -o '"spendable": [^,]*' | grep -o 'true\|false')
     UTXO_SOLVABLE=$(echo "$utxo_json" | grep -o '"solvable": [^,]*' | grep -o 'true\|false')
     UTXO_SAFE=$(echo "$utxo_json" | grep -o '"safe": [^,]*' | grep -o 'true\|false')
-    UTXO_PARENT_DESC=$(echo "$utxo_json" | grep -o '"parent_descs": \[[^]]*' | sed 's/"parent_descs": \["\(.*\)"/\1/' | head -1)
     
     # Display UTXO with nice formatting
     echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────┐${NC}"
@@ -528,6 +526,6 @@ echo -e "  ${GREEN}${CHECKMARK}${NC} generatetoaddress            - Mining to Di
 echo -e "  ${GREEN}${CHECKMARK}${NC} sendrawtransaction           - Broadcasting large txs"
 echo ""
 echo ""
-echo -e "${DIM}To stop btqd: ${YELLOW}${BTQCLI} ${NETWORK} stop${NC}"
+echo -e "${DIM}To stop btqd: ${YELLOW}${BTQCLI} ${NETWORK[*]} stop${NC}"
 echo ""
 
