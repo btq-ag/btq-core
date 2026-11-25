@@ -47,6 +47,7 @@ DIST_CONTRIB = \
 	       $(top_srcdir)/test/sanitizer_suppressions/tsan \
 	       $(top_srcdir)/test/sanitizer_suppressions/ubsan \
 	       $(top_srcdir)/contrib/btq/dilithium-psbt.sh \
+	       $(top_srcdir)/contrib/devtools/scan-legacy-dilithium-utxos.py \
 	       $(top_srcdir)/contrib/linearize/linearize-data.py \
 	       $(top_srcdir)/contrib/linearize/linearize-hashes.py \
 	       $(top_srcdir)/contrib/signet/miner
