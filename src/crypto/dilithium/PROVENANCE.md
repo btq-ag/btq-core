@@ -41,9 +41,9 @@ The vendored `ref/` tree corresponds to upstream commit:
 d35ba3fe5449bee3e6d43e1f296c3ca818bd36be
 ```
 
-Every file under `ref/` is byte-identical to that commit except `config.h`,
-`sign.c`, `sign.h` and `api.h`. Those four carry exactly three deliberate
-changes:
+The files under `ref/` that differ from that commit are `config.h`, `sign.c`,
+`sign.h`, `api.h` and `randombytes.c`. The vendored snapshot carries four local
+changes.
 
 1. **Deterministic signing.** `config.h` leaves `DILITHIUM_RANDOMIZED_SIGNING`
    undefined. See the next section.
@@ -61,6 +61,10 @@ changes:
    compares the recomputed challenge with an accumulate-then-test loop instead
    of upstream's early-exit byte loop. This is a hardening change relative to
    upstream and does not affect which signatures verify.
+
+4. **Linux build portability.** `randombytes.c` defines `_GNU_SOURCE` before
+   the system headers so strict C11 builds see the `syscall()` declaration.
+   The Linux implementation uses `SYS_getrandom` for random bytes.
 
 No other file differs, including every file that performs arithmetic:
 `poly.c`, `polyvec.c`, `packing.c`, `ntt.c`, `reduce.c`, `rounding.c` and

@@ -210,9 +210,7 @@ bool BuildDilithiumLeafWitness(const P2MRDilithiumLeafPolicy& policy,
                                                 [](const auto& sig) { return !sig.empty(); });
         if (signed_count < policy.m) return false;
         // The leaf checks key 0 first, so slot 0 has to be on top of the stack.
-        for (size_t k = sigs_by_key_index.size(); k-- > 0;) {
-            stack_out.push_back(sigs_by_key_index[k]);
-        }
+        stack_out.assign(sigs_by_key_index.rbegin(), sigs_by_key_index.rend());
         return true;
     }
 

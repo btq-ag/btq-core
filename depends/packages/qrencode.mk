@@ -1,6 +1,6 @@
 package=qrencode
 $(package)_version=4.1.1
-$(package)_download_path=https://fukuchi.org/works/qrencode/
+$(package)_download_path=https://bitcoincore.org/depends-sources
 $(package)_file_name=$(package)-$($(package)_version).tar.bz2
 $(package)_sha256_hash=e455d9732f8041cf5b9c388e345a641fd15707860f928e94507b1961256a6923
 

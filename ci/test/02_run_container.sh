@@ -43,8 +43,14 @@ if [ -z "$DANGER_RUN_CI_ON_HOST" ]; then
   # When detecting podman-docker, `--external` should be added.
   docker image prune --force --filter "label=$CI_IMAGE_LABEL"
 
+  network_args=()
+  if [ -n "${CI_CONTAINER_NETWORK:-}" ]; then
+    network_args=(--network "$CI_CONTAINER_NETWORK")
+  fi
+
   # shellcheck disable=SC2086
   CI_CONTAINER_ID=$(docker run --cap-add LINUX_IMMUTABLE $CI_CONTAINER_CAP --rm --interactive --detach --tty \
+                  "${network_args[@]}" \
                   --mount "type=bind,src=$BASE_READ_ONLY_DIR,dst=$BASE_READ_ONLY_DIR,readonly" \
                   --mount "type=volume,src=${CONTAINER_NAME}_ccache,dst=$CCACHE_DIR" \
                   --mount "type=volume,src=${CONTAINER_NAME}_depends,dst=$DEPENDS_DIR/built" \
