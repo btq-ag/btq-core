@@ -21,6 +21,7 @@
 #include <util/vector.h>
 #include <validation.h>
 #include <wallet/coincontrol.h>
+#include <wallet/fees.h>
 #include <wallet/p2mr.h>
 #include <wallet/scriptpubkeyman.h>
 #include <wallet/test/util.h>
