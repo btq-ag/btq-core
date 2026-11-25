@@ -1,9 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Mainnet BTQ Commands for Dilithium Wallet Operations
 
 # Note: Remove -regtest flag for mainnet operations
 # BTQ is running on mainnet at port 8332
 # Wallet operations use mainnet blockchain
+
+export LC_ALL=C
 
 # Navigate to src directory where btq-cli is located
 cd "$(dirname "$0")/src" || exit 1
@@ -46,8 +48,8 @@ echo "You need to receive real BTQ from another source."
 
 #9. Then sign it with Dilithium
 # Replace <hex> with the hex from step 8
-./btq-cli -rpcwallet="dilithium_wallet" signtransactionwithdilithium <hex>
+# ./btq-cli -rpcwallet="dilithium_wallet" signtransactionwithdilithium "<hex>"
 
 #10. Broadcast the transaction
 # Replace <signed_hex> with the signed transaction hex from step 9
-./btq-cli sendrawtransaction <signed_hex>
+# ./btq-cli sendrawtransaction "<signed_hex>"

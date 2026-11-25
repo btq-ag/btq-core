@@ -387,7 +387,8 @@ RPCHelpMan importp2mr()
         "\nImport P2MR metadata from listp2mr-shaped JSON so custom trees can be restored\n"
         "on descriptor wallets (dumpwallet is legacy-only). Keys must already be in the wallet\n"
         "if the tree needs them. Trivial anyone-can-spend leaves are allowed here because this\n"
-        "is a restore, not a new destination.\n",
+        "is a restore, not a new destination.\n"
+        "Seed-only recovery does not rebuild hybrid or multi-leaf trees.\n",
         {
             {"entries", RPCArg::Type::ARR, RPCArg::Optional::NO, "Array of P2MR entries (listp2mr output or objects with a tree field)",
                 {
