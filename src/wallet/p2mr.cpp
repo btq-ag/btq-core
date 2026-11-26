@@ -1264,7 +1264,8 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
                                                 const std::string& p2mr_id,
                                                 const CTxDestination& to_dest,
                                                 CAmount send_amount,
-                                                CAmount fee)
+                                                CAmount fee,
+                                                const std::optional<CTxDestination>& change_dest)
 {
     AssertLockHeld(wallet.cs_wallet);
     if (!IsValidDestination(to_dest)) {
@@ -1333,9 +1334,19 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
     if (change > min_viable_change) {
         // Change from a P2MR spend stays quantum-safe (Quarks F2.4); a bech32
         // change output would move the remainder onto an ECDSA script.
-        auto change_dest = wallet.GetNewChangeDestination(OutputType::P2MR);
-        if (!change_dest) return util::Error{util::ErrorString(change_dest)};
-        out.tx.vout.emplace_back(change, GetScriptForDestination(*change_dest));
+        // A caller can pass a change address when this wallet cannot derive one.
+        CTxDestination change_out;
+        if (change_dest) {
+            if (!IsValidDestination(*change_dest)) {
+                return util::Error{Untranslated("invalid change address")};
+            }
+            change_out = *change_dest;
+        } else {
+            auto generated = wallet.GetNewChangeDestination(OutputType::P2MR);
+            if (!generated) return util::Error{util::ErrorString(generated)};
+            change_out = *generated;
+        }
+        out.tx.vout.emplace_back(change, GetScriptForDestination(change_out));
         out.has_change = true;
         out.change_amount = change;
     }

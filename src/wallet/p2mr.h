@@ -230,7 +230,8 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
                                                 const std::string& p2mr_id,
                                                 const CTxDestination& to_dest,
                                                 CAmount send_amount,
-                                                CAmount fee) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+                                                CAmount fee,
+                                                const std::optional<CTxDestination>& change_dest = std::nullopt) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Sign P2MR inputs using stored metadata. Leaves unrelated inputs untouched. */
 util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,
