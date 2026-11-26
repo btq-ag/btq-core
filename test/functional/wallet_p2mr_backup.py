@@ -155,9 +155,11 @@ class WalletP2MRBackupTest(BTQTestFramework):
         for address in (plain_a["address"], multi["address"]):
             info = seed.getaddressinfo(address)
             assert_equal(info["ismine"], True)
+        # The seed import has both the Dilithium key and the x-only key,
+        # so the hybrid leaf is spendable.
         hybrid_info = seed.getaddressinfo(hybrid["address"])
-        assert_equal(hybrid_info["ismine"], False)
-        assert_equal(hybrid_info["iswatchonly"], True)
+        assert_equal(hybrid_info["ismine"], True)
+        assert_equal(hybrid_info["iswatchonly"], False)
 
         # A wallet created blank stays blank after importdescriptors, so it
         # cannot derive its own P2MR change output. Hand it one.
