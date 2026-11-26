@@ -763,7 +763,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_plain_hybrid_and_mult
             BOOST_CHECK_EQUAL(entries.size(), 4U);
             BOOST_CHECK_EQUAL(wallet->IsMine(plain_entry->script_pub_key), ISMINE_SPENDABLE);
             BOOST_CHECK_EQUAL(wallet->IsMine(multi_entry->script_pub_key), ISMINE_SPENDABLE);
-            BOOST_CHECK_EQUAL(wallet->IsMine(hybrid_entry->script_pub_key), ISMINE_WATCH_ONLY);
+            // Both the Dilithium key and the x-only key were imported.
+            BOOST_CHECK_EQUAL(wallet->IsMine(hybrid_entry->script_pub_key), ISMINE_SPENDABLE);
             LegacyScriptPubKeyMan* spk_man = wallet->GetLegacyScriptPubKeyMan();
             BOOST_REQUIRE(spk_man);
             CKey recovered_ecdsa;
