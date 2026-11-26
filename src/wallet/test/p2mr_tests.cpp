@@ -598,7 +598,7 @@ BOOST_FIXTURE_TEST_CASE(restore_roundtrips_plain_hybrid_and_multileaf, BasicTest
     ecdsa.MakeNewKey(/*fCompressedIn=*/true);
     const XOnlyPubKey xonly{ecdsa.GetPubKey()};
 
-    const std::vector<P2MRTreeLeaf> plain = SingleKeyDilithiumLeaves(key_a.GetPubKey());
+    const std::vector<P2MRTreeLeaf> plain{ScriptLeaf(0, SingleDilithiumLeaf(key_a.GetPubKey()))};
     const std::vector<P2MRTreeLeaf> hybrid{ScriptLeaf(0, HybridPairLeaf(key_a.GetPubKey(), xonly))};
     const std::vector<P2MRTreeLeaf> multi{
         ScriptLeaf(1, SingleDilithiumLeaf(key_a.GetPubKey())),

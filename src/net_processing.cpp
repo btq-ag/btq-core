@@ -565,6 +565,10 @@ private:
      */
     bool MaybeDiscourageAndDisconnect(CNode& pnode, Peer& peer);
 
+    /** Fetch unknown parents of an orphan. Does not hold m_recent_confirmed_transactions_mutex. */
+    void RequestOrphanParents(CNode& pfrom, Peer& peer, const CTransaction& tx)
+        EXCLUSIVE_LOCKS_REQUIRED(::cs_main, !m_recent_confirmed_transactions_mutex);
+
     /**
      * Reconsider orphan transactions after a parent has been accepted to the mempool.
      *
@@ -576,9 +580,6 @@ private:
      *                     If no meaningful work was done, then the work set for this peer
      *                     will be empty.
      */
-    void RequestOrphanParents(CNode& pfrom, Peer& peer, const CTransaction& tx)
-        EXCLUSIVE_LOCKS_REQUIRED(::cs_main, !m_recent_confirmed_transactions_mutex);
-
     bool ProcessOrphanTx(Peer& peer)
         EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex, g_msgproc_mutex);
 
