@@ -577,7 +577,7 @@ private:
      *                     will be empty.
      */
     void RequestOrphanParents(CNode& pfrom, Peer& peer, const CTransaction& tx)
-        EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+        EXCLUSIVE_LOCKS_REQUIRED(::cs_main, !m_recent_confirmed_transactions_mutex);
 
     bool ProcessOrphanTx(Peer& peer)
         EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex, g_msgproc_mutex);
