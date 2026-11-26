@@ -665,7 +665,8 @@ BOOST_FIXTURE_TEST_CASE(restore_roundtrips_plain_hybrid_and_multileaf, BasicTest
         BOOST_CHECK_EQUAL(ListP2MR(*restored_wallet).size(), 4U);
         BOOST_CHECK_EQUAL(restored_wallet->IsMine(plain_created.script_pub_key), ISMINE_SPENDABLE);
         BOOST_CHECK_EQUAL(restored_wallet->IsMine(multi_created.script_pub_key), ISMINE_SPENDABLE);
-        BOOST_CHECK_EQUAL(restored_wallet->IsMine(hybrid_created.script_pub_key), ISMINE_WATCH_ONLY);
+        // Both the Dilithium key and the x-only key are in this wallet.
+        BOOST_CHECK_EQUAL(restored_wallet->IsMine(hybrid_created.script_pub_key), ISMINE_SPENDABLE);
 
         auto plain_entry = GetP2MRByDestination(*restored_wallet, plain_created.dest);
         auto hybrid_entry = GetP2MRByDestination(*restored_wallet, hybrid_created.dest);
@@ -694,7 +695,7 @@ BOOST_FIXTURE_TEST_CASE(restore_roundtrips_plain_hybrid_and_multileaf, BasicTest
     BOOST_CHECK(multi_entry->merkle_root == multi_created.merkle_root);
     CheckLeaves(hybrid_entry->tree, hybrid);
     CheckLeaves(multi_entry->tree, multi);
-    BOOST_CHECK_EQUAL(reloaded->IsMine(hybrid_created.script_pub_key), ISMINE_WATCH_ONLY);
+    BOOST_CHECK_EQUAL(reloaded->IsMine(hybrid_created.script_pub_key), ISMINE_SPENDABLE);
     BOOST_CHECK_EQUAL(reloaded->IsMine(plain_created.script_pub_key), ISMINE_SPENDABLE);
 }
 

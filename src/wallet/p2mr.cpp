@@ -995,12 +995,9 @@ static std::optional<bilingual_str> StoreP2MRRecord(CWallet& wallet, WalletBatch
                                          "failed to persist P2MR metadata");
         }
     } catch (const std::exception& e) {
-        std::string error{e.what()};
-        if (write_address_book) {
-            NoteAddressBookRollback(wallet, out.dest, out.address, prior_entry, error);
-        }
-        if (error != e.what()) throw std::runtime_error(error);
-        throw;
+        // SetWalletFlagWithDB throws. Roll the address book back and return
+        // the error so CreateP2MR fails closed instead of escaping.
+        return FinishStoreP2MRRecord(wallet, out, prior_entry, write_address_book, e.what());
     }
     return std::nullopt;
 }
