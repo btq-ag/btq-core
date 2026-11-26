@@ -661,7 +661,8 @@ BOOST_FIXTURE_TEST_CASE(dumpwallet_importwallet_roundtrips_plain_hybrid_and_mult
     const XOnlyPubKey xonly{ecdsa.GetPubKey()};
     const CKeyID ecdsa_id = ecdsa.GetPubKey().GetID();
 
-    const std::vector<P2MRTreeLeaf> plain = SingleKeyDilithiumLeaves(key_a.GetPubKey());
+    const CScript plain_leaf = CScript() << ToByteVector(key_a.GetPubKey()) << OP_CHECKSIGDILITHIUM;
+    const std::vector<P2MRTreeLeaf> plain{ScriptLeaf(0, plain_leaf)};
     const CScript hybrid_script = CScript() << ToByteVector(key_a.GetPubKey()) << OP_CHECKSIGDILITHIUMVERIFY << ToByteVector(xonly) << OP_CHECKSIG;
     const std::vector<P2MRTreeLeaf> hybrid{ScriptLeaf(0, hybrid_script)};
     const CScript leaf_a = CScript() << ToByteVector(key_a.GetPubKey()) << OP_CHECKSIGDILITHIUM;
