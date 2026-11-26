@@ -4,22 +4,31 @@
 
 #include <test/util/validation.h>
 
+#include <sync.h>
 #include <util/check.h>
 #include <util/time.h>
 #include <validation.h>
 #include <validationinterface.h>
 
-void TestChainstateManager::ResetIbd()
+void ResetIbd(ChainstateManager& chainman)
 {
-    m_cached_finished_ibd = false;
-    assert(IsInitialBlockDownload());
+    chainman.m_cached_finished_ibd = false;
+    assert(chainman.IsInitialBlockDownload());
 }
 
-void TestChainstateManager::JumpOutOfIbd()
+void ResetIbdWithMockTime(ChainstateManager& chainman)
 {
-    Assert(IsInitialBlockDownload());
-    m_cached_finished_ibd = true;
-    Assert(!IsInitialBlockDownload());
+    LOCK(chainman.GetMutex());
+    const auto mock_time{Assert(chainman.ActiveTip())->Time() + chainman.m_options.max_tip_age + 1s};
+    SetMockTime(mock_time.time_since_epoch());
+    ResetIbd(chainman);
+}
+
+void JumpOutOfIbd(ChainstateManager& chainman)
+{
+    Assert(chainman.IsInitialBlockDownload());
+    chainman.m_cached_finished_ibd = true;
+    Assert(!chainman.IsInitialBlockDownload());
 }
 
 void ValidationInterfaceTest::BlockConnected(

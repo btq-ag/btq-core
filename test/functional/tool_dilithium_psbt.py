@@ -60,7 +60,7 @@ class ToolDilithiumPSBTTest(BTQTestFramework):
             out = json.loads(self.script_cmd("pubkey", name).stdout)
             assert_equal(out["wallet"], name)
             assert_equal(out["ismine"], True)
-            assert_equal(len(out["pubkey"]), 2624)  # 1312-byte key, hex
+            assert_equal(len(out["pubkey"]), 5184)  # 2592-byte key, hex
             keys.append(out["pubkey"])
 
         self.log.info("every co-signer registers the same 2-of-3")

@@ -51,7 +51,7 @@ The --debug and --quiet options are available to control how noisy the signet mi
 
 Instead of specifying --ongoing, you can specify --max-blocks=N to mine N blocks and stop.
 
-The --set-block-time option is available to manually move timestamps forward or backward (subject to the rules that blocktime must be greater than mediantime, and dates can't be more than two hours in the future). It can only be used when mining a single block (ie, not when using --ongoing or --max-blocks greater than 1).
+The --set-block-time option is available to manually move timestamps forward or backward (subject to the rules that blocktime must be greater than mediantime, and dates can't be more than 15 minutes in the future). It can only be used when mining a single block (ie, not when using --ongoing or --max-blocks greater than 1).
 
 Instead of using a single address, a ranged descriptor may be provided via the --descriptor parameter, with the reward for the block at height H being sent to the H'th address generated from the descriptor.
 

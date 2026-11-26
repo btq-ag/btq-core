@@ -2208,7 +2208,7 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
 
             const valtype& vchPubKey = stack.back();
             // BTQ-AUDIT-048: after DEPLOYMENT_DILITHIUM_P2MR activation the witness-v0
-            // size==1312 heuristic that routed a P2WPKH spend to Dilithium is disabled.
+            // size check that routed a P2WPKH spend to Dilithium is disabled.
             // Dilithium spends must use P2MR (witness v2); a Dilithium-sized key in a v0
             // keyhash spend then falls through to the ECDSA path and is rejected.
             // Pre-activation, keep the historical routing so pre-fork blocks validate.

@@ -72,6 +72,10 @@ class P2PIBDStallingTest(BTQTestFramework):
         headers_message.headers = [CBlockHeader(b) for b in blocks[:NUM_BLOCKS-1]]
         peers = []
 
+        # Keep wall time spent downloading the fixture out of the timeout checks.
+        self.mocktime = int(time.time())
+        node.setmocktime(self.mocktime)
+
         self.log.info("Check that a staller does not get disconnected if the 1024 block lookahead buffer is filled")
         for id in range(NUM_PEERS):
             peers.append(node.add_outbound_p2p_connection(P2PStaller(stall_block), p2p_idx=id, connection_type="outbound-full-relay"))
@@ -84,7 +88,7 @@ class P2PIBDStallingTest(BTQTestFramework):
 
         self.all_sync_send_with_ping(peers)
         # If there was a peer marked for stalling, it would get disconnected
-        self.mocktime = int(time.time()) + 3
+        self.mocktime += 3
         node.setmocktime(self.mocktime)
         self.all_sync_send_with_ping(peers)
         assert_equal(node.num_test_p2p_connections(), NUM_PEERS)

@@ -1,0 +1,200 @@
+{
+  "accepted": 34500,
+  "rejected": 0,
+  "last_error": null,
+  "final": {
+    "loaded": true,
+    "size": 34500,
+    "bytes": 18871500,
+    "usage": 290213456,
+    "total_fee": 34.5,
+    "maxmempool": 300000000,
+    "mempoolminfee": 1e-05,
+    "minrelaytxfee": 1e-05,
+    "incrementalrelayfee": 1e-05,
+    "unbroadcastcount": 34500,
+    "fullrbf": true
+  },
+  "rss": {
+    "VmHWM": 1493760,
+    "VmRSS": 1493760
+  },
+  "samples": [
+    {
+      "accepted": 50,
+      "rejected": 0,
+      "size": 50,
+      "bytes": 27350,
+      "usage": 419376,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 1750,
+      "rejected": 0,
+      "size": 1750,
+      "bytes": 957250,
+      "usage": 14669936,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 3450,
+      "rejected": 0,
+      "size": 3450,
+      "bytes": 1887150,
+      "usage": 28923056,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 5150,
+      "rejected": 0,
+      "size": 5150,
+      "bytes": 2817050,
+      "usage": 43258096,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 6850,
+      "rejected": 0,
+      "size": 6850,
+      "bytes": 3746950,
+      "usage": 57429296,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 8550,
+      "rejected": 0,
+      "size": 8550,
+      "bytes": 4676850,
+      "usage": 71928176,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 10250,
+      "rejected": 0,
+      "size": 10250,
+      "bytes": 5606750,
+      "usage": 86099376,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 11950,
+      "rejected": 0,
+      "size": 11950,
+      "bytes": 6536650,
+      "usage": 100270576,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 13650,
+      "rejected": 0,
+      "size": 13650,
+      "bytes": 7466550,
+      "usage": 114441776,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 15350,
+      "rejected": 0,
+      "size": 15350,
+      "bytes": 8396450,
+      "usage": 128612976,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 17050,
+      "rejected": 0,
+      "size": 17050,
+      "bytes": 9326350,
+      "usage": 143439536,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 18750,
+      "rejected": 0,
+      "size": 18750,
+      "bytes": 10256250,
+      "usage": 157610736,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 20450,
+      "rejected": 0,
+      "size": 20450,
+      "bytes": 11186150,
+      "usage": 171781936,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 22150,
+      "rejected": 0,
+      "size": 22150,
+      "bytes": 12116050,
+      "usage": 185953136,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 23850,
+      "rejected": 0,
+      "size": 23850,
+      "bytes": 13045950,
+      "usage": 200124336,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 25550,
+      "rejected": 0,
+      "size": 25550,
+      "bytes": 13975850,
+      "usage": 214295536,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 27250,
+      "rejected": 0,
+      "size": 27250,
+      "bytes": 14905750,
+      "usage": 228466736,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 28950,
+      "rejected": 0,
+      "size": 28950,
+      "bytes": 15835650,
+      "usage": 242637936,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 30650,
+      "rejected": 0,
+      "size": 30650,
+      "bytes": 16765550,
+      "usage": 256809136,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 32350,
+      "rejected": 0,
+      "size": 32350,
+      "bytes": 17695450,
+      "usage": 270980336,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 34050,
+      "rejected": 0,
+      "size": 34050,
+      "bytes": 18625350,
+      "usage": 286462256,
+      "mempoolminfee": 1e-05
+    },
+    {
+      "accepted": 34500,
+      "rejected": 0,
+      "size": 34500,
+      "bytes": 18871500,
+      "usage": 290213456,
+      "mempoolminfee": 1e-05
+    }
+  ]
+}

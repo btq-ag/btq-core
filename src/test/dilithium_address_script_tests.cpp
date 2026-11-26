@@ -130,7 +130,7 @@ BOOST_AUTO_TEST_CASE(dilithium_script_generation)
     CScript pubkey_script = GetScriptForDestination(pubkey_dest);
     
     // For large data (>75 bytes), Bitcoin uses OP_PUSHDATA1 or OP_PUSHDATA2
-    // CDilithiumPubKey::SIZE is 1312 bytes, so we need OP_PUSHDATA2 (0x4D) + 2 length bytes
+    // CDilithiumPubKey::SIZE is 2592 bytes, so we need OP_PUSHDATA2 (0x4D) + 2 length bytes
     BOOST_CHECK(pubkey_script.size() == CDilithiumPubKey::SIZE + 4); // OP_PUSHDATA2 + 2 length bytes + data + opcode
     BOOST_CHECK(pubkey_script[0] == OP_PUSHDATA2); // 0x4D = 77
     BOOST_CHECK(pubkey_script.back() == OP_CHECKSIGDILITHIUM);

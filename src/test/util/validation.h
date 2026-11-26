@@ -9,12 +9,12 @@
 
 class CValidationInterface;
 
-struct TestChainstateManager : public ChainstateManager {
-    /** Reset the ibd cache to its initial state */
-    void ResetIbd();
-    /** Toggle IsInitialBlockDownload from true to false */
-    void JumpOutOfIbd();
-};
+/** Reset the IBD cache to its initial state. */
+void ResetIbd(ChainstateManager& chainman);
+/** Set mock time so the active tip is stale, then reset the IBD cache. */
+void ResetIbdWithMockTime(ChainstateManager& chainman);
+/** Toggle IsInitialBlockDownload from true to false. */
+void JumpOutOfIbd(ChainstateManager& chainman);
 
 class ValidationInterfaceTest
 {

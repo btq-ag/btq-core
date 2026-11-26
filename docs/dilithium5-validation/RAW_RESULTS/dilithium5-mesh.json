@@ -1,0 +1,15 @@
+{
+  "nodes": 12,
+  "origin_peers": 12,
+  "tx_sent": {
+    "inv": 4584,
+    "tx": 882000
+  },
+  "tx_recv": {
+    "getdata": 4584
+  },
+  "origin_rss": {
+    "VmHWM": 87380,
+    "VmRSS": 87380
+  }
+}

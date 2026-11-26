@@ -198,7 +198,10 @@ RPCHelpMan recoverdilithiumkeys()
         "address derivation, which left Dilithium keys at scattered indexes; this scans a\n"
         "past or ahead range and recovers them. Descriptor wallets only.\n"
         "Run rescanblockchain afterwards to find historical transactions to the recovered\n"
-        "addresses.\n",
+        "addresses.\n"
+        "Seed-only recovery does not rebuild hybrid or multi-leaf trees. A hybrid leaf\n"
+        "pairs a Dilithium key with an x-only key, and that pairing is part of the tree.\n"
+        "Restore those addresses with importp2mr or importwallet.\n",
         {
             {"start", RPCArg::Type::NUM, RPCArg::Optional::NO, "First sequence index to derive (inclusive)"},
             {"stop", RPCArg::Type::NUM, RPCArg::Optional::NO, "Last sequence index to derive (inclusive)"},
@@ -418,7 +421,7 @@ static UniValue DilithiumVerifyMessage(const JSONRPCRequest& request,
     // With an explicit pubkey the signature verifies against it directly;
     // only the address binding is checked. Verification must not need the
     // signer's private key (Quarks F2.1): neither address form carries the
-    // 1312-byte pubkey, so a verifier who is not the signer supplies it here.
+    // Dilithium pubkey, so a verifier who is not the signer supplies it here.
     if (!pubkey_param.isNull()) {
         const std::string pubkey_hex = pubkey_param.get_str();
         if (!IsHex(pubkey_hex)) {
@@ -743,7 +746,7 @@ RPCHelpMan signtransactionwithdilithium()
         "Use signp2mrtransaction for P2MR Dilithium spends.\n",
         {
             {"hexstring", RPCArg::Type::STR, RPCArg::Optional::NO, "The transaction hex string"},
-            {"prevtxs", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "Ignored",
+            {"prevtxs", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "Not supported. Passing previous transactions returns an error.",
                 {
                     {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
                         {
@@ -771,6 +774,12 @@ RPCHelpMan signtransactionwithdilithium()
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
+            // Reject a supplied prevtxs instead of accepting it and discarding it.
+            // Wiring it through Dilithium signing is a separate change; this RPC
+            // does not sign legacy Dilithium transactions anymore.
+            if (!request.params[1].isNull()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "prevtxs is not supported");
+            }
             throw JSONRPCError(RPC_METHOD_DEPRECATED,
                 "signtransactionwithdilithium is disabled: Dilithium opcodes are consensus-valid only in P2MR tapscript. Use signp2mrtransaction.");
         },

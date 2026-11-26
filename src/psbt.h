@@ -380,7 +380,7 @@ struct PSBTInput
             }
 
             // Write P2MR Dilithium script signatures. The wire key carries the
-            // full 1312-byte pubkey; the map is keyed by its hash internally.
+            // full Dilithium pubkey; the map is keyed by its hash internally.
             for (const auto& [keyid_leaf, pubkey_sig] : m_p2mr_dilithium_script_sigs) {
                 const auto& [pubkey, sig] = pubkey_sig;
                 SerializeToVector(s, PSBT_IN_P2MR_DILITHIUM_SCRIPT_SIG, pubkey, keyid_leaf.second);

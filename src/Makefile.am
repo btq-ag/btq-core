@@ -256,6 +256,7 @@ BTQ_CORE_H = \
   reverse_iterator.h \
   rpc/blockchain.h \
   rpc/client.h \
+  rpc/dilithium.h \
   rpc/mempool.h \
   rpc/mining.h \
   rpc/protocol.h \

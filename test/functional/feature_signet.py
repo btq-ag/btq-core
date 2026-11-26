@@ -84,7 +84,8 @@ class SignetBasicTest(BTQTestFramework):
         block.hashMerkleRoot = block.calc_merkle_root()
         # Signet uses real proof of work; grind in C++ rather than Python.
         header = subprocess.run([self.options.btqutil, "grind", CBlockHeader.serialize(block).hex()],
-                                capture_output=True, text=True, check=True, timeout=60).stdout.strip()
+                                capture_output=True, text=True, check=True,
+                                timeout=60 * self.options.timeout_factor).stdout.strip()
         block.nNonce = from_hex(CBlockHeader(), header).nNonce
         block.rehash()
         return block.serialize().hex()

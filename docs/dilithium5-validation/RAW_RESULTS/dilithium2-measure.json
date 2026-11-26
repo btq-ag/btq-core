@@ -1,0 +1,5741 @@
+{
+  "label": "dilithium2",
+  "btqd_sha256": "b0c8d05ec6e95e7de7e81fda2153ab4f96162431fce32accb2124e50e38b2672",
+  "stress_seconds": 120,
+  "host": {
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "nproc": 32,
+    "meminfo_kib": {
+      "MemTotal": 12247008,
+      "MemAvailable": 10718332,
+      "SwapTotal": 4194304
+    }
+  },
+  "blocks": [
+    {
+      "spends": 25,
+      "send_s": 0.276,
+      "mine_wall_s": 0.012,
+      "cpu_s": 0.06,
+      "rss_before": {
+        "VmHWM": 81944,
+        "VmRSS": 81944
+      },
+      "rss_after": {
+        "VmHWM": 82204,
+        "VmRSS": 82204
+      },
+      "block": {
+        "hash": "014d5558e3b0e62254200ad1c302577abf6f6c1a55a3d63cab63c79256375c68",
+        "height": 116,
+        "nTx": 26,
+        "size": 96299,
+        "strippedsize": 2563,
+        "weight": 134744
+      },
+      "bench": {
+        "connect_tx_ms": 0.04,
+        "verify_ms": 0.05,
+        "connect_total_ms": 0.1
+      },
+      "bench_lines": [
+        {
+          "connect_tx_ms": 0.04,
+          "verify_ms": 0.05,
+          "connect_total_ms": 0.1
+        }
+      ]
+    },
+    {
+      "spends": 25,
+      "send_s": 0.285,
+      "mine_wall_s": 0.01,
+      "cpu_s": 0.06,
+      "rss_before": {
+        "VmHWM": 82204,
+        "VmRSS": 82204
+      },
+      "rss_after": {
+        "VmHWM": 82204,
+        "VmRSS": 82204
+      },
+      "block": {
+        "hash": "1f0cb680e3613efe477ba51776f855313ddb568336cf91c32cdd950b800745b1",
+        "height": 117,
+        "nTx": 26,
+        "size": 96299,
+        "strippedsize": 2563,
+        "weight": 134744
+      },
+      "bench": {
+        "connect_tx_ms": 0.04,
+        "verify_ms": 0.04,
+        "connect_total_ms": 0.09
+      },
+      "bench_lines": [
+        {
+          "connect_tx_ms": 0.04,
+          "verify_ms": 0.04,
+          "connect_total_ms": 0.09
+        }
+      ]
+    },
+    {
+      "spends": 25,
+      "send_s": 0.292,
+      "mine_wall_s": 0.011,
+      "cpu_s": 0.05,
+      "rss_before": {
+        "VmHWM": 82204,
+        "VmRSS": 82204
+      },
+      "rss_after": {
+        "VmHWM": 82204,
+        "VmRSS": 81584
+      },
+      "block": {
+        "hash": "6775ed24db60cb236ff134954c134c028ca9bac919cb0bb384b557a1d31809af",
+        "height": 118,
+        "nTx": 26,
+        "size": 96299,
+        "strippedsize": 2563,
+        "weight": 134744
+      },
+      "bench": {
+        "connect_tx_ms": 0.04,
+        "verify_ms": 0.04,
+        "connect_total_ms": 0.14
+      },
+      "bench_lines": [
+        {
+          "connect_tx_ms": 0.04,
+          "verify_ms": 0.04,
+          "connect_total_ms": 0.14
+        }
+      ]
+    },
+    {
+      "spends": 50,
+      "send_s": 0.598,
+      "mine_wall_s": 0.01,
+      "cpu_s": 0.12,
+      "rss_before": {
+        "VmHWM": 82204,
+        "VmRSS": 81584
+      },
+      "rss_after": {
+        "VmHWM": 82204,
+        "VmRSS": 81848
+      },
+      "block": {
+        "hash": "7f2b849d8ba1e4744726efc1e0fab72cc63cd94777f2224b440e7274e4965513",
+        "height": 119,
+        "nTx": 51,
+        "size": 192349,
+        "strippedsize": 4913,
+        "weight": 266044
+      },
+      "bench": {
+        "connect_tx_ms": 0.08,
+        "verify_ms": 0.08,
+        "connect_total_ms": 0.15
+      },
+      "bench_lines": [
+        {
+          "connect_tx_ms": 0.08,
+          "verify_ms": 0.08,
+          "connect_total_ms": 0.15
+        }
+      ]
+    },
+    {
+      "spends": 100,
+      "send_s": 1.154,
+      "mine_wall_s": 0.012,
+      "cpu_s": 0.21,
+      "rss_before": {
+        "VmHWM": 82204,
+        "VmRSS": 81848
+      },
+      "rss_after": {
+        "VmHWM": 82496,
+        "VmRSS": 82496
+      },
+      "block": {
+        "hash": "5b396b55be9c4e809287bc98591468dd9e27679a10fb59886f46c55ce00cdedb",
+        "height": 120,
+        "nTx": 101,
+        "size": 384449,
+        "strippedsize": 9613,
+        "weight": 528644
+      },
+      "bench": {
+        "connect_tx_ms": 0.16,
+        "verify_ms": 0.17,
+        "connect_total_ms": 0.26
+      },
+      "bench_lines": [
+        {
+          "connect_tx_ms": 0.16,
+          "verify_ms": 0.17,
+          "connect_total_ms": 0.26
+        }
+      ]
+    },
+    {
+      "spends": 200,
+      "send_s": 2.202,
+      "mine_wall_s": 0.011,
+      "cpu_s": 0.44,
+      "rss_before": {
+        "VmHWM": 82496,
+        "VmRSS": 82496
+      },
+      "rss_after": {
+        "VmHWM": 84080,
+        "VmRSS": 84080
+      },
+      "block": {
+        "hash": "56bd77c68173e0df34569373bc915b92b1be4247e189718e1c2450bed3d93cfd",
+        "height": 121,
+        "nTx": 201,
+        "size": 768649,
+        "strippedsize": 19013,
+        "weight": 1053844
+      },
+      "bench": {
+        "connect_tx_ms": 0.29,
+        "verify_ms": 0.29,
+        "connect_total_ms": 0.46
+      },
+      "bench_lines": [
+        {
+          "connect_tx_ms": 0.29,
+          "verify_ms": 0.29,
+          "connect_total_ms": 0.46
+        }
+      ]
+    }
+  ],
+  "reconnect_200": {
+    "invalidate_wall_s": 1.017,
+    "reconsider_wall_s": 0.004,
+    "bench": [
+      {
+        "disconnect_ms": 0.28,
+        "connect_tx_ms": 0.32,
+        "verify_ms": 0.33,
+        "connect_total_ms": 0.48
+      }
+    ]
+  },
+  "mempool": {
+    "before": {
+      "loaded": true,
+      "size": 0,
+      "bytes": 0,
+      "usage": 64,
+      "total_fee": 0.0,
+      "maxmempool": 300000000,
+      "mempoolminfee": 1e-05,
+      "minrelaytxfee": 1e-05,
+      "incrementalrelayfee": 1e-05,
+      "unbroadcastcount": 0,
+      "fullrbf": true
+    },
+    "after": {
+      "loaded": true,
+      "size": 40,
+      "bytes": 13160,
+      "usage": 196496,
+      "total_fee": 0.04,
+      "maxmempool": 300000000,
+      "mempoolminfee": 1e-05,
+      "minrelaytxfee": 1e-05,
+      "incrementalrelayfee": 1e-05,
+      "unbroadcastcount": 40,
+      "fullrbf": true
+    },
+    "txs_added": 40,
+    "rss": {
+      "VmHWM": 85928,
+      "VmRSS": 85928
+    }
+  },
+  "ibd_bytes": {
+    "origin": {
+      "peers": 4,
+      "bytessent": 6798983,
+      "bytesrecv": 41269,
+      "sent": {
+        "block": 6748424,
+        "feefilter": 116,
+        "getheaders": 2536,
+        "headers": 39292,
+        "ping": 116,
+        "pong": 116,
+        "sendaddrv2": 132,
+        "sendcmpct": 120,
+        "verack": 132,
+        "version": 520,
+        "wtxidrelay": 132
+      },
+      "recv": {
+        "feefilter": 174,
+        "getaddr": 132,
+        "getdata": 26752,
+        "getheaders": 360,
+        "headers": 88,
+        "ping": 116,
+        "pong": 116,
+        "sendaddrv2": 132,
+        "sendcmpct": 210,
+        "sendheaders": 132,
+        "verack": 132,
+        "version": 520,
+        "wtxidrelay": 132
+      }
+    },
+    "public": {
+      "peers": 1,
+      "bytessent": 9304,
+      "bytesrecv": 1701001,
+      "sent": {
+        "feefilter": 58,
+        "getaddr": 33,
+        "getdata": 6688,
+        "getheaders": 90,
+        "headers": 22,
+        "ping": 29,
+        "pong": 29,
+        "sendaddrv2": 33,
+        "sendcmpct": 60,
+        "sendheaders": 33,
+        "verack": 33,
+        "version": 130,
+        "wtxidrelay": 33
+      },
+      "recv": {
+        "block": 1687106,
+        "feefilter": 29,
+        "getheaders": 634,
+        "headers": 9823,
+        "ping": 29,
+        "pong": 29,
+        "sendaddrv2": 33,
+        "sendcmpct": 30,
+        "verack": 33,
+        "version": 130,
+        "wtxidrelay": 33
+      }
+    },
+    "private": {
+      "peers": 1,
+      "bytessent": 11058,
+      "bytesrecv": 1698885,
+      "sent": {
+        "feefilter": 58,
+        "getaddr": 33,
+        "getdata": 6688,
+        "getheaders": 90,
+        "headers": 22,
+        "ping": 29,
+        "pong": 29,
+        "sendaddrv2": 33,
+        "sendcmpct": 60,
+        "sendheaders": 33,
+        "verack": 33,
+        "version": 130,
+        "wtxidrelay": 33
+      },
+      "recv": {
+        "block": 1687106,
+        "feefilter": 29,
+        "getheaders": 634,
+        "headers": 9823,
+        "ping": 29,
+        "pong": 29,
+        "sendaddrv2": 33,
+        "sendcmpct": 30,
+        "verack": 33,
+        "version": 130,
+        "wtxidrelay": 33
+      }
+    },
+    "blocksonly": {
+      "peers": 1,
+      "bytessent": 9739,
+      "bytesrecv": 1698318,
+      "sent": {
+        "getaddr": 33,
+        "getdata": 6688,
+        "getheaders": 90,
+        "headers": 22,
+        "ping": 29,
+        "pong": 29,
+        "sendaddrv2": 33,
+        "sendcmpct": 30,
+        "sendheaders": 33,
+        "verack": 33,
+        "version": 130,
+        "wtxidrelay": 33
+      },
+      "recv": {
+        "block": 1687106,
+        "feefilter": 29,
+        "getheaders": 634,
+        "headers": 9823,
+        "ping": 29,
+        "pong": 29,
+        "sendaddrv2": 33,
+        "sendcmpct": 30,
+        "verack": 33,
+        "version": 130,
+        "wtxidrelay": 33
+      }
+    },
+    "extra": {
+      "peers": 1,
+      "bytessent": 11168,
+      "bytesrecv": 1700779,
+      "sent": {
+        "feefilter": 58,
+        "getaddr": 33,
+        "getdata": 6688,
+        "getheaders": 90,
+        "headers": 22,
+        "ping": 29,
+        "pong": 29,
+        "sendaddrv2": 33,
+        "sendcmpct": 60,
+        "sendheaders": 33,
+        "verack": 33,
+        "version": 130,
+        "wtxidrelay": 33
+      },
+      "recv": {
+        "block": 1687106,
+        "feefilter": 29,
+        "getheaders": 634,
+        "headers": 9823,
+        "ping": 29,
+        "pong": 29,
+        "sendaddrv2": 33,
+        "sendcmpct": 30,
+        "verack": 33,
+        "version": 130,
+        "wtxidrelay": 33
+      }
+    }
+  },
+  "relay": {
+    "origin": {
+      "tx_phase_sent": {},
+      "tx_phase_recv": {},
+      "block_phase_sent": {
+        "block": 115530,
+        "blocktxn": 345942,
+        "cmpctblock": 1380,
+        "headers": 103
+      },
+      "block_phase_recv": {
+        "getblocktxn": 252,
+        "getdata": 58
+      }
+    },
+    "public": {
+      "tx_phase_sent": {},
+      "tx_phase_recv": {},
+      "block_phase_sent": {
+        "getblocktxn": 84
+      },
+      "block_phase_recv": {
+        "blocktxn": 115314,
+        "cmpctblock": 460
+      }
+    },
+    "private": {
+      "tx_phase_sent": {},
+      "tx_phase_recv": {},
+      "block_phase_sent": {
+        "getblocktxn": 84
+      },
+      "block_phase_recv": {
+        "blocktxn": 115314,
+        "cmpctblock": 460
+      }
+    },
+    "blocksonly": {
+      "tx_phase_sent": {},
+      "tx_phase_recv": {},
+      "block_phase_sent": {
+        "getdata": 58
+      },
+      "block_phase_recv": {
+        "block": 115530,
+        "headers": 103
+      }
+    },
+    "extra": {
+      "tx_phase_sent": {},
+      "tx_phase_recv": {},
+      "block_phase_sent": {
+        "getblocktxn": 84
+      },
+      "block_phase_recv": {
+        "blocktxn": 115314,
+        "cmpctblock": 460
+      }
+    }
+  },
+  "late_joiner": {
+    "late_recv": {
+      "block": 1958079,
+      "feefilter": 29,
+      "getheaders": 634,
+      "headers": 9985,
+      "ping": 29,
+      "pong": 29,
+      "sendaddrv2": 33,
+      "sendcmpct": 30,
+      "verack": 33,
+      "version": 130,
+      "wtxidrelay": 33
+    },
+    "origin_sent_delta": {
+      "block": 1958079,
+      "feefilter": 29,
+      "getheaders": 634,
+      "headers": 9985,
+      "ping": 29,
+      "pong": 29,
+      "sendaddrv2": 33,
+      "sendcmpct": 30,
+      "verack": 33,
+      "version": 130,
+      "wtxidrelay": 33
+    }
+  },
+  "stress": {
+    "seconds": 120.2,
+    "spend_batches": 835,
+    "samples": [
+      {
+        "t": 0.5,
+        "height": 125,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 91544
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 1.0,
+        "height": 127,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 91808
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 1.6,
+        "height": 129,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 92072
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 2.1,
+        "height": 131,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 92072
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 2.6,
+        "height": 133,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 92072
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 3.1,
+        "height": 135,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 92336
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 3.6,
+        "height": 137,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 92336
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 4.1,
+        "height": 139,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 92600
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 4.7,
+        "height": 141,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 92600
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 5.2,
+        "height": 143,
+        "rss": {
+          "origin": {
+            "VmHWM": 92604,
+            "VmRSS": 92600
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 5.7,
+        "height": 145,
+        "rss": {
+          "origin": {
+            "VmHWM": 92864,
+            "VmRSS": 92864
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 6.2,
+        "height": 147,
+        "rss": {
+          "origin": {
+            "VmHWM": 92864,
+            "VmRSS": 92864
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 6.7,
+        "height": 149,
+        "rss": {
+          "origin": {
+            "VmHWM": 92864,
+            "VmRSS": 92864
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 7.3,
+        "height": 151,
+        "rss": {
+          "origin": {
+            "VmHWM": 92864,
+            "VmRSS": 92864
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 7.8,
+        "height": 153,
+        "rss": {
+          "origin": {
+            "VmHWM": 92864,
+            "VmRSS": 92864
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 8.3,
+        "height": 155,
+        "rss": {
+          "origin": {
+            "VmHWM": 93128,
+            "VmRSS": 93128
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 8.9,
+        "height": 157,
+        "rss": {
+          "origin": {
+            "VmHWM": 93656,
+            "VmRSS": 93656
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 9.4,
+        "height": 159,
+        "rss": {
+          "origin": {
+            "VmHWM": 93656,
+            "VmRSS": 93656
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 9.9,
+        "height": 161,
+        "rss": {
+          "origin": {
+            "VmHWM": 93920,
+            "VmRSS": 93920
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 10.5,
+        "height": 163,
+        "rss": {
+          "origin": {
+            "VmHWM": 93920,
+            "VmRSS": 93920
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 11.0,
+        "height": 165,
+        "rss": {
+          "origin": {
+            "VmHWM": 93920,
+            "VmRSS": 93920
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 11.5,
+        "height": 167,
+        "rss": {
+          "origin": {
+            "VmHWM": 93920,
+            "VmRSS": 93920
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 12.1,
+        "height": 169,
+        "rss": {
+          "origin": {
+            "VmHWM": 93920,
+            "VmRSS": 93920
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 12.7,
+        "height": 171,
+        "rss": {
+          "origin": {
+            "VmHWM": 94184,
+            "VmRSS": 94184
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 13.3,
+        "height": 173,
+        "rss": {
+          "origin": {
+            "VmHWM": 94184,
+            "VmRSS": 94184
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 13.8,
+        "height": 175,
+        "rss": {
+          "origin": {
+            "VmHWM": 94184,
+            "VmRSS": 94184
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 14.4,
+        "height": 177,
+        "rss": {
+          "origin": {
+            "VmHWM": 94184,
+            "VmRSS": 94184
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 14.9,
+        "height": 179,
+        "rss": {
+          "origin": {
+            "VmHWM": 94708,
+            "VmRSS": 94708
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 15.5,
+        "height": 181,
+        "rss": {
+          "origin": {
+            "VmHWM": 94708,
+            "VmRSS": 94708
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 16.0,
+        "height": 183,
+        "rss": {
+          "origin": {
+            "VmHWM": 94708,
+            "VmRSS": 94708
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 16.6,
+        "height": 185,
+        "rss": {
+          "origin": {
+            "VmHWM": 94972,
+            "VmRSS": 94972
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 17.1,
+        "height": 187,
+        "rss": {
+          "origin": {
+            "VmHWM": 94972,
+            "VmRSS": 94972
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 17.7,
+        "height": 189,
+        "rss": {
+          "origin": {
+            "VmHWM": 94972,
+            "VmRSS": 94972
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 18.2,
+        "height": 191,
+        "rss": {
+          "origin": {
+            "VmHWM": 94972,
+            "VmRSS": 94972
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 18.8,
+        "height": 193,
+        "rss": {
+          "origin": {
+            "VmHWM": 94972,
+            "VmRSS": 94972
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 19.3,
+        "height": 195,
+        "rss": {
+          "origin": {
+            "VmHWM": 95236,
+            "VmRSS": 95236
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 19.9,
+        "height": 197,
+        "rss": {
+          "origin": {
+            "VmHWM": 95236,
+            "VmRSS": 95236
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 20.4,
+        "height": 199,
+        "rss": {
+          "origin": {
+            "VmHWM": 95500,
+            "VmRSS": 95500
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 21.0,
+        "height": 201,
+        "rss": {
+          "origin": {
+            "VmHWM": 95764,
+            "VmRSS": 95764
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 21.5,
+        "height": 203,
+        "rss": {
+          "origin": {
+            "VmHWM": 95764,
+            "VmRSS": 95764
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 22.0,
+        "height": 205,
+        "rss": {
+          "origin": {
+            "VmHWM": 95764,
+            "VmRSS": 95764
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 22.6,
+        "height": 207,
+        "rss": {
+          "origin": {
+            "VmHWM": 95764,
+            "VmRSS": 95764
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 23.1,
+        "height": 209,
+        "rss": {
+          "origin": {
+            "VmHWM": 95764,
+            "VmRSS": 95764
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 23.7,
+        "height": 211,
+        "rss": {
+          "origin": {
+            "VmHWM": 96028,
+            "VmRSS": 96028
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 24.2,
+        "height": 213,
+        "rss": {
+          "origin": {
+            "VmHWM": 96028,
+            "VmRSS": 96028
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 24.8,
+        "height": 215,
+        "rss": {
+          "origin": {
+            "VmHWM": 96292,
+            "VmRSS": 96292
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 25.3,
+        "height": 217,
+        "rss": {
+          "origin": {
+            "VmHWM": 96292,
+            "VmRSS": 96292
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 25.9,
+        "height": 219,
+        "rss": {
+          "origin": {
+            "VmHWM": 96292,
+            "VmRSS": 96292
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 26.4,
+        "height": 221,
+        "rss": {
+          "origin": {
+            "VmHWM": 96292,
+            "VmRSS": 96292
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 27.0,
+        "height": 223,
+        "rss": {
+          "origin": {
+            "VmHWM": 96556,
+            "VmRSS": 96556
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 27.5,
+        "height": 225,
+        "rss": {
+          "origin": {
+            "VmHWM": 96556,
+            "VmRSS": 96556
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 28.1,
+        "height": 227,
+        "rss": {
+          "origin": {
+            "VmHWM": 96820,
+            "VmRSS": 96820
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 28.7,
+        "height": 229,
+        "rss": {
+          "origin": {
+            "VmHWM": 96820,
+            "VmRSS": 96820
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 29.2,
+        "height": 231,
+        "rss": {
+          "origin": {
+            "VmHWM": 97084,
+            "VmRSS": 97084
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 29.8,
+        "height": 233,
+        "rss": {
+          "origin": {
+            "VmHWM": 97084,
+            "VmRSS": 97084
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 30.3,
+        "height": 235,
+        "rss": {
+          "origin": {
+            "VmHWM": 97084,
+            "VmRSS": 97084
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 30.9,
+        "height": 237,
+        "rss": {
+          "origin": {
+            "VmHWM": 97084,
+            "VmRSS": 97084
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 31.5,
+        "height": 239,
+        "rss": {
+          "origin": {
+            "VmHWM": 97084,
+            "VmRSS": 97084
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 32.0,
+        "height": 241,
+        "rss": {
+          "origin": {
+            "VmHWM": 97084,
+            "VmRSS": 97084
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 32.6,
+        "height": 243,
+        "rss": {
+          "origin": {
+            "VmHWM": 97084,
+            "VmRSS": 97084
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 33.1,
+        "height": 245,
+        "rss": {
+          "origin": {
+            "VmHWM": 97876,
+            "VmRSS": 97876
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 33.7,
+        "height": 247,
+        "rss": {
+          "origin": {
+            "VmHWM": 97876,
+            "VmRSS": 97876
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 34.3,
+        "height": 249,
+        "rss": {
+          "origin": {
+            "VmHWM": 97876,
+            "VmRSS": 97876
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 34.8,
+        "height": 251,
+        "rss": {
+          "origin": {
+            "VmHWM": 97876,
+            "VmRSS": 97876
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 35.4,
+        "height": 253,
+        "rss": {
+          "origin": {
+            "VmHWM": 97876,
+            "VmRSS": 97876
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 36.0,
+        "height": 255,
+        "rss": {
+          "origin": {
+            "VmHWM": 97876,
+            "VmRSS": 97876
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 36.5,
+        "height": 257,
+        "rss": {
+          "origin": {
+            "VmHWM": 97876,
+            "VmRSS": 97876
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 37.1,
+        "height": 259,
+        "rss": {
+          "origin": {
+            "VmHWM": 97876,
+            "VmRSS": 97876
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 37.6,
+        "height": 261,
+        "rss": {
+          "origin": {
+            "VmHWM": 98392,
+            "VmRSS": 98392
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 38.2,
+        "height": 263,
+        "rss": {
+          "origin": {
+            "VmHWM": 98392,
+            "VmRSS": 98392
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 38.8,
+        "height": 265,
+        "rss": {
+          "origin": {
+            "VmHWM": 98392,
+            "VmRSS": 98392
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 39.4,
+        "height": 267,
+        "rss": {
+          "origin": {
+            "VmHWM": 98392,
+            "VmRSS": 98392
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 40.0,
+        "height": 269,
+        "rss": {
+          "origin": {
+            "VmHWM": 98920,
+            "VmRSS": 98920
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 40.5,
+        "height": 271,
+        "rss": {
+          "origin": {
+            "VmHWM": 98920,
+            "VmRSS": 98920
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 41.1,
+        "height": 273,
+        "rss": {
+          "origin": {
+            "VmHWM": 98920,
+            "VmRSS": 98920
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 41.7,
+        "height": 275,
+        "rss": {
+          "origin": {
+            "VmHWM": 99184,
+            "VmRSS": 99184
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 42.3,
+        "height": 277,
+        "rss": {
+          "origin": {
+            "VmHWM": 99448,
+            "VmRSS": 99448
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 42.9,
+        "height": 279,
+        "rss": {
+          "origin": {
+            "VmHWM": 99448,
+            "VmRSS": 99448
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 43.5,
+        "height": 281,
+        "rss": {
+          "origin": {
+            "VmHWM": 99448,
+            "VmRSS": 99448
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 44.1,
+        "height": 283,
+        "rss": {
+          "origin": {
+            "VmHWM": 99448,
+            "VmRSS": 99448
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 44.7,
+        "height": 285,
+        "rss": {
+          "origin": {
+            "VmHWM": 99448,
+            "VmRSS": 99448
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 45.3,
+        "height": 287,
+        "rss": {
+          "origin": {
+            "VmHWM": 99448,
+            "VmRSS": 99448
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 45.9,
+        "height": 289,
+        "rss": {
+          "origin": {
+            "VmHWM": 99712,
+            "VmRSS": 99712
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 46.4,
+        "height": 291,
+        "rss": {
+          "origin": {
+            "VmHWM": 100240,
+            "VmRSS": 100240
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 47.0,
+        "height": 293,
+        "rss": {
+          "origin": {
+            "VmHWM": 100504,
+            "VmRSS": 100504
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 47.6,
+        "height": 295,
+        "rss": {
+          "origin": {
+            "VmHWM": 100504,
+            "VmRSS": 100504
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 48.2,
+        "height": 297,
+        "rss": {
+          "origin": {
+            "VmHWM": 100504,
+            "VmRSS": 100504
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 48.8,
+        "height": 299,
+        "rss": {
+          "origin": {
+            "VmHWM": 100504,
+            "VmRSS": 100504
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 49.4,
+        "height": 301,
+        "rss": {
+          "origin": {
+            "VmHWM": 100504,
+            "VmRSS": 100504
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 50.0,
+        "height": 303,
+        "rss": {
+          "origin": {
+            "VmHWM": 100504,
+            "VmRSS": 100504
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 50.7,
+        "height": 305,
+        "rss": {
+          "origin": {
+            "VmHWM": 100504,
+            "VmRSS": 100504
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 51.3,
+        "height": 307,
+        "rss": {
+          "origin": {
+            "VmHWM": 100768,
+            "VmRSS": 100768
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 51.9,
+        "height": 309,
+        "rss": {
+          "origin": {
+            "VmHWM": 100768,
+            "VmRSS": 100768
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 52.5,
+        "height": 311,
+        "rss": {
+          "origin": {
+            "VmHWM": 101296,
+            "VmRSS": 101296
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 53.1,
+        "height": 313,
+        "rss": {
+          "origin": {
+            "VmHWM": 101560,
+            "VmRSS": 101560
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 53.7,
+        "height": 315,
+        "rss": {
+          "origin": {
+            "VmHWM": 101560,
+            "VmRSS": 101560
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 54.3,
+        "height": 317,
+        "rss": {
+          "origin": {
+            "VmHWM": 101560,
+            "VmRSS": 101560
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 54.9,
+        "height": 319,
+        "rss": {
+          "origin": {
+            "VmHWM": 101560,
+            "VmRSS": 101560
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 55.5,
+        "height": 321,
+        "rss": {
+          "origin": {
+            "VmHWM": 101824,
+            "VmRSS": 101824
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 56.1,
+        "height": 323,
+        "rss": {
+          "origin": {
+            "VmHWM": 101824,
+            "VmRSS": 101824
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 56.7,
+        "height": 325,
+        "rss": {
+          "origin": {
+            "VmHWM": 101824,
+            "VmRSS": 101824
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 57.3,
+        "height": 327,
+        "rss": {
+          "origin": {
+            "VmHWM": 102088,
+            "VmRSS": 102088
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 57.9,
+        "height": 329,
+        "rss": {
+          "origin": {
+            "VmHWM": 102088,
+            "VmRSS": 102088
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 58.6,
+        "height": 331,
+        "rss": {
+          "origin": {
+            "VmHWM": 102352,
+            "VmRSS": 102352
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 59.2,
+        "height": 333,
+        "rss": {
+          "origin": {
+            "VmHWM": 102352,
+            "VmRSS": 102352
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 59.8,
+        "height": 335,
+        "rss": {
+          "origin": {
+            "VmHWM": 102880,
+            "VmRSS": 102880
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 60.4,
+        "height": 337,
+        "rss": {
+          "origin": {
+            "VmHWM": 103144,
+            "VmRSS": 103144
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 61.0,
+        "height": 339,
+        "rss": {
+          "origin": {
+            "VmHWM": 103144,
+            "VmRSS": 103144
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 61.6,
+        "height": 341,
+        "rss": {
+          "origin": {
+            "VmHWM": 103144,
+            "VmRSS": 103144
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 62.2,
+        "height": 343,
+        "rss": {
+          "origin": {
+            "VmHWM": 103408,
+            "VmRSS": 103408
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 62.8,
+        "height": 345,
+        "rss": {
+          "origin": {
+            "VmHWM": 103408,
+            "VmRSS": 103408
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 63.4,
+        "height": 347,
+        "rss": {
+          "origin": {
+            "VmHWM": 103936,
+            "VmRSS": 103936
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 64.0,
+        "height": 349,
+        "rss": {
+          "origin": {
+            "VmHWM": 103936,
+            "VmRSS": 103936
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 64.7,
+        "height": 351,
+        "rss": {
+          "origin": {
+            "VmHWM": 103936,
+            "VmRSS": 103936
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 65.3,
+        "height": 353,
+        "rss": {
+          "origin": {
+            "VmHWM": 103936,
+            "VmRSS": 103936
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 65.9,
+        "height": 355,
+        "rss": {
+          "origin": {
+            "VmHWM": 103936,
+            "VmRSS": 103936
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 66.5,
+        "height": 357,
+        "rss": {
+          "origin": {
+            "VmHWM": 104464,
+            "VmRSS": 104464
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 67.1,
+        "height": 359,
+        "rss": {
+          "origin": {
+            "VmHWM": 104992,
+            "VmRSS": 104992
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 67.7,
+        "height": 361,
+        "rss": {
+          "origin": {
+            "VmHWM": 104992,
+            "VmRSS": 104992
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 68.3,
+        "height": 363,
+        "rss": {
+          "origin": {
+            "VmHWM": 105784,
+            "VmRSS": 105552
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 68.9,
+        "height": 365,
+        "rss": {
+          "origin": {
+            "VmHWM": 106076,
+            "VmRSS": 105848
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 69.5,
+        "height": 367,
+        "rss": {
+          "origin": {
+            "VmHWM": 106108,
+            "VmRSS": 105876
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 70.2,
+        "height": 369,
+        "rss": {
+          "origin": {
+            "VmHWM": 106400,
+            "VmRSS": 105912
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 70.8,
+        "height": 371,
+        "rss": {
+          "origin": {
+            "VmHWM": 106400,
+            "VmRSS": 105944
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 71.4,
+        "height": 373,
+        "rss": {
+          "origin": {
+            "VmHWM": 106468,
+            "VmRSS": 105976
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 72.0,
+        "height": 375,
+        "rss": {
+          "origin": {
+            "VmHWM": 106468,
+            "VmRSS": 106268
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 72.6,
+        "height": 377,
+        "rss": {
+          "origin": {
+            "VmHWM": 106792,
+            "VmRSS": 106296
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 73.2,
+        "height": 379,
+        "rss": {
+          "origin": {
+            "VmHWM": 107084,
+            "VmRSS": 106596
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 73.8,
+        "height": 381,
+        "rss": {
+          "origin": {
+            "VmHWM": 107120,
+            "VmRSS": 106624
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 74.5,
+        "height": 383,
+        "rss": {
+          "origin": {
+            "VmHWM": 107412,
+            "VmRSS": 106920
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 75.1,
+        "height": 385,
+        "rss": {
+          "origin": {
+            "VmHWM": 107444,
+            "VmRSS": 106952
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 75.7,
+        "height": 387,
+        "rss": {
+          "origin": {
+            "VmHWM": 107476,
+            "VmRSS": 106980
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 76.3,
+        "height": 389,
+        "rss": {
+          "origin": {
+            "VmHWM": 107504,
+            "VmRSS": 107504
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 76.9,
+        "height": 391,
+        "rss": {
+          "origin": {
+            "VmHWM": 108032,
+            "VmRSS": 105948
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 77.6,
+        "height": 393,
+        "rss": {
+          "origin": {
+            "VmHWM": 108060,
+            "VmRSS": 106392
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 78.2,
+        "height": 395,
+        "rss": {
+          "origin": {
+            "VmHWM": 108240,
+            "VmRSS": 106300
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 79.5,
+        "height": 397,
+        "rss": {
+          "origin": {
+            "VmHWM": 108412,
+            "VmRSS": 106472
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 80.9,
+        "height": 399,
+        "rss": {
+          "origin": {
+            "VmHWM": 108584,
+            "VmRSS": 106636
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 82.2,
+        "height": 401,
+        "rss": {
+          "origin": {
+            "VmHWM": 108748,
+            "VmRSS": 106796
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 83.5,
+        "height": 403,
+        "rss": {
+          "origin": {
+            "VmHWM": 108908,
+            "VmRSS": 106952
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 84.9,
+        "height": 405,
+        "rss": {
+          "origin": {
+            "VmHWM": 109064,
+            "VmRSS": 107108
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 86.2,
+        "height": 407,
+        "rss": {
+          "origin": {
+            "VmHWM": 109064,
+            "VmRSS": 106988
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 87.6,
+        "height": 409,
+        "rss": {
+          "origin": {
+            "VmHWM": 109100,
+            "VmRSS": 107396
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 89.0,
+        "height": 411,
+        "rss": {
+          "origin": {
+            "VmHWM": 109508,
+            "VmRSS": 107536
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 90.4,
+        "height": 413,
+        "rss": {
+          "origin": {
+            "VmHWM": 109508,
+            "VmRSS": 107408
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 91.7,
+        "height": 415,
+        "rss": {
+          "origin": {
+            "VmHWM": 109520,
+            "VmRSS": 107540
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 93.1,
+        "height": 417,
+        "rss": {
+          "origin": {
+            "VmHWM": 109652,
+            "VmRSS": 107932
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 94.4,
+        "height": 419,
+        "rss": {
+          "origin": {
+            "VmHWM": 109780,
+            "VmRSS": 107792
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 95.8,
+        "height": 421,
+        "rss": {
+          "origin": {
+            "VmHWM": 109904,
+            "VmRSS": 107908
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 97.1,
+        "height": 423,
+        "rss": {
+          "origin": {
+            "VmHWM": 110284,
+            "VmRSS": 108288
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 98.5,
+        "height": 425,
+        "rss": {
+          "origin": {
+            "VmHWM": 110400,
+            "VmRSS": 108396
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 99.9,
+        "height": 427,
+        "rss": {
+          "origin": {
+            "VmHWM": 110772,
+            "VmRSS": 108764
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 101.3,
+        "height": 429,
+        "rss": {
+          "origin": {
+            "VmHWM": 110876,
+            "VmRSS": 109128
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 102.7,
+        "height": 431,
+        "rss": {
+          "origin": {
+            "VmHWM": 111240,
+            "VmRSS": 109224
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 104.2,
+        "height": 433,
+        "rss": {
+          "origin": {
+            "VmHWM": 111240,
+            "VmRSS": 109052
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 105.6,
+        "height": 435,
+        "rss": {
+          "origin": {
+            "VmHWM": 111240,
+            "VmRSS": 109140
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 107.0,
+        "height": 437,
+        "rss": {
+          "origin": {
+            "VmHWM": 111252,
+            "VmRSS": 109224
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 108.4,
+        "height": 439,
+        "rss": {
+          "origin": {
+            "VmHWM": 111336,
+            "VmRSS": 109304
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 109.8,
+        "height": 441,
+        "rss": {
+          "origin": {
+            "VmHWM": 111416,
+            "VmRSS": 109376
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 111.2,
+        "height": 443,
+        "rss": {
+          "origin": {
+            "VmHWM": 111416,
+            "VmRSS": 109184
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 112.6,
+        "height": 445,
+        "rss": {
+          "origin": {
+            "VmHWM": 111416,
+            "VmRSS": 109248
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 114.1,
+        "height": 447,
+        "rss": {
+          "origin": {
+            "VmHWM": 111624,
+            "VmRSS": 109572
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 115.4,
+        "height": 449,
+        "rss": {
+          "origin": {
+            "VmHWM": 111684,
+            "VmRSS": 109892
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 116.8,
+        "height": 451,
+        "rss": {
+          "origin": {
+            "VmHWM": 112004,
+            "VmRSS": 109944
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 118.2,
+        "height": 453,
+        "rss": {
+          "origin": {
+            "VmHWM": 112056,
+            "VmRSS": 109992
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 119.5,
+        "height": 455,
+        "rss": {
+          "origin": {
+            "VmHWM": 112104,
+            "VmRSS": 110036
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      },
+      {
+        "t": 120.2,
+        "height": 457,
+        "rss": {
+          "origin": {
+            "VmHWM": 112148,
+            "VmRSS": 110072
+          },
+          "public": {
+            "VmHWM": 69996,
+            "VmRSS": 67996
+          },
+          "private": {
+            "VmHWM": 70692,
+            "VmRSS": 68508
+          },
+          "blocksonly": {
+            "VmHWM": 61296,
+            "VmRSS": 59116
+          },
+          "extra": {
+            "VmHWM": 66396,
+            "VmRSS": 64212
+          },
+          "late": {
+            "VmHWM": 68392,
+            "VmRSS": 66216
+          }
+        },
+        "converged": true
+      }
+    ],
+    "all_samples_converged": true
+  },
+  "restart": {
+    "origin_tip": "1e3a3fcb6e522269637d1d3c89e3ffe50e302c01e2d282c55e705718e53d4090",
+    "private_tip": "1e3a3fcb6e522269637d1d3c89e3ffe50e302c01e2d282c55e705718e53d4090",
+    "public_tip": "1e3a3fcb6e522269637d1d3c89e3ffe50e302c01e2d282c55e705718e53d4090",
+    "blocksonly_tip": "1e3a3fcb6e522269637d1d3c89e3ffe50e302c01e2d282c55e705718e53d4090"
+  },
+  "storage": {
+    "blocks_bytes": 17825858,
+    "chainstate_bytes": 317,
+    "height": 460,
+    "txindex": false
+  },
+  "final_rss": {
+    "origin": {
+      "VmHWM": 112148,
+      "VmRSS": 110072
+    },
+    "public": {
+      "VmHWM": 69996,
+      "VmRSS": 67996
+    },
+    "private": {
+      "VmHWM": 73628,
+      "VmRSS": 73628
+    },
+    "blocksonly": {
+      "VmHWM": 61296,
+      "VmRSS": 59116
+    },
+    "extra": {
+      "VmHWM": 66396,
+      "VmRSS": 64212
+    },
+    "late": {
+      "VmHWM": 68392,
+      "VmRSS": 66216
+    }
+  }
+}

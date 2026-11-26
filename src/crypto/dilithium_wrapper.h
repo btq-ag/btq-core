@@ -12,10 +12,10 @@
 extern "C" {
 #endif
 
-/** Size constants for Dilithium2 (default mode) */
-#define BTQ_DILITHIUM_PUBLIC_KEY_SIZE 1312
-#define BTQ_DILITHIUM_SECRET_KEY_SIZE 2560
-#define BTQ_DILITHIUM_SIGNATURE_SIZE 2420
+/** Size constants for Dilithium5 / ML-DSA-87, the only parameter set this branch builds. */
+#define BTQ_DILITHIUM_PUBLIC_KEY_SIZE 2592
+#define BTQ_DILITHIUM_SECRET_KEY_SIZE 4896
+#define BTQ_DILITHIUM_SIGNATURE_SIZE 4627
 
 /** Seed size for deterministic key generation (matches Dilithium SEEDBYTES). */
 #define BTQ_DILITHIUM_SEED_SIZE 32

@@ -1,0 +1,32 @@
+{
+  "tip": "538f7b2baf7c6f63fd4c00c4b71ab96a19944825664530a063e115892934c5fb",
+  "block": {
+    "height": 124,
+    "nTx": 870,
+    "size": 6369152,
+    "weight": 7597667,
+    "strippedsize": 81901
+  },
+  "invalidate_s": 0.223,
+  "reconsider_s": 0.013,
+  "first_verify": {
+    "txins": 869,
+    "verify_ms": 1.66
+  },
+  "sign_s": 1.357,
+  "broadcast_s": 6.721,
+  "funded": 1000,
+  "mempool_after": {
+    "loaded": true,
+    "size": 131,
+    "bytes": 71657,
+    "usage": 1102240,
+    "total_fee": 0.131,
+    "maxmempool": 300000000,
+    "mempoolminfee": 1e-05,
+    "minrelaytxfee": 1e-05,
+    "incrementalrelayfee": 1e-05,
+    "unbroadcastcount": 131,
+    "fullrbf": true
+  }
+}
