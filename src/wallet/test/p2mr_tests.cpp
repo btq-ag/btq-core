@@ -265,11 +265,12 @@ BOOST_FIXTURE_TEST_CASE(create_p2mr_rolls_back_address_book_on_db_write_failure,
         bool throws;
         bool flag_remains;
     };
-    // flags: SetWalletFlagWithDB throws before any metadata row.
+    // flags: SetWalletFlagWithDB throws before any metadata row. CreateP2MR
+    // catches it, rolls the address book back, and returns the error.
     // purpose / name: SetAddressBook returns false after a partial update.
     // p2mrmeta: the metadata row fails after the address book (and the flag) landed.
     const FailCase fails[] = {
-        {"flags", "SetWalletFlagWithDB: writing wallet flags failed", true, false},
+        {"flags", "SetWalletFlagWithDB: writing wallet flags failed", false, false},
         {"purpose", "failed to set P2MR address book entry", false, false},
         {"name", "failed to set P2MR address book entry", false, false},
         {"p2mrmeta", "failed to persist P2MR metadata", false, true},
@@ -699,6 +700,16 @@ BOOST_FIXTURE_TEST_CASE(restore_roundtrips_plain_hybrid_and_multileaf, BasicTest
     BOOST_CHECK_EQUAL(reloaded->IsMine(plain_created.script_pub_key), ISMINE_SPENDABLE);
 }
 
+// Clang does not carry EXCLUSIVE_LOCKS_REQUIRED into a lambda.
+static void ExpectRestoreRejected(CWallet& wallet, const std::string& kept_address, const UniValue& meta)
+    EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+{
+    BOOST_CHECK(!ValidateP2MRRestore(meta));
+    BOOST_CHECK(!RestoreP2MR(wallet, meta));
+    BOOST_CHECK_EQUAL(ListP2MR(wallet).size(), 1U);
+    BOOST_CHECK_EQUAL(ListP2MR(wallet)[0].address, kept_address);
+}
+
 BOOST_FIXTURE_TEST_CASE(restore_rejects_bad_trees_without_writing, BasicTestingSetup)
 {
     auto wallet = MakeP2MRTestWallet(*m_node.chain);
@@ -713,13 +724,6 @@ BOOST_FIXTURE_TEST_CASE(restore_rejects_bad_trees_without_writing, BasicTestingS
     BOOST_REQUIRE(kept);
     const std::string kept_address = kept->address;
 
-    auto expect_rejected = [&](UniValue meta) {
-        BOOST_CHECK(!ValidateP2MRRestore(meta));
-        BOOST_CHECK(!RestoreP2MR(*wallet, meta));
-        BOOST_CHECK_EQUAL(ListP2MR(*wallet).size(), 1U);
-        BOOST_CHECK_EQUAL(ListP2MR(*wallet)[0].address, kept_address);
-    };
-
     UniValue malformed(UniValue::VOBJ);
     UniValue bad_leaf(UniValue::VOBJ);
     bad_leaf.pushKV("depth", 0);
@@ -728,11 +732,11 @@ BOOST_FIXTURE_TEST_CASE(restore_rejects_bad_trees_without_writing, BasicTestingS
     UniValue bad_tree(UniValue::VARR);
     bad_tree.push_back(bad_leaf);
     malformed.pushKV("tree", bad_tree);
-    expect_rejected(malformed);
+    ExpectRestoreRejected(*wallet, kept_address, malformed);
 
     UniValue missing(UniValue::VOBJ);
     missing.pushKV("label", "no-tree");
-    expect_rejected(missing);
+    ExpectRestoreRejected(*wallet, kept_address, missing);
 
     UniValue incomplete(UniValue::VOBJ);
     UniValue deep_leaf(UniValue::VOBJ);
@@ -742,7 +746,7 @@ BOOST_FIXTURE_TEST_CASE(restore_rejects_bad_trees_without_writing, BasicTestingS
     UniValue deep_tree(UniValue::VARR);
     deep_tree.push_back(deep_leaf);
     incomplete.pushKV("tree", deep_tree);
-    expect_rejected(incomplete);
+    ExpectRestoreRejected(*wallet, kept_address, incomplete);
 
     UniValue oversized(UniValue::VOBJ);
     UniValue many(UniValue::VARR);
@@ -754,7 +758,7 @@ BOOST_FIXTURE_TEST_CASE(restore_rejects_bad_trees_without_writing, BasicTestingS
         many.push_back(leaf);
     }
     oversized.pushKV("tree", many);
-    expect_rejected(oversized);
+    ExpectRestoreRejected(*wallet, kept_address, oversized);
 
     UniValue huge_script(UniValue::VOBJ);
     UniValue huge_leaf(UniValue::VOBJ);
@@ -764,12 +768,12 @@ BOOST_FIXTURE_TEST_CASE(restore_rejects_bad_trees_without_writing, BasicTestingS
     UniValue huge_tree(UniValue::VARR);
     huge_tree.push_back(huge_leaf);
     huge_script.pushKV("tree", huge_tree);
-    expect_rejected(huge_script);
+    ExpectRestoreRejected(*wallet, kept_address, huge_script);
 
     UniValue wrong_program = good;
     wrong_program.pushKV("merkle_root", std::string(64, '0'));
     wrong_program.pushKV("address", "not-the-reconstructed-address");
-    expect_rejected(wrong_program);
+    ExpectRestoreRejected(*wallet, kept_address, wrong_program);
 
     // A later good import still lands, so the rejects did not stick the wallet.
     UniValue second(UniValue::VOBJ);
