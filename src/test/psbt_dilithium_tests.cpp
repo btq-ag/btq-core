@@ -94,6 +94,15 @@ Fixture MakeFixture(const CScript& leaf_script, std::vector<Signer> signers)
     return f;
 }
 
+void AttachSpendData(Fixture& f)
+{
+    const P2MRSpendData spenddata = f.builder.GetSpendData();
+    f.psbt.inputs[0].m_p2mr_merkle_root = spenddata.merkle_root;
+    for (const auto& [leaf_key, controls] : spenddata.scripts) {
+        f.psbt.inputs[0].m_p2mr_scripts[leaf_key] = controls;
+    }
+}
+
 std::string Roundtrip(PartiallySignedTransaction& psbt)
 {
     CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
