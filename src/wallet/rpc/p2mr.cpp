@@ -327,6 +327,7 @@ RPCHelpMan createp2mrspend()
             {"to_address", RPCArg::Type::STR, RPCArg::Optional::NO, "Recipient address"},
             {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "Recipient amount"},
             {"fee", RPCArg::Type::AMOUNT, RPCArg::Default{"0.00001"}, "Fixed fee amount"},
+            {"change_address", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Change address. Omit to use a new P2MR address from this wallet."},
         },
         RPCResult{RPCResult::Type::OBJ, "", "", {
             {RPCResult::Type::STR_HEX, "hex", "Unsigned raw transaction"},
@@ -355,9 +356,16 @@ RPCHelpMan createp2mrspend()
             const CAmount send_amount = AmountFromValue(request.params[2]);
             const CAmount fee = request.params[3].isNull() ? AmountFromValue(UniValue("0.00001"))
                                                             : AmountFromValue(request.params[3]);
+            std::optional<CTxDestination> change_dest;
+            if (request.params.size() > 4 && !request.params[4].isNull()) {
+                change_dest = DecodeDestination(request.params[4].get_str());
+                if (!IsValidDestination(*change_dest)) {
+                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "invalid change address");
+                }
+            }
 
             LOCK(pwallet->cs_wallet);
-            auto spend = CreateP2MRSpend(*pwallet, p2mr_id, to_dest, send_amount, fee);
+            auto spend = CreateP2MRSpend(*pwallet, p2mr_id, to_dest, send_amount, fee, change_dest);
             if (!spend) {
                 // Map common errors to specific RPC codes for backwards compatibility.
                 const std::string msg = util::ErrorString(spend).original;
@@ -444,7 +452,8 @@ RPCHelpMan importp2mr()
         "\nImport P2MR metadata from listp2mr-shaped JSON so custom trees can be restored\n"
         "on descriptor wallets (dumpwallet is legacy-only). Keys must already be in the wallet\n"
         "if the tree needs them. Trivial anyone-can-spend leaves are allowed here because this\n"
-        "is a restore, not a new destination.\n",
+        "is a restore, not a new destination.\n"
+        "Seed-only recovery does not rebuild hybrid or multi-leaf trees.\n",
         {
             {"entries", RPCArg::Type::ARR, RPCArg::Optional::NO, "Array of P2MR entries (listp2mr output or objects with a tree field)",
                 {

@@ -87,11 +87,8 @@ public:
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        // BTQ-AUDIT-103: LWMA from block 1 so mainnet never has a pre-LWMA
-        // legacy-retarget window that can be manipulated. Mainnet only: the
-        // live testnet keeps its scheduled height (changing it retroactively
-        // would invalidate existing history — see the height-gate pattern in
-        // nDilithiumP2MRHeight).
+        // BTQ-AUDIT-103: LWMA from block 1 so there is no pre-LWMA
+        // legacy-retarget window that can be manipulated.
         consensus.nLWMAHeight = 1;
         consensus.nDilithiumHeight = 1;
         // Mainnet is pre-launch: Dilithium is P2MR-only from genesis.
@@ -192,7 +189,7 @@ public:
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks (legacy, pre-LWMA)
         consensus.nPowTargetSpacing = 1 * 60;
-        consensus.nLWMAHeight = 300000;
+        consensus.nLWMAHeight = 1;
         consensus.nDilithiumHeight = 1;
         // DEPLOYMENT_DILITHIUM_P2MR is deliberately unscheduled here, so the
         // restriction is policy-only on testnet (non-standard to relay, refused
@@ -212,6 +209,8 @@ public:
         // CheckInputScripts would Misbehave peers that relay still-consensus-
         // valid legacy Dilithium spends (see policy.h).
         consensus.nDilithiumP2MRHeight = opts.dilithium_p2mr_height.value_or(std::numeric_limits<int>::max());
+        // Testnet min-difficulty rule. Turning this off stalls a public testnet
+        // once a block is slower than the target. Mainnet stays off.
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 15120; // 75% of 20160 for testchains
@@ -239,12 +238,12 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        const char* pszTimestamp = "BTQ testnet genesis block 20260526";
+        const char* pszTimestamp = "BTQ Dilithium5 testnet genesis 20261124";
         const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1771977600, 2443007, 0x1e0377ae, 1, 5 * COIN);
+        genesis = CreateGenesisBlock(pszTimestamp, genesisOutputScript, 1795478400, 4077190, 0x1e0377ae, 1, 5 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x000000ffba1eed17608850f753ca60e74456dd3fe7af86b72aadba7d6052f7dd"));
-        assert(genesis.hashMerkleRoot == uint256S("0xcd6a53f536b1f8f9442397d1d4f3db492d88bc4280f4c172eb5b1d9e1b6152e5"));
+        assert(consensus.hashGenesisBlock == uint256S("0x000000e99ba14ab7b5feb7f2f290931e22472a69714c7081a2c6fe82b0d48ee2"));
+        assert(genesis.hashMerkleRoot == uint256S("0x288833956a1a600c570570fca9ffbc61c1c98a0716610ef9757e3363213a1bf3"));
 
         vFixedSeeds.clear();
         vSeeds.clear();

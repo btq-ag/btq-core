@@ -35,8 +35,8 @@ bool CDilithiumPubKey::IsValid() const
 
 bool CDilithiumPubKey::IsFullyValid() const
 {
-    // BTQ-AUDIT-022: cheap structural checks for an ML-DSA-44 / Dilithium2
-    // public key (rho(32) || t1(1280) == SIZE).
+    // BTQ-AUDIT-022: cheap structural checks for an ML-DSA-87 / Dilithium5
+    // public key (rho(32) || t1(2560) == SIZE).
     //
     // t1 is 10-bit packed, so any SIZE-byte string unpacks in-bounds; there is
     // no coefficient-range check analogous to secp256k1 curve membership.

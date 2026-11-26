@@ -153,11 +153,13 @@ FUZZ_TARGET(script, .init = initialize_script)
         const CScript dest{GetScriptForDestination(tx_destination_1)};
         const bool valid{IsValidDestination(tx_destination_1)};
 
-        if (!std::get_if<PubKeyDestination>(&tx_destination_1)) {
-            // Only try to round trip non-pubkey destinations since PubKeyDestination has no encoding
-            Assert(dest.empty() != valid);
+        Assert(dest.empty() == std::holds_alternative<CNoDestination>(tx_destination_1));
+        Assert(valid == IsValidDestinationString(encoded_dest));
+        if (std::holds_alternative<PubKeyDestination>(tx_destination_1) ||
+            std::holds_alternative<DilithiumPubKeyDestination>(tx_destination_1)) {
+            Assert(encoded_dest.empty());
+        } else {
             Assert(tx_destination_1 == DecodeDestination(encoded_dest));
-            Assert(valid == IsValidDestinationString(encoded_dest));
         }
 
         (void)(tx_destination_1 < tx_destination_2);

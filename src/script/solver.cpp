@@ -116,7 +116,7 @@ static bool MatchMultisig(const CScript& script, int& required_sigs, std::vector
 // Dilithium script matching functions
 static bool MatchPayToDilithiumPubkey(const CScript& script, valtype& pubkey)
 {
-    // A Dilithium pubkey is 1312 bytes, so it cannot be a direct push
+    // A Dilithium pubkey is larger than 75 bytes, so it cannot be a direct push
     // (those stop at 75). The script is OP_PUSHDATA2 <len16> <pubkey> OP_CHECKSIGDILITHIUM.
     if (script.size() != CDilithiumPubKey::SIZE + 4) return false;
     if (script[0] != OP_PUSHDATA2 || script.back() != OP_CHECKSIGDILITHIUM) return false;

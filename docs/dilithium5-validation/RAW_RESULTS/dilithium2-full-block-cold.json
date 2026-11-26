@@ -1,0 +1,15 @@
+{
+  "submit_result": null,
+  "wall_s": 0.135,
+  "block": {
+    "nTx": 1447,
+    "size": 5555784,
+    "weight": 7597884
+  },
+  "verifies": [
+    {
+      "txins": 1446,
+      "verify_ms": 31.6
+    }
+  ]
+}

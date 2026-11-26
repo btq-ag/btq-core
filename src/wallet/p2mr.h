@@ -24,6 +24,7 @@
 #include <vector>
 
 class CCoinControl;
+struct PartiallySignedTransaction;
 class UniValue;
 
 namespace wallet {
@@ -163,6 +164,11 @@ util::Result<void> ValidateP2MRRestore(const UniValue& meta);
  *  leaves are allowed because this is a restore. */
 util::Result<P2MRCreated> RestoreP2MR(CWallet& wallet, const UniValue& meta) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
+/** Store P2MR output trees carried on a PSBT. Each tree is checked against
+ *  that output's witness program before anything is written. A metadata
+ *  record is not treated as proof the wallet holds the keys. */
+util::Result<std::vector<P2MRCreated>> ImportP2MROutputsFromPSBT(CWallet& wallet, const PartiallySignedTransaction& psbt) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+
 /**
  * Generate (or reuse) a wallet Dilithium key and create a single-leaf P2MR
  * receive destination whose leaf is `<pubkey> OP_CHECKSIGDILITHIUM`.
@@ -224,7 +230,8 @@ util::Result<P2MRSpendUnsigned> CreateP2MRSpend(CWallet& wallet,
                                                 const std::string& p2mr_id,
                                                 const CTxDestination& to_dest,
                                                 CAmount send_amount,
-                                                CAmount fee) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
+                                                CAmount fee,
+                                                const std::optional<CTxDestination>& change_dest = std::nullopt) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet);
 
 /** Sign P2MR inputs using stored metadata. Leaves unrelated inputs untouched. */
 util::Result<P2MRSpendSigned> SignP2MRTransaction(const CWallet& wallet,

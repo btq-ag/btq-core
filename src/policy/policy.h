@@ -25,8 +25,8 @@ static constexpr unsigned int DEFAULT_BLOCK_MAX_WEIGHT{7600000}; // 7.6 MW soft 
 /** Default for -blockmintxfee, which sets the minimum feerate for a transaction in blocks created by mining code **/
 static constexpr unsigned int DEFAULT_BLOCK_MIN_TX_FEE{1000};
 /** The maximum weight for transactions we're willing to relay/mine */
-// BTQ: 400K WU allows ~106 Dilithium inputs per consolidation tx
-// (each input: ~40 bytes non-witness * 16 + ~3,733 bytes witness = ~4,373 WU)
+// BTQ: 400K WU. A Dilithium5 P2MR input is about 7,900 WU
+// (41 non-witness bytes * 16 + ~7,233 witness bytes), so ~50 fit.
 static constexpr int32_t MAX_STANDARD_TX_WEIGHT{400'000};
 /** The minimum non-witness size for transactions we're willing to relay/mine: one larger than 64  */
 static constexpr unsigned int MIN_STANDARD_TX_NONWITNESS_SIZE{65};
@@ -42,9 +42,9 @@ static constexpr unsigned int DEFAULT_BYTES_PER_SIGOP{20};
 static constexpr bool DEFAULT_PERMIT_BAREMULTISIG{true};
 /** The maximum number of witness stack items in a standard P2WSH script */
 static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEMS{100};
-/** The maximum size in bytes of each witness stack item in a standard P2WSH script */
+/** The maximum size in bytes of each witness stack item in a standard P2WSH script. See doc/protocol/script-resource-limits.md. */
 static constexpr unsigned int MAX_STANDARD_P2WSH_STACK_ITEM_SIZE{MAX_SCRIPT_ELEMENT_SIZE};
-/** The maximum size in bytes of each witness stack item in a standard BIP 342 script (Taproot, leaf version 0xc0) */
+/** The maximum size in bytes of each witness stack item in a standard BIP 342 script (Taproot, leaf version 0xc0). See doc/protocol/script-resource-limits.md. */
 static constexpr unsigned int MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE{MAX_SCRIPT_ELEMENT_SIZE};
 /** The maximum size in bytes of a standard witnessScript */
 static constexpr unsigned int MAX_STANDARD_P2WSH_SCRIPT_SIZE{65536};
@@ -96,15 +96,10 @@ static constexpr unsigned int EXTRA_DESCENDANT_TX_SIZE_LIMIT{10000};
  * Note that this does not affect consensus validity; see GetBlockScriptFlags()
  * for that.
  */
-// SCRIPT_VERIFY_DILITHIUM is mandatory for *classification* once Dilithium is
-// active: CheckInputScripts retries failed STANDARD checks with
-// ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, and TX_CONSENSUS results Misbehave(100)
-// peers. Dilithium must survive that retry so that a policy-only failure of
-// SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY (e.g. testnet today, where
-// nDilithiumP2MRHeight = INT_MAX) is reported as TX_NOT_STANDARD rather than
-// being reclassified as a mandatory Dilithium/pubkeytype failure.
-// Block consensus still gates Dilithium via GetBlockScriptFlags /
-// DEPLOYMENT_DILITHIUM; this constant only affects mempool/P2P classification.
+// SCRIPT_VERIFY_DILITHIUM is in this always-on set, so standard checks carry
+// it. GetBlockScriptFlags turns it on for blocks only after
+// DEPLOYMENT_DILITHIUM. Mempool script failures are TX_NOT_STANDARD when the
+// caller passes policy_flags.
 static constexpr unsigned int MANDATORY_SCRIPT_VERIFY_FLAGS{SCRIPT_VERIFY_P2SH |
                                                              SCRIPT_VERIFY_DERSIG |
                                                              SCRIPT_VERIFY_NULLDUMMY |
@@ -121,11 +116,11 @@ static constexpr unsigned int MANDATORY_SCRIPT_VERIFY_FLAGS{SCRIPT_VERIFY_P2SH |
  * the additional (non-mandatory) rules here, to improve forwards and
  * backwards compatability.
  *
- * SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY stays non-mandatory on purpose: on networks
- * where the consensus height is not yet scheduled (testnet), upgraded nodes
- * must soft-reject legacy Dilithium spends from the mempool without banning
- * peers that still relay them (those spends remain consensus-valid in blocks
- * until nDilithiumP2MRHeight activates).
+ * SCRIPT_VERIFY_DILITHIUM_P2MR_ONLY is a consensus rule once
+ * DEPLOYMENT_DILITHIUM_P2MR is active. GetBlockScriptFlags turns it on
+ * for blocks only after that deployment, which is what keeps
+ * pre-activation blocks valid. It stays out of this always-on set.
+ * Membership here does not select the flags ConnectBlock uses.
  */
 static constexpr unsigned int STANDARD_SCRIPT_VERIFY_FLAGS{MANDATORY_SCRIPT_VERIFY_FLAGS |
                                                              SCRIPT_VERIFY_STRICTENC |

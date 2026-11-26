@@ -9,6 +9,9 @@
  * network protocol versioning
  */
 
+//! BTQ follows upstream version numbers. Message magic is what separates
+//! the networks. A future BTQ-only feature must not reuse an upstream
+//! number that Bitcoin has already assigned.
 static const int PROTOCOL_VERSION = 70016;
 
 //! initial proto version, to be increased after version/verack negotiation

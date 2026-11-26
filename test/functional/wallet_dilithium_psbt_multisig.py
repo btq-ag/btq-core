@@ -99,8 +99,8 @@ class WalletDilithiumPSBTMultisigTest(BTQTestFramework):
         assert_equal(status["required"], 2)
         sigs = bob.decodepsbt(half["psbt"])["inputs"][0]["p2mr_dilithium_script_path_sigs"]
         assert_equal([s["pubkey"] for s in sigs], [alice_pk])
-        # 2420-byte Dilithium signature plus the sighash byte.
-        assert_equal(len(sigs[0]["sig"]), 2 * 2421)
+        # 4627-byte Dilithium signature plus the sighash byte.
+        assert_equal(len(sigs[0]["sig"]), 2 * 4628)
 
         self.log.info("carol signs the same PSBT independently of bob")
         carol_half = carol.walletprocesspsbt(psbt)

@@ -94,9 +94,9 @@ class DilithiumP2MRActivationTest(BTQTestFramework):
         """A witness-v0 keyhash spend satisfied by a Dilithium key.
 
         This is the shape the activation removes. Pre-activation the
-        interpreter routes a 1312-byte witness key to OP_CHECKSIGDILITHIUM;
+        interpreter routes a Dilithium-sized witness key to OP_CHECKSIGDILITHIUM;
         afterwards the same witness falls through to the ECDSA path, where a
-        1312-byte pubkey is not valid.
+        Dilithium public key is not a valid secp256k1 key.
         """
         tx = CTransaction()
         tx.nVersion = 2

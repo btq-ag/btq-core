@@ -41,20 +41,18 @@ extern "C" {
 
 /** Size constants for different Dilithium variants */
 namespace DilithiumConstants {
-    // Dilithium2 (default mode)
-    constexpr size_t DILITHIUM2_PUBLIC_KEY_SIZE = 1312;
-    constexpr size_t DILITHIUM2_SECRET_KEY_SIZE = 2560;
-    constexpr size_t DILITHIUM2_SIGNATURE_SIZE = 2420;
-    
-    // Dilithium5 (high security)
+    // Dilithium5 / ML-DSA-87. This branch does not build Dilithium2.
     constexpr size_t DILITHIUM5_PUBLIC_KEY_SIZE = 2592;
     constexpr size_t DILITHIUM5_SECRET_KEY_SIZE = 4896;
     constexpr size_t DILITHIUM5_SIGNATURE_SIZE = 4627;
-    
-    // Use Dilithium2 as default (can be configured via DILITHIUM_MODE)
+
     constexpr size_t PUBLIC_KEY_SIZE = BTQ_DILITHIUM_PUBLIC_KEY_SIZE;
     constexpr size_t SECRET_KEY_SIZE = BTQ_DILITHIUM_SECRET_KEY_SIZE;
     constexpr size_t SIGNATURE_SIZE = BTQ_DILITHIUM_SIGNATURE_SIZE;
+
+    static_assert(PUBLIC_KEY_SIZE == DILITHIUM5_PUBLIC_KEY_SIZE);
+    static_assert(SECRET_KEY_SIZE == DILITHIUM5_SECRET_KEY_SIZE);
+    static_assert(SIGNATURE_SIZE == DILITHIUM5_SIGNATURE_SIZE);
 }
 
 class CDilithiumPubKey; // Forward declaration
@@ -351,8 +349,8 @@ public:
  * is no analogue of `child_pub = parent_pub + hash*G`). Calling Derive() with
  * a non-hardened child index therefore returns false.
  *
- * Durable state is the 32-byte HD seed plus chaincode. The 2560/1312-byte
- * Dilithium2 keypair is regenerated deterministically from the seed via
+ * Durable state is the 32-byte HD seed plus chaincode. The Dilithium5
+ * keypair is regenerated deterministically from the seed via
  * `btq_dilithium_keypair_from_seed()`.
  */
 class CDilithiumExtKey {

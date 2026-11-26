@@ -13,7 +13,7 @@
 # exercise key generation, signing, verification, matrix expansion, every
 # pack/unpack routine, decompose, power2round, hint generation and challenge
 # sampling. The standards-conformance half lives in the dilithium_kat_tests
-# unit suite, which runs NIST ACVP ML-DSA-44 vectors against the same code.
+# unit suite. On this branch that suite runs NIST ACVP ML-DSA-87 vectors.
 #
 # Upstream's own runtests.sh cannot be used directly: it drives per-directory
 # Makefiles that BTQ does not vendor, and it writes ~4.5 GB of vectors to disk.

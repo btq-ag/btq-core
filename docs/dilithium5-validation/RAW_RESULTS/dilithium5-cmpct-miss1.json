@@ -1,0 +1,34 @@
+{
+  "kept_in_mempool": 99,
+  "b_height": 113,
+  "target_height": 113,
+  "missing": 1,
+  "a_sent": {
+    "blocktxn": 7383,
+    "cmpctblock": 880,
+    "feefilter": 29,
+    "getheaders": 634,
+    "headers": 184,
+    "ping": 29,
+    "pong": 29,
+    "sendaddrv2": 33,
+    "sendcmpct": 30,
+    "verack": 33,
+    "version": 130,
+    "wtxidrelay": 33
+  },
+  "b_recv": {
+    "blocktxn": 7383,
+    "cmpctblock": 880,
+    "feefilter": 29,
+    "getheaders": 634,
+    "headers": 184,
+    "ping": 29,
+    "pong": 29,
+    "sendaddrv2": 33,
+    "sendcmpct": 30,
+    "verack": 33,
+    "version": 130,
+    "wtxidrelay": 33
+  }
+}

@@ -19,7 +19,7 @@ int btq_dilithium_keypair_from_seed(uint8_t *pk, uint8_t *sk, const uint8_t *see
     // randombytes(), discarding any caller-supplied entropy. The seeded
     // variant uses the supplied seed in place of randombytes() so HD wallet
     // derivation can be deterministic.
-    return pqcrystals_dilithium2_ref_keypair_from_seed(pk, sk, seed);
+    return pqcrystals_dilithium5_ref_keypair_from_seed(pk, sk, seed);
 }
 
 int btq_dilithium_sign(uint8_t *sig, size_t *siglen,
@@ -27,12 +27,12 @@ int btq_dilithium_sign(uint8_t *sig, size_t *siglen,
                        const uint8_t *ctx, size_t ctxlen,
                        const uint8_t *sk)
 {
-    // Use the actual Dilithium2 signature generation
+    // Use the actual Dilithium5 signature generation
     // Handle empty context by passing NULL and 0
     const uint8_t *ctx_ptr = (ctxlen > 0) ? ctx : NULL;
     size_t ctx_len = (ctxlen > 0) ? ctxlen : 0;
     
-    return pqcrystals_dilithium2_ref_signature(sig, siglen, m, mlen, ctx_ptr, ctx_len, sk);
+    return pqcrystals_dilithium5_ref_signature(sig, siglen, m, mlen, ctx_ptr, ctx_len, sk);
 }
 
 int btq_dilithium_verify(const uint8_t *sig, size_t siglen,
@@ -40,10 +40,10 @@ int btq_dilithium_verify(const uint8_t *sig, size_t siglen,
                          const uint8_t *ctx, size_t ctxlen,
                          const uint8_t *pk)
 {
-    // Use the actual Dilithium2 signature verification
+    // Use the actual Dilithium5 signature verification
     // Handle empty context by passing NULL and 0
     const uint8_t *ctx_ptr = (ctxlen > 0) ? ctx : NULL;
     size_t ctx_len = (ctxlen > 0) ? ctxlen : 0;
     
-    return pqcrystals_dilithium2_ref_verify(sig, siglen, m, mlen, ctx_ptr, ctx_len, pk);
+    return pqcrystals_dilithium5_ref_verify(sig, siglen, m, mlen, ctx_ptr, ctx_len, pk);
 }

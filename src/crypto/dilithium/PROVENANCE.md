@@ -7,8 +7,8 @@ tested. It exists because none of that was previously written down or checked.
 
 ## Which specification BTQ implements
 
-**BTQ implements ML-DSA-44 as specified in FIPS 204**, under the pre-standard
-CRYSTALS-Dilithium naming.
+**This branch implements ML-DSA-87 as specified in FIPS 204**, under the
+pre-standard CRYSTALS-Dilithium naming (Dilithium5).
 
 The naming is historical and pervasive — `Dilithium2`, `pqcrystals_dilithium2_ref`,
 `OP_CHECKSIGDILITHIUM`, `BTQ_DILITHIUM_*` — but the algorithm is the standard.
@@ -19,17 +19,17 @@ and verification entry points also take a context string, which is a FIPS 204
 feature that round-3 Dilithium does not have.
 
 This is not merely inferred from the parameters. The implementation is checked
-directly against NIST's own ACVP vectors for ML-DSA-44 — key generation,
+directly against NIST's own ACVP vectors for ML-DSA-87: key generation,
 signature generation, and signature verification including negative cases — in
 the `dilithium_kat_tests` unit suite. Those vectors pass.
 
-Anything BTQ publishes about its cryptography should say ML-DSA-44 (FIPS 204),
-noting the Dilithium naming as legacy. The two are the same thing here.
+Anything this branch publishes about its cryptography should say ML-DSA-87
+(FIPS 204). The Dilithium5 name is the pre-standard label for that parameter set.
 
-BTQ compiles only security level 2 (`DILITHIUM_MODE` defaults to `2` in
-`ref/config.h`, and nothing overrides it). Levels 3 and 5 are present in the
-vendored source and covered by the reference vectors, but are not built into
-any BTQ binary.
+This branch compiles only security level 5 (`DILITHIUM_MODE` defaults to `5` in
+`ref/config.h`, and the wrapper calls `pqcrystals_dilithium5_ref_`). Levels 2
+and 3 stay in the vendored source so the reference-vector check can still build
+them. They are not linked into the BTQ binary.
 
 ## Upstream provenance
 
@@ -41,9 +41,9 @@ The vendored `ref/` tree corresponds to upstream commit:
 d35ba3fe5449bee3e6d43e1f296c3ca818bd36be
 ```
 
-Every file under `ref/` is byte-identical to that commit except `config.h`,
-`sign.c`, `sign.h` and `api.h`. Those four carry exactly three deliberate
-changes:
+The files under `ref/` that differ from that commit are `config.h`, `sign.c`,
+`sign.h`, `api.h` and `randombytes.c`. The vendored snapshot carries four local
+changes.
 
 1. **Deterministic signing.** `config.h` leaves `DILITHIUM_RANDOMIZED_SIGNING`
    undefined. See the next section.
@@ -61,6 +61,10 @@ changes:
    compares the recomputed challenge with an accumulate-then-test loop instead
    of upstream's early-exit byte loop. This is a hardening change relative to
    upstream and does not affect which signatures verify.
+
+4. **Linux build portability.** `randombytes.c` defines `_GNU_SOURCE` before
+   the system headers so strict C11 builds see the `syscall()` declaration.
+   The Linux implementation uses `SYS_getrandom` for random bytes.
 
 No other file differs, including every file that performs arithmetic:
 `poly.c`, `polyvec.c`, `packing.c`, `ntt.c`, `reduce.c`, `rounding.c` and
@@ -153,7 +157,7 @@ takes far longer than the whole unit suite. Run it when changing anything under
 
 ### Conformance: does our implementation agree with the standard?
 
-`src/test/dilithium_kat_tests.cpp` runs NIST ACVP vectors for ML-DSA-44 through
+`src/test/dilithium_kat_tests.cpp` runs NIST ACVP vectors for ML-DSA-87 through
 BTQ's own wrapper functions — `btq_dilithium_keypair_from_seed`,
 `btq_dilithium_sign` and `btq_dilithium_verify` — rather than through the
 reference API, so the test covers BTQ's code and not just upstream's. It runs
@@ -163,7 +167,7 @@ in the normal unit suite in well under a second:
 ./src/test/test_btq --run_test=dilithium_kat_tests
 ```
 
-The vectors live in `src/test/data/mldsa44_acvp.json`, curated verbatim from
+The vectors live in `src/test/data/mldsa87_acvp.json`, curated verbatim from
 NIST's ACVP-Server repository at the revision recorded in that file's
 `sourceRevision` field, so any value can be checked against NIST directly. The
 subset covers the external/pure signature interface, which is the one BTQ calls

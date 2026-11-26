@@ -7,6 +7,7 @@
 #include <crypto/dilithium_key.h>
 #include <key.h>
 #include <key_io.h>
+#include <node/psbt.h>
 #include <pubkey.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
@@ -91,6 +92,15 @@ Fixture MakeFixture(const CScript& leaf_script, std::vector<Signer> signers)
         f.full_provider.dilithium_keys.emplace(id, s.key);
     }
     return f;
+}
+
+void AttachSpendData(Fixture& f)
+{
+    const P2MRSpendData spenddata = f.builder.GetSpendData();
+    f.psbt.inputs[0].m_p2mr_merkle_root = spenddata.merkle_root;
+    for (const auto& [leaf_key, controls] : spenddata.scripts) {
+        f.psbt.inputs[0].m_p2mr_scripts[leaf_key] = controls;
+    }
 }
 
 std::string Roundtrip(PartiallySignedTransaction& psbt)
@@ -858,6 +868,52 @@ BOOST_AUTO_TEST_CASE(hybrid_psbt_needs_both_signatures_to_spend)
     auto no_dilithium = spend.vin[0].scriptWitness.stack;
     no_dilithium[1].clear();
     BOOST_CHECK(!verify_with(no_dilithium));
+}
+
+BOOST_AUTO_TEST_CASE(analyzepsbt_reports_an_unsigned_p2mr_input)
+{
+    const Signer signer = MakeSigner();
+    CScript leaf;
+    leaf << ToByteVector(signer.pubkey) << OP_CHECKSIGDILITHIUM;
+    Fixture f = MakeFixture(leaf, {signer});
+
+    // UTXO only: nothing tells a coordinator whether the leaf, the keys, or
+    // support for the input type is missing. Analysis must still return.
+    {
+        const node::PSBTAnalysis analysis = node::AnalyzePSBT(f.psbt);
+        BOOST_REQUIRE_EQUAL(analysis.inputs.size(), 1U);
+        BOOST_CHECK(analysis.inputs[0].has_utxo);
+        BOOST_CHECK(!analysis.inputs[0].is_final);
+        BOOST_CHECK(analysis.next != PSBTRole::EXTRACTOR);
+        BOOST_CHECK(analysis.next != PSBTRole::FINALIZER);
+        BOOST_CHECK_EQUAL(analysis.error, "Input 0 spends a P2MR output but the spend path is not recognised (unknown_leaf)");
+    }
+
+    // Leaf present, no signature: same report as any other input that only
+    // needs signatures. Do not require a signature for analysis to succeed.
+    AttachSpendData(f);
+    {
+        const node::PSBTAnalysis analysis = node::AnalyzePSBT(f.psbt);
+        BOOST_CHECK(analysis.error.empty());
+        BOOST_REQUIRE_EQUAL(analysis.inputs.size(), 1U);
+        BOOST_CHECK(analysis.inputs[0].has_utxo);
+        BOOST_CHECK(!analysis.inputs[0].is_final);
+        BOOST_CHECK(analysis.inputs[0].next == PSBTRole::SIGNER);
+        BOOST_CHECK(analysis.next == PSBTRole::SIGNER);
+        BOOST_REQUIRE_EQUAL(analysis.inputs[0].missing_sigs.size(), 1U);
+        BOOST_CHECK(analysis.inputs[0].missing_sigs[0] == CKeyID(signer.pubkey.GetID()));
+    }
+
+    // A real signature finalizes. An unsigned input must not have taken this path.
+    const PrecomputedTransactionData txdata = PrecomputePSBTData(f.psbt);
+    BOOST_REQUIRE(SignPSBTInput(f.full_provider, f.psbt, 0, &txdata, SIGHASH_ALL, nullptr, /*finalize=*/true));
+    {
+        const node::PSBTAnalysis analysis = node::AnalyzePSBT(f.psbt);
+        BOOST_CHECK(analysis.error.empty());
+        BOOST_REQUIRE_EQUAL(analysis.inputs.size(), 1U);
+        BOOST_CHECK(analysis.inputs[0].is_final);
+        BOOST_CHECK(analysis.next == PSBTRole::EXTRACTOR);
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

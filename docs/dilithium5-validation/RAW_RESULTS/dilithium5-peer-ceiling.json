@@ -1,0 +1,10 @@
+{
+  "connected": 100,
+  "tx_sent": {
+    "inv": 38500,
+    "tx": 7353000
+  },
+  "tx_recv": {
+    "getdata": 38500
+  }
+}
