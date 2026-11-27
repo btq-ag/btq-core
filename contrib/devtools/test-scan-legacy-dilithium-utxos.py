@@ -18,6 +18,8 @@ import unittest
 _SPEC = importlib.util.spec_from_file_location(
     "scanner", os.path.join(os.path.dirname(os.path.realpath(__file__)),
                             "scan-legacy-dilithium-utxos.py"))
+if _SPEC is None or _SPEC.loader is None:
+    raise ImportError("Could not load scan-legacy-dilithium-utxos.py")
 scanner = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(scanner)
 
@@ -43,13 +45,14 @@ def push(data):
 
 
 def dilithium_pubkey():
-    """1312 bytes that contain the Dilithium opcodes as data, not as opcodes.
+    """Dilithium pubkey bytes that contain the Dilithium opcodes as data, not as opcodes.
 
     A real key is effectively random, so every one-byte value shows up in it
-    around five times. Any scan that greps for 0xbb rather than walking the
-    script will call a plain ECDSA output Dilithium.
+    about ten times at ML-DSA-87 size. Any scan that greps for 0xbb rather than
+    walking the script will call a plain ECDSA output Dilithium.
     """
-    key = bytearray(bytes(range(256)) * 6)[:scanner.DILITHIUM_PUBKEY_SIZE]
+    # 11 * 256 = 2816 > 2592, so the slice reaches full pubkey length.
+    key = bytearray(bytes(range(256)) * 11)[:scanner.DILITHIUM_PUBKEY_SIZE]
     assert len(key) == scanner.DILITHIUM_PUBKEY_SIZE
     assert bytes([scanner.OP_CHECKSIGDILITHIUM]) in key
     return bytes(key)

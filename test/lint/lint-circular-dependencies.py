@@ -23,6 +23,19 @@ EXPECTED_CIRCULAR_DEPENDENCIES = (
     "kernel/coinstats -> validation -> kernel/coinstats",
     "kernel/mempool_persist -> validation -> kernel/mempool_persist",
 
+    # PSBT merging validates Dilithium fields, and validation inspects PSBT inputs.
+    "psbt -> psbt_dilithium -> psbt",
+    # WalletModel owns the controller, which accesses the model's wallet.
+    "qt/p2mrcontroller -> qt/walletmodel -> qt/p2mrcontroller",
+    # P2MR funding creates wallet transactions, and spending uses P2MR change.
+    "wallet/p2mr -> wallet/spend -> wallet/p2mr",
+    # P2MR operations need CWallet (including its lock annotations), and the
+    # wallet uses them for ownership checks and address generation.
+    "wallet/p2mr -> wallet/wallet -> wallet/p2mr",
+    # ScriptPubKeyMans need the owning CWallet; the wallet owns the managers.
+    "wallet/scriptpubkeyman -> wallet/wallet -> wallet/scriptpubkeyman",
+    "wallet/external_signer_scriptpubkeyman -> wallet/scriptpubkeyman -> wallet/wallet -> wallet/external_signer_scriptpubkeyman",
+
     # Temporary, removed in followup https://github.com/bitcoin/bitcoin/pull/24230
     "index/base -> node/context -> net_processing -> index/blockfilterindex -> index/base",
 )

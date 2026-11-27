@@ -5,6 +5,7 @@
 #include <crypto/dilithium_key.h>
 
 #include <crypto/common.h>
+#include <crypto/dilithium_wrapper.h>
 #include <crypto/hmac_sha512.h>
 #include <hash.h>
 #include <random.h>
@@ -14,10 +15,6 @@
 #include <cassert>
 #include <cstring>
 #include <cstdio>
-
-extern "C" {
-#include "dilithium_wrapper.h"
-}
 
 // CDilithiumKey implementation
 

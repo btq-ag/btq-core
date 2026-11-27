@@ -90,7 +90,12 @@ FUZZ_TARGET(integer, .init = initialize_integer)
     }
     (void)GetSizeOfCompactSize(u64);
     (void)GetSpecialScriptSize(u32);
-    if (!MultiplicationOverflow(i64, static_cast<int64_t>(u32)) && !AdditionOverflow(i64, static_cast<int64_t>(4)) && !AdditionOverflow(i64 * u32, static_cast<int64_t>(4))) {
+    // Guard the addend GetVirtualTransactionSize actually uses (WITNESS_SCALE_FACTOR),
+    // not Bitcoin Core's historical factor of 4. Otherwise UBSan trips on
+    // max + 16 when the harness only checked +4.
+    if (!MultiplicationOverflow(i64, static_cast<int64_t>(u32)) &&
+        !AdditionOverflow(i64, static_cast<int64_t>(WITNESS_SCALE_FACTOR)) &&
+        !AdditionOverflow(i64 * u32, static_cast<int64_t>(WITNESS_SCALE_FACTOR))) {
         (void)GetVirtualTransactionSize(i64, i64, u32);
     }
     (void)HexDigit(ch);

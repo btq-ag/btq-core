@@ -6,7 +6,6 @@ Each writes one JSON file under RAW_RESULTS.
 """
 
 import json
-import os
 import subprocess
 import sys
 import time
@@ -170,7 +169,7 @@ def full_block(label, btqd, cli, n, port):
         "-listen=1", "-blockmaxweight=8000000",
     ])
     try:
-        dest = boot(node)
+        boot(node)
         print(f"{label} funding {n}", flush=True)
         utxos = fund(node, n)
         second = node.cli("getnewdilithiumaddress", wallet="dil")["address"]
@@ -197,7 +196,7 @@ def relay_d2():
     origin = Node("origin", WORK / "d2relay" / "origin", str(D2), str(D2CLI), base, base + 100, ["-listen=1"])
     peers = []
     try:
-        dest = boot(origin)
+        boot(origin)
         specs = [
             ("public", ["-listen=1", f"-connect=127.0.0.1:{base}"]),
             ("private", ["-listen=0", f"-connect=127.0.0.1:{base}"]),
@@ -259,7 +258,7 @@ def miss_rates():
                 break
             time.sleep(0.25)
         b.stop()
-        dest = a.cli("getnewdilithiumaddress", wallet="dil")["address"]
+        a.cli("getnewdilithiumaddress", wallet="dil")
         utxos = fund(a, 100)
         # B must see the funding blocks before it can accept the spends.
         b.extra = ["-listen=0", f"-connect=127.0.0.1:{base}"]
@@ -333,7 +332,7 @@ def mempool_fill():
         "-listen=0", "-maxmempool=300", "-mempoolexpiry=999999",
     ])
     try:
-        dest = boot(node)
+        boot(node)
         target = 42000
         print(f"mempool funding {target}", flush=True)
         utxos = fund(node, target)
@@ -390,7 +389,7 @@ def peer_ceiling():
     ])
     thread = None
     try:
-        dest = boot(node)
+        boot(node)
         thread = NetworkThread()
         thread.start()
         while NetworkThread.network_event_loop is None:
@@ -438,7 +437,7 @@ def mesh_peers(n):
     ])
     nodes = []
     try:
-        dest = boot(origin)
+        boot(origin)
         for i in range(n):
             extra = [
                 "-listen=1", "-disablewallet", "-dbcache=4", "-maxmempool=20",
@@ -481,7 +480,7 @@ def soak(seconds):
     nodes = []
     samples = []
     try:
-        dest = boot(origin)
+        boot(origin)
         for i, extra in enumerate([
             ["-listen=1", f"-connect=127.0.0.1:{base}"],
             ["-listen=0", f"-connect=127.0.0.1:{base}"],

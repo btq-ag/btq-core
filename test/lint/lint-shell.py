@@ -9,7 +9,6 @@ Check for shellcheck warnings in shell scripts.
 """
 
 import subprocess
-import re
 import sys
 
 # Disabled warnings:
@@ -65,15 +64,14 @@ def main():
         'ls-files',
         '--',
         '*.sh',
+        ':(exclude)src/leveldb/',
+        ':(exclude)src/secp256k1/',
+        ':(exclude)src/minisketch/',
+        # Upstream Dilithium harnesses are kept verbatim.
+        ':(exclude)src/crypto/dilithium/runlcov.sh',
+        ':(exclude)src/crypto/dilithium/runtests.sh',
     ]
     files = get_files(files_cmd)
-    reg = re.compile(r'src/[leveldb,secp256k1,minisketch]')
-
-    def should_exclude(fname: str) -> bool:
-        return bool(reg.match(fname))
-
-    # remove everything that doesn't match this regex
-    files[:] = [file for file in files if not should_exclude(file)]
 
     # build the `shellcheck` command
     shellcheck_cmd = [
