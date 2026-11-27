@@ -275,7 +275,8 @@ public:
         };
 
         chainTxData = ChainTxData{
-            .nTime    = 1771804800,
+            // Match the Dilithium5 testnet genesis nTime (not mainnet's).
+            .nTime    = 1795478400,
             .nTxCount = 1,
             .dTxRate  = 0.0,
         };

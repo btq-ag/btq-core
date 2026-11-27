@@ -36,7 +36,9 @@ TOOL = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                     "..", "..", "contrib", "devtools", "scan-legacy-dilithium-utxos.py")
 
 OP_CHECKSIGDILITHIUM = "bb"
-DILITHIUM_PUBKEY_SIZE = 1312
+# Must match contrib/devtools/scan-legacy-dilithium-utxos.py and
+# BTQ_DILITHIUM_PUBLIC_KEY_SIZE (Dilithium5 / ML-DSA-87).
+DILITHIUM_PUBKEY_SIZE = 2592
 
 # Distinct hashes so a misattributed output is obvious in a failure.
 HASH_A = "11" * 20
@@ -48,7 +50,7 @@ HASH_D = "44" * 32
 # the on-chain version of the false positive the unit tests cover: a scan that
 # greps for the opcode rather than walking the script would count the ECDSA
 # output below as Dilithium.
-KEY_WITH_OPCODE_BYTES = (bytes(range(256)) * 6)[:DILITHIUM_PUBKEY_SIZE].hex()
+KEY_WITH_OPCODE_BYTES = (bytes(range(256)) * 11)[:DILITHIUM_PUBKEY_SIZE].hex()
 PUSHDATA2 = "4d" + DILITHIUM_PUBKEY_SIZE.to_bytes(2, "little").hex()
 
 SCRIPTS = {

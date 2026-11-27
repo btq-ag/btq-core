@@ -6,7 +6,8 @@
 
 Once P2MR-only activates, a Dilithium opcode is consensus-valid only inside a
 P2MR (witness v2) tapscript leaf, and the witness-v0 routing that sent a
-1312-byte key in a P2WPKH-shaped spend to OP_CHECKSIGDILITHIUM is switched off.
+2592-byte Dilithium5 / ML-DSA-87 key in a P2WPKH-shaped spend to
+OP_CHECKSIGDILITHIUM is switched off.
 Every coin that can only be spent through one of the old paths becomes
 permanently unspendable at the flag day. Not policy-rejected: consensus-invalid,
 with no recovery afterwards. See issue #111.
@@ -35,10 +36,11 @@ Committed behind a hash, so found only once something reveals the preimage:
   p2wsh     OP_0 <32-byte hash>
 
 For the hash-committed kinds the scan works backwards from spends. A witness-v0
-keyhash spend carrying a 1312-byte public key, or a redeem/witness script
-containing a Dilithium opcode, proves what the hash it satisfied stood for. Any
-coin still sitting on a hash proved that way is reported. This finds reused
-addresses, which in practice is where a pool payout or treasury balance lives.
+keyhash spend carrying a 2592-byte Dilithium public key, or a redeem/witness
+script containing a Dilithium opcode, proves what the hash it satisfied stood
+for. Any coin still sitting on a hash proved that way is reported. This finds
+reused addresses, which in practice is where a pool payout or treasury balance
+lives.
 
 What it cannot find is a hash-committed coin whose preimage has never appeared
 on chain -- a fresh Dilithium P2WPKH address paid once and never spent from is,
@@ -68,8 +70,9 @@ import sys
 import time
 from collections import defaultdict
 
-# A Dilithium2 public key. The witness-v0 routing keys on this exact length.
-DILITHIUM_PUBKEY_SIZE = 1312
+# Dilithium5 / ML-DSA-87 public key. Must match BTQ_DILITHIUM_PUBLIC_KEY_SIZE
+# and DilithiumConstants::PUBLIC_KEY_SIZE; witness-v0 routing keys on this length.
+DILITHIUM_PUBKEY_SIZE = 2592
 
 OP_CHECKSIGDILITHIUM = 0xBB
 OP_CHECKSIGDILITHIUMVERIFY = 0xBC
@@ -137,7 +140,7 @@ def iter_opcodes(script):
     """Yield each opcode in a script, skipping over pushed data.
 
     Walking the script rather than searching the bytes matters: a Dilithium
-    public key is 1312 bytes of arbitrary data and will contain 0xbb about five
+    public key is 2592 bytes of arbitrary data and will contain 0xbb about ten
     times over. Only an opcode in an executable position counts.
     """
     i, n = 0, len(script)
