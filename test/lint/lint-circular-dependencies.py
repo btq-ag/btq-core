@@ -32,6 +32,9 @@ EXPECTED_CIRCULAR_DEPENDENCIES = (
     # P2MR operations need CWallet (including its lock annotations), and the
     # wallet uses them for ownership checks and address generation.
     "wallet/p2mr -> wallet/wallet -> wallet/p2mr",
+    # ScriptPubKeyMans need the owning CWallet; the wallet owns the managers.
+    "wallet/scriptpubkeyman -> wallet/wallet -> wallet/scriptpubkeyman",
+    "wallet/external_signer_scriptpubkeyman -> wallet/scriptpubkeyman -> wallet/wallet -> wallet/external_signer_scriptpubkeyman",
 
     # Temporary, removed in followup https://github.com/bitcoin/bitcoin/pull/24230
     "index/base -> node/context -> net_processing -> index/blockfilterindex -> index/base",

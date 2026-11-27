@@ -9,7 +9,6 @@ import argparse
 import json
 import os
 import shutil
-import socket
 import subprocess
 import time
 from pathlib import Path
@@ -73,7 +72,7 @@ class Node:
         if wallet:
             cmd.append(f"-rpcwallet={wallet}")
         cmd.extend(args)
-        raw = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
+        raw = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, encoding="utf8")
         return rpc_load(raw)
 
     def stop(self):
